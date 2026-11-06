@@ -6,6 +6,7 @@ import { inferHistory } from "./history.js";
 import { applyInference, inferNow } from "./infer.js";
 import { applyPlan, cut, newRequest } from "./requests.js";
 import type { AgentView, SessionView } from "./types.js";
+import { applyWords } from "./words.js";
 
 /** The one function every screen is drawn from: raw events in, view out. */
 export function reduce(events: MurmurEvent[]): SessionView {
@@ -27,12 +28,9 @@ export function reduce(events: MurmurEvent[]): SessionView {
     req.finished = i < all.length - 1 || rest.at(-1)?.hook === "SessionEnd";
     return req;
   });
-  inferHistory(
-    requests,
-    split.map((s) => [s.start, ...s.rest]),
-    agents,
-    started,
-  );
+  const lists = split.map((s) => [s.start, ...s.rest]);
+  inferHistory(requests, lists, agents, started);
+  applyWords(requests, lists, agents, started);
   const first = sorted[0];
   return {
     sessionId: first?.sessionId ?? "",

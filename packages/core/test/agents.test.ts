@@ -56,6 +56,7 @@ test("subagent gets description and part", () => {
       type: "general-purpose",
       description: "check the table",
       prompt: "Please check the table",
+      brief: "Please check the table",
       part: "db",
       status: "done",
       startedAt: "2026-11-06T00:00:06.000Z",
@@ -67,6 +68,7 @@ test("subagent gets description and part", () => {
       type: "general-purpose",
       description: "write the endpoint",
       prompt: "Please write the endpoint",
+      brief: "Please write the endpoint",
       part: "api",
       status: "running",
       startedAt: "2026-11-06T00:00:07.000Z",
@@ -135,6 +137,15 @@ test("feature.jsonl links its subagent; interactive prompt suggestions are ignor
       description: "Read greet file",
       prompt:
         "Read greet.txt in the current directory and reply with its exact contents.",
+      // The prompt only says what to read, so it has no brief.
+      // A foreground helper: its result is its report.
+      report: {
+        status: "completed",
+        summary: "",
+        text: "hello world",
+        ts: "2026-11-06T00:00:17.000Z",
+        interim: false,
+      },
       status: "done",
       startedAt: "2026-11-06T00:00:12.000Z",
       endedAt: "2026-11-06T00:00:16.000Z",

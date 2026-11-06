@@ -69,6 +69,7 @@ export function newRequest(start: MurmurEvent): RequestView {
     flags: [],
     finished: false,
     tally: { helpers: 0, files: 0, commands: 0 },
+    messages: [],
   };
 }
 
@@ -84,7 +85,12 @@ export function applyPlan(req: RequestView, events: MurmurEvent[]): Trace {
   events.forEach((e, i) => {
     trace.before.push(last);
     const map = MapInput.safeParse(input(e, MAP_TOOL));
-    if (map.success) applyMap(req, map.data);
+    if (map.success) {
+      applyMap(req, map.data);
+      // The latest map says where the plan came from.
+      if (e.payload.recap === true) req.recap = true;
+      else delete req.recap;
+    }
     const note = NarrateInput.safeParse(input(e, NARRATE_TOOL));
     if (note.success) {
       last = applyNarrate(req, e, note.data);
