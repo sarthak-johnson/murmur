@@ -32,6 +32,38 @@ export interface RequestView {
   finished: boolean;
   /** Helpers started, distinct files changed and commands run in this request. */
   tally: { helpers: number; files: number; commands: number };
+  /**
+   * What Claude wrote to the user, in time order: every `AssistantText` between this
+   * request's prompt and the next request's. Core always sets it (empty when none);
+   * optional only so views built before it still type-check.
+   */
+  messages?: MessageView[];
+  /**
+   * The plan, map and part detail came from Murmur's recap: the user's own Claude
+   * summarised the imported history once, on their machine, through `map` and `narrate`
+   * calls marked `recap: true`. Then `planInferred` is false, and the web labels the
+   * request "Recap by Claude" where it shows "inferred" for an inferred one. Unset
+   * when the plan came from live narration or was inferred.
+   */
+  recap?: boolean;
+}
+
+/** One message Claude wrote to the user on the main thread. */
+export interface MessageView {
+  /** The `AssistantText` event's id. */
+  id: string;
+  ts: string;
+  /** Claude's text as written (Markdown), scrubbed. */
+  text: string;
+  /**
+   * The task in this request's `phases` the message is about, by id. On an inferred plan
+   * a task's id is its part's id. Set only when the message names its subject ("Task 1",
+   * "Tasks 4-5", "B7", "bug B1") or, on a narrated request, contains a task's or part's
+   * title; unset when unsure.
+   */
+  task?: string;
+  /** The helper (`AgentView.id`) whose report arrived just before, in the same turn. */
+  agent?: string;
 }
 
 export interface PhaseView {
@@ -104,6 +136,37 @@ export interface AgentView {
   startedAt: string;
   endedAt?: string;
   lastText?: string;
+  /**
+   * What the helper was asked to do, in a few sentences: the first paragraph of `prompt`
+   * about the work (the one under a `## Context` heading when there is one; lines that
+   * only point at files or give working rules are skipped), plain text, at most 600
+   * characters, cut at a sentence end. Unset when the prompt has no such paragraph.
+   */
+  brief?: string;
+  /** The helper's report back to Claude, once one arrived. */
+  report?: AgentReport;
+}
+
+/**
+ * A helper's report. A background helper reports through a task notification (a later
+ * one for the same helper replaces it); a foreground one through its Agent call's result.
+ */
+export interface AgentReport {
+  /** The notification's `<status>`; "completed" for a foreground result. */
+  status: "completed" | "failed" | "killed" | (string & {});
+  /** The notification's `<summary>`, e.g. `Agent "Build style A" finished`; "" for a foreground result. */
+  summary: string;
+  /** The report itself, as the helper wrote it (Markdown). */
+  text: string;
+  /**
+   * From a first line like `Status: DONE`: "DONE", "DONE_WITH_CONCERNS", "BLOCKED",
+   * "NEEDS_CONTEXT" and so on, as written. Unset when the report has no such line.
+   */
+  verdict?: string;
+  /** When the report arrived. */
+  ts: string;
+  /** The helper stopped with background work of its own still running; a later report may follow. */
+  interim: boolean;
 }
 
 export interface NeedsYou {

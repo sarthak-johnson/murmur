@@ -36679,7 +36679,9 @@ var HOOK_NAMES = [
   "TaskCreated",
   "TaskCompleted",
   "PreCompact",
-  "PostCompact"
+  "PostCompact",
+  // Not a Claude Code hook: Murmur reads it from the transcript (see AssistantTextPayload).
+  "AssistantText"
 ];
 var MurmurEventSchema = external_exports.object({
   id: external_exports.string(),
