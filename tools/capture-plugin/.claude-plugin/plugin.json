@@ -1,0 +1,5 @@
+{
+  "name": "capture",
+  "version": "0.0.0",
+  "description": "Dev tool: appends every hook payload to $CAPTURE_OUT as JSON lines."
+}
