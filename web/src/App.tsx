@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type Me, UNAUTHORIZED } from "./api";
 import { Device } from "./pages/Device";
 import { Login } from "./pages/Login";
+import { SessionPage } from "./pages/Session";
 import { Sessions } from "./pages/Sessions";
 import { Settings } from "./pages/Settings";
 import { navigate, useRoute } from "./router";
@@ -17,14 +18,15 @@ function store(op: () => unknown): string | null {
   }
 }
 
-function Header({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
+function Header(props: { me: Me; wide: boolean; onSignOut: () => void }) {
+  const { me, wide, onSignOut } = props;
   const go = (path: string) => (e: React.MouseEvent) => {
     e.preventDefault();
     navigate(path);
   };
   return (
     <header className="header">
-      <div className="header-in">
+      <div className={wide ? "header-in wide" : "header-in"}>
         <a className="wordmark" href="/" onClick={go("/")}>
           Murmur
         </a>
@@ -100,16 +102,31 @@ export function App() {
         </main>
       );
       break;
-    default:
+    case "session":
+    case "request":
+      page = (
+        <SessionPage
+          key={route.sessionId}
+          sessionId={route.sessionId}
+          requestId={route.name === "request" ? route.requestId : undefined}
+        />
+      );
+      break;
+    case "part":
       page = (
         <main className="page">
-          <p className="muted">Session view arrives in the next task.</p>
+          <p className="muted">Part details arrive in a later task.</p>
         </main>
       );
+      break;
   }
   return (
     <>
-      <Header me={me} onSignOut={signOut} />
+      <Header
+        me={me}
+        wide={route.name === "session" || route.name === "request"}
+        onSignOut={signOut}
+      />
       {page}
     </>
   );
