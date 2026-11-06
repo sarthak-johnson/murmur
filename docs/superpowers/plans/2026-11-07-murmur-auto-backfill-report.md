@@ -123,3 +123,15 @@ Tests: trigger "b" with transcript prompts "a", "b" imports "a"; trigger "b" wit
 
 This replaces the round 2 concern about write order: if the entry is written after the hook, nothing is dropped, and the worst case is one duplicate prompt.
 Remaining: whether the live `prompt` of a slash command is exactly `/name args` is not verified against a real payload; if it differs, that one prompt shows twice.
+
+## Pre-merge fixes (round 4)
+
+1. `pruneSessions` keeps session state until it has been idle for over 100 days, just past the server's 90-day default `retention_days`, so a session resumed while the server still holds it is never imported twice.
+   The hook test now checks that 101 days idle is deleted and 95 days is kept.
+2. When the backfill finishes, the session state is rewritten as `done` without `triggerPrompt`, so the raw prompt text does not stay on disk.
+   The prompt-trigger test checks that the state has no `triggerPrompt` and that the file no longer contains the prompt text.
+
+RED: 2 failed (`expected 'Now add a README' to be undefined`; the 95-day file was deleted).
+GREEN: `pnpm build:plugin` 0, `pnpm lint` 0, `pnpm typecheck` 0, `pnpm test` 0 (163 + 90 + 89 + 95), each exit status checked separately.
+The round 2 concern about pruned sessions now applies only to sessions resumed after 100 idle days, which the server has deleted under the default retention anyway.
+A user with a retention setting longer than 100 days could still see one import twice.
