@@ -1,0 +1,11 @@
+{
+  "name": "murmur",
+  "owner": { "name": "Sarthak Johnson" },
+  "plugins": [
+    {
+      "name": "murmur",
+      "source": "./plugin",
+      "description": "A live, plain-words view of your Claude Code session in the browser."
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Runs the bundled CLI. Follows symlinks so a linked copy still finds dist/.
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+if ! command -v node >/dev/null 2>&1; then
+  echo "Murmur needs Node.js 22 or newer on PATH."
+  exit 1
+fi
+exec node "$(dirname "$self")/../dist/cli.cjs" "$@"

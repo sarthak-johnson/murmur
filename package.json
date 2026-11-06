@@ -1,0 +1,19 @@
+{
+  "name": "murmur",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "lint": "biome check .",
+    "build:plugin": "pnpm --filter @murmur/plugin build",
+    "e2e": "pnpm --filter @murmur/web build && pnpm --filter @murmur/e2e e2e"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.4"
+  }
+}
