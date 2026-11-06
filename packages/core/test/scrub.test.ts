@@ -53,3 +53,52 @@ test("scrubs nested strings in arrays and objects", () => {
   const e = ev({ a: [{ b: `ghp_${"A".repeat(36)}` }] });
   expect(scrubEvent(e).payload).toEqual({ a: [{ b: "[redacted]" }] });
 });
+
+test("redacts sk-proj and sk-svcacct keys but not words ending in sk-", () => {
+  expect(scrubString(`x sk-proj-${"aB3_-".repeat(8)} y`)).toBe(
+    "x [redacted] y",
+  );
+  expect(scrubString(`sk-svcacct-${"a".repeat(30)}`)).toBe("[redacted]");
+  expect(scrubString(`disk-${"a".repeat(30)}`)).toBe(`disk-${"a".repeat(30)}`);
+});
+
+test("redacts assignments inside diff lines", () => {
+  expect(scrubString("+STRIPE_SECRET_KEY=abc")).toBe(
+    "+STRIPE_SECRET_KEY=[redacted]",
+  );
+  expect(scrubString("+API_KEY=abc\n-PORT=3000")).toBe(
+    "+API_KEY=[redacted]\n-PORT=3000",
+  );
+});
+
+test("redacts a .env structuredPatch", () => {
+  const e = ev({
+    tool_input: { file_path: "/p/.env" },
+    tool_response: {
+      filePath: "/p/.env",
+      structuredPatch: [{ lines: ["-PORT=3000", "+PORT=4000", " NAME=x"] }],
+    },
+  });
+  const r = scrubEvent(e).payload.tool_response as {
+    structuredPatch: { lines: string[] }[];
+  };
+  expect(r.structuredPatch[0]?.lines).toEqual([
+    "-PORT=[redacted]",
+    "+PORT=[redacted]",
+    " NAME=[redacted]",
+  ]);
+});
+
+test("scrubbing pathological inputs is fast", () => {
+  for (const s of ["\n".repeat(MAX_STRING), "KEY".repeat(MAX_STRING / 3)]) {
+    const t = performance.now();
+    scrubEvent(ev({ s }));
+    expect(performance.now() - t).toBeLessThan(200);
+  }
+});
+
+test("oversized strings are cut before scrubbing; N counts the original", () => {
+  const s = scrubEvent(ev({ big: "a".repeat(MAX_STRING * 3) })).payload
+    .big as string;
+  expect(s.endsWith(`…[truncated ${MAX_STRING * 2} chars]`)).toBe(true);
+});
