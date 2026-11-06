@@ -48,11 +48,15 @@ const GRID_COLS = 4;
 const GRID_TOP = 460;
 const GRID_PITCH = ROW_PITCH;
 export const RING_SIZE = RING.length;
+/** Ring chip stacks must end above the first overflow row's phase tag band. */
+export const RING_CHIP_BOTTOM = GRID_TOP - NODE_H / 2 - 16;
+/** Most chips a part shows: two agents and a `+N more`. */
+export const MAX_CHIPS = 3;
 
 /** Number of chips a part shows: up to two agents, then one `+N more`. */
 export function chipCount(part: PartView): number {
   const n = part.agents.length;
-  return n > 2 ? 3 : n;
+  return n > 2 ? MAX_CHIPS : n;
 }
 
 /** Every column the kind can have, used or not, so columns never move. */

@@ -429,4 +429,72 @@ describe("MapView", () => {
       before,
     );
   });
+
+  const boxRect = (r: Element) => ({
+    x: Number(r.getAttribute("x")),
+    y: Number(r.getAttribute("y")),
+    w: Number(r.getAttribute("width")),
+    h: Number(r.getAttribute("height")),
+  });
+
+  it("bottom ring chips never cover an overflow phase tag", () => {
+    const agents = [agent("a1", "tests"), agent("a2", "reading")];
+    const parts = Array.from({ length: 12 }, (_, i) =>
+      part({
+        id: `p${i}`,
+        title: `Part ${i}`,
+        phase: "p2",
+        agents: i === 2 || i === 3 ? ["a1", "a2"] : [],
+      }),
+    );
+    const { container } = render(
+      <MapView request={request({ agents, parts })} onOpenPart={() => {}} />,
+    );
+    const tags = [...container.querySelectorAll("rect.box")]
+      .map(boxRect)
+      .map((r) => ({ x: r.x, y: r.y - 16, w: r.w, h: 16 }));
+    const chips = [...container.querySelectorAll("rect.chip-box")].map(boxRect);
+    expect(chips).toHaveLength(4);
+    for (const c of chips)
+      for (const t of tags) {
+        const apart =
+          c.x + c.w <= t.x ||
+          t.x + t.w <= c.x ||
+          c.y + c.h <= t.y ||
+          t.y + t.h <= c.y;
+        expect(apart).toBe(true);
+      }
+  });
+
+  it("a ring part's chip stack stays put as its agents go from 1 to 3", () => {
+    const agents = [
+      agent("a1", "tests"),
+      agent("a2", "reading"),
+      agent("a3", "docs"),
+    ];
+    for (let slot = 0; slot < 8; slot++) {
+      const firstChip = (n: number) => {
+        const parts = Array.from({ length: 8 }, (_, i) =>
+          part({
+            id: `p${i}`,
+            title: `Part ${i}`,
+            agents: i === slot ? ["a1", "a2", "a3"].slice(0, n) : [],
+          }),
+        );
+        const { container, unmount } = render(
+          <MapView
+            request={request({ agents, parts })}
+            onOpenPart={() => {}}
+          />,
+        );
+        const first = container.querySelector("rect.chip-box");
+        const out = first ? boxRect(first) : null;
+        unmount();
+        return out;
+      };
+      const one = firstChip(1);
+      expect(firstChip(2)).toEqual(one);
+      expect(firstChip(3)).toEqual(one);
+    }
+  });
 });
