@@ -9,7 +9,8 @@
  *   updated as it grows, `pending` while the run is unbroken. An unbroken run sets its
  *   part's `failures` (narrate runs below 3 count too) and its task's `problem`.
  * - Risky: a PreToolUse Bash command `isRisky` matches; `pending` until its PostToolUse or
- *   PostToolUseFailure by `tool_use_id`, or the next Stop, SessionEnd or prompt (`followed`).
+ *   PostToolUseFailure by `tool_use_id` (anywhere in the request, so a Post with an
+ *   earlier ts still counts), or the next Stop, SessionEnd or prompt (`followed`).
  * - Assumptions: narrate choices with `assumption: true`, first copy per key.
  */
 import type { MurmurEvent } from "../events.js";
@@ -82,7 +83,9 @@ const segments = (cmd: string) =>
     s
       .trim()
       .split(/\s+/)
-      .map((w) => w.replace(/^["'`$(\\]+/, "").replace(/["'`);]+$/, "")),
+      .map((w) =>
+        w.replace(/^["'`$(\\]+/, "").replace(/(?<!["'`);])["'`);]+$/, ""),
+      ),
   );
 
 const shortFlag = (t: string, c: RegExp) => /^-[a-zA-Z]+$/.test(t) && c.test(t);
@@ -131,6 +134,13 @@ export function applyFlags(
   const runs = new Map<string, Run>();
   const risky = new Map<string, Flag>();
   const seen = new Set<string>();
+  const finished = new Set(
+    events
+      .filter(
+        (e) => e.hook === "PostToolUse" || e.hook === "PostToolUseFailure",
+      )
+      .map((e) => str(e.payload.tool_use_id)),
+  );
 
   const closeRisky = () => {
     for (const flag of risky.values()) flag.pending = false;
@@ -190,7 +200,7 @@ export function applyFlags(
         kind: "risky",
         text: `About to run: ${cut(command, 120)}`,
         ts: e.ts,
-        pending: true,
+        pending: !finished.has(useId),
       };
       const part = before[i]?.part;
       if (part) flag.part = part;

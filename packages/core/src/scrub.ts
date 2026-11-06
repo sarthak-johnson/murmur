@@ -3,9 +3,11 @@ import type { MurmurEvent } from "./events.js";
 export const MAX_STRING = 262144;
 const R = "[redacted]";
 
-// Order matters: sk-ant- before the generic sk-.
+// Order matters: sk-ant- before the generic sk-. Every pattern stays linear on
+// hostile input: a lookbehind stops a match starting inside a longer run.
 const TOKEN_PATTERNS = [
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+  // A key with no END (a `head` of the file) redacts to the end of the string.
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----|[\s\S]*)/g,
   /sk-ant-[A-Za-z0-9_-]{20,}/g,
   /\bsk-[A-Za-z0-9_-]{20,}/g,
   /gh[pousr]_[A-Za-z0-9]{36,}/g,
@@ -13,8 +15,26 @@ const TOKEN_PATTERNS = [
   /AKIA[0-9A-Z]{16}/g,
   /xox[abprs]-[A-Za-z0-9-]{10,}/g,
   /(?:sk|rk)_live_[A-Za-z0-9]{16,}/g,
-  /eyJ[A-Za-z0-9_-]{7,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
+  /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{7,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
+  /AIza[0-9A-Za-z_-]{35}/g,
+  /npm_[A-Za-z0-9]{36}/g,
+  /glpat-[A-Za-z0-9_-]{20}/g,
+  // Opaque means it has a digit, so prose like "a Bearer token" stays.
+  /(?<![A-Za-z])Bearer[ \t]+(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]{8,}/gi,
 ];
+
+// Keep the user, drop the password: scheme://user:pass@ and curl -u user:pass.
+const USER_PASS = [
+  /((?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s:/@]+:)[^\s@/]+(?=@)/g,
+  /((?<!\S)(?:-u|--user)(?:[ \t]+|=)["']?[^\s:"']+:)[^\s"']+/g,
+];
+
+// `name = value`, `name: value` and JSON `"name": "value"`, any case. The name is
+// matched whole, then checked for secret words in code (linear time). A quoted
+// value is cut at its quote, a bare one at whitespace.
+const KEY_WORD = /key|secret|token|password|passwd|pwd|credential|auth|dsn/i;
+const KEY_VALUE =
+  /(?<![\w.-])([\w.-]+)(["']?[ \t]*[:=][ \t]*)(?:(["'])[^"'\n]*|[^"'\s]+)/g;
 
 // Anchored without \s so matches never cross newlines (linear time). The name is
 // matched whole, then checked for secret words in code. A leading +/-/space keeps
@@ -30,6 +50,10 @@ const CUT = MAX_STRING + 4096;
 export function scrubString(s: string): string {
   let out = s;
   for (const p of TOKEN_PATTERNS) out = out.replace(p, R);
+  for (const p of USER_PASS) out = out.replace(p, `$1${R}`);
+  out = out.replace(KEY_VALUE, (m, name: string, sep: string, q?: string) =>
+    KEY_WORD.test(name) ? `${name}${sep}${q ?? ""}${R}` : m,
+  );
   return out.replace(SECRET_ASSIGN, (m, head: string, name: string) =>
     SECRET_NAME.test(name) ? `${head}${R}` : m,
   );

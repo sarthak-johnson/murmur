@@ -281,3 +281,32 @@ test("assumptions dedupe by key", () => {
   expect(assumptionKey("r1", undefined, "a")).toBe("r1:-:e40c292c");
   expect(assumptionKey("r1", "p", "b")).toBe("r1:p:e70c2de5");
 });
+
+test("a risky command whose Post arrives with an earlier ts is not pending", () => {
+  const post = {
+    ...bash(2, "rm -rf build", "PostToolUse"),
+    payload: { tool_name: "Bash", tool_use_id: "t3" },
+  };
+  const [req] = reduce([
+    prompt(1, "clean"),
+    post,
+    bash(3, "rm -rf build", "PreToolUse"),
+  ]).requests;
+  expect(req?.flags.map((f) => [f.kind, f.pending])).toEqual([
+    ["risky", false],
+  ]);
+});
+
+test.each([
+  ["quotes", `"'\`);`.repeat(262144 / 5)],
+  ["quoted word", `x${`'`.repeat(262144)}x`],
+  ["parens word", `a${"();".repeat(262144 / 3)}b`],
+  ["separators", ";&|\n".repeat(262144 / 4)],
+  ["spaces", ` ${"a ".repeat(262144 / 2)}`],
+  ["rm words", "rm -r ".repeat(262144 / 6)],
+  ["git words", "git push reset ".repeat(262144 / 15)],
+])("isRisky stays fast on hostile %s input", (_, cmd) => {
+  const t = performance.now();
+  isRisky(cmd);
+  expect(performance.now() - t).toBeLessThan(200);
+});

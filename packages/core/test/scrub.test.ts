@@ -116,3 +116,69 @@ test("truncation count is never negative when redaction lengthens the text", () 
     .payload.big as string;
   expect(s).toMatch(/…\[truncated [1-9]\d* chars\]$/);
 });
+
+test.each([
+  [
+    `curl -H "Authorization: Bearer abc123def456ghi" https://api.x.com`,
+    `curl -H "Authorization: [redacted]" https://api.x.com`,
+  ],
+  ["Bearer abc123def456ghi", "[redacted]"],
+  [
+    "psql postgres://app:pw@db.host:5432/app",
+    "psql postgres://app:[redacted]@db.host:5432/app",
+  ],
+  ["curl -u user:pw https://x.com", "curl -u user:[redacted] https://x.com"],
+  [`api_key = "abc def"`, `api_key = "[redacted]"`],
+  [`{"apiKey": "abc123"}`, `{"apiKey": "[redacted]"}`],
+  ["password: hunter2", "password: [redacted]"],
+  [
+    "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCY",
+    "aws_secret_access_key = [redacted]",
+  ],
+  [`x AIza${"a1_-".repeat(8)}abc y`, "x [redacted] y"],
+  [`x npm_${"a1B".repeat(12)} y`, "x [redacted] y"],
+  [`x glpat-${"a1_-B".repeat(4)} y`, "x [redacted] y"],
+  [
+    "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\nAAAABG5vbmUAAAAEbm9uZQ",
+    "[redacted]",
+  ],
+  ["Token=abc next", "Token=[redacted] next"],
+  ["PORT=3000 name: Sam", "PORT=3000 name: Sam"],
+])("redacts %j", (input, out) => {
+  expect(scrubString(input)).toBe(out);
+});
+
+const N = MAX_STRING;
+test.each([
+  ["eyJ", "eyJ".repeat(N / 3)],
+  ["eyJ run", `eyJ${"a".repeat(N)}`],
+  ["eyJ dotted", `eyJ${"a".repeat(8)}.`.repeat(N / 12)],
+  ["BEGIN headers", "-----BEGIN RSA PRIVATE KEY-----".repeat(N / 31)],
+  ["BEGIN letters", `-----BEGIN ${"A ".repeat(N / 2)}`],
+  ["identifier", "a".repeat(N)],
+  ["key words", "key".repeat(N / 3)],
+  ["key spaces", `key${" ".repeat(N)}`],
+  ["key colons", "key:".repeat(N / 4)],
+  ["quoted keys", `"token" `.repeat(N / 8)],
+  ["quotes", `"'`.repeat(N / 2)],
+  ["assigns", "a=".repeat(N / 2)],
+  ["dots", "a.".repeat(N / 2)],
+  ["schemes", "a://".repeat(N / 4)],
+  ["scheme user", `a://${"b".repeat(N)}`],
+  ["scheme user colon", `a://b:${"c".repeat(N)}`],
+  ["dash u", "-u ".repeat(N / 3)],
+  ["dash u user", `-u ${"a".repeat(N)}`],
+  ["bearer", "Bearer ".repeat(N / 7)],
+  ["bearer run", `Bearer ${"a".repeat(N)}`],
+  [
+    "prefixes",
+    "AIza npm_ glpat- ghp_ xoxb- sk_live_ AKIA sk-ant- ".repeat(N / 48),
+  ],
+  ["newlines", "\n".repeat(N)],
+  ["KEY", "KEY".repeat(N / 3)],
+  ["env lines", "A_KEY \n".repeat(N / 7)],
+])("scrub stays fast on hostile %s input", (_, s) => {
+  const t = performance.now();
+  scrubString(s);
+  expect(performance.now() - t).toBeLessThan(200);
+});

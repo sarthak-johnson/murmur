@@ -145,4 +145,15 @@ describe("now without narrate", () => {
     expect(nowOf(mapCall(1, MAP))).toBeNull();
     expect(nowOf()).toBeNull();
   });
+
+  test("housekeeping tools keep the previous now", () => {
+    for (const name of ["ToolSearch", "TaskList", "TaskGet"]) {
+      expect(
+        nowOf(tool(1, "Read", { file_path: "/p/a.js" }), tool(2, name, {})),
+      ).toEqual(inferred("Reading a.js", 1));
+      expect(nowOf(narrateCall(1, note()), tool(2, name, {}))?.inferred).toBe(
+        undefined,
+      );
+    }
+  });
 });

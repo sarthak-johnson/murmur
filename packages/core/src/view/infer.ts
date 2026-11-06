@@ -73,6 +73,14 @@ export function applyInference(req: RequestView, events: MurmurEvent[]): void {
 }
 
 const TOOL_HOOKS = new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure"]);
+// Tools that say nothing about the work keep the previous now.
+const QUIET = new Set([
+  MAP_TOOL,
+  NARRATE_TOOL,
+  "ToolSearch",
+  "TaskList",
+  "TaskGet",
+]);
 const basename = (v: unknown) =>
   typeof v === "string" && v ? v.split("/").filter(Boolean).at(-1) : undefined;
 
@@ -103,8 +111,7 @@ export function inferNow(
   let stop = -1;
   events.forEach((e, i) => {
     const name = e.payload.tool_name;
-    if (TOOL_HOOKS.has(e.hook) && name !== MAP_TOOL && name !== NARRATE_TOOL)
-      tool = i;
+    if (TOOL_HOOKS.has(e.hook) && !QUIET.has(String(name))) tool = i;
     if (e.hook === "Stop") stop = i;
   });
   const last = Math.max(tool, stop);
