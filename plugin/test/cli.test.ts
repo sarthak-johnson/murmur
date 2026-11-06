@@ -6,8 +6,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { poll, run } from "../src/cli.js";
 import {
+  isNewSession,
   queueDir,
   readCredentials,
+  readSession,
   setRevoked,
   writeCredentials,
 } from "../src/local.js";
@@ -80,6 +82,15 @@ describe("cli", () => {
     expect(out).toContain("This project: on");
     expect(out).toContain("Logged in: no");
     expect(out).toContain("Paused: no");
+  });
+
+  it("on in a session binds the session to the project and leaves it unseen", async () => {
+    await run(["on", path.join(repo, "sub")], { CLAUDE_CODE_SESSION_ID: "s1" });
+    expect(readSession("s1").project).toBe(repo);
+    // Its first hook still imports what came before.
+    expect(isNewSession("s1")).toBe(true);
+    await run(["on", repo], {});
+    expect(isNewSession("")).toBe(true);
   });
 
   it("pause is per session and resume undoes it", async () => {

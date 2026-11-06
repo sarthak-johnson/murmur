@@ -4,6 +4,7 @@ import path from "node:path";
 import { MAP_TOOL, MAX_STRING, NARRATE_TOOL } from "@murmur/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handleHook } from "../src/hook.js";
+import { MID_SESSION_LINE } from "../src/instruction.js";
 import {
   murmurDir,
   NARRATION_INSTRUCTION,
@@ -514,7 +515,7 @@ describe("handleHook", () => {
     const UPS_INSTRUCTION = {
       hookSpecificOutput: {
         hookEventName: "UserPromptSubmit",
-        additionalContext: NARRATION_INSTRUCTION,
+        additionalContext: `${MID_SESSION_LINE}\n${NARRATION_INSTRUCTION}`,
       },
     };
 
@@ -536,6 +537,100 @@ describe("handleHook", () => {
       setProjectState(repo, "off");
       const other = payload("UserPromptSubmit", { session_id: "s2" });
       expect(handleHook(other, ENV, NOW)).toEqual({ stdout: "", event: null });
+    });
+  });
+
+  describe("on and off follow the session", () => {
+    let tree: string;
+    let plain: string;
+    let other: string;
+    beforeEach(() => {
+      // The author's layout: a worktree inside the main repo, its .git a file.
+      const gitdir = path.join(repo, ".git", "worktrees", "lit-plate");
+      fs.mkdirSync(gitdir, { recursive: true });
+      tree = path.join(repo, ".claude", "worktrees", "lit-plate");
+      fs.mkdirSync(path.join(tree, "src"), { recursive: true });
+      fs.writeFileSync(path.join(tree, ".git"), `gitdir: ${gitdir}\n`);
+      plain = path.join(path.dirname(repo), "scratch");
+      fs.mkdirSync(plain);
+      other = path.join(path.dirname(repo), "other");
+      fs.mkdirSync(path.join(other, ".git"), { recursive: true });
+      login();
+      setProjectState(repo, "on");
+      setProjectState(other, "off");
+    });
+    const tool = (cwd: string, extra = {}) =>
+      handleHook(payload("PreToolUse", { cwd, ...extra }), ENV, NOW).event;
+
+    it("a session seen in an on project keeps sending from its worktree and other folders, not from an off project", () => {
+      expect(
+        handleHook(payload("UserPromptSubmit", { prompt: "hi" }), ENV, NOW)
+          .event,
+      ).not.toBeNull();
+      expect(readSession("s1").project).toBe(repo);
+      expect(tool(tree)?.cwd).toBe(tree);
+      expect(tool(path.join(tree, "src"))?.hook).toBe("PreToolUse");
+      expect(tool(plain)?.cwd).toBe(plain);
+      expect(tool(other)).toBeNull();
+      expect(projectState(plain)).toBeUndefined();
+      // Another session never seen in an on project keeps today's rule.
+      expect(tool(plain, { session_id: "s2" })).toBeNull();
+      expect(readSession("s1").project).toBe(repo);
+    });
+
+    it("turning the project off later stops the rest of the session", () => {
+      handleHook(payload("UserPromptSubmit", { prompt: "hi" }), ENV, NOW);
+      expect(tool(tree)).not.toBeNull();
+      setProjectState(tree, "off");
+      expect(projectState(repo)).toBe("off");
+      expect(tool(tree)).toBeNull();
+      expect(tool(plain)).toBeNull();
+      expect(tool(repo)).toBeNull();
+    });
+
+    it("a session first seen in an unset folder asks once and sends nothing", () => {
+      const first = payload("SessionStart", { source: "startup", cwd: plain });
+      expect(JSON.parse(handleHook(first, ENV, NOW).stdout)).toEqual({
+        systemMessage: ask(plain),
+      });
+      expect(tool(plain)).toBeNull();
+      expect(readSession("s1").project).toBeUndefined();
+    });
+
+    it("a session already imported is bound but not imported again", () => {
+      fs.mkdirSync(path.join(murmurDir(), "sessions"), { recursive: true });
+      fs.writeFileSync(
+        path.join(murmurDir(), "sessions", "s1.json"),
+        JSON.stringify({
+          backfill: "done",
+          cutoff: NOW.toISOString(),
+          instructed: true,
+        }),
+      );
+      const r = handleHook(
+        payload("PreToolUse", { cwd: tree, transcript_path: "/t/s1.jsonl" }),
+        ENV,
+        NOW,
+      );
+      expect(r.event?.cwd).toBe(tree);
+      expect(r.backfill).toBeUndefined();
+      expect(readSession("s1")).toMatchObject({
+        backfill: "done",
+        project: repo,
+      });
+    });
+
+    it("the instruction on a prompt mid-session asks for a map first, SessionStart's does not", () => {
+      const ups = handleHook(payload("UserPromptSubmit"), ENV, NOW);
+      const text = JSON.parse(ups.stdout).hookSpecificOutput.additionalContext;
+      expect(text).toBe(`${MID_SESSION_LINE}\n${NARRATION_INSTRUCTION}`);
+      expect(MID_SESSION_LINE).toBe(
+        "This session was already under way. Call `map` now for the work in progress, then narrate as below.",
+      );
+      const s = handleHook(start("resume"), ENV, NOW);
+      expect(JSON.parse(s.stdout).hookSpecificOutput.additionalContext).toBe(
+        NARRATION_INSTRUCTION,
+      );
     });
   });
 

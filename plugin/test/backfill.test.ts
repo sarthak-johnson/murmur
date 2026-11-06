@@ -395,6 +395,35 @@ describe("runBackfill", () => {
     ).not.toContain("Now add a README");
   });
 
+  it("imports history from inside a worktree of the project that is on", async () => {
+    writeCredentials({ server: "http://srv", token: "tok", machineId: "m1" });
+    const home = path.dirname(murmurDir());
+    const main = path.join(home, "main");
+    const gitdir = path.join(main, ".git", "worktrees", "lit-plate");
+    fs.mkdirSync(gitdir, { recursive: true });
+    const tree = path.join(main, ".claude", "worktrees", "lit-plate");
+    fs.mkdirSync(tree, { recursive: true });
+    fs.writeFileSync(path.join(tree, ".git"), `gitdir: ${gitdir}\n`);
+    // The fixture, with the first entry in the main repo and the rest in the worktree.
+    const dir = path.join(home, "transcripts");
+    fs.cpSync(FIXTURE, dir, { recursive: true });
+    const file = path.join(dir, `${SID}.jsonl`);
+    const text = fs.readFileSync(file, "utf8");
+    let n = 0;
+    fs.writeFileSync(
+      file,
+      text.replace(/"cwd":"\/work\/demo"/g, () =>
+        JSON.stringify({ cwd: n++ ? tree : main }).slice(1, -1),
+      ),
+    );
+    setProjectState(main, "on");
+    pendingAt({ transcriptPath: file, cwd: main, project: main });
+    const { sent, fetch } = sender();
+    expect(await runBackfill(SID, { fetch })).toBe(21);
+    expect(sent).toHaveLength(21);
+    expect(queued()).toEqual([]);
+  });
+
   it("skips the flush when the login changed while it ran", async () => {
     const a = { server: "http://srv", token: "tok", machineId: "m1" };
     writeCredentials(a);

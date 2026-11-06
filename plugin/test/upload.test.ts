@@ -6,8 +6,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   isRevoked,
   murmurDir,
+  NO_NARRATION,
   setProjectState,
   writeCredentials,
+  writeSession,
 } from "../src/local.js";
 import { enqueue, flush } from "../src/upload.js";
 
@@ -175,6 +177,37 @@ describe("queue", () => {
     const f = fakeFetch([200]);
     expect(await flush(CREDS, opts(f))).toEqual({ sent: 1, kept: 0 });
     expect(f.calls.map((c) => c.ids)).toEqual([["e0001"]]);
+    expect(queued()).toEqual([]);
+  });
+
+  it("a session bound to an on project sends from its worktree and other folders, not from an off one", async () => {
+    const home = path.dirname(murmurDir());
+    const main = path.join(home, "main");
+    const gitdir = path.join(main, ".git", "worktrees", "x");
+    fs.mkdirSync(gitdir, { recursive: true });
+    const tree = path.join(main, ".claude", "worktrees", "x");
+    fs.mkdirSync(tree, { recursive: true });
+    fs.writeFileSync(path.join(tree, ".git"), `gitdir: ${gitdir}\n`);
+    setProjectState(main, "on");
+    setProjectState("/off", "off");
+    writeSession("s1", { ...NO_NARRATION, backfill: "done", project: main });
+    enqueue(ev(1, {}, { cwd: main }));
+    enqueue(ev(2, {}, { cwd: tree }));
+    enqueue(ev(3, {}, { cwd: path.join(tree, "src") }));
+    enqueue(ev(4, {}, { cwd: "/never" }));
+    enqueue(ev(5, {}, { cwd: "/off" }));
+    // Not bound: today's cwd rule.
+    enqueue(ev(6, {}, { cwd: "/never", sessionId: "s2" }));
+    const f = fakeFetch([200]);
+    expect(await flush(CREDS, opts(f))).toEqual({ sent: 4, kept: 0 });
+    expect(f.calls.map((c) => c.ids)).toEqual([
+      ["e0001", "e0002", "e0003", "e0004"],
+    ]);
+    // Turned off later: the rest of the session stays out.
+    setProjectState(main, "off");
+    enqueue(ev(7, {}, { cwd: "/never" }));
+    enqueue(ev(8, {}, { cwd: tree }));
+    expect(await flush(CREDS, opts(f))).toEqual({ sent: 0, kept: 0 });
     expect(queued()).toEqual([]);
   });
 

@@ -4,9 +4,9 @@ import { type MurmurEvent, MurmurEventSchema } from "@murmur/core";
 import {
   type Credentials,
   isRevoked,
-  projectState,
   queueDir,
   readCredentials,
+  sessionProjectState,
   setRevoked,
 } from "./local.js";
 
@@ -83,7 +83,8 @@ export interface FlushOptions {
 
 // Safe to run in two processes at once: each deletes only what it sent, and the
 // server dedupes ids, so a double send is harmless. Events from another login, or
-// from a project that is no longer on, are deleted unsent.
+// from a project that is no longer on, are deleted unsent. A session bound to a
+// project follows it (see sessionProjectState), so its worktree events go.
 export async function flush(
   c: Credentials,
   {
@@ -98,8 +99,10 @@ export async function flush(
   const on = new Map<string, boolean>();
   const wanted = (e: MurmurEvent) => {
     if (e.machineId !== c.machineId) return false;
-    if (!on.has(e.cwd)) on.set(e.cwd, projectState(e.cwd) === "on");
-    return on.get(e.cwd) as boolean;
+    const key = `${e.sessionId}\0${e.cwd}`;
+    if (!on.has(key))
+      on.set(key, sessionProjectState(e.cwd, e.sessionId) === "on");
+    return on.get(key) as boolean;
   };
   let names: string[] = [];
   let sent = 0;

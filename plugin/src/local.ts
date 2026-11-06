@@ -57,8 +57,34 @@ export function projectKey(cwd: string): string {
   const start = path.resolve(cwd);
   const home = path.resolve(os.homedir());
   for (let d = start; path.dirname(d) !== d; d = path.dirname(d))
-    if (d !== home && fs.existsSync(path.join(d, ".git"))) return d;
+    if (d !== home && fs.existsSync(path.join(d, ".git")))
+      return worktreeMain(d) ?? d;
   return start;
+}
+
+/**
+ * The main repo of the git worktree at `root`, whose .git file points into
+ * <main>/.git/worktrees/<name>. A submodule's .git file points elsewhere: undefined.
+ */
+function worktreeMain(root: string): string | undefined {
+  let text: string;
+  try {
+    text = fs.readFileSync(path.join(root, ".git"), "utf8");
+  } catch {
+    return undefined; // a .git folder
+  }
+  const gitdir = /^gitdir:\s*(.+?)\s*$/m.exec(text)?.[1];
+  if (!gitdir) return undefined;
+  const worktrees = path.dirname(path.resolve(root, gitdir));
+  const dotGit = path.dirname(worktrees);
+  const main = path.dirname(dotGit);
+  const home = path.resolve(os.homedir());
+  return path.basename(worktrees) === "worktrees" &&
+    path.basename(dotGit) === ".git" &&
+    main !== home &&
+    path.dirname(main) !== main
+    ? main
+    : undefined;
 }
 
 /** The project folder as people read it: home shown as ~. */
@@ -121,10 +147,22 @@ export function dropQueued(cwd: string): void {
   }
 }
 
+const projects = () =>
+  readJson<Record<string, ProjectState>>("projects.json", {});
 export function projectState(cwd: string): ProjectState | undefined {
-  return readJson<Record<string, ProjectState>>("projects.json", {})[
-    projectKey(cwd)
-  ];
+  return projects()[projectKey(cwd)];
+}
+/**
+ * What decides whether an event of `sessionId` at `cwd` goes: once the session is bound
+ * to a project, that project's state, unless `cwd` is in a project turned off.
+ */
+export function sessionProjectState(
+  cwd: string,
+  sessionId: string | undefined,
+): ProjectState | undefined {
+  const here = projectState(cwd);
+  const bound = sessionId ? readSession(sessionId).project : undefined;
+  return here === "off" || !bound ? here : projects()[bound];
 }
 export function setProjectState(cwd: string, s: ProjectState): void {
   const all = readJson<Record<string, ProjectState>>("projects.json", {});
@@ -190,6 +228,11 @@ export interface SessionState extends Narration {
   runningSince?: string;
   /** The narration instruction reached Claude in this session. */
   instructed?: boolean;
+  /**
+   * The project key the session was first seen in while it was on, or where /murmur:on
+   * ran in it. Its events follow this project's state, wherever the session moves.
+   */
+  project?: string;
 }
 const sessionFile = (sessionId: string) =>
   path.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
@@ -201,9 +244,12 @@ export const NO_NARRATION: Narration = {
   done: [],
   blocked: false,
 };
-/** A session Murmur has never written state for. */
+/**
+ * A session no hook has seen yet. /murmur:on may already have bound it to a project;
+ * every hook that sees a session sets `backfill`.
+ */
 export function isNewSession(sessionId: string): boolean {
-  return !fs.existsSync(path.join(murmurDir(), sessionFile(sessionId)));
+  return readSession(sessionId).backfill === undefined;
 }
 export function readSession(sessionId: string): SessionState {
   return {

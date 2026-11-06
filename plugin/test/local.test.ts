@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { MapInput, NarrateInput } from "@murmur/core";
 import { beforeEach, describe, expect, it } from "vitest";
-import { NARRATION_INSTRUCTION } from "../src/instruction.js";
+import { MID_SESSION_LINE, NARRATION_INSTRUCTION } from "../src/instruction.js";
 import {
   clearCredentials,
   clearProjectPause,
@@ -76,6 +76,39 @@ describe("local state", () => {
     }
   });
 
+  it("a worktree and its subfolders belong to the main repo, a submodule stays its own", () => {
+    const main = fs.mkdtempSync(path.join(home, "main-"));
+    fs.mkdirSync(path.join(main, ".git", "worktrees", "x"), {
+      recursive: true,
+    });
+    const tree = path.join(main, ".claude", "worktrees", "x");
+    fs.mkdirSync(path.join(tree, "src", "deep"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tree, ".git"),
+      `gitdir: ${path.join(main, ".git", "worktrees", "x")}\n`,
+    );
+    expect(projectKey(tree)).toBe(main);
+    expect(projectKey(path.join(tree, "src", "deep"))).toBe(main);
+    // A worktree outside the main repo, with a relative gitdir.
+    const outside = fs.mkdtempSync(path.join(home, "wt-"));
+    fs.writeFileSync(
+      path.join(outside, ".git"),
+      `gitdir: ${path.relative(outside, path.join(main, ".git", "worktrees", "x"))}\n`,
+    );
+    expect(projectKey(outside)).toBe(main);
+    const sub = path.join(main, "vendor", "lib");
+    fs.mkdirSync(sub, { recursive: true });
+    fs.writeFileSync(
+      path.join(sub, ".git"),
+      "gitdir: ../../.git/modules/lib\n",
+    );
+    expect(projectKey(path.join(sub))).toBe(sub);
+    fs.writeFileSync(path.join(outside, ".git"), "not a gitdir line");
+    expect(projectKey(outside)).toBe(outside);
+    setProjectState(main, "on");
+    expect(projectState(path.join(tree, "src"))).toBe("on");
+  });
+
   it("pause round-trips by folder and by session", () => {
     const root = fs.mkdtempSync(path.join(home, "repo-"));
     fs.mkdirSync(path.join(root, ".git"));
@@ -94,6 +127,7 @@ describe("local state", () => {
 
   it("instruction contains no em dash and both tool names", () => {
     expect(NARRATION_INSTRUCTION).not.toContain("—");
+    expect(MID_SESSION_LINE).not.toContain("—");
     expect(NARRATION_INSTRUCTION).toContain("`map`");
     expect(NARRATION_INSTRUCTION).toContain("`narrate`");
   });

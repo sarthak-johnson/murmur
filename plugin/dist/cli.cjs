@@ -72,8 +72,24 @@ function projectKey(cwd) {
   const start = import_node_path.default.resolve(cwd);
   const home = import_node_path.default.resolve(import_node_os.default.homedir());
   for (let d = start; import_node_path.default.dirname(d) !== d; d = import_node_path.default.dirname(d))
-    if (d !== home && import_node_fs.default.existsSync(import_node_path.default.join(d, ".git"))) return d;
+    if (d !== home && import_node_fs.default.existsSync(import_node_path.default.join(d, ".git")))
+      return worktreeMain(d) ?? d;
   return start;
+}
+function worktreeMain(root) {
+  let text;
+  try {
+    text = import_node_fs.default.readFileSync(import_node_path.default.join(root, ".git"), "utf8");
+  } catch {
+    return void 0;
+  }
+  const gitdir = /^gitdir:\s*(.+?)\s*$/m.exec(text)?.[1];
+  if (!gitdir) return void 0;
+  const worktrees = import_node_path.default.dirname(import_node_path.default.resolve(root, gitdir));
+  const dotGit = import_node_path.default.dirname(worktrees);
+  const main2 = import_node_path.default.dirname(dotGit);
+  const home = import_node_path.default.resolve(import_node_os.default.homedir());
+  return import_node_path.default.basename(worktrees) === "worktrees" && import_node_path.default.basename(dotGit) === ".git" && main2 !== home && import_node_path.default.dirname(main2) !== main2 ? main2 : void 0;
 }
 function projectName(cwd) {
   const key = projectKey(cwd);
@@ -126,8 +142,9 @@ function dropQueued(cwd) {
     }
   }
 }
+var projects = () => readJson("projects.json", {});
 function projectState(cwd) {
-  return readJson("projects.json", {})[projectKey(cwd)];
+  return projects()[projectKey(cwd)];
 }
 function setProjectState(cwd, s) {
   const all = readJson("projects.json", {});
@@ -157,6 +174,27 @@ function setPaused(cwd, paused, sessionId) {
 }
 function clearProjectPause(cwd) {
   setPaused(cwd, false);
+}
+var sessionFile = (sessionId) => import_node_path.default.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
+var NO_NARRATION = {
+  mapped: false,
+  tasks: [],
+  narrates: 0,
+  named: [],
+  done: [],
+  blocked: false
+};
+function readSession(sessionId) {
+  return {
+    ...NO_NARRATION,
+    ...readJson(sessionFile(sessionId), {})
+  };
+}
+function writeSession(sessionId, s) {
+  writeJson(sessionFile(sessionId), s);
+}
+function updateSession(sessionId, patch) {
+  writeSession(sessionId, { ...readSession(sessionId), ...patch });
 }
 
 // src/cli.ts
@@ -233,6 +271,7 @@ async function run(args, env, startPoller = spawnPoller) {
       return "Logged out. Unsent events were deleted, and this machine sends nothing more to Murmur.";
     case "on":
       setProjectState(cwd, "on");
+      if (session) updateSession(session, { project: projectKey(cwd) });
       return readCredentials() ? `Murmur is on for ${projectName(cwd)}.` : `Murmur is on for ${projectName(cwd)}. Run /murmur:login to connect.`;
     case "off":
       setProjectState(cwd, "off");

@@ -8,11 +8,13 @@ import {
   dropQueued,
   isPaused,
   isRevoked,
+  projectKey,
   projectName,
   projectState,
   readCredentials,
   setPaused,
   setProjectState,
+  updateSession,
   writeCredentials,
 } from "./local.js";
 
@@ -129,6 +131,7 @@ export async function run(
       return "Logged out. Unsent events were deleted, and this machine sends nothing more to Murmur.";
     case "on":
       setProjectState(cwd, "on");
+      if (session) updateSession(session, { project: projectKey(cwd) });
       return readCredentials()
         ? `Murmur is on for ${projectName(cwd)}.`
         : `Murmur is on for ${projectName(cwd)}. Run /murmur:login to connect.`;
