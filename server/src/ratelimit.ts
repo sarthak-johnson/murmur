@@ -1,39 +1,58 @@
 // ponytail: in-memory, one server instance; move to Postgres or a shared store before running more than one.
 
+interface Entry {
+  key: string;
+  start: number;
+  n: number;
+}
+
 /**
  * Fixed-window counter per key: `limit` hits per `windowMs`, starting at a key's first hit.
- * Entries stay in window-start order (a restarted window is re-inserted at the back), so
- * expired ones are swept from the front in amortised O(1). At most `cap` keys are held;
+ * Entries also sit in a queue in window-start order, so expired ones are swept from the
+ * front in amortised O(1). (Not by iterating the Map: V8 walks deleted slots from the
+ * front until it rehashes, which makes front sweeps O(n).) At most `cap` keys are held;
  * when every held key is live, new keys are blocked (fail closed) until windows expire.
  */
 export function fixedWindow(limit: number, windowMs: number, cap = 100_000) {
-  const hits = new Map<string, { start: number; n: number }>();
+  const byKey = new Map<string, Entry>();
+  let queue: Entry[] = [];
+  let head = 0;
   const sweep = (t: number) => {
-    for (const [k, v] of hits) {
-      if (t - v.start < windowMs) return;
-      hits.delete(k);
+    while (head < queue.length) {
+      const e = queue[head] as Entry;
+      if (t - e.start < windowMs) break;
+      byKey.delete(e.key);
+      head++;
+    }
+    if (head > 1024 && head * 2 > queue.length) {
+      queue = queue.slice(head);
+      head = 0;
     }
   };
   return {
     get size() {
-      return hits.size;
+      return byKey.size;
     },
     blocked(key: string, now: Date) {
       sweep(now.getTime());
-      const e = hits.get(key);
-      return e ? e.n >= limit : hits.size >= cap;
+      const e = byKey.get(key);
+      return e ? e.n >= limit : byKey.size >= cap;
     },
     hit(key: string, now: Date) {
       const t = now.getTime();
       sweep(t);
-      const e = hits.get(key);
+      const e = byKey.get(key);
       if (e) e.n++;
-      else if (hits.size < cap) hits.set(key, { start: t, n: 1 });
+      else if (byKey.size < cap) {
+        const fresh = { key, start: t, n: 1 };
+        byKey.set(key, fresh);
+        queue.push(fresh);
+      }
     },
     /** Gives back a hit taken in this window (count first, refund on success, so concurrent requests cannot overshoot). */
     refund(key: string, now: Date) {
       sweep(now.getTime());
-      const e = hits.get(key);
+      const e = byKey.get(key);
       if (e && e.n > 0) e.n--;
     },
   };
