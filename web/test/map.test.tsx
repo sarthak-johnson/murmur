@@ -422,6 +422,55 @@ describe("MapView", () => {
       }
   });
 
+  it("chip stacks of two bottom ring parts never cover each other", () => {
+    const parts = Array.from({ length: 6 }, (_, i) =>
+      part({
+        id: `p${i}`,
+        title: `Part ${i}`,
+        agents: i === 2 || i === 3 ? [`a${i}`] : [],
+      }),
+    );
+    const req = request({
+      agents: [agent("a2", "Build style B"), agent("a3", "Build style C")],
+      parts,
+    });
+    const { container } = render(
+      <MapView request={req} onOpenPart={() => {}} />,
+    );
+    const rect = (r: Element) => ({
+      x: Number(r.getAttribute("x")),
+      y: Number(r.getAttribute("y")),
+      w: Number(r.getAttribute("width")),
+      h: Number(r.getAttribute("height")),
+    });
+    const [a, b] = [...container.querySelectorAll("rect.chip-box")].map(rect);
+    if (!a || !b) throw new Error("two chips expected");
+    expect(
+      a.x + a.w <= b.x ||
+        b.x + b.w <= a.x ||
+        a.y + a.h <= b.y ||
+        b.y + b.h <= a.y,
+    ).toBe(true);
+  });
+
+  it("a cut title ends at a word, and a cut path keeps its last folders", () => {
+    render(
+      <MapView
+        request={request({
+          parts: [
+            part({ id: "a", title: "Style B, departure board and more" }),
+            part({ id: "b", title: "scratchpad/style/shared/deeper" }),
+          ],
+        })}
+        onOpenPart={() => {}}
+      />,
+    );
+    const label = (name: RegExp) =>
+      screen.getByRole("button", { name }).querySelector(".label")?.textContent;
+    expect(label(/^Style B/)).toBe("Style B, departure…");
+    expect(label(/^scratchpad/)).toBe("…/style/shared/deeper");
+  });
+
   it("a growing canvas never moves existing chips", () => {
     const agents = [agent("a1", "tests"), agent("a2", "reading")];
     const ring = Array.from({ length: 8 }, (_, i) =>

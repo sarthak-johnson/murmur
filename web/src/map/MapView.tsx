@@ -29,11 +29,24 @@ const charW = (c: string) =>
 export const textWidth = (text: string, font: number) =>
   [...text].reduce((w, c) => w + charW(c) * font, 0);
 
+/**
+ * Fits `text` in `px`. A path (slashes, no spaces) drops leading folders
+ * ("…/style/shared"); other text ends at a word when one ends in the back half.
+ */
 function truncate(text: string, px: number, font: number): string {
   if (textWidth(text, font) <= px) return text;
+  if (text.includes("/") && !text.includes(" ")) {
+    let tail = text;
+    while (tail.includes("/") && textWidth(`…/${tail}`, font) > px)
+      tail = tail.slice(tail.indexOf("/") + 1);
+    if (textWidth(`…/${tail}`, font) <= px) return `…/${tail}`;
+  }
   let out = text;
   while (out && textWidth(`${out}…`, font) > px) out = out.slice(0, -1);
-  return `${out.trimEnd()}…`;
+  const whole = /\s/.test(text.charAt(out.length));
+  const word = out.lastIndexOf(" ");
+  if (!whole && word > out.length / 2) out = out.slice(0, word);
+  return `${out.trimEnd().replace(/[,;:]$/, "")}…`;
 }
 
 function stateOf(p: PartView): "now" | "done" | "todo" | "stuck" {
@@ -174,19 +187,26 @@ export function MapView(props: {
   // growing below cannot move their chips or labels. rects[nodes.length] is the goal.
   const inRing = (j: number) =>
     kind !== "feature" || j < RING_SIZE || j === nodes.length;
+  // Earlier stacks, at their full reserved size, so stacks never cover each other.
+  const stacks: (Rect & { ring: boolean })[] = [];
   const chipSpots = placed.map(({ part, box }, i) => {
     const n = chipCount(part);
     if (!n) return null;
     const ring = ringIds.has(box.id);
     // Ring stacks pick their side for the full stack, above the overflow
     // tag band, so neither more agents nor overflow parts can move them.
+    const fit = ring ? MAX_CHIPS : n;
     const spot = chipSpot(
       box,
-      ring ? MAX_CHIPS : n,
-      tagged.filter((_, j) => j !== i && (!ring || inRing(j))),
+      fit,
+      [
+        ...tagged.filter((_, j) => j !== i && (!ring || inRing(j))),
+        ...stacks.filter((s) => !ring || s.ring),
+      ],
       width,
       ring ? RING_CHIP_BOTTOM : Number.POSITIVE_INFINITY,
     );
+    stacks.push({ ...stackRect(spot, fit), ring });
     return { ...spot, ring, rect: stackRect(spot, n) };
   });
   const taken: (Rect & { ring: boolean })[] = [
