@@ -19841,7 +19841,8 @@ var NarrateInput = external_exports.object({
 var MAX_STRING = 262144;
 var R = "[redacted]";
 var TOKEN_PATTERNS = [
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+  // A key with no END (a `head` of the file) redacts to the end of the string.
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----|[\s\S]*)/g,
   /sk-ant-[A-Za-z0-9_-]{20,}/g,
   /\bsk-[A-Za-z0-9_-]{20,}/g,
   /gh[pousr]_[A-Za-z0-9]{36,}/g,
@@ -19849,8 +19850,19 @@ var TOKEN_PATTERNS = [
   /AKIA[0-9A-Z]{16}/g,
   /xox[abprs]-[A-Za-z0-9-]{10,}/g,
   /(?:sk|rk)_live_[A-Za-z0-9]{16,}/g,
-  /eyJ[A-Za-z0-9_-]{7,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g
+  /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{7,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
+  /AIza[0-9A-Za-z_-]{35}/g,
+  /npm_[A-Za-z0-9]{36}/g,
+  /glpat-[A-Za-z0-9_-]{20}/g,
+  // Opaque means it has a digit, so prose like "a Bearer token" stays.
+  /(?<![A-Za-z])Bearer[ \t]+(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]{8,}/gi
 ];
+var USER_PASS = [
+  /((?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s:/@]+:)[^\s@/]+(?=@)/g,
+  /((?<!\S)(?:-u|--user)(?:[ \t]+|=)["']?[^\s:"']+:)[^\s"']+/g
+];
+var KEY_WORD = /key|secret|token|password|passwd|pwd|credential|auth|dsn/i;
+var KEY_VALUE = /(?<![\w.-])([\w.-]+)(["']?[ \t]*[:=][ \t]*)(?:(["'])[^"'\n]*|[^"'\s]+)/g;
 var SECRET_NAME = /KEY|SECRET|TOKEN|PASSWORD|PASS|PWD|CREDENTIAL|DSN|DATABASE_URL/;
 var SECRET_ASSIGN = /^([+\- ]?[ \t]*(?:export[ \t]+)?([A-Z][A-Z0-9_]*)[ \t]*=)[^\n]*/gm;
 var ANY_ASSIGN = /^([+\- ]?[ \t]*(?:export[ \t]+)?[A-Za-z_][A-Za-z0-9_]*[ \t]*=)[^\n]*/gm;
@@ -19858,6 +19870,11 @@ var CUT = MAX_STRING + 4096;
 function scrubString(s) {
   let out = s;
   for (const p of TOKEN_PATTERNS) out = out.replace(p, R);
+  for (const p of USER_PASS) out = out.replace(p, `$1${R}`);
+  out = out.replace(
+    KEY_VALUE,
+    (m, name, sep, q) => KEY_WORD.test(name) ? `${name}${sep}${q ?? ""}${R}` : m
+  );
   return out.replace(
     SECRET_ASSIGN,
     (m, head, name) => SECRET_NAME.test(name) ? `${head}${R}` : m
@@ -19903,6 +19920,8 @@ Keep it accurate with two tools. They only report; they never change what you bu
    For a bug, the parts are the symptom, suspects, what you ruled out, the cause and the fix.
    For a refactor, before and after. For a question, the question, sources and answer.
    Call \`map\` again whenever the plan or the parts change.
+   Example:
+   {"kind": "feature", "goal": "Add an add() function with a test", "phases": [{"id": "p1", "title": "Build it", "tasks": [{"id": "t1", "title": "Write add() in math.js", "part": "math"}, {"id": "t2", "title": "Test add()", "part": "test"}]}], "parts": [{"id": "math", "title": "add() in math.js", "phase": "p1"}, {"id": "test", "title": "Test for add()", "phase": "p1", "links": [{"to": "math", "label": "checks"}]}]}
 2. Call \`narrate\` right after \`map\`, after each batch of edits, after each test or command result,
    and when a task finishes, with taskStatus "done". A task is not done until you narrate it done.
    Say what you are doing now and why, in plain words a junior developer understands,
@@ -19946,15 +19965,33 @@ function writeJson(name, value, mode = 420) {
 }
 function projectKey(cwd) {
   const start = import_node_path.default.resolve(cwd);
-  for (let d = start; ; d = import_node_path.default.dirname(d)) {
-    if (import_node_fs.default.existsSync(import_node_path.default.join(d, ".git"))) return d;
-    if (import_node_path.default.dirname(d) === d) return start;
-  }
+  const home = import_node_path.default.resolve(import_node_os.default.homedir());
+  for (let d = start; import_node_path.default.dirname(d) !== d; d = import_node_path.default.dirname(d))
+    if (d !== home && import_node_fs.default.existsSync(import_node_path.default.join(d, ".git"))) return d;
+  return start;
+}
+function projectName(cwd) {
+  const key = projectKey(cwd);
+  const home = import_node_path.default.resolve(import_node_os.default.homedir());
+  return key.startsWith(`${home}${import_node_path.default.sep}`) ? `~${key.slice(home.length)}` : key;
 }
 function readCredentials() {
   const c = readJson("credentials.json", null);
   return c?.server && c.token && c.machineId ? c : null;
 }
+var revokedFile = () => import_node_path.default.join(murmurDir(), "revoked");
+function isRevoked() {
+  return import_node_fs.default.existsSync(revokedFile());
+}
+function setRevoked(on) {
+  if (!on) {
+    import_node_fs.default.rmSync(revokedFile(), { force: true });
+    return;
+  }
+  import_node_fs.default.mkdirSync(murmurDir(), { recursive: true, mode: 448 });
+  import_node_fs.default.writeFileSync(revokedFile(), "");
+}
+var queueDir = () => import_node_path.default.join(murmurDir(), "queue");
 function projectState(cwd) {
   return readJson("projects.json", {})[projectKey(cwd)];
 }
@@ -20013,10 +20050,11 @@ function clearNarration(sessionId) {
 var import_node_fs2 = __toESM(require("node:fs"), 1);
 var import_node_path2 = __toESM(require("node:path"), 1);
 var MAX_EVENTS = 200;
+var MAX_AGE_MS = 7 * 24 * 3600 * 1e3;
+var MAX_QUEUE_BYTES = 5e7;
 var MAX_BYTES = 5e6;
 var QUEUED = /^\d{15}-[^/\\]+\.json$/;
 var WRAPPER = '{"events":[]}'.length;
-var queueDir = () => import_node_path2.default.join(murmurDir(), "queue");
 function enqueue(e) {
   const dir = queueDir();
   import_node_fs2.default.mkdirSync(dir, { recursive: true, mode: 448 });
@@ -20026,7 +20064,7 @@ function enqueue(e) {
   import_node_fs2.default.writeFileSync(tmp, JSON.stringify(e), { mode: 384 });
   import_node_fs2.default.renameSync(tmp, import_node_path2.default.join(dir, name));
 }
-function readQueued(file2) {
+function readQueued(file2, wanted) {
   let text2;
   try {
     text2 = import_node_fs2.default.readFileSync(file2, "utf8");
@@ -20034,27 +20072,61 @@ function readQueued(file2) {
     return null;
   }
   try {
-    if (MurmurEventSchema.safeParse(JSON.parse(text2)).success) return text2;
+    const r = MurmurEventSchema.safeParse(JSON.parse(text2));
+    if (r.success && wanted(r.data)) return text2;
   } catch {
   }
   import_node_fs2.default.rmSync(file2, { force: true });
   return null;
 }
-async function flush(c, fetchImpl = fetch, budgetMs = 3e3) {
+function prune(dir, names, maxBytes) {
+  const oldest = Date.now() - MAX_AGE_MS;
+  const keep = [];
+  let total = 0;
+  for (const name of names.toReversed()) {
+    const file2 = import_node_path2.default.join(dir, name);
+    try {
+      total += import_node_fs2.default.statSync(file2).size;
+    } catch {
+      continue;
+    }
+    if (total > maxBytes || Number(name.slice(0, 15)) < oldest)
+      import_node_fs2.default.rmSync(file2, { force: true });
+    else keep.push(name);
+  }
+  return keep.reverse();
+}
+async function flush(c, {
+  fetch: fetchImpl = fetch,
+  budgetMs = 3e3,
+  batchSize = MAX_EVENTS,
+  queueBytes = MAX_QUEUE_BYTES
+} = {}) {
   const deadline = Date.now() + budgetMs;
   const dir = queueDir();
+  const on = /* @__PURE__ */ new Map();
+  const wanted = (e) => {
+    if (e.machineId !== c.machineId) return false;
+    if (!on.has(e.cwd)) on.set(e.cwd, projectState(e.cwd) === "on");
+    return on.get(e.cwd);
+  };
   let names = [];
   let sent = 0;
   let i = 0;
   try {
-    names = import_node_fs2.default.readdirSync(dir).filter((n) => QUEUED.test(n)).sort();
-    while (i < names.length) {
+    names = prune(
+      dir,
+      import_node_fs2.default.readdirSync(dir).filter((n) => QUEUED.test(n)).sort(),
+      queueBytes
+    );
+    const revoked = isRevoked();
+    while (!revoked && i < names.length) {
       const batch = [];
       let bytes = WRAPPER;
       let j = i;
-      for (; j < names.length && batch.length < MAX_EVENTS; j++) {
+      for (; j < names.length && batch.length < batchSize; j++) {
         const name = names[j];
-        const json2 = readQueued(import_node_path2.default.join(dir, name));
+        const json2 = readQueued(import_node_path2.default.join(dir, name), wanted);
         if (json2 === null) continue;
         const add = Buffer.byteLength(json2) + (batch.length ? 1 : 0);
         if (batch.length && bytes + add >= MAX_BYTES) break;
@@ -20073,6 +20145,17 @@ async function flush(c, fetchImpl = fetch, budgetMs = 3e3) {
           body: `{"events":[${batch.map((b) => b.json).join(",")}]}`,
           signal: AbortSignal.timeout(left)
         });
+        if (res.status === 401) {
+          setRevoked(true);
+          break;
+        }
+        if (res.status === 400) {
+          const b = await res.json().catch(() => null);
+          const bad = b?.error === "invalid" && typeof b.index === "number" ? batch[b.index] : void 0;
+          if (!bad) break;
+          import_node_fs2.default.rmSync(import_node_path2.default.join(dir, bad.name), { force: true });
+          continue;
+        }
         const tooBig = res.status === 413 && batch.length === 1;
         if (!res.ok && !tooBig) break;
         for (const b of batch)
@@ -20088,8 +20171,9 @@ async function flush(c, fetchImpl = fetch, budgetMs = 3e3) {
 }
 
 // src/hook.ts
-var ASK_LINE = "Murmur: show this project in Murmur? Run /murmur:on to turn it on, or /murmur:off to stop asking.";
+var askLine = (cwd) => `Murmur: show ${projectName(cwd)} in Murmur? Run /murmur:on to turn it on, or /murmur:off to stop asking.`;
 var LOGIN_LINE = "Murmur: run /murmur:login to connect.";
+var REVOKED_LINE = "Murmur: this machine was disconnected. Run /murmur:login.";
 var BLOCK = JSON.stringify({
   decision: "block",
   reason: "Murmur: before you finish, call narrate to mark each finished task done and say what you did."
@@ -20116,11 +20200,12 @@ function handleHook(payload, env, now) {
   if (state === void 0) {
     if (!start) return NONE2;
     setProjectState(cwd, "asked");
-    return show(ASK_LINE);
+    return show(askLine(cwd));
   }
   if (state !== "on") return NONE2;
   const creds = readCredentials();
   if (!creds) return start ? show(LOGIN_LINE) : NONE2;
+  if (isRevoked()) return start ? show(REVOKED_LINE) : NONE2;
   if (!sessionId || isPaused(cwd, sessionId)) return NONE2;
   const event = scrubEvent({
     id: (0, import_node_crypto.randomUUID)(),
@@ -20194,7 +20279,7 @@ async function main() {
     await new Promise((r) => process.stdout.write(stdout, () => r()));
   if (!event || !creds) return;
   enqueue(event);
-  if (event.hook === "SessionStart") {
+  if (event.hook === "SessionStart" || event.hook === "Stop") {
     (0, import_node_child_process.spawn)(process.execPath, [process.argv[1], "--flush"], {
       detached: true,
       stdio: "ignore",

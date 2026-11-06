@@ -5,7 +5,25 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { poll, run } from "../src/cli.js";
-import { readCredentials, writeCredentials } from "../src/local.js";
+import {
+  queueDir,
+  readCredentials,
+  setRevoked,
+  writeCredentials,
+} from "../src/local.js";
+import { enqueue } from "../src/upload.js";
+
+const queued = (cwd: string, id: string) =>
+  enqueue({
+    id,
+    sessionId: "s1",
+    machineId: "m",
+    cwd,
+    ts: new Date().toISOString(),
+    hook: "Stop",
+    payload: {},
+  });
+const queue = () => fs.readdirSync(queueDir()).map((n) => n.split("-")[1]);
 
 let repo: string;
 let servers: http.Server[] = [];
@@ -130,9 +148,35 @@ describe("cli", () => {
     expect(s.seen).toHaveLength(1);
   });
 
-  it("logout clears credentials", async () => {
+  it("logout clears credentials and deletes the unsent queue", async () => {
     writeCredentials({ server: "http://x", token: "t", machineId: "m" });
-    expect(await run(["logout"], {})).toContain("Logged out");
+    queued(repo, "a");
+    expect(await run(["logout"], {})).toBe(
+      "Logged out. Unsent events were deleted, and this machine sends nothing more to Murmur.",
+    );
     expect(readCredentials()).toBeNull();
+    expect(fs.existsSync(queueDir())).toBe(false);
+  });
+
+  it("on and off name the folder, and off deletes that project's unsent events", async () => {
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), "murmur-other-"));
+    fs.mkdirSync(path.join(repo, "src"));
+    expect(await run(["on", path.join(repo, "src")], {})).toBe(
+      `Murmur is on for ${repo}. Run /murmur:login to connect.`,
+    );
+    queued(path.join(repo, "src"), "a");
+    queued(other, "b");
+    expect(await run(["off", repo], {})).toBe(
+      `Murmur is off for ${repo}. Its unsent events were deleted, and nothing more from it is sent.`,
+    );
+    expect(queue()).toEqual(["b.json"]);
+  });
+
+  it("status says when the server disconnected this machine", async () => {
+    writeCredentials({ server: "http://x", token: "t", machineId: "m" });
+    setRevoked(true);
+    const out = await run(["status", repo], {});
+    expect(out).toContain("This machine was disconnected. Run /murmur:login.");
+    expect(out).not.toContain("Logged in: yes");
   });
 });

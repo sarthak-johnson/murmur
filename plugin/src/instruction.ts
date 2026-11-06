@@ -7,6 +7,8 @@ Keep it accurate with two tools. They only report; they never change what you bu
    For a bug, the parts are the symptom, suspects, what you ruled out, the cause and the fix.
    For a refactor, before and after. For a question, the question, sources and answer.
    Call \`map\` again whenever the plan or the parts change.
+   Example:
+   {"kind": "feature", "goal": "Add an add() function with a test", "phases": [{"id": "p1", "title": "Build it", "tasks": [{"id": "t1", "title": "Write add() in math.js", "part": "math"}, {"id": "t2", "title": "Test add()", "part": "test"}]}], "parts": [{"id": "math", "title": "add() in math.js", "phase": "p1"}, {"id": "test", "title": "Test for add()", "phase": "p1", "links": [{"to": "math", "label": "checks"}]}]}
 2. Call \`narrate\` right after \`map\`, after each batch of edits, after each test or command result,
    and when a task finishes, with taskStatus "done". A task is not done until you narrate it done.
    Say what you are doing now and why, in plain words a junior developer understands,

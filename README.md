@@ -6,6 +6,11 @@ It turns a running session into something a person can follow: what is being bui
 Status: design stage.
 No product code yet.
 
+## Requirements
+
+Requirements: Node.js 22+ on PATH.
+The plugin's hooks and MCP server run with node; without it, Murmur says so at session start and stays out of the way.
+
 ## The problem
 
 Developers using coding agents often lose track of what the agent is doing and why.

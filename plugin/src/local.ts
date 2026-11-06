@@ -49,12 +49,25 @@ function writeJson(name: string, value: unknown, mode = 0o644): void {
   fs.renameSync(tmp, file);
 }
 
-function projectKey(cwd: string): string {
+/**
+ * The git root above `cwd`, or `cwd` itself. Never the home folder or `/`, so a
+ * dotfiles repo in ~ cannot turn on every project under it.
+ */
+export function projectKey(cwd: string): string {
   const start = path.resolve(cwd);
-  for (let d = start; ; d = path.dirname(d)) {
-    if (fs.existsSync(path.join(d, ".git"))) return d;
-    if (path.dirname(d) === d) return start;
-  }
+  const home = path.resolve(os.homedir());
+  for (let d = start; path.dirname(d) !== d; d = path.dirname(d))
+    if (d !== home && fs.existsSync(path.join(d, ".git"))) return d;
+  return start;
+}
+
+/** The project folder as people read it: home shown as ~. */
+export function projectName(cwd: string): string {
+  const key = projectKey(cwd);
+  const home = path.resolve(os.homedir());
+  return key.startsWith(`${home}${path.sep}`)
+    ? `~${key.slice(home.length)}`
+    : key;
 }
 
 export function readCredentials(): Credentials | null {
@@ -63,9 +76,49 @@ export function readCredentials(): Credentials | null {
 }
 export function writeCredentials(c: Credentials): void {
   writeJson("credentials.json", c, 0o600);
+  setRevoked(false);
 }
 export function clearCredentials(): void {
   fs.rmSync(path.join(murmurDir(), "credentials.json"), { force: true });
+  setRevoked(false);
+}
+
+// Written when the server answers 401: the token was revoked, so nothing is queued
+// or sent until the next login.
+const revokedFile = () => path.join(murmurDir(), "revoked");
+export function isRevoked(): boolean {
+  return fs.existsSync(revokedFile());
+}
+export function setRevoked(on: boolean): void {
+  if (!on) {
+    fs.rmSync(revokedFile(), { force: true });
+    return;
+  }
+  fs.mkdirSync(murmurDir(), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(revokedFile(), "");
+}
+
+export const queueDir = (): string => path.join(murmurDir(), "queue");
+export function clearQueue(): void {
+  fs.rmSync(queueDir(), { recursive: true, force: true });
+}
+/** Deletes queued events whose cwd belongs to the project at `cwd`. */
+export function dropQueued(cwd: string): void {
+  const key = projectKey(cwd);
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(queueDir());
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const file = path.join(queueDir(), name);
+    try {
+      const e = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (typeof e?.cwd === "string" && projectKey(e.cwd) === key)
+        fs.rmSync(file, { force: true });
+    } catch {}
+  }
 }
 
 export function projectState(cwd: string): ProjectState | undefined {

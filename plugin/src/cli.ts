@@ -3,8 +3,12 @@ import os from "node:os";
 import {
   clearCredentials,
   clearProjectPause,
+  clearQueue,
   DEFAULT_SERVER,
+  dropQueued,
   isPaused,
+  isRevoked,
+  projectName,
   projectState,
   readCredentials,
   setPaused,
@@ -98,7 +102,9 @@ function status(cwd: string, session: string | undefined): string {
   const c = readCredentials();
   const state = projectState(cwd);
   return [
-    `Logged in: ${c ? "yes" : "no"}`,
+    c && isRevoked()
+      ? "This machine was disconnected. Run /murmur:login."
+      : `Logged in: ${c ? "yes" : "no"}`,
     `Server: ${c?.server ?? DEFAULT_SERVER}`,
     `This project: ${state === "on" || state === "off" ? state : "not set"}`,
     `Paused: ${isPaused(cwd, session) ? "yes" : "no"}`,
@@ -119,15 +125,17 @@ export async function run(
       return login((arg || DEFAULT_SERVER).replace(/\/+$/, ""), startPoller);
     case "logout":
       clearCredentials();
-      return "Logged out. This machine no longer sends anything to Murmur.";
+      clearQueue();
+      return "Logged out. Unsent events were deleted, and this machine sends nothing more to Murmur.";
     case "on":
       setProjectState(cwd, "on");
       return readCredentials()
-        ? "Murmur is on for this project."
-        : "Murmur is on for this project. Run /murmur:login to connect.";
+        ? `Murmur is on for ${projectName(cwd)}.`
+        : `Murmur is on for ${projectName(cwd)}. Run /murmur:login to connect.`;
     case "off":
       setProjectState(cwd, "off");
-      return "Murmur is off for this project. Nothing from it is sent.";
+      dropQueued(cwd);
+      return `Murmur is off for ${projectName(cwd)}. Its unsent events were deleted, and nothing more from it is sent.`;
     case "pause":
       setPaused(cwd, true, session);
       return `Murmur is paused for this ${scope}.`;

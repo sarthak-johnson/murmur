@@ -70,10 +70,15 @@ function writeJson(name, value, mode = 420) {
 }
 function projectKey(cwd) {
   const start = import_node_path.default.resolve(cwd);
-  for (let d = start; ; d = import_node_path.default.dirname(d)) {
-    if (import_node_fs.default.existsSync(import_node_path.default.join(d, ".git"))) return d;
-    if (import_node_path.default.dirname(d) === d) return start;
-  }
+  const home = import_node_path.default.resolve(import_node_os.default.homedir());
+  for (let d = start; import_node_path.default.dirname(d) !== d; d = import_node_path.default.dirname(d))
+    if (d !== home && import_node_fs.default.existsSync(import_node_path.default.join(d, ".git"))) return d;
+  return start;
+}
+function projectName(cwd) {
+  const key = projectKey(cwd);
+  const home = import_node_path.default.resolve(import_node_os.default.homedir());
+  return key.startsWith(`${home}${import_node_path.default.sep}`) ? `~${key.slice(home.length)}` : key;
 }
 function readCredentials() {
   const c = readJson("credentials.json", null);
@@ -81,9 +86,45 @@ function readCredentials() {
 }
 function writeCredentials(c) {
   writeJson("credentials.json", c, 384);
+  setRevoked(false);
 }
 function clearCredentials() {
   import_node_fs.default.rmSync(import_node_path.default.join(murmurDir(), "credentials.json"), { force: true });
+  setRevoked(false);
+}
+var revokedFile = () => import_node_path.default.join(murmurDir(), "revoked");
+function isRevoked() {
+  return import_node_fs.default.existsSync(revokedFile());
+}
+function setRevoked(on) {
+  if (!on) {
+    import_node_fs.default.rmSync(revokedFile(), { force: true });
+    return;
+  }
+  import_node_fs.default.mkdirSync(murmurDir(), { recursive: true, mode: 448 });
+  import_node_fs.default.writeFileSync(revokedFile(), "");
+}
+var queueDir = () => import_node_path.default.join(murmurDir(), "queue");
+function clearQueue() {
+  import_node_fs.default.rmSync(queueDir(), { recursive: true, force: true });
+}
+function dropQueued(cwd) {
+  const key = projectKey(cwd);
+  let names = [];
+  try {
+    names = import_node_fs.default.readdirSync(queueDir());
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const file = import_node_path.default.join(queueDir(), name);
+    try {
+      const e = JSON.parse(import_node_fs.default.readFileSync(file, "utf8"));
+      if (typeof e?.cwd === "string" && projectKey(e.cwd) === key)
+        import_node_fs.default.rmSync(file, { force: true });
+    } catch {
+    }
+  }
 }
 function projectState(cwd) {
   return readJson("projects.json", {})[projectKey(cwd)];
@@ -172,7 +213,7 @@ function status(cwd, session) {
   const c = readCredentials();
   const state = projectState(cwd);
   return [
-    `Logged in: ${c ? "yes" : "no"}`,
+    c && isRevoked() ? "This machine was disconnected. Run /murmur:login." : `Logged in: ${c ? "yes" : "no"}`,
     `Server: ${c?.server ?? DEFAULT_SERVER}`,
     `This project: ${state === "on" || state === "off" ? state : "not set"}`,
     `Paused: ${isPaused(cwd, session) ? "yes" : "no"}`
@@ -188,13 +229,15 @@ async function run(args, env, startPoller = spawnPoller) {
       return login((arg || DEFAULT_SERVER).replace(/\/+$/, ""), startPoller);
     case "logout":
       clearCredentials();
-      return "Logged out. This machine no longer sends anything to Murmur.";
+      clearQueue();
+      return "Logged out. Unsent events were deleted, and this machine sends nothing more to Murmur.";
     case "on":
       setProjectState(cwd, "on");
-      return readCredentials() ? "Murmur is on for this project." : "Murmur is on for this project. Run /murmur:login to connect.";
+      return readCredentials() ? `Murmur is on for ${projectName(cwd)}.` : `Murmur is on for ${projectName(cwd)}. Run /murmur:login to connect.`;
     case "off":
       setProjectState(cwd, "off");
-      return "Murmur is off for this project. Nothing from it is sent.";
+      dropQueued(cwd);
+      return `Murmur is off for ${projectName(cwd)}. Its unsent events were deleted, and nothing more from it is sent.`;
     case "pause":
       setPaused(cwd, true, session);
       return `Murmur is paused for this ${scope}.`;

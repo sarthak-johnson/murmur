@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\""
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
             "async": true
           }
         ]
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
             "async": true
           }
         ]
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
             "async": true
           }
         ]
@@ -49,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
             "async": true
           }
         ]
@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
             "async": true
           }
         ]
@@ -71,7 +71,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
             "async": true
           }
         ]
@@ -82,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
             "async": true
           }
         ]
@@ -93,7 +93,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\""
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\""
           }
         ]
       }
@@ -103,7 +103,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
             "async": true
           }
         ]
@@ -114,7 +114,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
             "async": true
           }
         ]
@@ -125,7 +125,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
             "async": true
           }
         ]
@@ -136,7 +136,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
             "async": true
           }
         ]
@@ -147,7 +147,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
             "async": true
           }
         ]
@@ -158,7 +158,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
             "async": true
           }
         ]
@@ -169,7 +169,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
             "async": true
           }
         ]

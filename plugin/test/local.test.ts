@@ -1,13 +1,14 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { NarrateInput } from "@murmur/core";
+import { MapInput, NarrateInput } from "@murmur/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { NARRATION_INSTRUCTION } from "../src/instruction.js";
 import {
   clearCredentials,
   clearProjectPause,
   isPaused,
+  projectKey,
   projectState,
   readCredentials,
   setPaused,
@@ -57,6 +58,24 @@ describe("local state", () => {
     expect(projectState(plain)).toBe("asked");
   });
 
+  it("a git repo in the home folder is never the project", () => {
+    const old = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      fs.mkdirSync(path.join(home, ".git"));
+      const sub = path.join(home, "work", "app");
+      fs.mkdirSync(sub, { recursive: true });
+      setProjectState(sub, "on");
+      expect(projectState(sub)).toBe("on");
+      expect(projectState(home)).toBeUndefined();
+      expect(projectState(path.join(home, "work"))).toBeUndefined();
+      expect(projectKey(sub)).toBe(sub);
+      expect(projectKey("/")).toBe("/");
+    } finally {
+      process.env.HOME = old;
+    }
+  });
+
   it("pause round-trips by folder and by session", () => {
     const root = fs.mkdtempSync(path.join(home, "repo-"));
     fs.mkdirSync(path.join(root, ".git"));
@@ -88,11 +107,13 @@ describe("local state", () => {
       "A task is not done until you narrate it done.",
     ])
       expect(NARRATION_INSTRUCTION).toContain(s);
-    const example = NARRATION_INSTRUCTION.split("\n").find((l) =>
-      l.trim().startsWith("{"),
-    );
-    expect(NarrateInput.safeParse(JSON.parse(example ?? "")).success).toBe(
-      true,
-    );
+    const example = (start: string) =>
+      JSON.parse(
+        NARRATION_INSTRUCTION.split("\n")
+          .find((l) => l.trim().startsWith(start))
+          ?.trim() ?? "",
+      );
+    expect(NarrateInput.safeParse(example('{"now"')).success).toBe(true);
+    expect(MapInput.safeParse(example('{"kind"')).success).toBe(true);
   });
 });

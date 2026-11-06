@@ -49,7 +49,76 @@ const murmur = (...args: string[]) =>
     );
   });
 
+const hooks = JSON.parse(
+  fs.readFileSync(path.join(root, "hooks/hooks.json"), "utf8"),
+).hooks as Record<string, { hooks: { command: string }[] }[]>;
+const mcpServer = JSON.parse(
+  fs.readFileSync(path.join(root, ".mcp.json"), "utf8"),
+).mcpServers.murmur as { command: string; args: string[] };
+// Claude Code's own placeholder, written as hooks.json and .mcp.json spell it.
+const ROOT = `$${"{CLAUDE_PLUGIN_ROOT}"}`;
+const withRoot = (s: string) => s.replaceAll(ROOT, root);
+// Runs a hook the way Claude Code does: its hooks.json command through sh.
+const runHook = (name: string, input: unknown, extra = {}) =>
+  spawnSync("/bin/sh", ["-c", hooks[name]?.[0]?.hooks[0]?.command ?? ""], {
+    env: { ...env, CLAUDE_PLUGIN_ROOT: root, ...extra },
+    encoding: "utf8",
+    input: JSON.stringify(input),
+  });
+
 describe("built plugin", () => {
+  it("Stop answers fast while the server hangs, its upload runs detached", async () => {
+    const hung = await listen(() => {});
+    fs.mkdirSync(env.MURMUR_HOME as string, { recursive: true });
+    fs.writeFileSync(
+      path.join(env.MURMUR_HOME as string, "credentials.json"),
+      JSON.stringify({ server: hung, token: "t", machineId: "m1" }),
+    );
+    expect((await murmur("on", repo)).code).toBe(0);
+    const t0 = Date.now();
+    const r = runHook("Stop", {
+      hook_event_name: "Stop",
+      session_id: "s1",
+      cwd: repo,
+    });
+    expect(Date.now() - t0).toBeLessThan(1500);
+    expect(r.status).toBe(0);
+  });
+
+  it("every hook and the MCP server start through the sh shim", () => {
+    for (const list of Object.values(hooks))
+      for (const h of list[0]?.hooks ?? [])
+        expect(h.command).toBe(
+          `sh "${ROOT}/hooks/node.sh" "${ROOT}/dist/hook.cjs"`,
+        );
+    expect(mcpServer).toEqual({
+      command: "sh",
+      args: [`${ROOT}/hooks/node.sh`, `${ROOT}/dist/mcp.cjs`],
+    });
+  });
+
+  it("without node, SessionStart says so and every hook exits 0", () => {
+    // A PATH with sh and nothing else, so no node.
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), "murmur-nonode-"));
+    fs.symlinkSync("/bin/sh", path.join(empty, "sh"));
+    const start = runHook(
+      "SessionStart",
+      { hook_event_name: "SessionStart", source: "startup", cwd: repo },
+      { PATH: empty },
+    );
+    expect(start.status).toBe(0);
+    expect(JSON.parse(start.stdout)).toEqual({
+      systemMessage: "Murmur needs Node.js 22 or newer on PATH.",
+    });
+    const stop = runHook(
+      "Stop",
+      { hook_event_name: "Stop", cwd: repo },
+      { PATH: empty },
+    );
+    expect(stop.status).toBe(0);
+    expect(stop.stdout).toBe("");
+  });
+
   it("hook.cjs answers SessionStart fast while the server hangs", async () => {
     const hung = await listen(() => {});
     fs.mkdirSync(env.MURMUR_HOME as string, { recursive: true });
@@ -123,8 +192,8 @@ describe("built plugin", () => {
     const client = new Client({ name: "test", version: "0" });
     await client.connect(
       new StdioClientTransport({
-        command: process.execPath,
-        args: [path.join(root, "dist/mcp.cjs")],
+        command: mcpServer.command,
+        args: mcpServer.args.map(withRoot),
       }),
     );
     const { tools } = await client.listTools();

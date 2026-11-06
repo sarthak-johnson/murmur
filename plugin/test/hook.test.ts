@@ -9,11 +9,12 @@ import {
   projectState,
   setPaused,
   setProjectState,
+  setRevoked,
   writeCredentials,
 } from "../src/local.js";
 
-const ASK =
-  "Murmur: show this project in Murmur? Run /murmur:on to turn it on, or /murmur:off to stop asking.";
+const ask = (folder: string) =>
+  `Murmur: show ${folder} in Murmur? Run /murmur:on to turn it on, or /murmur:off to stop asking.`;
 const LOGIN = "Murmur: run /murmur:login to connect.";
 const NOW = new Date("2026-11-06T10:00:00.000Z");
 const ENV = {
@@ -51,7 +52,7 @@ describe("handleHook", () => {
   it("unset project asks once then stays quiet", () => {
     login();
     const first = handleHook(start(), ENV, NOW);
-    expect(JSON.parse(first.stdout)).toEqual({ systemMessage: ASK });
+    expect(JSON.parse(first.stdout)).toEqual({ systemMessage: ask(repo) });
     expect(first.event).toBeNull();
     expect(projectState(repo)).toBe("asked");
     expect(handleHook(start(), ENV, NOW)).toEqual({ stdout: "", event: null });
@@ -171,6 +172,32 @@ describe("handleHook", () => {
     expect(json).toContain("[redacted]");
     expect(json.length).toBeLessThan(MAX_STRING + 1000);
     expect(r.event?.id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("a disconnected machine queues nothing and says so at start", () => {
+    login();
+    setProjectState(repo, "on");
+    setRevoked(true);
+    expect(JSON.parse(handleHook(start(), ENV, NOW).stdout)).toEqual({
+      systemMessage:
+        "Murmur: this machine was disconnected. Run /murmur:login.",
+    });
+    expect(handleHook(start(), ENV, NOW).event).toBeNull();
+    expect(handleHook(payload("Stop"), ENV, NOW)).toEqual({
+      stdout: "",
+      event: null,
+    });
+  });
+
+  it("the ask line names the folder with home shown as ~", () => {
+    const old = process.env.HOME;
+    process.env.HOME = path.dirname(repo);
+    try {
+      const r = handleHook(start(), ENV, NOW);
+      expect(JSON.parse(r.stdout).systemMessage).toBe(ask("~/repo"));
+    } finally {
+      process.env.HOME = old;
+    }
   });
 
   it("unknown hooks and payloads without cwd are ignored", () => {
@@ -307,7 +334,7 @@ describe("handleHook", () => {
     });
   });
 
-  it("Stop is a synchronous hook so its block and upload finish before Claude stops", () => {
+  it("Stop is a synchronous hook so its block reaches Claude before it stops", () => {
     const hooks = JSON.parse(
       fs.readFileSync(
         path.join(import.meta.dirname, "../hooks/hooks.json"),

@@ -12,8 +12,10 @@ import {
   clearNarration,
   clearProjectPause,
   isPaused,
+  isRevoked,
   NARRATION_INSTRUCTION,
   NO_NARRATION,
+  projectName,
   projectState,
   readCredentials,
   readNarration,
@@ -22,9 +24,11 @@ import {
 } from "./local.js";
 import { enqueue, flush } from "./upload.js";
 
-const ASK_LINE =
-  "Murmur: show this project in Murmur? Run /murmur:on to turn it on, or /murmur:off to stop asking.";
+const askLine = (cwd: string) =>
+  `Murmur: show ${projectName(cwd)} in Murmur? Run /murmur:on to turn it on, or /murmur:off to stop asking.`;
 const LOGIN_LINE = "Murmur: run /murmur:login to connect.";
+const REVOKED_LINE =
+  "Murmur: this machine was disconnected. Run /murmur:login.";
 const BLOCK = JSON.stringify({
   decision: "block",
   reason:
@@ -72,11 +76,12 @@ export function handleHook(
   if (state === undefined) {
     if (!start) return NONE;
     setProjectState(cwd, "asked");
-    return show(ASK_LINE);
+    return show(askLine(cwd));
   }
   if (state !== "on") return NONE;
   const creds = readCredentials();
   if (!creds) return start ? show(LOGIN_LINE) : NONE;
+  if (isRevoked()) return start ? show(REVOKED_LINE) : NONE;
   if (!sessionId || isPaused(cwd, sessionId)) return NONE;
 
   const event = scrubEvent({
@@ -166,8 +171,8 @@ async function main(): Promise<void> {
     await new Promise<void>((r) => process.stdout.write(stdout, () => r()));
   if (!event || !creds) return;
   enqueue(event);
-  if (event.hook === "SessionStart") {
-    // SessionStart is synchronous, so its upload runs in a detached process.
+  if (event.hook === "SessionStart" || event.hook === "Stop") {
+    // These two are synchronous hooks, so their upload runs in a detached process.
     spawn(process.execPath, [process.argv[1] as string, "--flush"], {
       detached: true,
       stdio: "ignore",
