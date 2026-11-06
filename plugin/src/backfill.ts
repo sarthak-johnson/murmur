@@ -7,6 +7,7 @@ import {
   readSession,
   type SessionState,
   updateSession,
+  writeSession,
 } from "./local.js";
 import { enqueue, type FlushOptions, flush } from "./upload.js";
 
@@ -329,7 +330,9 @@ export async function runBackfill(
       { skipPrompt: s.triggerPrompt },
     );
   for (const e of events) enqueue(e);
-  updateSession(sessionId, { backfill: "done" });
+  // The raw prompt text is only needed for this run.
+  const { triggerPrompt: _prompt, ...rest } = readSession(sessionId);
+  writeSession(sessionId, { ...rest, backfill: "done" });
   // A logout or new login while this ran must not send with the old token.
   if (readCredentials()?.token === creds.token)
     await flush(creds, { budgetMs: 50_000, ...opts });

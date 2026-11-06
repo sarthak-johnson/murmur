@@ -20066,7 +20066,7 @@ function readSession(sessionId) {
 function writeSession(sessionId, s) {
   writeJson(sessionFile(sessionId), s);
 }
-var SESSION_DAYS = 30;
+var SESSION_DAYS = 100;
 function pruneSessions(now) {
   const dir = import_node_path.default.join(murmurDir(), "sessions");
   const oldest = now.getTime() - SESSION_DAYS * 24 * 3600 * 1e3;
@@ -20430,7 +20430,8 @@ async function runBackfill(sessionId, opts = {}) {
       { skipPrompt: s.triggerPrompt }
     );
   for (const e of events) enqueue(e);
-  updateSession(sessionId, { backfill: "done" });
+  const { triggerPrompt: _prompt, ...rest } = readSession(sessionId);
+  writeSession(sessionId, { ...rest, backfill: "done" });
   if (readCredentials()?.token === creds.token)
     await flush(creds, { budgetMs: 5e4, ...opts });
   return events.length;

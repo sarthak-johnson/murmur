@@ -490,7 +490,7 @@ describe("handleHook", () => {
       expect(handleHook(tool, ENV, later(60)).backfill).toBeUndefined();
     });
 
-    it("a startup SessionStart deletes session state idle for over 30 days", () => {
+    it("a startup SessionStart deletes session state idle for over 100 days, past server retention", () => {
       login();
       setProjectState(repo, "on");
       for (const id of ["old", "recent"])
@@ -499,8 +499,8 @@ describe("handleHook", () => {
         path.join(murmurDir(), "sessions", `${id}.json`);
       const day = 24 * 3600 * 1000;
       const at = (d: number) => new Date(NOW.getTime() - d * day);
-      fs.utimesSync(file("old"), at(31), at(31));
-      fs.utimesSync(file("recent"), at(29), at(29));
+      fs.utimesSync(file("old"), at(101), at(101));
+      fs.utimesSync(file("recent"), at(95), at(95));
       handleHook(start("resume"), ENV, NOW);
       expect(fs.existsSync(file("old"))).toBe(true);
       handleHook(start(), ENV, NOW);

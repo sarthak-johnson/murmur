@@ -383,6 +383,16 @@ describe("runBackfill", () => {
         (e) => e.id,
       ),
     );
+    // The raw prompt does not stay on disk once it is no longer needed.
+    const state = readSession(SID);
+    expect(state.backfill).toBe("done");
+    expect(state.triggerPrompt).toBeUndefined();
+    expect(
+      fs.readFileSync(
+        path.join(murmurDir(), "sessions", `${SID}.json`),
+        "utf8",
+      ),
+    ).not.toContain("Now add a README");
   });
 
   it("skips the flush when the login changed while it ran", async () => {

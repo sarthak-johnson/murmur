@@ -214,8 +214,10 @@ export function readSession(sessionId: string): SessionState {
 export function writeSession(sessionId: string, s: SessionState): void {
   writeJson(sessionFile(sessionId), s);
 }
-const SESSION_DAYS = 30;
-/** Deletes the state of sessions idle for over 30 days. */
+// Past the server's 90-day default retention, so a session resumed while the server
+// still has it is never imported twice.
+const SESSION_DAYS = 100;
+/** Deletes the state of sessions idle for over 100 days. */
 export function pruneSessions(now: Date): void {
   const dir = path.join(murmurDir(), "sessions");
   const oldest = now.getTime() - SESSION_DAYS * 24 * 3600 * 1000;
