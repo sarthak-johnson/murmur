@@ -143,3 +143,19 @@ test("NUL characters are dropped instead of failing the batch", async () => {
   const [row] = await t.db.select().from(events);
   expect(row?.payload).toEqual({ k: "ab" });
 });
+
+test("lone surrogates are stored as U+FFFD instead of failing the batch", async () => {
+  t = await testApp();
+  const { token, cookie } = await linkMachine(t, "ada");
+  const res = await ingest(t, token, [
+    ev("s1", "PostToolUse", { payload: { "k\ud83d": "cut at a\ud83d" } }),
+  ]);
+  expect(res.status).toBe(200);
+  const back = await t.app.request("/api/sessions/s1/events", {
+    headers: { Cookie: cookie },
+  });
+  const { events: got } = (await back.json()) as {
+    events: { payload: unknown }[];
+  };
+  expect(got[0]?.payload).toEqual({ "k�": "cut at a�" });
+});

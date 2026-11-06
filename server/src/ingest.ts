@@ -14,14 +14,17 @@ const TITLE_CHARS = 80;
 
 const tooLarge = (c: Context) => c.json({ error: "too_large" }, 413);
 
-/** Postgres text and jsonb cannot hold NUL, so drop it from every string and key rather than fail the batch. */
-const noNul = (_key: string, v: unknown): unknown =>
+/**
+ * Postgres text and jsonb reject NUL and lone UTF-16 surrogates (the plugin's scrubber can cut
+ * between a pair), so clean every string and key rather than fail the batch: NUL is dropped and
+ * a lone surrogate becomes U+FFFD.
+ */
+const clean = (s: string) => s.replaceAll("\0", "").toWellFormed();
+const reviveClean = (_key: string, v: unknown): unknown =>
   typeof v === "string"
-    ? v.replaceAll("\0", "")
+    ? clean(v)
     : v && typeof v === "object" && !Array.isArray(v)
-      ? Object.fromEntries(
-          Object.entries(v).map(([k, x]) => [k.replaceAll("\0", ""), x]),
-        )
+      ? Object.fromEntries(Object.entries(v).map(([k, x]) => [clean(k), x]))
       : v;
 
 function sessionRow(
@@ -69,7 +72,7 @@ export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
       if (buf.byteLength > MAX_BYTES) return tooLarge(c);
       let list: unknown;
       try {
-        list = JSON.parse(new TextDecoder().decode(buf), noNul)?.events;
+        list = JSON.parse(new TextDecoder().decode(buf), reviveClean)?.events;
       } catch {}
       if (!Array.isArray(list)) return c.json({ error: "bad_request" }, 400);
       if (list.length > MAX_EVENTS) return c.json({ error: "too_many" }, 413);

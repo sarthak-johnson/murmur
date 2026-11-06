@@ -217,3 +217,38 @@ test("delete removes the session and its events", async () => {
     "s2",
   ]);
 });
+
+// The DELETE vs in-flight ingest race needs two real Postgres connections; PGlite
+// runs one statement at a time. This pins the end state the session-first order keeps.
+test("ingest after delete recreates the session with only the new events", async () => {
+  t = await testApp();
+  const { token, cookie } = await linkMachine(t, "ada");
+  await ingest(t, token, [
+    ev("s1", "UserPromptSubmit", { payload: { prompt: "old prompt" } }),
+    ev("s1"),
+  ]);
+  await t.app.request("/api/sessions/s1/assumptions", {
+    method: "PUT",
+    headers: sameOrigin(cookie),
+    body: JSON.stringify({ key: "k", decision: "accepted" }),
+  });
+  const del = await t.app.request("/api/sessions/s1", {
+    method: "DELETE",
+    headers: sameOrigin(cookie),
+    body: "{}",
+  });
+  expect(del.status).toBe(200);
+  expect(await t.db.select().from(events)).toHaveLength(0);
+  expect(await t.db.select().from(assumptionDecisions)).toHaveLength(0);
+  expect(await t.db.select().from(sessions)).toHaveLength(0);
+
+  const fresh = ev("s1", "Stop", { cwd: "/again" });
+  await ingest(t, token, [fresh]);
+  const [row] = await t.db.select().from(sessions);
+  expect(row).toMatchObject({ sessionId: "s1", cwd: "/again", title: null });
+  const page = await get(cookie, "/api/sessions/s1/events");
+  expect(page.body.events.map((e) => e.id)).toEqual([fresh.id]);
+  expect((await get(cookie, "/api/sessions/s1/assumptions")).body).toEqual({
+    decisions: [],
+  });
+});

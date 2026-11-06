@@ -150,7 +150,13 @@ export function sessionRoutes(app: Hono<AppEnv>, { db, now }: Deps) {
   app.delete("/api/sessions/:id", async (c) => {
     const userId = c.get("user").id;
     const id = c.req.param("id");
+    // Session row first: its row lock queues behind an in-flight ingest's upsert, so that
+    // ingest's events are committed (and visible) before the events delete below runs.
     const deleted = await db.transaction(async (tx) => {
+      const gone = await tx
+        .delete(sessions)
+        .where(and(eq(sessions.userId, userId), eq(sessions.sessionId, id)))
+        .returning({ sessionId: sessions.sessionId });
       await tx
         .delete(events)
         .where(and(eq(events.userId, userId), eq(events.sessionId, id)));
@@ -162,10 +168,7 @@ export function sessionRoutes(app: Hono<AppEnv>, { db, now }: Deps) {
             eq(assumptionDecisions.sessionId, id),
           ),
         );
-      return tx
-        .delete(sessions)
-        .where(and(eq(sessions.userId, userId), eq(sessions.sessionId, id)))
-        .returning({ sessionId: sessions.sessionId });
+      return gone;
     });
     if (!deleted.length) return notFound(c);
     return c.json({ ok: true });
