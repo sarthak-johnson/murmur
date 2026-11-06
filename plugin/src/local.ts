@@ -176,7 +176,18 @@ export interface Narration {
   /** The Stop block went out for this request. */
   blocked: boolean;
 }
-const narrationFile = (sessionId: string) =>
+/** Everything Murmur keeps per session, in sessions/<id>.json. */
+export interface SessionState extends Narration {
+  /** Import of the history from before Murmur first saw the session. */
+  backfill?: "pending" | "running" | "done";
+  /** Only transcript entries older than this go in the backfill. */
+  cutoff?: string;
+  transcriptPath?: string;
+  cwd?: string;
+  /** The narration instruction reached Claude in this session. */
+  instructed?: boolean;
+}
+const sessionFile = (sessionId: string) =>
   path.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
 export const NO_NARRATION: Narration = {
   mapped: false,
@@ -186,15 +197,22 @@ export const NO_NARRATION: Narration = {
   done: [],
   blocked: false,
 };
-export function readNarration(sessionId: string): Narration {
+/** A session Murmur has never written state for. */
+export function isNewSession(sessionId: string): boolean {
+  return !fs.existsSync(path.join(murmurDir(), sessionFile(sessionId)));
+}
+export function readSession(sessionId: string): SessionState {
   return {
     ...NO_NARRATION,
-    ...readJson<Partial<Narration>>(narrationFile(sessionId), {}),
+    ...readJson<Partial<SessionState>>(sessionFile(sessionId), {}),
   };
 }
-export function writeNarration(sessionId: string, n: Narration): void {
-  writeJson(narrationFile(sessionId), n);
+export function writeSession(sessionId: string, s: SessionState): void {
+  writeJson(sessionFile(sessionId), s);
 }
-export function clearNarration(sessionId: string): void {
-  fs.rmSync(path.join(murmurDir(), narrationFile(sessionId)), { force: true });
+export function updateSession(
+  sessionId: string,
+  patch: Partial<SessionState>,
+): void {
+  writeSession(sessionId, { ...readSession(sessionId), ...patch });
 }

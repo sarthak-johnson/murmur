@@ -27,8 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
-            "async": true
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/node.sh\" \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\""
           }
         ]
       }

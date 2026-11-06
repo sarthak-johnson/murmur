@@ -148,6 +148,34 @@ describe("built plugin", () => {
     });
   });
 
+  it("UserPromptSubmit answers fast with the instruction while the server hangs", async () => {
+    const hung = await listen(() => {});
+    fs.mkdirSync(env.MURMUR_HOME as string, { recursive: true });
+    fs.writeFileSync(
+      path.join(env.MURMUR_HOME as string, "credentials.json"),
+      JSON.stringify({ server: hung, token: "t", machineId: "m1" }),
+    );
+    expect((await murmur("on", repo)).code).toBe(0);
+    const transcript = path.join(home, "s1.jsonl");
+    fs.writeFileSync(transcript, "");
+    const t0 = Date.now();
+    const r = runHook("UserPromptSubmit", {
+      hook_event_name: "UserPromptSubmit",
+      session_id: "s1",
+      transcript_path: transcript,
+      cwd: repo,
+      prompt: "hi",
+    });
+    expect(Date.now() - t0).toBeLessThan(1500);
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "UserPromptSubmit",
+        additionalContext: NARRATION_INSTRUCTION,
+      },
+    });
+  });
+
   it("bin/murmur login leaves a poller that stores the token", async () => {
     let polls = 0;
     const server = await listen((req, res) => {

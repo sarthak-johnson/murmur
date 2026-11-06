@@ -34,7 +34,7 @@ __export(hook_exports, {
 });
 module.exports = __toCommonJS(hook_exports);
 var import_node_child_process = require("node:child_process");
-var import_node_crypto = require("node:crypto");
+var import_node_crypto2 = require("node:crypto");
 
 // ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/external.js
 var external_exports = {};
@@ -781,8 +781,8 @@ function defineLazy(object2, key, getter) {
     configurable: true
   });
 }
-function objectClone(obj) {
-  return Object.create(Object.getPrototypeOf(obj), Object.getOwnPropertyDescriptors(obj));
+function objectClone(obj2) {
+  return Object.create(Object.getPrototypeOf(obj2), Object.getOwnPropertyDescriptors(obj2));
 }
 function assignProp(target, prop, value) {
   Object.defineProperty(target, prop, {
@@ -853,10 +853,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path3) {
-  if (!path3)
-    return obj;
-  return path3.reduce((acc, key) => acc?.[key], obj);
+function getElementAtPath(obj2, path4) {
+  if (!path4)
+    return obj2;
+  return path4.reduce((acc, key) => acc?.[key], obj2);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -871,14 +871,14 @@ function promiseAllObject(promisesObj) {
 }
 function randomString(length = 10) {
   const chars = "abcdefghijklmnopqrstuvwxyz";
-  let str = "";
+  let str2 = "";
   for (let i = 0; i < length; i++) {
-    str += chars[Math.floor(Math.random() * chars.length)];
+    str2 += chars[Math.floor(Math.random() * chars.length)];
   }
-  return str;
+  return str2;
 }
-function esc(str) {
-  return JSON.stringify(str);
+function esc(str2) {
+  return JSON.stringify(str2);
 }
 function slugify(input2) {
   return input2.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -992,8 +992,8 @@ var primitiveTypes = /* @__PURE__ */ new Set([
   "symbol",
   "undefined"
 ]);
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escapeRegex(str2) {
+  return str2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function clone(inst, def, params) {
   const cl = new inst._zod.constr(def ?? inst._zod.def);
@@ -1196,11 +1196,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path3, issues) {
+function prefixIssues(path4, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path3);
+    iss.path.unshift(path4);
     return iss;
   });
 }
@@ -1259,13 +1259,13 @@ function getSizableOrigin(input2) {
   return "unknown";
 }
 var highSurrogate = /[\uD800-\uDBFF]/;
-function codePointLength(str) {
-  const units = str.length;
-  if (!highSurrogate.test(str))
+function codePointLength(str2) {
+  const units = str2.length;
+  if (!highSurrogate.test(str2))
     return units;
   let count = units;
   for (let i = 0; i < units - 1; i++) {
-    if ((str.charCodeAt(i) & 64512) === 55296 && (str.charCodeAt(i + 1) & 64512) === 56320) {
+    if ((str2.charCodeAt(i) & 64512) === 55296 && (str2.charCodeAt(i + 1) & 64512) === 56320) {
       count--;
       i++;
     }
@@ -1292,9 +1292,9 @@ function parsedType(data) {
       if (Array.isArray(data)) {
         return "array";
       }
-      const obj = data;
-      if (obj && Object.getPrototypeOf(obj) !== Object.prototype && "constructor" in obj && obj.constructor) {
-        return obj.constructor.name;
+      const obj2 = data;
+      if (obj2 && Object.getPrototypeOf(obj2) !== Object.prototype && "constructor" in obj2 && obj2.constructor) {
+        return obj2.constructor.name;
       }
     }
   }
@@ -1312,8 +1312,8 @@ function issue(...args) {
   }
   return { ...iss };
 }
-function cleanEnum(obj) {
-  return Object.entries(obj).filter(([k, _]) => {
+function cleanEnum(obj2) {
+  return Object.entries(obj2).filter(([k, _]) => {
     return Number.isNaN(Number.parseInt(k, 10));
   }).map((el) => el[1]);
 }
@@ -1638,15 +1638,15 @@ var $ZodError = $constructor("$ZodError", initializer);
 var $ZodRealError = $constructor("$ZodError", initializer, void 0, {
   Parent: Error
 });
-function node(obj, key, make) {
-  if (!Object.prototype.hasOwnProperty.call(obj, key)) {
+function node(obj2, key, make) {
+  if (!Object.prototype.hasOwnProperty.call(obj2, key)) {
     if (key === "__proto__") {
-      Object.defineProperty(obj, key, { value: make(), writable: true, enumerable: true, configurable: true });
+      Object.defineProperty(obj2, key, { value: make(), writable: true, enumerable: true, configurable: true });
     } else {
-      obj[key] = make();
+      obj2[key] = make();
     }
   }
-  return obj[key];
+  return obj2[key];
 }
 function flattenError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = {};
@@ -1662,16 +1662,16 @@ function flattenError(error62, mapper = (issue2) => issue2.message) {
 }
 function formatError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error63, path3 = []) => {
+  const processError = (error63, path4 = []) => {
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path3, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path4, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
       } else {
-        const fullpath = [...path3, ...issue2.path];
+        const fullpath = [...path4, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -1710,17 +1710,17 @@ function formatError(error62, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error62, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error63, path3 = []) => {
+  const processError = (error63, path4 = []) => {
     var _a3;
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path3, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path4, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
       } else {
-        const fullpath = [...path3, ...issue2.path];
+        const fullpath = [...path4, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -1759,8 +1759,8 @@ function treeifyError(error62, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path3 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path3) {
+  const path4 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path4) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -18898,13 +18898,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path3 = ref.slice(1).split("/").filter(Boolean);
-  if (path3.length === 0) {
+  const path4 = ref.slice(1).split("/").filter(Boolean);
+  if (path4.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path3[0] === defsKey) {
-    const key = path3[1] === void 0 ? void 0 : decodeJSONPointerSegment(path3[1]);
+  if (path4[0] === defsKey) {
+    const key = path4[1] === void 0 ? void 0 : decodeJSONPointerSegment(path4[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -19921,6 +19921,11 @@ function scrubEvent(e) {
   return { ...e, payload: walk(e.payload) };
 }
 
+// src/backfill.ts
+var import_node_crypto = require("node:crypto");
+var import_node_fs3 = __toESM(require("node:fs"), 1);
+var import_node_path3 = __toESM(require("node:path"), 1);
+
 // src/local.ts
 var import_node_fs = __toESM(require("node:fs"), 1);
 var import_node_os = __toESM(require("node:os"), 1);
@@ -20040,7 +20045,7 @@ function setPaused(cwd, paused, sessionId) {
 function clearProjectPause(cwd) {
   setPaused(cwd, false);
 }
-var narrationFile = (sessionId) => import_node_path.default.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
+var sessionFile = (sessionId) => import_node_path.default.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
 var NO_NARRATION = {
   mapped: false,
   tasks: [],
@@ -20049,17 +20054,20 @@ var NO_NARRATION = {
   done: [],
   blocked: false
 };
-function readNarration(sessionId) {
+function isNewSession(sessionId) {
+  return !import_node_fs.default.existsSync(import_node_path.default.join(murmurDir(), sessionFile(sessionId)));
+}
+function readSession(sessionId) {
   return {
     ...NO_NARRATION,
-    ...readJson(narrationFile(sessionId), {})
+    ...readJson(sessionFile(sessionId), {})
   };
 }
-function writeNarration(sessionId, n) {
-  writeJson(narrationFile(sessionId), n);
+function writeSession(sessionId, s) {
+  writeJson(sessionFile(sessionId), s);
 }
-function clearNarration(sessionId) {
-  import_node_fs.default.rmSync(import_node_path.default.join(murmurDir(), narrationFile(sessionId)), { force: true });
+function updateSession(sessionId, patch) {
+  writeSession(sessionId, { ...readSession(sessionId), ...patch });
 }
 
 // src/upload.ts
@@ -20186,6 +20194,174 @@ async function flush(c, {
   return { sent, kept };
 }
 
+// src/backfill.ts
+var MAX_EVENTS2 = 5e3;
+var MAX_BYTES2 = 2e7;
+function uuidFrom(key) {
+  const h = (0, import_node_crypto.createHash)("sha1").update(key).digest("hex");
+  const variant = (Number.parseInt(h[16], 16) & 3 | 8).toString(16);
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${variant}${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+var TOOL_HOOKS = /* @__PURE__ */ new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure"]);
+function stableId(sessionId, hook, p) {
+  const key = hook === "UserPromptSubmit" ? p.prompt_id : TOOL_HOOKS.has(hook) ? p.tool_use_id : hook === "SubagentStart" || hook === "SubagentStop" ? p.agent_id : void 0;
+  return typeof key === "string" && key ? uuidFrom(`murmur:${sessionId}:${hook}:${key}`) : void 0;
+}
+var obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : void 0;
+var str = (v) => typeof v === "string" && v ? v : void 0;
+function readLines(file2) {
+  let text2;
+  try {
+    text2 = import_node_fs3.default.readFileSync(file2, "utf8");
+  } catch {
+    return [];
+  }
+  return text2.split("\n").flatMap((line) => {
+    try {
+      const e = obj(JSON.parse(line));
+      return e ? [e] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+function readMeta(file2) {
+  try {
+    return obj(JSON.parse(import_node_fs3.default.readFileSync(file2, "utf8"))) ?? {};
+  } catch {
+    return {};
+  }
+}
+function readBackfill(b, { maxEvents = MAX_EVENTS2, maxBytes = MAX_BYTES2 } = {}) {
+  const cutoff = Date.parse(b.cutoff);
+  const out = [];
+  const emit = (e, index, hook, fields) => {
+    const cwd = str(e.cwd) ?? b.cwd;
+    const payload = {
+      ...fields,
+      hook_event_name: hook,
+      session_id: b.sessionId,
+      cwd
+    };
+    out.push(
+      scrubEvent({
+        id: stableId(b.sessionId, hook, payload) ?? uuidFrom(`murmur-backfill:${b.sessionId}:${e.uuid}:${index}:${hook}`),
+        sessionId: b.sessionId,
+        machineId: b.machineId,
+        cwd,
+        ts: new Date(Date.parse(e.timestamp)).toISOString(),
+        hook,
+        payload
+      })
+    );
+  };
+  const usable = (list2) => list2.filter((e) => {
+    const ts = typeof e.timestamp === "string" ? Date.parse(e.timestamp) : NaN;
+    return str(e.uuid) && ts < cutoff;
+  });
+  const mapEntries = (list2, agent) => {
+    const uses = /* @__PURE__ */ new Map();
+    for (const e of list2) {
+      const content = obj(e.message)?.content;
+      if (e.type === "user" && typeof content === "string") {
+        if (obj(e.origin)?.kind === "human" && !agent.agent_id)
+          emit(e, 0, "UserPromptSubmit", {
+            prompt: content,
+            ...str(e.promptId) ? { prompt_id: e.promptId } : {}
+          });
+        continue;
+      }
+      if (!Array.isArray(content)) continue;
+      content.forEach((raw, i) => {
+        const block = obj(raw);
+        if (!block) return;
+        if (e.type === "assistant" && block.type === "tool_use") {
+          const id = str(block.id);
+          if (!id) return;
+          uses.set(id, block);
+          emit(e, i, "PreToolUse", {
+            ...agent,
+            tool_name: block.name,
+            tool_input: block.input,
+            tool_use_id: id
+          });
+        } else if (e.type === "user" && block.type === "tool_result") {
+          const id = str(block.tool_use_id);
+          const use = id ? uses.get(id) : void 0;
+          if (!use) return;
+          emit(
+            e,
+            i,
+            block.is_error === true ? "PostToolUseFailure" : "PostToolUse",
+            {
+              ...agent,
+              tool_name: use.name,
+              tool_input: use.input,
+              tool_use_id: id,
+              tool_response: e.toolUseResult ?? block.content
+            }
+          );
+        }
+      });
+    }
+  };
+  mapEntries(usable(readLines(b.transcriptPath)), {});
+  const dir = import_node_path3.default.join(
+    import_node_path3.default.dirname(b.transcriptPath),
+    b.sessionId,
+    "subagents"
+  );
+  let names = [];
+  try {
+    names = import_node_fs3.default.readdirSync(dir).filter((n) => /^agent-.+\.jsonl$/.test(n));
+  } catch {
+  }
+  for (const name of names) {
+    const agentId = name.slice("agent-".length, -".jsonl".length);
+    const meta3 = readMeta(import_node_path3.default.join(dir, `agent-${agentId}.meta.json`));
+    const agent = {
+      agent_id: agentId,
+      agent_type: typeof meta3.agentType === "string" ? meta3.agentType : ""
+    };
+    const list2 = usable(readLines(import_node_path3.default.join(dir, name)));
+    const first = list2[0];
+    const last = list2.at(-1);
+    if (!first || !last) continue;
+    emit(first, 0, "SubagentStart", agent);
+    mapEntries(list2, agent);
+    if (meta3.finished === true) emit(last, 0, "SubagentStop", agent);
+  }
+  out.sort((x, y) => Date.parse(x.ts) - Date.parse(y.ts));
+  let bytes = 0;
+  let from = out.length;
+  while (from > 0 && out.length - from < maxEvents) {
+    const size = Buffer.byteLength(JSON.stringify(out[from - 1]));
+    if (bytes + size > maxBytes) break;
+    bytes += size;
+    from--;
+  }
+  return out.slice(from);
+}
+async function runBackfill(sessionId, opts = {}) {
+  const creds = readCredentials();
+  const s = readSession(sessionId);
+  if (!creds || s.backfill !== "pending") return 0;
+  updateSession(sessionId, { backfill: "running" });
+  let events = [];
+  if (s.cutoff && s.transcriptPath && s.cwd)
+    events = readBackfill({
+      sessionId,
+      machineId: creds.machineId,
+      cwd: s.cwd,
+      transcriptPath: s.transcriptPath,
+      cutoff: s.cutoff
+    });
+  for (const e of events) enqueue(e);
+  updateSession(sessionId, { backfill: "done" });
+  await flush(creds, { budgetMs: 5e4, ...opts });
+  return events.length;
+}
+
 // src/hook.ts
 var askLine = (cwd) => `Murmur: show ${projectName(cwd)} in Murmur? Run /murmur:on to turn it on, or /murmur:off to stop asking.`;
 var LOGIN_LINE = "Murmur: run /murmur:login to connect.";
@@ -20222,30 +20398,54 @@ function handleHook(payload, env, now) {
   const creds = readCredentials();
   if (!creds) return start ? show(LOGIN_LINE) : NONE2;
   if (isRevoked()) return start ? show(REVOKED_LINE) : NONE2;
-  if (!sessionId || isPaused(cwd, sessionId)) return NONE2;
+  if (!sessionId) return NONE2;
+  const fresh = isNewSession(sessionId);
+  if (isPaused(cwd, sessionId)) {
+    if (fresh) writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+    return NONE2;
+  }
+  const ts = now.toISOString();
   const event = scrubEvent({
-    id: (0, import_node_crypto.randomUUID)(),
+    id: stableId(sessionId, hook, payload) ?? (0, import_node_crypto2.randomUUID)(),
     sessionId,
     machineId: creds.machineId,
     cwd,
-    ts: now.toISOString(),
+    ts,
     hook,
     payload
   });
-  const stdout = start ? JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: "SessionStart",
-      additionalContext: NARRATION_INSTRUCTION
-    }
-  }) : trackNarration(sessionId, hook, payload);
-  return { stdout, event };
+  let backfill;
+  if (fresh) {
+    const transcriptPath = payload.transcript_path;
+    const isNew = start && payload.source === "startup";
+    if (!isNew && typeof transcriptPath === "string" && transcriptPath) {
+      writeSession(sessionId, {
+        ...NO_NARRATION,
+        backfill: "pending",
+        cutoff: ts,
+        transcriptPath,
+        cwd
+      });
+      backfill = sessionId;
+    } else writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+  }
+  let stdout = trackNarration(sessionId, hook, payload);
+  if (start || hook === "UserPromptSubmit" && !readSession(sessionId).instructed) {
+    updateSession(sessionId, { instructed: true });
+    stdout = JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: hook,
+        additionalContext: NARRATION_INSTRUCTION
+      }
+    });
+  }
+  return backfill ? { stdout, event, backfill } : { stdout, event };
 }
 function trackNarration(sessionId, hook, p) {
-  if (hook === "UserPromptSubmit") writeNarration(sessionId, NO_NARRATION);
-  if (hook === "SessionEnd") clearNarration(sessionId);
+  if (hook === "UserPromptSubmit") updateSession(sessionId, NO_NARRATION);
   const tool = hook === "PostToolUse" ? p.tool_name : void 0;
   if (tool !== MAP_TOOL && tool !== NARRATE_TOOL && hook !== "Stop") return "";
-  const n = readNarration(sessionId);
+  const n = readSession(sessionId);
   if (tool === MAP_TOOL) {
     n.mapped = true;
     const phases = p.tool_input?.phases;
@@ -20273,20 +20473,26 @@ function trackNarration(sessionId, hook, p) {
     n.blocked = true;
     out = BLOCK;
   }
-  writeNarration(sessionId, n);
+  writeSession(sessionId, n);
   return out;
 }
+var BACKFILL = process.argv.indexOf("--backfill");
 async function main() {
   const creds = readCredentials();
   if (process.argv.includes("--flush")) {
     if (creds) await flush(creds);
     return;
   }
+  if (BACKFILL >= 0) {
+    const id = process.argv[BACKFILL + 1];
+    if (id) await runBackfill(id);
+    return;
+  }
   let input2 = "";
   for await (const chunk of process.stdin) input2 += chunk;
   const payload = JSON.parse(input2);
   if (!payload || typeof payload !== "object") return;
-  const { stdout, event } = handleHook(
+  const { stdout, event, backfill } = handleHook(
     payload,
     process.env,
     /* @__PURE__ */ new Date()
@@ -20295,8 +20501,9 @@ async function main() {
     await new Promise((r) => process.stdout.write(stdout, () => r()));
   if (!event || !creds) return;
   enqueue(event);
-  if (event.hook === "SessionStart" || event.hook === "Stop") {
-    (0, import_node_child_process.spawn)(process.execPath, [process.argv[1], "--flush"], {
+  if (backfill || SYNC_HOOKS.has(event.hook)) {
+    const args = backfill ? ["--backfill", backfill] : ["--flush"];
+    (0, import_node_child_process.spawn)(process.execPath, [process.argv[1], ...args], {
       detached: true,
       stdio: "ignore",
       windowsHide: true
@@ -20305,12 +20512,13 @@ async function main() {
     await flush(creds);
   }
 }
+var SYNC_HOOKS = /* @__PURE__ */ new Set(["SessionStart", "Stop", "UserPromptSubmit"]);
 if (/[\\/]hook\.(c?js|ts)$/.test(process.argv[1] ?? "")) {
   const done = () => process.exit(0);
   process.on("uncaughtException", done);
   process.stdout.on("error", () => {
   });
-  setTimeout(done, 5e3).unref();
+  setTimeout(done, BACKFILL >= 0 ? 6e4 : 5e3).unref();
   main().then(done, done);
 }
 // Annotate the CommonJS export names for ESM import in node:
