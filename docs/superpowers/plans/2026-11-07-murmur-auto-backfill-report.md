@@ -72,3 +72,41 @@ The UserPromptSubmit hook was run through its `hooks.json` command (`sh node.sh 
 - UI nit seen in the E2E: a helper with no description shows "Agent 2 ·" with a dangling separator.
   It only shows when the Agent call is missing, which the fixture set up on purpose, so I left it.
 - Not pushed or merged.
+
+## Review fixes (round 2)
+
+Each fix began with a failing test.
+RED: plugin 15 failed / 73 passed (backfill mapping, shared prompt ids, tail read, stale retry, prompt trigger, login change, off-project marking, session prune, queue age), web 1 failed (`expected 'Agent 1 · Server endpoint' to be 'Agent 1Server endpoint'`).
+GREEN: `pnpm build:plugin` 0, `pnpm lint` 0, `pnpm typecheck` 0, `pnpm test` 0 (163 + 88 + 89 + 95), each exit status checked separately.
+
+1. **Prompt ids (controller ruling).**
+   `stableId` no longer covers UserPromptSubmit, so live prompts have random ids again and backfilled prompts use the entry-uuid key.
+   The session state records `trigger`; when it is UserPromptSubmit the backfill drops the newest human prompt in the main transcript before the cutoff.
+   Tool events and SubagentStart/Stop keep shared ids.
+   Tests: three fixture prompts share `promptId: "p-1"` and stay three events; a prompt-triggered run queues 20 of the 21 events, without the newest prompt.
+2. **Slash commands** (`<command-name>` / `<command-message>` / `<command-args>` wrappers) become `/<name> <args>`, trimmed; in the fixture as `/murmur:on now`.
+3. **Tail reads.**
+   Each transcript and subagent file is read from its last 30 MB (`tailBytes`), dropping the first partial line.
+   A `pending` or `running` state older than 10 minutes (from `runningSince`, else the cutoff) is stale: the next hook hands it to a new child with the same cutoff, and the child accepts it.
+   Tests: 2,000 synthetic prompts with a small tail give only the last 10; the hook respawns a stale pending or running backfill (not a fresh one, not a done one), and `runBackfill` retries a run older than 10 minutes.
+4. **Queue age** is the queue file's mtime, not the event's `ts`.
+   I removed the `Date.now` fake from the backfill test.
+   Test: an event 30 days old, queued now, is sent; a file queued 8 days ago is dropped.
+5. **Off projects**: a new session in an `off` project gets `{backfill: "done"}`, so `/murmur:on` never imports its off time.
+   An unset or asked project still imports.
+6. **Built-bundle `--backfill` test**: pending state plus the fixture, `node dist/hook.cjs --backfill <id>` against a fake HTTP server; the posted ids match `readBackfill` and the state ends `done`.
+   The UserPromptSubmit dist test now pre-marks its session done, so no backfill child lingers against the hung server.
+7. **Text and image prompts** with `origin.kind: "human"` join their text blocks into the prompt.
+8. **SubagentStop** is also emitted when the main transcript has the result of the meta's `toolUseId` call.
+   That result is skipped when its `toolUseResult.status` is `async_launched`: background helpers get that result at once (all 61 Agent results in the sample session were `async_launched`), so counting it would stop them early.
+9. **Login change**: `runBackfill` reads the credentials again before flushing and skips the flush when logged out or the token changed (the events stay queued; `flush` already drops other logins' events).
+10. **Session state prune**: a startup SessionStart deletes `sessions/*.json` idle (mtime) for over 30 days.
+11. **Web**: `Agent <k>` without ` · ` when there is no description, in NowCard, PlanPanel and PartDetail; the map tooltip also drops its `: `.
+
+End to end again on the local server, same setup as before: the hook answered in 142 ms with the instruction, state `done` with trigger `UserPromptSubmit`, and the server had 21 events (20 backfilled plus the live prompt), with "Now add a README" once, the slash command and the text+image prompt as prompts, and `a1b2c3` stopped through its Agent call result.
+The test session was deleted afterwards.
+
+Remaining concerns:
+- The prompt rule assumes Claude Code writes the prompt entry before the UserPromptSubmit hook (measured at about 60 ms before); if a version ever writes it after, the previous prompt would be dropped instead.
+- A SubagentStop inferred from an Agent result uses the helper's last entry time; with a cutoff between that entry and the result, no stop is imported and none comes live, so the helper shows as running for good.
+- A session resumed after its state was pruned (idle 30 days) imports again, and its prompts would then duplicate (random live ids).
