@@ -106,8 +106,10 @@ function FileRow(props: { file: FileTouch; byId: Map<string, MurmurEvent> }) {
         onClick={() => setOpen(!open)}
       >
         <span className="pd-path">{file.path}</span>
-        <span className="pd-add">+{file.added}</span>
-        <span className="pd-del">
+        <span className={file.added ? "pd-add" : "pd-add zero"}>
+          +{file.added}
+        </span>
+        <span className={file.removed ? "pd-del" : "pd-del zero"}>
           {MINUS}
           {file.removed}
         </span>
@@ -128,7 +130,12 @@ function FileRow(props: { file: FileTouch; byId: Map<string, MurmurEvent> }) {
   );
 }
 
-export function PartDetail(props: {
+/** Keyed by part, so open raw and diff panels never carry over to another part. */
+export function PartDetail(props: Parameters<typeof PartBody>[0]) {
+  return <PartBody key={props.part.id} {...props} />;
+}
+
+function PartBody(props: {
   sessionId: string;
   request: RequestView;
   part: PartView;

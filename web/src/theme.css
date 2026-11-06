@@ -1108,6 +1108,13 @@ button.task:hover {
 .pd-del {
   color: var(--bad);
 }
+.pd-add.zero,
+.pd-del.zero {
+  color: var(--faint);
+}
+.pd-left .map-box {
+  margin-bottom: 20px;
+}
 .pd-tag {
   font-size: 11px;
   color: var(--muted);
@@ -1137,7 +1144,8 @@ button.task:hover {
   color: var(--faint);
 }
 .pd-assume {
-  color: var(--agent);
+  color: var(--muted);
+  font-style: italic;
   font-size: 12px;
 }
 .pd-agent {

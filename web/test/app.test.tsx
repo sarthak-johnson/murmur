@@ -76,4 +76,13 @@ describe("App", () => {
     expect(page?.children[1]?.className).toBe("live-main");
     expect(page?.children[1]?.querySelector(".skeleton")).toBeTruthy();
   });
+
+  it("the part route uses the wide header like the live screen", async () => {
+    history.pushState(null, "", "/s/s1/r/r1/p/x");
+    mockFetch({ "GET /api/me": { body: ME } });
+    const { container } = render(<App />);
+    await waitFor(() =>
+      expect(container.querySelector(".header-in.wide")).toBeTruthy(),
+    );
+  });
 });

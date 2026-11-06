@@ -260,4 +260,53 @@ describe("PartDetail", () => {
     show({ ...full, failures: 3 });
     expect(screen.getByText("stuck")).toBeTruthy();
   });
+
+  it("zero counts are faint, non-zero ones keep their colour", () => {
+    const p = part({
+      id: "z",
+      title: "Z",
+      files: [
+        { path: "a.ts", added: 0, removed: 0, isNew: false, eventIds: [] },
+        { path: "b.ts", added: 2, removed: 3, isNew: false, eventIds: [] },
+      ],
+    });
+    show(p);
+    const cls = (path: string) =>
+      [
+        ...(screen.getByRole("button", { name: new RegExp(path) }).children ??
+          []),
+      ]
+        .slice(1, 3)
+        .map((c) => c.className);
+    expect(cls("a\\.ts")).toEqual(["pd-add zero", "pd-del zero"]);
+    expect(cls("b\\.ts")).toEqual(["pd-add", "pd-del"]);
+  });
+
+  it("opening another part closes the open panels", async () => {
+    const other = part({
+      id: "other",
+      title: "Other",
+      steps: [
+        { ts: "t", text: "A", status: "done", eventIds: ["e1"] },
+        { ts: "t", text: "B", status: "done", eventIds: ["e2"] },
+      ],
+    });
+    const r = request([full, other]);
+    const mk = (p: PartView) => (
+      <PartDetail
+        sessionId="s1"
+        request={r}
+        part={p}
+        events={events}
+        onBack={() => {}}
+      />
+    );
+    const { rerender } = render(mk(full));
+    await userEvent.click(
+      screen.getAllByRole("button", { name: /raw/ })[0] as HTMLElement,
+    );
+    rerender(mk(other));
+    for (const b of screen.getAllByRole("button", { name: /raw/ }))
+      expect(b.getAttribute("aria-expanded")).toBe("false");
+  });
 });

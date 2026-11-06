@@ -76,7 +76,10 @@ export function App() {
     }
   }, [me, route]);
 
-  const wide = route.name === "session" || route.name === "request";
+  const wide =
+    route.name === "session" ||
+    route.name === "request" ||
+    route.name === "part";
   if (me === undefined)
     return (
       <>
