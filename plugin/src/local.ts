@@ -114,6 +114,8 @@ export function clearProjectPause(cwd: string): void {
 /** What the current request has reported so far, for the Stop hook. */
 export interface Narration {
   mapped: boolean;
+  /** Task ids the latest map declared. */
+  tasks: string[];
   narrates: number;
   /** Task ids named by narrate, and those whose latest narrate said done. */
   named: string[];
@@ -125,6 +127,7 @@ const narrationFile = (sessionId: string) =>
   path.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
 export const NO_NARRATION: Narration = {
   mapped: false,
+  tasks: [],
   narrates: 0,
   named: [],
   done: [],

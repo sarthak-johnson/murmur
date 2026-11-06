@@ -19990,6 +19990,7 @@ function clearProjectPause(cwd) {
 var narrationFile = (sessionId) => import_node_path.default.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
 var NO_NARRATION = {
   mapped: false,
+  tasks: [],
   narrates: 0,
   named: [],
   done: [],
@@ -20144,7 +20145,15 @@ function trackNarration(sessionId, hook, p) {
   const tool = hook === "PostToolUse" ? p.tool_name : void 0;
   if (tool !== MAP_TOOL && tool !== NARRATE_TOOL && hook !== "Stop") return "";
   const n = readNarration(sessionId);
-  if (tool === MAP_TOOL) n.mapped = true;
+  if (tool === MAP_TOOL) {
+    n.mapped = true;
+    const phases = p.tool_input?.phases;
+    n.tasks = (Array.isArray(phases) ? phases : []).flatMap(
+      (ph) => (Array.isArray(ph?.tasks) ? ph.tasks : []).flatMap(
+        (t) => typeof t?.id === "string" && t.id ? [t.id] : []
+      )
+    );
+  }
   if (tool === NARRATE_TOOL) {
     const input2 = p.tool_input ?? {};
     n.narrates++;
@@ -20157,7 +20166,7 @@ function trackNarration(sessionId, hook, p) {
   }
   let out = "";
   if (hook === "Stop") {
-    const told = n.narrates > 0 && n.named.every((t) => n.done.includes(t));
+    const told = n.narrates > 0 && [...n.tasks, ...n.named].every((t) => n.done.includes(t));
     if (p.stop_hook_active === true || !n.mapped || n.blocked || told)
       return "";
     n.blocked = true;

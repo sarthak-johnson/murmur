@@ -113,7 +113,16 @@ function trackNarration(
   const tool = hook === "PostToolUse" ? p.tool_name : undefined;
   if (tool !== MAP_TOOL && tool !== NARRATE_TOOL && hook !== "Stop") return "";
   const n = readNarration(sessionId);
-  if (tool === MAP_TOOL) n.mapped = true;
+  if (tool === MAP_TOOL) {
+    n.mapped = true;
+    const phases = (p.tool_input as { phases?: unknown } | undefined)?.phases;
+    n.tasks = (Array.isArray(phases) ? phases : []).flatMap((ph) =>
+      (Array.isArray(ph?.tasks) ? ph.tasks : []).flatMap(
+        (t: { id?: unknown }) =>
+          typeof t?.id === "string" && t.id ? [t.id] : [],
+      ),
+    );
+  }
   if (tool === NARRATE_TOOL) {
     const input = (p.tool_input ?? {}) as Record<string, unknown>;
     n.narrates++;
@@ -126,7 +135,9 @@ function trackNarration(
   }
   let out = "";
   if (hook === "Stop") {
-    const told = n.narrates > 0 && n.named.every((t) => n.done.includes(t));
+    const told =
+      n.narrates > 0 &&
+      [...n.tasks, ...n.named].every((t) => n.done.includes(t));
     if (p.stop_hook_active === true || !n.mapped || n.blocked || told)
       return "";
     n.blocked = true;

@@ -245,6 +245,44 @@ describe("handleHook", () => {
       expect(plain?.stdout).toBe("");
     });
 
+    const mapTasks = (...ids: string[]) =>
+      post(MAP_TOOL, {
+        kind: "feature",
+        goal: "g",
+        phases: [
+          { id: "p1", title: "P", tasks: ids.map((id) => ({ id, title: id })) },
+        ],
+      });
+
+    it("blocks when a task declared by map is never narrated done", () => {
+      const [, , , r] = run(
+        payload("UserPromptSubmit"),
+        mapTasks("t1", "t2"),
+        narrate("t2", "done"),
+        stop(),
+      );
+      expect(JSON.parse(r?.stdout ?? "")).toEqual(BLOCK);
+    });
+
+    it("stays quiet when every mapped task is narrated done, and a new map replaces the list", () => {
+      const [, , , , r] = run(
+        payload("UserPromptSubmit"),
+        mapTasks("t1", "t2"),
+        narrate("t1", "done"),
+        narrate("t2", "done"),
+        stop(),
+      );
+      expect(r?.stdout).toBe("");
+      const [, , , , remapped] = run(
+        payload("UserPromptSubmit"),
+        mapTasks("t1", "t2"),
+        mapTasks("t3"),
+        narrate("t3", "done"),
+        stop(),
+      );
+      expect(remapped?.stdout).toBe("");
+    });
+
     it("stays quiet when stop_hook_active, with no map, or for other sessions", () => {
       const [, , active] = run(payload("UserPromptSubmit"), map(), stop(true));
       expect(active?.stdout).toBe("");
