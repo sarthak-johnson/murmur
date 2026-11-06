@@ -211,6 +211,18 @@ describe("queue", () => {
     expect(queued()).toEqual([]);
   });
 
+  it("a bound session never sends from a folder that was asked and left off", async () => {
+    setProjectState("/main", "on");
+    setProjectState("/asked", "asked");
+    writeSession("s1", { ...NO_NARRATION, backfill: "done", project: "/main" });
+    enqueue(ev(1, {}, { cwd: "/main" }));
+    enqueue(ev(2, {}, { cwd: "/asked" }));
+    const f = fakeFetch([200]);
+    expect(await flush(CREDS, opts(f))).toEqual({ sent: 1, kept: 0 });
+    expect(f.calls.map((c) => c.ids)).toEqual([["e0001"]]);
+    expect(queued()).toEqual([]);
+  });
+
   it("the queue keeps 7 days and a size cap, dropping the oldest first", async () => {
     const day = 24 * 3600 * 1000;
     enqueue(ev(1, {}, { ts: new Date(Date.now() - 8 * day).toISOString() }));

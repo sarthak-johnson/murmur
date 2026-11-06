@@ -101,11 +101,14 @@ export function handleHook(
   const fresh = isNewSession(sessionId);
   // First seen while its project is on: from now on the session follows that project,
   // so a cd into a worktree or another folder keeps it on.
-  let project = readSession(sessionId).project;
-  if (!project) {
-    project = projectKey(cwd);
-    updateSession(sessionId, { project });
-  }
+  const seen = readSession(sessionId);
+  const project = seen.project ?? projectKey(cwd);
+  // A session file that could not be read is rewritten as already imported.
+  if (!seen.project || (!fresh && !seen.backfill))
+    updateSession(sessionId, {
+      project,
+      ...(fresh ? {} : { backfill: seen.backfill ?? "done" }),
+    });
   if (isPaused(cwd, sessionId) || isPaused(project)) {
     // What happens while paused is never shown, not even by a later backfill.
     if (fresh) updateSession(sessionId, { backfill: "done" });

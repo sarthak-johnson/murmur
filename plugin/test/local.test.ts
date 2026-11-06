@@ -109,6 +109,19 @@ describe("local state", () => {
     expect(projectState(path.join(tree, "src"))).toBe("on");
   });
 
+  it("a worktree keeps the spelling of its main repo and a stale gitdir maps nowhere", () => {
+    const main = fs.mkdtempSync(path.join(home, "main-"));
+    const tree = path.join(main, "wt");
+    fs.mkdirSync(tree, { recursive: true });
+    // Git writes the real path, which differs from `home` on macOS (/var vs /private/var).
+    const real = path.join(fs.realpathSync(main), ".git", "worktrees", "wt");
+    fs.writeFileSync(path.join(tree, ".git"), `gitdir: ${real}\n`);
+    // No <main>/.git folder yet: a stale pointer keeps the worktree's own key.
+    expect(projectKey(tree)).toBe(tree);
+    fs.mkdirSync(real, { recursive: true });
+    expect(projectKey(tree)).toBe(main);
+  });
+
   it("pause round-trips by folder and by session", () => {
     const root = fs.mkdtempSync(path.join(home, "repo-"));
     fs.mkdirSync(path.join(root, ".git"));

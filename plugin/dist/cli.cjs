@@ -89,7 +89,26 @@ function worktreeMain(root) {
   const dotGit = import_node_path.default.dirname(worktrees);
   const main2 = import_node_path.default.dirname(dotGit);
   const home = import_node_path.default.resolve(import_node_os.default.homedir());
-  return import_node_path.default.basename(worktrees) === "worktrees" && import_node_path.default.basename(dotGit) === ".git" && main2 !== home && import_node_path.default.dirname(main2) !== main2 ? main2 : void 0;
+  if (import_node_path.default.basename(worktrees) !== "worktrees" || import_node_path.default.basename(dotGit) !== ".git" || main2 === home || import_node_path.default.dirname(main2) === main2 || !isDir(dotGit))
+    return void 0;
+  const real = realpath(main2);
+  for (let d = root; import_node_path.default.dirname(d) !== d; d = import_node_path.default.dirname(d))
+    if (realpath(d) === real) return d;
+  return main2;
+}
+function isDir(p) {
+  try {
+    return import_node_fs.default.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function realpath(p) {
+  try {
+    return import_node_fs.default.realpathSync(p);
+  } catch {
+    return p;
+  }
 }
 function projectName(cwd) {
   const key = projectKey(cwd);
@@ -145,6 +164,11 @@ function dropQueued(cwd) {
 var projects = () => readJson("projects.json", {});
 function projectState(cwd) {
   return projects()[projectKey(cwd)];
+}
+function sessionProjectState(cwd, sessionId) {
+  const here = projectState(cwd);
+  const bound = sessionId ? readSession(sessionId).project : void 0;
+  return here !== void 0 || !bound ? here : projects()[bound];
 }
 function setProjectState(cwd, s) {
   const all = readJson("projects.json", {});
@@ -249,11 +273,13 @@ async function poll(deviceCode, server, interval, expiresIn) {
 }
 function status(cwd, session) {
   const c = readCredentials();
-  const state = projectState(cwd);
+  const state = sessionProjectState(cwd, session);
+  const bound = session ? readSession(session).project : void 0;
+  const follows = bound && projectState(cwd) === void 0 && bound !== projectKey(cwd) ? ` (this session follows ${projectName(bound)})` : "";
   return [
     c && isRevoked() ? "This machine was disconnected. Run /murmur:login." : `Logged in: ${c ? "yes" : "no"}`,
     `Server: ${c?.server ?? DEFAULT_SERVER}`,
-    `This project: ${state === "on" || state === "off" ? state : "not set"}`,
+    `This project: ${state === "on" || state === "off" ? state : "not set"}${follows}`,
     `Paused: ${isPaused(cwd, session) ? "yes" : "no"}`
   ].join("\n");
 }
@@ -271,7 +297,7 @@ async function run(args, env, startPoller = spawnPoller) {
       return "Logged out. Unsent events were deleted, and this machine sends nothing more to Murmur.";
     case "on":
       setProjectState(cwd, "on");
-      if (session) updateSession(session, { project: projectKey(cwd) });
+      if (session && !arg) updateSession(session, { project: projectKey(cwd) });
       return readCredentials() ? `Murmur is on for ${projectName(cwd)}.` : `Murmur is on for ${projectName(cwd)}. Run /murmur:login to connect.`;
     case "off":
       setProjectState(cwd, "off");

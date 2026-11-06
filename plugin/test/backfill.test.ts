@@ -424,6 +424,39 @@ describe("runBackfill", () => {
     expect(queued()).toEqual([]);
   });
 
+  it("never imports the history of a folder that was asked and left off", async () => {
+    writeCredentials({ server: "http://srv", token: "tok", machineId: "m1" });
+    const home = path.dirname(murmurDir());
+    const main = path.join(home, "main");
+    const asked = path.join(home, "asked");
+    fs.mkdirSync(path.join(main, ".git"), { recursive: true });
+    fs.mkdirSync(path.join(asked, ".git"), { recursive: true });
+    const dir = path.join(home, "transcripts");
+    fs.cpSync(FIXTURE, dir, { recursive: true });
+    const file = path.join(dir, `${SID}.jsonl`);
+    // All the history, subagents too, happened in the asked folder; the session later moved to main.
+    for (const f of fs.readdirSync(dir, { recursive: true, encoding: "utf8" }))
+      if (f.endsWith(".jsonl")) {
+        const p = path.join(dir, f);
+        fs.writeFileSync(
+          p,
+          fs
+            .readFileSync(p, "utf8")
+            .replace(
+              /"cwd":"\/work\/demo"/g,
+              JSON.stringify({ cwd: asked }).slice(1, -1),
+            ),
+        );
+      }
+    setProjectState(main, "on");
+    setProjectState(asked, "asked");
+    pendingAt({ transcriptPath: file, cwd: main, project: main });
+    const { sent, fetch } = sender();
+    expect(await runBackfill(SID, { fetch })).toBe(21);
+    expect(sent).toEqual([]);
+    expect(queued()).toEqual([]);
+  });
+
   it("skips the flush when the login changed while it ran", async () => {
     const a = { server: "http://srv", token: "tok", machineId: "m1" };
     writeCredentials(a);

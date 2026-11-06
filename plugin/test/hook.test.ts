@@ -588,6 +588,36 @@ describe("handleHook", () => {
       expect(tool(repo)).toBeNull();
     });
 
+    it("a folder you were asked about and left off never sends, even from a bound session", () => {
+      setProjectState(plain, "asked");
+      handleHook(payload("UserPromptSubmit", { prompt: "hi" }), ENV, NOW);
+      expect(readSession("s1").project).toBe(repo);
+      expect(tool(plain)).toBeNull();
+    });
+
+    it("a session bound to a project turned off still sends from a project that is on", () => {
+      setProjectState(other, "on");
+      handleHook(payload("UserPromptSubmit", { prompt: "hi" }), ENV, NOW);
+      setProjectState(repo, "off");
+      expect(tool(other)?.cwd).toBe(other);
+      expect(tool(tree)).toBeNull();
+    });
+
+    it("a session file that cannot be read is not imported again", () => {
+      fs.mkdirSync(path.join(murmurDir(), "sessions"), { recursive: true });
+      fs.writeFileSync(path.join(murmurDir(), "sessions", "s1.json"), "{bad");
+      const r = handleHook(
+        payload("PreToolUse", { transcript_path: "/t/s1.jsonl" }),
+        ENV,
+        NOW,
+      );
+      expect(r.backfill).toBeUndefined();
+      expect(readSession("s1").backfill).toBe("done");
+      expect(
+        handleHook(payload("PreToolUse"), ENV, NOW).backfill,
+      ).toBeUndefined();
+    });
+
     it("a session first seen in an unset folder asks once and sends nothing", () => {
       const first = payload("SessionStart", { source: "startup", cwd: plain });
       expect(JSON.parse(handleHook(first, ENV, NOW).stdout)).toEqual({

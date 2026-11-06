@@ -20006,7 +20006,26 @@ function worktreeMain(root) {
   const dotGit = import_node_path.default.dirname(worktrees);
   const main2 = import_node_path.default.dirname(dotGit);
   const home = import_node_path.default.resolve(import_node_os.default.homedir());
-  return import_node_path.default.basename(worktrees) === "worktrees" && import_node_path.default.basename(dotGit) === ".git" && main2 !== home && import_node_path.default.dirname(main2) !== main2 ? main2 : void 0;
+  if (import_node_path.default.basename(worktrees) !== "worktrees" || import_node_path.default.basename(dotGit) !== ".git" || main2 === home || import_node_path.default.dirname(main2) === main2 || !isDir(dotGit))
+    return void 0;
+  const real = realpath(main2);
+  for (let d = root; import_node_path.default.dirname(d) !== d; d = import_node_path.default.dirname(d))
+    if (realpath(d) === real) return d;
+  return main2;
+}
+function isDir(p) {
+  try {
+    return import_node_fs.default.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function realpath(p) {
+  try {
+    return import_node_fs.default.realpathSync(p);
+  } catch {
+    return p;
+  }
 }
 function projectName(cwd) {
   const key = projectKey(cwd);
@@ -20037,7 +20056,7 @@ function projectState(cwd) {
 function sessionProjectState(cwd, sessionId) {
   const here = projectState(cwd);
   const bound = sessionId ? readSession(sessionId).project : void 0;
-  return here === "off" || !bound ? here : projects()[bound];
+  return here !== void 0 || !bound ? here : projects()[bound];
 }
 function setProjectState(cwd, s) {
   const all = readJson("projects.json", {});
@@ -20078,7 +20097,13 @@ var NO_NARRATION = {
   blocked: false
 };
 function isNewSession(sessionId) {
-  return readSession(sessionId).backfill === void 0;
+  if (!import_node_fs.default.existsSync(import_node_path.default.join(murmurDir(), sessionFile(sessionId))))
+    return true;
+  const s = readJson(
+    sessionFile(sessionId),
+    null
+  );
+  return s !== null && s.backfill === void 0;
 }
 function readSession(sessionId) {
   return {
@@ -20508,11 +20533,13 @@ function handleHook(payload, env, now) {
   if (isRevoked()) return start ? show(REVOKED_LINE) : NONE2;
   if (!sessionId) return NONE2;
   const fresh = isNewSession(sessionId);
-  let project = readSession(sessionId).project;
-  if (!project) {
-    project = projectKey(cwd);
-    updateSession(sessionId, { project });
-  }
+  const seen = readSession(sessionId);
+  const project = seen.project ?? projectKey(cwd);
+  if (!seen.project || !fresh && !seen.backfill)
+    updateSession(sessionId, {
+      project,
+      ...fresh ? {} : { backfill: seen.backfill ?? "done" }
+    });
   if (isPaused(cwd, sessionId) || isPaused(project)) {
     if (fresh) updateSession(sessionId, { backfill: "done" });
     return NONE2;

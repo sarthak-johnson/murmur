@@ -79,12 +79,34 @@ function worktreeMain(root: string): string | undefined {
   const dotGit = path.dirname(worktrees);
   const main = path.dirname(dotGit);
   const home = path.resolve(os.homedir());
-  return path.basename(worktrees) === "worktrees" &&
-    path.basename(dotGit) === ".git" &&
-    main !== home &&
-    path.dirname(main) !== main
-    ? main
-    : undefined;
+  if (
+    path.basename(worktrees) !== "worktrees" ||
+    path.basename(dotGit) !== ".git" ||
+    main === home ||
+    path.dirname(main) === main ||
+    !isDir(dotGit)
+  )
+    return undefined;
+  // Git writes the real path; keep the spelling `on` would store when run at the main
+  // root through a symlink (macOS /var is /private/var).
+  const real = realpath(main);
+  for (let d = root; path.dirname(d) !== d; d = path.dirname(d))
+    if (realpath(d) === real) return d;
+  return main;
+}
+function isDir(p: string): boolean {
+  try {
+    return fs.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function realpath(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
 }
 
 /** The project folder as people read it: home shown as ~. */
@@ -153,8 +175,9 @@ export function projectState(cwd: string): ProjectState | undefined {
   return projects()[projectKey(cwd)];
 }
 /**
- * What decides whether an event of `sessionId` at `cwd` goes: once the session is bound
- * to a project, that project's state, unless `cwd` is in a project turned off.
+ * What decides whether an event of `sessionId` at `cwd` goes: the state of the project
+ * at `cwd` when it has one (asked, on or off); in a folder with no state, once the
+ * session is bound to a project, that project's state.
  */
 export function sessionProjectState(
   cwd: string,
@@ -162,7 +185,7 @@ export function sessionProjectState(
 ): ProjectState | undefined {
   const here = projectState(cwd);
   const bound = sessionId ? readSession(sessionId).project : undefined;
-  return here === "off" || !bound ? here : projects()[bound];
+  return here !== undefined || !bound ? here : projects()[bound];
 }
 export function setProjectState(cwd: string, s: ProjectState): void {
   const all = readJson<Record<string, ProjectState>>("projects.json", {});
@@ -246,10 +269,17 @@ export const NO_NARRATION: Narration = {
 };
 /**
  * A session no hook has seen yet. /murmur:on may already have bound it to a project;
- * every hook that sees a session sets `backfill`.
+ * every hook that sees a session sets `backfill`. A file that cannot be read counts as
+ * seen: importing again would resend prompts the server cannot dedupe.
  */
 export function isNewSession(sessionId: string): boolean {
-  return readSession(sessionId).backfill === undefined;
+  if (!fs.existsSync(path.join(murmurDir(), sessionFile(sessionId))))
+    return true;
+  const s = readJson<Partial<SessionState> | null>(
+    sessionFile(sessionId),
+    null,
+  );
+  return s !== null && s.backfill === undefined;
 }
 export function readSession(sessionId: string): SessionState {
   return {
