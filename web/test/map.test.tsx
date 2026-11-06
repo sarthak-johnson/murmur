@@ -460,6 +460,7 @@ describe("MapView", () => {
           parts: [
             part({ id: "a", title: "Style B, departure board and more" }),
             part({ id: "b", title: "scratchpad/style/shared/deeper" }),
+            part({ id: "c", title: ".superpowers/sdd/2026-11-06-lit-plate-x" }),
           ],
         })}
         onOpenPart={() => {}}
@@ -469,6 +470,8 @@ describe("MapView", () => {
       screen.getByRole("button", { name }).querySelector(".label")?.textContent;
     expect(label(/^Style B/)).toBe("Style B, departure…");
     expect(label(/^scratchpad/)).toBe("…/style/shared/deeper");
+    // A last folder too long for the box ends at a dash, not mid-word.
+    expect(label(/^\.superpowers/)).toBe("…/2026-11-06-lit-plate…");
   });
 
   it("a growing canvas never moves existing chips", () => {

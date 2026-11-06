@@ -31,7 +31,7 @@ export const textWidth = (text: string, font: number) =>
 
 /**
  * Fits `text` in `px`. A path (slashes, no spaces) drops leading folders
- * ("…/style/shared"); other text ends at a word when one ends in the back half.
+ * ("…/style/shared"); text ends at a word or a dash when one ends in the back half.
  */
 function truncate(text: string, px: number, font: number): string {
   if (textWidth(text, font) <= px) return text;
@@ -39,14 +39,19 @@ function truncate(text: string, px: number, font: number): string {
     let tail = text;
     while (tail.includes("/") && textWidth(`…/${tail}`, font) > px)
       tail = tail.slice(tail.indexOf("/") + 1);
-    if (textWidth(`…/${tail}`, font) <= px) return `…/${tail}`;
+    return cutAtWord(`…/${tail}`, px, font);
   }
+  return cutAtWord(text, px, font);
+}
+
+function cutAtWord(text: string, px: number, font: number): string {
+  if (textWidth(text, font) <= px) return text;
   let out = text;
   while (out && textWidth(`${out}…`, font) > px) out = out.slice(0, -1);
-  const whole = /\s/.test(text.charAt(out.length));
-  const word = out.lastIndexOf(" ");
+  const whole = /[\s-]/.test(text.charAt(out.length));
+  const word = Math.max(out.lastIndexOf(" "), out.lastIndexOf("-"));
   if (!whole && word > out.length / 2) out = out.slice(0, word);
-  return `${out.trimEnd().replace(/[,;:]$/, "")}…`;
+  return `${out.trimEnd().replace(/[,;:-]$/, "")}…`;
 }
 
 function stateOf(p: PartView): "now" | "done" | "todo" | "stuck" {
