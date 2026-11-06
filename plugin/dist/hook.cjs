@@ -19857,6 +19857,7 @@ var TOKEN_PATTERNS = [
   // Opaque means it has a digit, so prose like "a Bearer token" stays.
   /(?<![A-Za-z])Bearer[ \t]+(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]{8,}/gi
 ];
+var AUTH_HEADER = /((?<![\w-])(?:proxy-)?authorization["']?[ \t]*[:=][ \t]*["']?)(?:[A-Za-z]+[ \t]+)?[^\s"']+/gi;
 var USER_PASS = [
   /((?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s:/@]+:)[^\s@/]+(?=@)/g,
   /((?<!\S)(?:-u|--user)(?:[ \t]+|=)["']?[^\s:"']+:)[^\s"']+/g
@@ -19870,6 +19871,7 @@ var CUT = MAX_STRING + 4096;
 function scrubString(s) {
   let out = s;
   for (const p of TOKEN_PATTERNS) out = out.replace(p, R);
+  out = out.replace(AUTH_HEADER, `$1${R}`);
   for (const p of USER_PASS) out = out.replace(p, `$1${R}`);
   out = out.replace(
     KEY_VALUE,
@@ -20146,7 +20148,8 @@ async function flush(c, {
           signal: AbortSignal.timeout(left)
         });
         if (res.status === 401) {
-          setRevoked(true);
+          const now = readCredentials();
+          if (!now || now.token === c.token) setRevoked(true);
           break;
         }
         if (res.status === 400) {

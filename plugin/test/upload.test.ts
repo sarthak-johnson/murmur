@@ -150,6 +150,21 @@ describe("queue", () => {
     expect(isRevoked()).toBe(false);
   });
 
+  it("a 401 for a token replaced by a new login does not disconnect the new login", async () => {
+    enqueue(ev(1));
+    writeCredentials({ ...CREDS, token: "old" });
+    let calls = 0;
+    const late = (async () => {
+      calls++;
+      // A new login lands while the old token's request is in flight.
+      writeCredentials({ ...CREDS, token: "new" });
+      return new Response("{}", { status: 401 });
+    }) as unknown as typeof fetch;
+    await flush({ ...CREDS, token: "old" }, opts({ fn: late }));
+    expect(calls).toBe(1);
+    expect(isRevoked()).toBe(false);
+  });
+
   it("events from another login or a project that is not on are dropped", async () => {
     enqueue(ev(1));
     enqueue(ev(2, {}, { machineId: "old" }));
