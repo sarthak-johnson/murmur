@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ApiError, api } from "../api";
 
 type State = "idle" | "busy" | "done" | "not_found" | "rate_limited" | "error";
@@ -9,8 +9,30 @@ const ERRORS: Record<string, string> = {
   error: "Something went wrong. Try again.",
 };
 
+const failed = (e: unknown): State => {
+  const c = e instanceof ApiError ? e.code : "error";
+  return c === "not_found" || c === "rate_limited" ? c : "error";
+};
+
 export function Device({ code }: { code: string }) {
   const [state, setState] = useState<State>("idle");
+  const [machine, setMachine] = useState<string | null>(null);
+
+  // Names the machine asking to connect; a dead code says so before any click.
+  useEffect(() => {
+    if (!code) return;
+    let live = true;
+    api.deviceInfo(code).then(
+      (r) => live && setMachine(r.machineName),
+      (e) => {
+        const s = failed(e);
+        if (live && s !== "error") setState(s);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [code]);
 
   async function approve() {
     setState("busy");
@@ -18,8 +40,7 @@ export function Device({ code }: { code: string }) {
       await api.approveDevice(code);
       setState("done");
     } catch (e) {
-      const c = e instanceof ApiError ? e.code : "error";
-      setState(c === "not_found" || c === "rate_limited" ? c : "error");
+      setState(failed(e));
     }
   }
 
@@ -32,8 +53,11 @@ export function Device({ code }: { code: string }) {
   }
   return (
     <main className="center">
-      <h1>Connect this machine?</h1>
+      <h1>{machine ? `Connect ${machine}?` : "Connect this machine?"}</h1>
       <p className="code">{code}</p>
+      <p className="muted">
+        Only approve if you just ran /murmur:login on this machine.
+      </p>
       {ERRORS[state] && (
         <p className="error" role="alert">
           {ERRORS[state]}
@@ -43,7 +67,7 @@ export function Device({ code }: { code: string }) {
         type="button"
         className="primary"
         onClick={approve}
-        disabled={state === "busy" || !code}
+        disabled={state === "busy" || state === "not_found" || !code}
       >
         Approve
       </button>

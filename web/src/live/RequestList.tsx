@@ -25,7 +25,10 @@ export function RequestList(props: {
               aria-current={r.id === selectedId ? "true" : undefined}
               onClick={() => onSelect(r.id)}
             >
-              <span className="kind">{KIND[r.kind]}</span>
+              <span className="kind">
+                {KIND[r.kind]}
+                {r.kindInferred && <span className="inferred">inferred</span>}
+              </span>
               <span className="clamp">{r.goal || r.prompt}</span>
             </button>
           </li>

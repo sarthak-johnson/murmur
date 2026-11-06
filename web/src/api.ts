@@ -72,6 +72,11 @@ export const api = {
     }
   },
   logout: () => call<unknown>("POST", "/auth/logout"),
+  deviceInfo: (userCode: string) =>
+    call<{ machineName: string }>(
+      "GET",
+      `/api/device/info?code=${encodeURIComponent(userCode)}`,
+    ),
   approveDevice: (userCode: string) =>
     call<{ ok: true }>("POST", "/api/device/approve", { userCode }),
   sessions: () => call<{ sessions: SessionRow[] }>("GET", "/api/sessions"),

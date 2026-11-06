@@ -264,16 +264,116 @@ describe("live screen", () => {
     expect(screen.queryByText(/Claude needs you:/)).toBeNull();
   });
 
-  it("a pending risky flag shows a bar, a stuck flag does not", () => {
+  it("the notice row shows the top notice and +N more opens the rest", async () => {
     const flags = [
       { kind: "risky" as const, text: "rm -rf build", ts: T0, pending: true },
-      { kind: "stuck" as const, text: "tests failing", ts: T0, pending: true },
+      {
+        kind: "stuck" as const,
+        text: "Tried a fix 3 times",
+        part: "endpoint",
+        ts: T0,
+        pending: true,
+      },
+      { kind: "stuck" as const, text: "Old run", ts: T0, pending: false },
     ];
     const view = session();
     view.requests[1] = request({ flags });
     show(view);
-    expect(screen.getByText("rm -rf build")).toBeTruthy();
-    expect(screen.queryByText("tests failing")).toBeNull();
+    const row = document.querySelector(".notice-row") as HTMLElement;
+    expect(row.querySelector(".notice")?.textContent).toBe("rm -rf build");
+    expect(within(row).queryByText(/Tried a fix/)).toBeNull();
+    await userEvent.click(within(row).getByRole("button", { name: "+1 more" }));
+    const stuck = within(row).getByText(/Tried a fix 3 times/);
+    expect(stuck.closest("li")?.className).toContain("notice-stuck");
+    expect(stuck.closest("li")?.textContent).toBe(
+      "StuckTried a fix 3 times · Server endpoint",
+    );
+    expect(within(row).queryByText(/Old run/)).toBeNull();
+  });
+
+  it("a stuck flag alone shows in the notice row", () => {
+    const view = session();
+    view.requests[1] = request({
+      flags: [
+        { kind: "stuck", text: "Tried a fix 4 times", ts: T0, pending: true },
+      ],
+    });
+    show(view);
+    const top = document.querySelector(".notice-row .notice");
+    expect(top?.className).toContain("notice-stuck");
+    expect(top?.textContent).toBe("StuckTried a fix 4 times");
+  });
+
+  it("a needs-you notice does not move the grid", () => {
+    const blocks = () =>
+      [...(document.querySelector(".live-main")?.children ?? [])].map(
+        (el) => el.className,
+      );
+    const { rerender } = show(session());
+    const empty = blocks();
+    expect(empty).toContain("notice-row");
+    expect(document.querySelector(".notice-row")?.children).toHaveLength(0);
+    rerender(
+      <Live
+        sessionId="s1"
+        view={session({
+          needsYou: { reason: "permission", text: "Allow Bash?", since: T0 },
+        })}
+        viewAt={() => null}
+        status="live"
+        lastLooked={null}
+      />,
+    );
+    expect(blocks()).toEqual(empty);
+    expect(document.querySelector(".notice-row")?.textContent).toContain(
+      "Allow Bash?",
+    );
+  });
+
+  it("delete session asks once, then deletes and goes to the sessions list", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      show(session());
+      const del = screen.getByRole("button", { name: "Delete session" });
+      await userEvent.click(del);
+      expect(
+        screen.getByText(
+          "If Claude is still running here, new activity will start this session again.",
+        ),
+      ).toBeTruthy();
+      vi.advanceTimersByTime(5000);
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Delete session" }),
+        ).toBeTruthy(),
+      );
+      expect(calls.filter((c) => c.method === "DELETE")).toEqual([]);
+      await userEvent.click(
+        screen.getByRole("button", { name: "Delete session" }),
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Delete?" }));
+      await waitFor(() => expect(location.pathname).toBe("/"));
+      expect(calls.filter((c) => c.method === "DELETE")).toEqual([
+        { method: "DELETE", url: "/api/sessions/s1", body: {} },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a guessed request kind is tagged inferred", () => {
+    const view = session();
+    view.requests[0] = {
+      ...(view.requests[0] as RequestView),
+      kindInferred: true,
+    };
+    show(view);
+    const list = screen.getByRole("navigation", { name: "Requests" });
+    const [mapped, guessed] = within(list).getAllByRole("button");
+    expect(within(guessed as HTMLElement).getByText("inferred").className).toBe(
+      "inferred",
+    );
+    expect(within(mapped as HTMLElement).queryByText("inferred")).toBeNull();
   });
 
   it("catch-up line renders and hides when null", () => {
@@ -302,7 +402,7 @@ describe("live screen", () => {
     expect(screen.queryByText(/Since you last looked/)).toBeNull();
   });
 
-  it("CatchUp hides when lastLooked is null", () => {
+  it("catch-up hides when lastLooked is null", () => {
     show(session(), { lastLooked: null, before: session({ requests: [] }) });
     expect(screen.queryByText(/Since you last looked/)).toBeNull();
   });

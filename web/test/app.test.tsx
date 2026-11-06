@@ -77,6 +77,29 @@ describe("App", () => {
     expect(page?.children[1]?.querySelector(".skeleton")).toBeTruthy();
   });
 
+  it("a failed /api/me retries instead of showing the login page", async () => {
+    history.pushState(null, "", "/");
+    let n = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/me" && ++n === 1)
+          return { ok: false, status: 502, json: async () => ({}) } as Response;
+        const body = url === "/api/me" ? ME : { sessions: [] };
+        return { ok: true, status: 200, json: async () => body } as Response;
+      }),
+    );
+    render(<App />);
+    expect(
+      await screen.findByText("Could not reach Murmur. Retrying…"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("link", { name: "Sign in with GitHub" }),
+    ).toBeNull();
+    expect(await screen.findByText("ada", {}, { timeout: 3000 })).toBeTruthy();
+    expect(screen.queryByText("Could not reach Murmur. Retrying…")).toBeNull();
+  });
+
   it("the part route uses the wide header like the live screen", async () => {
     history.pushState(null, "", "/s/s1/r/r1/p/x");
     mockFetch({ "GET /api/me": { body: ME } });

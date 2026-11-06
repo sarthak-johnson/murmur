@@ -68,30 +68,42 @@ describe("pages", () => {
     expect(screen.getByText("live")).toBeTruthy();
   });
 
-  it("device page approves the code from the URL", async () => {
+  it("device page names the machine and approves the code from the URL", async () => {
+    routes["GET /api/device/info?code=ABCD-1234"] = () => ({
+      body: { machineName: "ada-laptop" },
+    });
     routes["POST /api/device/approve"] = () => ({ body: { ok: true } });
     render(<Device code="ABCD-1234" />);
+    expect(await screen.findByText("Connect ada-laptop?")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Only approve if you just ran /murmur:login on this machine.",
+      ),
+    ).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Approve" }));
     expect(
       await screen.findByText("Connected. You can close this tab."),
     ).toBeTruthy();
-    const c = calls[0];
+    const c = calls[1];
     expect(c?.init.body).toBe(JSON.stringify({ userCode: "ABCD-1234" }));
     expect(c?.init.headers).toEqual({ "Content-Type": "application/json" });
   });
 
   it("device page explains an invalid code", async () => {
-    routes["POST /api/device/approve"] = () => ({
+    routes["GET /api/device/info?code=ZZZZ-0000"] = () => ({
       status: 404,
       body: { error: "not_found" },
     });
     render(<Device code="ZZZZ-0000" />);
-    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
     expect(
       await screen.findByText(
         "That code is not valid or has expired. Run /murmur:login again.",
       ),
     ).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 
   it("settings rejects retention 0", async () => {

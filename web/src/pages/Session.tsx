@@ -1,9 +1,9 @@
 import { catchUp, type SessionView } from "@murmur/core";
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { ApiError, api } from "../api";
 import { useLastLooked } from "../lastLooked";
 import { Assumptions } from "../live/Assumptions";
-import { CatchUp } from "../live/CatchUp";
-import { FlagsBar } from "../live/FlagsBar";
+import { Notices } from "../live/Notices";
 import { NowCard } from "../live/NowCard";
 import { PhaseStrip } from "../live/PhaseStrip";
 import { PlanPanel } from "../live/PlanPanel";
@@ -60,9 +60,52 @@ function StatusLine(props: { status: SessionStatus; ended?: boolean }) {
   return null;
 }
 
+/** Two clicks: "Delete session", then "Delete?" within 5 s. */
+function DeleteSession({ sessionId }: { sessionId: string }) {
+  const [armed, setArmed] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  async function click() {
+    setFailed(false);
+    if (!armed) {
+      setArmed(true);
+      timer.current = setTimeout(() => setArmed(false), 5000);
+      return;
+    }
+    clearTimeout(timer.current);
+    setArmed(false);
+    try {
+      await api.deleteSession(sessionId);
+    } catch (e) {
+      // Already gone counts as deleted.
+      if (!(e instanceof ApiError && e.status === 404)) return setFailed(true);
+    }
+    navigate("/");
+  }
+  return (
+    <span className="delete-session">
+      <button type="button" className="link" onClick={click}>
+        {armed ? "Delete?" : "Delete session"}
+      </button>
+      {(armed || failed) && (
+        <span
+          className={failed ? "delete-note error" : "delete-note"}
+          role={failed ? "alert" : undefined}
+        >
+          {failed
+            ? "Could not delete this session. Try again."
+            : "If Claude is still running here, new activity will start this session again."}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function Skeleton() {
   return (
     <div className="skeleton" aria-hidden="true">
+      <div className="notice-row" />
       <div className="sk sk-strip" />
       <div className="sk-grid">
         <div className="sk sk-now" />
@@ -133,6 +176,7 @@ export function Live(props: {
             {req?.goal || req?.prompt || view.title}
           </h1>
           <StatusLine status={status} ended={view.ended} />
+          <DeleteSession sessionId={sessionId} />
         </div>
         {req ? (
           <RequestScreen
@@ -173,14 +217,19 @@ function RequestScreen(props: {
 
   return (
     <>
-      <FlagsBar needsYou={view.needsYou} flags={req.flags} />
+      <Notices
+        needsYou={view.needsYou}
+        flags={req.flags}
+        parts={req.parts}
+        catchUp={since}
+        since={lastLooked}
+      />
       <PhaseStrip
         phases={req.phases}
         inferred={req.planInferred}
         selected={phaseId}
         onSelect={setPhaseId}
       />
-      <CatchUp text={since} since={lastLooked} />
       <div className="live-grid">
         <NowCard request={req} />
         <PlanPanel

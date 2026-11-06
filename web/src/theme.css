@@ -401,14 +401,39 @@ label {
 }
 .live-title {
   font-size: 18px;
-  margin: 0;
+  margin: 0 auto 0 0;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+.delete-session {
+  position: relative;
+  flex: none;
+  font-size: 12px;
+}
+.delete-note {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  width: max-content;
+  max-width: min(320px, 80vw);
+  padding: 6px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
+}
+.header-note {
+  font-size: 12px;
 }
 .status-line {
   margin-left: auto;
   font-size: 12px;
   white-space: nowrap;
+}
+.live-title ~ .status-line {
+  margin-left: 0;
 }
 .live-dot {
   color: var(--muted);
@@ -482,38 +507,82 @@ label {
   font-size: 13px;
 }
 
-/* Flags, phase strip, catch-up */
-.flags {
-  display: grid;
-  gap: 6px;
+/* Notice row (needs you, risky, stuck, catch-up), phase strip */
+.notice-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
   margin-bottom: 12px;
 }
-.flag {
+.notice {
   margin: 0;
-  padding: 8px 12px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
   border-radius: 8px;
+  background: var(--panel-2);
   font-size: 13px;
   overflow-wrap: anywhere;
 }
-.flag-needs {
+.notice-row > .notice {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  line-height: 31px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.notice-needs {
   border: 1.5px solid var(--now);
   background: color-mix(in srgb, var(--now) 10%, var(--panel));
 }
-.needs-chip {
+.notice-risky,
+.notice-stuck {
+  border: 1.5px solid var(--bad);
+  background: color-mix(in srgb, var(--bad) 10%, var(--panel));
+}
+.notice-chip {
   display: inline-block;
   margin-right: 8px;
   padding: 0 6px;
-  border: 1px solid var(--now);
+  border: 1px solid currentColor;
   border-radius: 4px;
-  color: var(--now);
   font-size: 11px;
   font-weight: 600;
   line-height: 18px;
   vertical-align: 1px;
 }
-.flag-risky {
-  border: 1.5px solid var(--bad);
-  background: color-mix(in srgb, var(--bad) 10%, var(--panel));
+.notice-needs .notice-chip {
+  color: var(--now);
+}
+.notice-stuck .notice-chip {
+  color: var(--bad);
+}
+.notice-more {
+  flex: none;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.notice-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
+}
+.notice-list .notice {
+  padding: 6px 12px;
 }
 .strip-wrap {
   margin-bottom: 12px;
@@ -580,16 +649,6 @@ label {
 .phase-seg[aria-pressed="true"] {
   border-color: var(--muted);
 }
-.catch-up {
-  margin: 0 0 12px;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  background: var(--panel-2);
-  color: var(--text);
-  border-radius: 8px;
-  font-size: 13px;
-}
-
 /* Grid: see the breakpoints at the end */
 .live-grid {
   display: grid;

@@ -51,9 +51,32 @@ function Header(props: { me: Me; wide: boolean; onSignOut: () => void }) {
 export function App() {
   const route = useRoute();
   const [me, setMe] = useState<Me | null | undefined>(undefined);
+  const [unreachable, setUnreachable] = useState(false);
 
+  // Only a 401 means signed out (api.me gives null); anything else retries with backoff.
   useEffect(() => {
-    api.me().then(setMe, () => setMe(null));
+    let stopped = false;
+    let delay = 1000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = () =>
+      api.me().then(
+        (m) => {
+          if (stopped) return;
+          setUnreachable(false);
+          setMe(m);
+        },
+        () => {
+          if (stopped) return;
+          setUnreachable(true);
+          timer = setTimeout(load, delay);
+          delay = Math.min(delay * 2, 30_000);
+        },
+      );
+    load();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -86,6 +109,11 @@ export function App() {
         <header className="header">
           <div className={wide ? "header-in wide" : "header-in"}>
             <span className="wordmark">Murmur</span>
+            {unreachable && (
+              <span className="muted header-note" role="status">
+                Could not reach Murmur. Retrying…
+              </span>
+            )}
           </div>
         </header>
         {wide ? (
