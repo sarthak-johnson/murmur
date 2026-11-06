@@ -206,3 +206,135 @@ label {
 .send-text {
   color: var(--muted);
 }
+.map svg {
+  display: block;
+  font-family: var(--font-ui);
+}
+.map-caption {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.map .spoke {
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+.map .link {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.3;
+  stroke-dasharray: 4 3;
+}
+.map .arrow-head {
+  fill: var(--muted);
+}
+.map .link-label,
+.map .phase-tag,
+.map .map-empty {
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.map .link-label {
+  fill: var(--muted);
+  font-size: 10.5px;
+  text-anchor: middle;
+}
+.map .map-empty {
+  fill: var(--muted);
+  font-size: 13px;
+  text-anchor: middle;
+}
+.map .backing {
+  fill: var(--panel);
+}
+.map .dim {
+  transition: opacity 150ms;
+}
+.map .goal-box {
+  fill: var(--text);
+}
+.map .goal-label {
+  fill: var(--bg);
+  font-size: 14px;
+  font-weight: 600;
+  text-anchor: middle;
+}
+.map-node {
+  cursor: pointer;
+  outline: none;
+}
+.map-node:focus-visible {
+  outline: none;
+}
+.map-node .ring {
+  fill: none;
+  stroke: var(--now);
+  stroke-width: 2;
+  visibility: hidden;
+}
+.map-node:focus-visible .ring {
+  visibility: visible;
+}
+.map-node .box {
+  fill: var(--panel);
+  stroke: var(--line);
+}
+.map-node .label {
+  fill: var(--muted);
+  font-size: 12px;
+  text-anchor: middle;
+}
+.map-node:hover .box {
+  fill: var(--panel-2);
+}
+.map-node.now .box {
+  fill: color-mix(in srgb, var(--now) 12%, var(--panel));
+  stroke: var(--now);
+  stroke-width: 2;
+}
+.map-node.now .label {
+  fill: var(--text);
+  font-weight: 600;
+}
+.map-node .dot {
+  fill: var(--now);
+}
+.map-node.done .box {
+  stroke: var(--done);
+}
+.map-node.done .label {
+  fill: var(--text);
+}
+.map-node .tick {
+  fill: var(--done);
+}
+.map-node.stuck .box {
+  stroke: var(--bad);
+  stroke-width: 2;
+}
+.map-node.stuck .label {
+  fill: var(--text);
+}
+.map .phase-tag {
+  fill: var(--faint);
+  font-size: 10px;
+}
+.map .chip-line {
+  stroke: var(--agent);
+  stroke-dasharray: 3 3;
+}
+.map .chip-box {
+  fill: color-mix(in srgb, var(--agent) 10%, var(--panel));
+  stroke: var(--agent);
+}
+.map .chip-label {
+  fill: var(--agent);
+  font-size: 10.5px;
+  text-anchor: middle;
+}
+@media (prefers-reduced-motion: reduce) {
+  .map .dim {
+    transition: none;
+  }
+}
