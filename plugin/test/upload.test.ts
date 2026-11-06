@@ -136,6 +136,7 @@ describe("queue", () => {
   });
 
   it("a 401 stops flushing and marks the machine disconnected", async () => {
+    writeCredentials(CREDS);
     for (let i = 1; i <= 3; i++) enqueue(ev(i));
     const f = fakeFetch([401]);
     expect(await flush(CREDS, opts(f, { batchSize: 1 }))).toEqual({

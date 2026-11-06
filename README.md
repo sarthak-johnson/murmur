@@ -14,15 +14,10 @@ Developing Murmur itself also needs pnpm.
 
 ## Using it in Claude Code
 
-Add the marketplace and install the plugin:
-
-```bash
-claude plugin marketplace add sarthak-johnson/murmur
-```
-
-Then, inside Claude Code:
+Inside Claude Code, add the marketplace and install the plugin:
 
 ```
+/plugin marketplace add sarthak-johnson/murmur
 /plugin install murmur@murmur
 /murmur:login
 /murmur:on
@@ -32,7 +27,9 @@ Then, inside Claude Code:
 `/murmur:on` turns on the current project; nothing is sent for projects you have not turned on.
 `/murmur:off`, `/murmur:pause`, `/murmur:resume`, `/murmur:status` and `/murmur:logout` do what they say.
 
-Until a hosted server exists, point the plugin at a local one with `MURMUR_SERVER=http://localhost:8787`.
+The plugin talks to `http://localhost:8787` by default, which is the local server below.
+For another server, set `MURMUR_SERVER` or run `murmur login <server>` in a terminal.
+The repository is private for now, so installing needs GitHub access to it.
 
 ## Running locally
 

@@ -140,8 +140,7 @@ export async function flush(
         if (res.status === 401) {
           // A login that replaced this token while the request was in flight
           // must not be marked disconnected by the old token's 401.
-          const now = readCredentials();
-          if (!now || now.token === c.token) setRevoked(true);
+          if (readCredentials()?.token === c.token) setRevoked(true);
           break;
         }
         // One event the server will never take must not wedge the queue: drop it

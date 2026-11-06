@@ -157,6 +157,15 @@ test.each([
     `{"Authorization": "[redacted]"}`,
   ],
   ["proxy-authorization: Digest abc", "proxy-authorization: [redacted]"],
+  ["X-Authorization: Basic YWxhZGRpbjpvcGVu", "X-Authorization: [redacted]"],
+  [
+    `Authorization: Digest username="Mufasa", nonce="dcd98b", response="6629fa"`,
+    `Authorization: [redacted]"`,
+  ],
+  [
+    "Authorization: AWS4-HMAC-SHA256 Credential=AKID/x, Signature=fe5f80f77d5f",
+    "Authorization: [redacted]",
+  ],
   ["PORT=3000 name: Sam", "PORT=3000 name: Sam"],
 ])("redacts %j", (input, out) => {
   expect(scrubString(input)).toBe(out);
@@ -186,6 +195,13 @@ test.each([
   ["bearer run", `Bearer ${"a".repeat(N)}`],
   ["authorization headers", "Authorization: Basic ".repeat(N / 21)],
   ["authorization spaces", `Authorization:${" ".repeat(N)}`],
+  ["authorization quotes", `Authorization:"`.repeat(N / 15)],
+  ["x-authorization", "x-authorization: a ".repeat(N / 19)],
+  ["authorization no colon", "authorization".repeat(N / 13)],
+  [
+    "authorization scheme quotes",
+    `Authorization: Digest ${`a="b", `.repeat(N / 8)}`,
+  ],
   [
     "prefixes",
     "AIza npm_ glpat- ghp_ xoxb- sk_live_ AKIA sk-ant- ".repeat(N / 48),
