@@ -2,6 +2,7 @@ import type { MurmurEvent } from "../events.js";
 import { applyAgents } from "./agents.js";
 import { applyFiles } from "./files.js";
 import { applyFlags, needsYou } from "./flags.js";
+import { applyInference } from "./infer.js";
 import { applyPlan, cut, newRequest } from "./requests.js";
 import type { AgentView, SessionView } from "./types.js";
 
@@ -12,6 +13,7 @@ export function reduce(events: MurmurEvent[]): SessionView {
   const requests = splitRequests(sorted).map(({ start, rest }, i, all) => {
     const req = newRequest(start);
     const trace = applyPlan(req, rest);
+    applyInference(req, rest);
     applyFiles(req, rest, trace);
     applyAgents(req, rest, trace, agents);
     applyFlags(req, rest, trace, i < all.length - 1);
