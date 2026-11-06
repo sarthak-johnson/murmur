@@ -288,9 +288,145 @@ describe("MapView", () => {
       ".map-chips",
       ".map .link",
       ".map .link-label",
+      ".map .chip",
+      ".map .spoke",
     ])
       expect(selectors).toContain(sel);
     const reduced = flat.slice(flat.indexOf("prefers-reduced-motion"));
     expect(reduced).toMatch(/animation: none/);
+  });
+
+  function linkGeometry(container: HTMLElement) {
+    const d = [...container.querySelectorAll("path.link")].map((l) =>
+      l.getAttribute("d"),
+    );
+    const labels = [...container.querySelectorAll("text.link-label")].map(
+      (t) => `${t.getAttribute("x")},${t.getAttribute("y")}`,
+    );
+    return { d, labels };
+  }
+
+  it("a growing canvas never moves existing links or their labels", () => {
+    const ring = Array.from({ length: 8 }, (_, i) =>
+      part({ id: `p${i}`, title: `Part ${i}` }),
+    );
+    // Bottom-left (slot 3) to bottom-right (slot 2), and top-left to left.
+    const linked = ring.map((p) =>
+      p.id === "p3"
+        ? { ...p, links: [{ to: "p2", label: "feeds" }] }
+        : p.id === "p0"
+          ? { ...p, links: [{ to: "p4", label: "reads" }] }
+          : p,
+    );
+    const a = render(
+      <MapView request={request({ parts: linked })} onOpenPart={() => {}} />,
+    );
+    const before = linkGeometry(a.container);
+    a.unmount();
+    const b = render(
+      <MapView
+        request={request({
+          parts: [...linked, part({ id: "p8", title: "Part 8" })],
+        })}
+        onOpenPart={() => {}}
+      />,
+    );
+    expect(linkGeometry(b.container)).toEqual(before);
+    b.unmount();
+
+    const bugParts = [
+      part({
+        id: "sym",
+        title: "Blank page",
+        tag: "symptom",
+        links: [{ to: "c", label: "caused by" }],
+      }),
+      part({ id: "s1", title: "Redirect", tag: "suspect" }),
+      part({ id: "c", title: "Cookie flag", tag: "cause" }),
+    ];
+    const bug = (parts: PartView[]) =>
+      render(
+        <MapView
+          request={request({ kind: "bug", parts })}
+          onOpenPart={() => {}}
+        />,
+      );
+    const c = bug(bugParts);
+    const bugBefore = linkGeometry(c.container);
+    c.unmount();
+    const d = bug([
+      ...bugParts,
+      part({ id: "s2", title: "Cache", tag: "suspect" }),
+      part({ id: "s3", title: "Proxy", tag: "suspect" }),
+    ]);
+    expect(linkGeometry(d.container)).toEqual(bugBefore);
+  });
+
+  it("chips on an overflow row never cover a node or its phase tag", () => {
+    const parts = Array.from({ length: 14 }, (_, i) =>
+      part({
+        id: `p${i}`,
+        title: `Part ${i}`,
+        phase: "p2",
+        agents: i === 9 ? ["a1", "a2", "a3"] : [],
+      }),
+    );
+    const req = request({
+      agents: [
+        agent("a1", "tests"),
+        agent("a2", "reading"),
+        agent("a3", "docs"),
+      ],
+      parts,
+    });
+    const { container } = render(
+      <MapView request={req} onOpenPart={() => {}} />,
+    );
+    const rect = (r: Element) => ({
+      x: Number(r.getAttribute("x")),
+      y: Number(r.getAttribute("y")),
+      w: Number(r.getAttribute("width")),
+      h: Number(r.getAttribute("height")),
+    });
+    const nodes = [...container.querySelectorAll("rect.box, rect.goal-box")]
+      .map(rect)
+      .map((r) => ({ ...r, y: r.y - 16, h: r.h + 16 }));
+    const chips = [...container.querySelectorAll("rect.chip-box")].map(rect);
+    expect(chips).toHaveLength(3);
+    for (const c of chips)
+      for (const n of nodes) {
+        const apart =
+          c.x + c.w <= n.x ||
+          n.x + n.w <= c.x ||
+          c.y + c.h <= n.y ||
+          n.y + n.h <= c.y;
+        expect(apart).toBe(true);
+      }
+  });
+
+  it("a growing canvas never moves existing chips", () => {
+    const agents = [agent("a1", "tests"), agent("a2", "reading")];
+    const ring = Array.from({ length: 8 }, (_, i) =>
+      part({
+        id: `p${i}`,
+        title: `Part ${i}`,
+        agents: i === 3 || i === 7 ? ["a1", "a2"] : [],
+      }),
+    );
+    const chipsOf = (parts: PartView[]) => {
+      const { container, unmount } = render(
+        <MapView request={request({ agents, parts })} onOpenPart={() => {}} />,
+      );
+      const out = [...container.querySelectorAll("rect.chip-box")].map(
+        (r) => `${r.getAttribute("x")},${r.getAttribute("y")}`,
+      );
+      unmount();
+      return out;
+    };
+    const before = chipsOf(ring);
+    expect(before).toHaveLength(4);
+    expect(chipsOf([...ring, part({ id: "p8", title: "Part 8" })])).toEqual(
+      before,
+    );
   });
 });

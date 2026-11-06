@@ -5,6 +5,7 @@ import {
   CHIP_H,
   chipCount,
   layoutMap,
+  linkFrame,
   mapSize,
   type NodeBox,
   RING_SIZE,
@@ -139,26 +140,40 @@ export function MapView(props: {
   };
 
   // Chip stacks go where they fit; link labels then avoid nodes, phase tags,
-  // chips and each other.
-  // Each box plus the phase tag above it.
+  // chips and each other. `tagged` is each box plus the phase tag above it.
   const tagged = rects.map((r) => ({ ...r, y: r.y - 16, h: r.h + 16 }));
+  const frame = linkFrame(kind, width);
+  const ringIds = new Set(
+    kind === "feature" ? nodes.slice(0, RING_SIZE).map((n) => n.id) : [],
+  );
+  // Ring parts and the goal never see overflow parts, so the overflow grid
+  // growing below cannot move their chips or labels. rects[nodes.length] is the goal.
+  const inRing = (j: number) =>
+    kind !== "feature" || j < RING_SIZE || j === nodes.length;
   const chipSpots = placed.map(({ part, box }, i) => {
     const n = chipCount(part);
     if (!n) return null;
+    const ring = ringIds.has(box.id);
     const spot = chipSpot(
       box,
       n,
-      tagged.filter((_, j) => j !== i),
+      tagged.filter((_, j) => j !== i && (!ring || inRing(j))),
       width,
-      height,
+      ring ? frame.height : Number.POSITIVE_INFINITY,
     );
     return {
       ...spot,
       n,
+      ring,
       rect: { x: spot.x, y: spot.y, w: CHIP_W, h: n * (CHIP_H + CHIP_GAP) },
     };
   });
-  const taken = [...tagged, ...chipSpots.flatMap((c) => (c ? [c.rect] : []))];
+  const taken: (Rect & { ring: boolean })[] = [
+    ...tagged.map((r, j) => ({ ...r, ring: inRing(j) })),
+    ...chipSpots.flatMap((c) =>
+      c ? [{ ...c.rect, ring: kind !== "feature" || c.ring }] : [],
+    ),
+  ];
   const links = parts.flatMap((p) =>
     p.links.flatMap((l) => {
       const a = boxOf.get(p.id);
@@ -168,17 +183,22 @@ export function MapView(props: {
       const my = (a.y + b.y) / 2;
       const len = Math.hypot(b.x - a.x, b.y - a.y);
       if (!len) return [];
-      // Bow the curve away from the canvas centre, like the mockup, unless
-      // that would push it off the canvas.
+      // Bow the curve away from a fixed point, like the mockup, unless that
+      // would cross the fixed frame. Neither depends on the growing height.
       let nx = -(b.y - a.y) / len;
       let ny = (b.x - a.x) / len;
-      if (nx * (mx - width / 2) + ny * (my - height / 2) < 0) {
+      if (nx * (mx - frame.x) + ny * (my - frame.y) < 0) {
         nx = -nx;
         ny = -ny;
       }
       const bow = len * 0.18;
+      // Links that touch an overflow part may bow below the base.
+      const ring =
+        kind !== "feature" || (ringIds.has(a.id) && ringIds.has(b.id));
+      const bottom =
+        ring && kind === "feature" ? frame.height : Number.POSITIVE_INFINITY;
       const off = (x: number, y: number) =>
-        x < 12 || y < 12 || x > width - 12 || y > height - 12;
+        x < 12 || y < 12 || x > frame.width - 12 || y > bottom - 12;
       if (off(mx + nx * bow, my + ny * bow)) {
         nx = -nx;
         ny = -ny;
@@ -203,13 +223,15 @@ export function MapView(props: {
       );
       // Least overlap wins; ties keep the earlier (preferred) spot.
       const cost = (r: Rect) =>
-        (r.x < 0 || r.y < 0 || r.x + r.w > width || r.y + r.h > height
-          ? 1e9
-          : 0) + taken.reduce((sum, o) => sum + overlap(r, o), 0);
+        (r.x < 0 || r.y < 0 || r.x + r.w > width ? 1e9 : 0) +
+        taken.reduce(
+          (sum, o) => (ring && !o.ring ? sum : sum + overlap(r, o)),
+          0,
+        );
       const spot = spots.reduce((best, c) =>
         cost(c.rect) < cost(best.rect) ? c : best,
       );
-      taken.push(spot.rect);
+      taken.push({ ...spot.rect, ring });
       return [
         {
           key: `${p.id}>${l.to}>${l.label}`,

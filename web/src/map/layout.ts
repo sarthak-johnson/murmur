@@ -43,10 +43,10 @@ const RING: [number, number][] = (
   clamp(fx * BASE_W, NODE_W / 2 + PAD, BASE_W - NODE_W / 2 - PAD),
   clamp(fy * BASE_H, NODE_H / 2 + TAG_ROOM, BASE_H - NODE_H / 2 - PAD),
 ]);
-/** Parts past the ring: a grid below it, 4 per row, rows 70 px apart. */
+/** Parts past the ring: a grid below it, 4 per row, with the column chip room. */
 const GRID_COLS = 4;
 const GRID_TOP = 460;
-const GRID_PITCH = 70;
+const GRID_PITCH = ROW_PITCH;
 export const RING_SIZE = RING.length;
 
 /** Number of chips a part shows: up to two agents, then one `+N more`. */
@@ -81,7 +81,7 @@ export function mapSize(
     return {
       width: BASE_W,
       height: rows
-        ? GRID_TOP + (rows - 1) * GRID_PITCH + NODE_H / 2 + 40
+        ? GRID_TOP + (rows - 1) * GRID_PITCH + NODE_H / 2 + CHIP_ROOM
         : BASE_H,
     };
   }
@@ -145,4 +145,24 @@ export function layoutMap(
   });
   const nodes = parts.map((p) => at.get(p.id) as NodeBox);
   return { center: { id: "goal", x: width / 2, y: 0, w: 0, h: 0 }, nodes };
+}
+
+/**
+ * Fixed frame for link curves, never taken from the growing canvas: links bow
+ * away from (x, y), and a curve may only flip back when its bow would cross
+ * the frame edges. Feature: the goal centre on the 720 x 440 base. Column
+ * kinds: the centre of the fixed width and of the first row band, no bottom.
+ */
+export function linkFrame(
+  kind: MapInput["kind"],
+  width: number,
+): { x: number; y: number; width: number; height: number } {
+  return kind === "feature"
+    ? { x: BASE_W / 2, y: BASE_H / 2, width: BASE_W, height: BASE_H }
+    : {
+        x: width / 2,
+        y: TAG_ROOM + ROW_PITCH / 2,
+        width,
+        height: Number.POSITIVE_INFINITY,
+      };
 }
