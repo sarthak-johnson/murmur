@@ -31,7 +31,13 @@ export function PlanPanel(props: {
         </p>
       )}
       {phases.map((ph, i) => (
-        <PhaseCard key={ph.id} n={i + 1} phase={ph} {...props} />
+        <PhaseCard
+          key={ph.id}
+          n={i + 1}
+          phase={ph}
+          only={phases.length === 1}
+          {...props}
+        />
       ))}
     </section>
   );
@@ -40,14 +46,17 @@ export function PlanPanel(props: {
 function PhaseCard(props: {
   n: number;
   phase: PhaseView;
+  /** The plan's only phase never folds: folding would hide the whole plan. */
+  only: boolean;
   request: RequestView;
   hoverPart?: string | undefined;
   onHover(partId: string | undefined): void;
   onOpen(partId: string): void;
 }) {
-  const { n, phase, request, hoverPart, onHover, onOpen } = props;
+  const { n, phase, only, request, hoverPart, onHover, onOpen } = props;
   const [open, setOpen] = useState(false);
-  const folded = phase.status === "done" && !open;
+  const foldable = phase.status === "done" && !only;
+  const folded = foldable && !open;
   const done = phase.tasks.filter((t) => t.status === "done").length;
   const partTitle = (id?: string) =>
     request.parts.find((p) => p.id === id)?.title;
@@ -62,7 +71,7 @@ function PhaseCard(props: {
         <span className="phase-n">
           {done} / {phase.tasks.length}
         </span>
-        {phase.status === "done" && (
+        {foldable && (
           <button
             type="button"
             className="link fold"
@@ -81,7 +90,9 @@ function PhaseCard(props: {
       ) : (
         <ul className="tasks">
           {phase.tasks.map((t) => {
-            const chip = partTitle(t.part);
+            // A chip that only repeats the task's own name says nothing.
+            const named = partTitle(t.part);
+            const chip = named === t.title ? undefined : named;
             const body = (
               <>
                 <span className={`glyph ${t.status}`} aria-hidden="true">

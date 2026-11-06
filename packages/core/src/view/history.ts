@@ -119,6 +119,9 @@ export function inferHistory(
             (req.finished && (lastSeen.get(agentId ?? "") ?? -1) <= i)
           ? "done"
           : "running";
+      // A helper judged finished reads done everywhere (map chips, helper lists).
+      if (status !== "running" && agent?.status === "running")
+        agent.status = "done";
       const review = REVIEW.test(description);
       let b = out.get(id);
       if (!b) {
@@ -244,6 +247,7 @@ function newPart(id: string, description: string): PartView {
 const byStart = (a: { start: string }, b: { start: string }) =>
   a.start < b.start ? -1 : a.start > b.start ? 1 : 0;
 
+const OWN_FILES = /(^|\/)\.claude\//;
 const parent = (folder: string) =>
   folder.slice(0, Math.max(0, folder.lastIndexOf("/")));
 
@@ -256,7 +260,9 @@ function folderParts(
   const groups = new Map<string, { files: FileTouch[]; start: string }>();
   for (const { touch, ts } of touches) {
     const folder = parent(displayPath(touch.path, cwd));
-    if (!folder) {
+    // Claude's own memory and plans outside the project are not the work itself.
+    const own = OWN_FILES.test(touch.path) && !touch.path.startsWith(`${cwd}/`);
+    if (!folder || own) {
       addTouch(loose, touch);
       continue;
     }

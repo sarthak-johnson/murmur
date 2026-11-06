@@ -193,6 +193,17 @@ describe("main-thread changes", () => {
     expect(r?.looseFiles.map((f) => f.path)).toEqual(["root.ts"]);
   });
 
+  test("Claude's own files (memory, plans in ~/.claude) are not parts of the work", () => {
+    const [r] = reduce([
+      prompt(0, "go"),
+      edit(1, "web/a.tsx", ["+a"]),
+      edit(2, "/Users/me/.claude/projects/-p/memory/note.md", ["+a"]),
+      edit(3, "/Users/me/.claude/projects/-p/memory/two.md", ["+a"]),
+    ]).requests;
+    expect(r?.parts.map((p) => p.title)).toEqual(["web"]);
+    expect(r?.looseFiles).toHaveLength(2);
+  });
+
   test("temp paths group by their readable folder", () => {
     const tmp =
       "/private/tmp/claude-501/-Users-me-app/27a000a1-7dbc-4dd1-ab83-961149fc03ae/scratchpad/style/a";
@@ -334,6 +345,8 @@ describe("finished requests", () => {
     expect(first?.finished).toBe(true);
     expect(first?.parts.map((p) => p.status)).toEqual(["done", "done"]);
     expect(first?.tally).toEqual({ helpers: 1, files: 2, commands: 1 });
+    // The helper itself reads done too, so nothing shows it as still running.
+    expect(first?.agents.map((a) => a.status)).toEqual(["done"]);
     expect(last?.finished).toBe(false);
     expect(last?.parts.map((p) => p.status)).toEqual(["now"]);
     expect(last?.tally).toEqual({ helpers: 1, files: 0, commands: 1 });

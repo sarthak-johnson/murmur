@@ -7,7 +7,8 @@ export function PhaseStrip(props: {
   onSelect(phaseId: string | undefined): void;
 }) {
   const { phases, inferred, selected, onSelect } = props;
-  if (!phases.length) return null;
+  // One phase says nothing the plan panel does not.
+  if (phases.length < 2) return null;
   return (
     <div className="strip-wrap">
       {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would add a legend and border for a row of toggles */}

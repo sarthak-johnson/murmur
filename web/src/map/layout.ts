@@ -1,4 +1,4 @@
-import type { MapInput, PartView } from "@murmur/core";
+import type { MapInput, PartView, RequestView } from "@murmur/core";
 
 /** A box on the map. `x`, `y` are the box centre; `w`, `h` its size. */
 export interface NodeBox {
@@ -53,9 +53,16 @@ export const RING_CHIP_BOTTOM = GRID_TOP - NODE_H / 2 - 16;
 /** Most chips a part shows: two agents and a `+N more`. */
 export const MAX_CHIPS = 3;
 
-/** Number of chips a part shows: up to two agents, then one `+N more`. */
-export function chipCount(part: PartView): number {
-  const n = part.agents.length;
+/** A part's helpers still running; finished ones show in the part, not on the map. */
+export function runningAgents(part: PartView, request: RequestView): string[] {
+  return part.agents.filter(
+    (id) => request.agents.find((a) => a.id === id)?.status === "running",
+  );
+}
+
+/** Number of chips a part shows: up to two running helpers, then one `+N more`. */
+export function chipCount(part: PartView, request: RequestView): number {
+  const n = runningAgents(part, request).length;
   return n > 2 ? MAX_CHIPS : n;
 }
 

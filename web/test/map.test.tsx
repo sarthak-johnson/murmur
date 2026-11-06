@@ -165,6 +165,23 @@ describe("MapView", () => {
     expect(screen.getByText("+1 more")).toBeTruthy();
   });
 
+  it("shows chips only for helpers still running", () => {
+    const req = request({
+      agents: [
+        { ...agent("a1", "built it"), status: "done" },
+        agent("a2", "reviewing"),
+      ],
+      parts: [
+        part({ id: "x", title: "Endpoint", agents: ["a1", "a2"] }),
+        part({ id: "y", title: "Done part", agents: ["a1"] }),
+      ],
+    });
+    render(<MapView request={req} onOpenPart={() => {}} />);
+    expect(screen.queryByText(/Agent 1/)).toBeNull();
+    expect(screen.getByText("Agent 2: reviewing")).toBeTruthy();
+    expect(screen.queryByText(/more$/)).toBeNull();
+  });
+
   it("marks a part with three failures as stuck", () => {
     const req = request({
       parts: [part({ id: "x", title: "Endpoint", status: "now", failures: 3 })],

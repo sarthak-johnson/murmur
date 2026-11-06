@@ -11,6 +11,7 @@ import {
   type NodeBox,
   RING_CHIP_BOTTOM,
   RING_SIZE,
+  runningAgents,
 } from "./layout";
 
 const DIM = 0.35;
@@ -195,7 +196,7 @@ export function MapView(props: {
   // Earlier stacks, at their full reserved size, so stacks never cover each other.
   const stacks: (Rect & { ring: boolean })[] = [];
   const chipSpots = placed.map(({ part, box }, i) => {
-    const n = chipCount(part);
+    const n = chipCount(part, request);
     if (!n) return null;
     const ring = ringIds.has(box.id);
     // Ring stacks pick their side for the full stack, above the overflow
@@ -464,7 +465,8 @@ function Chips(props: {
 }) {
   const { part, request, box, spot, opacity } = props;
   if (!spot) return null;
-  const chips = part.agents.slice(0, 2).map((id) => {
+  const running = runningAgents(part, request);
+  const chips = running.slice(0, 2).map((id) => {
     const k = request.agents.findIndex((a) => a.id === id);
     const agent = request.agents[k];
     const text = agent
@@ -477,8 +479,8 @@ function Chips(props: {
       label: truncate(text, CHIP_W - 16, 10.5),
     };
   });
-  if (part.agents.length > 2) {
-    const text = `+${part.agents.length - 2} more`;
+  if (running.length > 2) {
+    const text = `+${running.length - 2} more`;
     chips.push({ key: "more", w: MORE_W, text, label: text });
   }
   const r = rectOf(box);

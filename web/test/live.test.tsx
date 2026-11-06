@@ -220,6 +220,25 @@ describe("live screen", () => {
     expect(done.className).toContain("done");
   });
 
+  it("a plan with one phase shows its tasks as a list and no phase strip", () => {
+    const one = request({
+      phases: [
+        {
+          id: "p1",
+          title: "What Claude did",
+          status: "done",
+          tasks: [task("t1", "Style A", "done"), task("t2", "Style B", "done")],
+        },
+      ],
+    });
+    show(session({ requests: [one] }));
+    expect(screen.queryByRole("group", { name: "Phases" })).toBeNull();
+    const plan = screen.getByRole("region", { name: /Plan/ });
+    expect(within(plan).getByText("Style A")).toBeTruthy();
+    expect(within(plan).queryByText("Style A · Style B")).toBeNull();
+    expect(within(plan).queryByRole("button", { name: /phase 1/ })).toBeNull();
+  });
+
   it("plan panel folds finished phases", async () => {
     show(session());
     const plan = screen.getByRole("region", { name: /Plan/ });
