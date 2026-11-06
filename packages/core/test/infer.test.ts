@@ -30,7 +30,16 @@ test("native tasks become one inferred phase", () => {
   ]);
 });
 
+test("documented task_subject becomes the title", () => {
+  const r = req(
+    prompt(0, "Add price alerts"),
+    at(1, "TaskCreated", { task_id: "1", task_subject: "Alerts table" }),
+  );
+  expect(r?.phases[0]?.tasks[0]?.title).toBe("Alerts table");
+});
+
 test.each([
+  ["refactor the error handler", "bug"],
   ["why does login fail?", "bug"],
   ["rename the helper", "refactor"],
   ["how does the router work", "question"],

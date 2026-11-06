@@ -38,7 +38,15 @@ export function applyInference(req: RequestView, events: MurmurEvent[]): void {
     if (!task) {
       task = {
         id,
-        title: text(p.subject, t.subject, p.title, p.description) ?? id,
+        title:
+          text(
+            p.task_subject,
+            p.subject,
+            t.subject,
+            p.title,
+            p.task_description,
+            p.description,
+          ) ?? id,
         status: "todo",
         agents: [],
       };

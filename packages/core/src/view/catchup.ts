@@ -7,16 +7,21 @@ export function catchUp(
   requestId: string,
 ): string | null {
   const a = after.requests.find((r) => r.id === requestId);
-  const b = before.requests.find((r) => r.id === requestId);
-  if (!a || !b) return null;
-  const tasks = (r: typeof a) => r.phases.flatMap((ph) => ph.tasks);
+  if (!a) return null;
+  const b = before.requests.find((r) => r.id === requestId) ?? {
+    phases: [],
+    parts: [],
+    agents: [],
+  };
+  const tasks = (r: Pick<typeof a, "phases">) =>
+    r.phases.flatMap((ph) => ph.tasks);
   const old = new Map(tasks(b).map((t) => [t.id, t.status]));
   const titles = (status: TaskView["status"]) =>
     tasks(a)
       .filter((t) => t.status === status && old.get(t.id) !== status)
       .map((t) => t.title)
       .join(" and ");
-  const checks = (r: typeof a) =>
+  const checks = (r: Pick<typeof a, "parts">) =>
     new Set(
       r.parts.flatMap((p) =>
         p.checks
@@ -24,7 +29,7 @@ export function catchUp(
           .map((c) => `c${p.id}\0${c.check}`),
       ),
     );
-  const steps = (r: typeof a) =>
+  const steps = (r: Pick<typeof a, "parts">) =>
     r.parts.flatMap((p) =>
       p.steps
         .filter((s) => s.status === "failed")

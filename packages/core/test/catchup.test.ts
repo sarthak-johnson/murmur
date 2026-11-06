@@ -36,7 +36,46 @@ test('catch-up reads "finished Alerts table, started Endpoint to save an alert, 
   );
 });
 
-test("catch-up is null when nothing changed, or the request is unknown", () => {
+test("catch-up is null when nothing changed", () => {
   expect(catchUp(before, before, "e0")).toBeNull();
-  expect(catchUp(reduce([]), before, "e0")).toBeNull();
+});
+
+test("catch-up is null when the request is not in after", () => {
+  expect(catchUp(before, before, "nope")).toBeNull();
+  expect(catchUp(before, reduce([]), "e0")).toBeNull();
+});
+
+test("a request missing from before counts as empty", () => {
+  const after = reduce(
+    run(narrateCall(2, note({ task: "1.1", taskStatus: "done" }))),
+  );
+  expect(catchUp(reduce([]), after, "e0")).toBe("finished Alerts table");
+});
+
+test("tasks finishing together are joined with and", () => {
+  const after = reduce(
+    run(
+      narrateCall(2, note({ task: "2.1", taskStatus: "done" })),
+      narrateCall(3, note({ task: "2.2", taskStatus: "done" })),
+    ),
+  );
+  expect(catchUp(reduce(run()), after, "e0")).toBe(
+    "finished Endpoint to save an alert and Endpoint to list alerts",
+  );
+});
+
+test("a failed step and a failing check both count, plural", () => {
+  const after = reduce(
+    run(
+      narrateCall(
+        2,
+        note({
+          part: "db",
+          step: { text: "Ran migration", status: "failed" },
+          checks: [{ check: "saves", status: "fail" }],
+        }),
+      ),
+    ),
+  );
+  expect(catchUp(reduce(run()), after, "e0")).toBe("2 checks failing");
 });
