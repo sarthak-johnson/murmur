@@ -215,3 +215,108 @@ test("ingest accepts a valid token, records use, and refuses revoked ones", asyn
   expect(revoked.status).toBe(401);
   expect(await revoked.json()).toEqual({ error: "unauthorized" });
 });
+
+const rawStart = (headers: Record<string, string> = {}) =>
+  t?.app.request("/api/device/start", {
+    method: "POST",
+    headers: { ...json, ...headers },
+    body: JSON.stringify({ machineName: "m" }),
+  }) as Promise<Response>;
+
+/** Client IP taken from a test-only header, so one test can act as several clients. */
+const ipFromHeader = (c: { req: { header(n: string): string | undefined } }) =>
+  c.req.header("x-test-ip");
+
+test("eleventh failed approve by one user in 10 minutes is 429", async () => {
+  t = await testApp({ clientIp: ipFromHeader });
+  const cookie = await t.loginAs("ada");
+  const live = await start();
+  for (let i = 0; i < 10; i++) {
+    const res = await approve(cookie, "BBBB-BBBB", {
+      "x-test-ip": `10.0.0.${i}`,
+    });
+    expect(res.status).toBe(404);
+  }
+  // Over the limit even with a real code: no lookup happens.
+  const res = await approve(cookie, live.userCode, { "x-test-ip": "10.0.1.1" });
+  expect(res.status).toBe(429);
+  expect(await res.json()).toEqual({ error: "rate_limited" });
+  expect((await poll(live.deviceCode)).status).toBe(428);
+  // Another user is not affected.
+  const bob = await t.loginAs("bob");
+  expect((await approve(bob, live.userCode)).status).toBe(200);
+});
+
+test("approve limit resets after the window", async () => {
+  let now = new Date("2026-11-06T00:00:00Z");
+  t = await testApp({ now: () => now });
+  const cookie = await t.loginAs("ada");
+  for (let i = 0; i < 10; i++) await approve(cookie, "BBBB-BBBB");
+  expect((await approve(cookie, "BBBB-BBBB")).status).toBe(429);
+  now = new Date("2026-11-06T00:10:00Z");
+  const live = await start();
+  expect((await approve(cookie, live.userCode)).status).toBe(200);
+});
+
+test("a successful approve is not counted", async () => {
+  t = await testApp();
+  const cookie = await t.loginAs("ada");
+  for (let i = 0; i < 9; i++)
+    expect((await approve(cookie, "BBBB-BBBB")).status).toBe(404);
+  const live = await start();
+  expect((await approve(cookie, live.userCode)).status).toBe(200);
+  expect((await approve(cookie, "BBBB-BBBB")).status).toBe(404);
+  expect((await approve(cookie, "BBBB-BBBB")).status).toBe(429);
+});
+
+test("thirty-first failed approve from one IP is 429 across users", async () => {
+  t = await testApp({ clientIp: ipFromHeader });
+  const ip = { "x-test-ip": "10.9.9.9" };
+  for (const login of ["u1", "u2", "u3"]) {
+    const cookie = await t.loginAs(login);
+    for (let i = 0; i < 10; i++)
+      expect((await approve(cookie, "BBBB-BBBB", ip)).status).toBe(404);
+  }
+  const fresh = await t.loginAs("u4");
+  expect((await approve(fresh, "BBBB-BBBB", ip)).status).toBe(429);
+  expect(
+    (await approve(fresh, "BBBB-BBBB", { "x-test-ip": "10.9.9.8" })).status,
+  ).toBe(404);
+});
+
+test("twenty-first start from one IP is 429", async () => {
+  t = await testApp({ clientIp: ipFromHeader });
+  const a = { "x-test-ip": "10.0.0.1" };
+  for (let i = 0; i < 20; i++) expect((await rawStart(a)).status).toBe(200);
+  const over = await rawStart(a);
+  expect(over.status).toBe(429);
+  expect(await over.json()).toEqual({ error: "rate_limited" });
+  expect((await rawStart({ "x-test-ip": "10.0.0.2" })).status).toBe(200);
+});
+
+test("default client IP uses X-Forwarded-For only when trustProxy", async () => {
+  t = await testApp({ config: { trustProxy: true } });
+  for (let i = 0; i < 20; i++)
+    await rawStart({ "X-Forwarded-For": "1.1.1.1, 9.9.9.9" });
+  expect(
+    (await rawStart({ "X-Forwarded-For": "1.1.1.1, 9.9.9.9" })).status,
+  ).toBe(429);
+  expect((await rawStart({ "X-Forwarded-For": "2.2.2.2" })).status).toBe(200);
+  await t.close();
+
+  t = await testApp();
+  for (let i = 0; i < 20; i++)
+    await rawStart({ "X-Forwarded-For": `3.3.3.${i}` });
+  expect((await rawStart({ "X-Forwarded-For": "4.4.4.4" })).status).toBe(429);
+});
+
+test("concurrent failed approves cannot overshoot the limit", async () => {
+  t = await testApp();
+  const cookie = await t.loginAs("ada");
+  const res = await Promise.all(
+    Array.from({ length: 15 }, () => approve(cookie, "BBBB-BBBB")),
+  );
+  const codes = res.map((r) => r.status).sort();
+  expect(codes.filter((s) => s === 404)).toHaveLength(10);
+  expect(codes.filter((s) => s === 429)).toHaveLength(5);
+});

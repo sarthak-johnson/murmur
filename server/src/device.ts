@@ -1,9 +1,11 @@
 import { randomInt, randomUUID } from "node:crypto";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { and, eq, gt, isNotNull, isNull, lt } from "drizzle-orm";
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import type { Deps } from "./app.js";
 import { type AppEnv, randomToken, readBody, sha256 } from "./auth.js";
 import { deviceCodes, ingestTokens } from "./db/schema.js";
+import { fixedWindow } from "./ratelimit.js";
 
 const ALPHABET = "BCDFGHJKLMNPQRSTVWXZ23456789";
 const EXPIRES_IN = 600;
@@ -16,11 +18,37 @@ const newUserCode = () =>
   );
 const display = (code: string) => `${code.slice(0, 4)}-${code.slice(4)}`;
 
+const TEN_MINUTES = 10 * 60 * 1000;
+const rateLimited = (c: Context) => c.json({ error: "rate_limited" }, 429);
+
+function defaultClientIp(trustProxy: boolean) {
+  return (c: Context): string | undefined => {
+    if (trustProxy) {
+      const first = c.req.header("x-forwarded-for")?.split(",")[0]?.trim();
+      if (first) return first;
+    }
+    try {
+      return getConnInfo(c).remote.address;
+    } catch {
+      return undefined; // no Node socket, e.g. app.request in tests
+    }
+  };
+}
+
 export function deviceRoutes(app: Hono<AppEnv>, deps: Deps) {
   const { db, now, config } = deps;
+  const ipOf = deps.clientIp ?? defaultClientIp(config.trustProxy ?? false);
+  // Unknown IPs share one bucket, so missing addresses fail closed.
+  const ip = (c: Context) => `ip:${ipOf(c) ?? "unknown"}`;
+  const startsPerIp = fixedWindow(20, TEN_MINUTES);
+  const failedApprovesPerUser = fixedWindow(10, TEN_MINUTES);
+  const failedApprovesPerIp = fixedWindow(30, TEN_MINUTES);
 
   // Called by the plugin CLI: no cookie, no Origin.
   app.post("/api/device/start", async (c) => {
+    const key = ip(c);
+    if (startsPerIp.blocked(key, now())) return rateLimited(c);
+    startsPerIp.hit(key, now());
     const machineName = (await readBody(c))?.machineName;
     if (
       typeof machineName !== "string" ||
@@ -59,22 +87,36 @@ export function deviceRoutes(app: Hono<AppEnv>, deps: Deps) {
   });
 
   // Cookie route: the guard in app.ts has already run requireSameOrigin and requireUser.
+  // Only failures count: each attempt takes a hit up front and a success gives it back.
   app.post("/api/device/approve", async (c) => {
+    const user = c.get("user");
+    const userKey = `user:${user.id}`;
+    const ipKey = ip(c);
+    const t = now();
+    if (
+      failedApprovesPerUser.blocked(userKey, t) ||
+      failedApprovesPerIp.blocked(ipKey, t)
+    )
+      return rateLimited(c);
+    failedApprovesPerUser.hit(userKey, t);
+    failedApprovesPerIp.hit(ipKey, t);
     const raw = (await readBody(c))?.userCode;
     if (typeof raw !== "string") return c.json({ error: "not_found" }, 404);
     const userCode = raw.replace(/[-\s]/g, "").toUpperCase();
     const [row] = await db
       .update(deviceCodes)
-      .set({ userId: c.get("user").id, approvedAt: now() })
+      .set({ userId: user.id, approvedAt: t })
       .where(
         and(
           eq(deviceCodes.userCode, userCode),
           isNull(deviceCodes.approvedAt),
-          gt(deviceCodes.expiresAt, now()),
+          gt(deviceCodes.expiresAt, t),
         ),
       )
       .returning({ machineName: deviceCodes.machineName });
     if (!row) return c.json({ error: "not_found" }, 404);
+    failedApprovesPerUser.refund(userKey, t);
+    failedApprovesPerIp.refund(ipKey, t);
     return c.json({ machineName: row.machineName });
   });
 

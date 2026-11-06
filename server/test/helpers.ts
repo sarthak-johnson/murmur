@@ -7,6 +7,7 @@ export interface TestOptions {
   now?: () => Date;
   config?: Partial<Deps["config"]>;
   github?: Deps["github"];
+  clientIp?: Deps["clientIp"];
 }
 
 export async function testApp(opts: TestOptions = {}) {
@@ -22,6 +23,7 @@ export async function testApp(opts: TestOptions = {}) {
     },
   };
   if (opts.github) deps.github = opts.github;
+  if (opts.clientIp) deps.clientIp = opts.clientIp;
   const app = createApp(deps);
   /** Logs in through /auth/dev and returns the Cookie header value. */
   const loginAs = async (login: string): Promise<string> => {

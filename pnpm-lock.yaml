@@ -213,6 +213,9 @@ importers:
       '@electric-sql/pglite':
         specifier: 0.5.15
         version: 0.5.15
+      '@hono/node-server':
+        specifier: 2.1.6
+        version: 2.1.6(hono@4.13.16)
       '@murmur/core':
         specifier: workspace:*
         version: link:../packages/core

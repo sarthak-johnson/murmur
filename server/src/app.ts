@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { except } from "hono/combine";
 import {
   type AppEnv,
@@ -29,9 +29,13 @@ export interface Deps {
     githubClientSecret?: string;
     devLogin: boolean;
     cookieSecure: boolean;
+    /** Behind a reverse proxy: take the client IP from the first X-Forwarded-For entry. */
+    trustProxy?: boolean;
   };
   /** Defaults to arctic's GitHub provider when the client id and secret are set. */
   github?: GithubProvider;
+  /** Client IP for rate limits. Defaults to the socket address (or X-Forwarded-For with trustProxy). */
+  clientIp?: (c: Context) => string | undefined;
 }
 
 /** /api routes that do not use the cookie: the CLI's device login, and bearer ingest. */
