@@ -165,6 +165,16 @@ describe("loadConfig", () => {
       false,
     );
   });
+  it("binds to localhost only when dev login is on, unless HOST is set", () => {
+    expect(loadConfig({ ...base, MURMUR_DEV_LOGIN: "1" }).host).toBe(
+      "127.0.0.1",
+    );
+    expect(
+      loadConfig({ ...base, MURMUR_DEV_LOGIN: "1", HOST: "0.0.0.0" }).host,
+    ).toBe("0.0.0.0");
+    expect(loadConfig(base).host).toBeUndefined();
+    expect(loadConfig({ ...prod, HOST: "0.0.0.0" }).host).toBe("0.0.0.0");
+  });
   it("parses trustProxy, cookieSecure, port and base url", () => {
     expect(loadConfig(base).config.trustProxy).toBe(false);
     expect(loadConfig({ ...base, TRUST_PROXY: "1" }).config.trustProxy).toBe(

@@ -4,6 +4,7 @@ import type { Deps } from "./app.js";
 export function loadConfig(env: NodeJS.ProcessEnv): {
   config: Deps["config"];
   port: number;
+  host: string | undefined;
   databaseUrl: string | undefined;
 } {
   const production = env.NODE_ENV === "production";
@@ -29,5 +30,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): {
   if (env.GITHUB_CLIENT_ID) config.githubClientId = env.GITHUB_CLIENT_ID;
   if (env.GITHUB_CLIENT_SECRET)
     config.githubClientSecret = env.GITHUB_CLIENT_SECRET;
-  return { config, port, databaseUrl: env.DATABASE_URL || undefined };
+  // Dev login lets anyone sign in as anyone, so it never listens beyond this
+  // machine unless HOST says so.
+  const host = env.HOST || (config.devLogin ? "127.0.0.1" : undefined);
+  return { config, port, host, databaseUrl: env.DATABASE_URL || undefined };
 }
