@@ -243,6 +243,92 @@ describe("built plugin", () => {
     expect(JSON.parse(fs.readFileSync(state, "utf8")).backfill).toBe("done");
   });
 
+  it("Stop never reads the transcript; its detached child sends Claude's new text", async () => {
+    const posted: { hook: string; payload: { text?: string } }[] = [];
+    const server = await listen((req, res) => {
+      let body = "";
+      req.on("data", (c) => {
+        body += c;
+      });
+      req.on("end", () => {
+        posted.push(...JSON.parse(body).events);
+        res.setHeader("Content-Type", "application/json");
+        res.end("{}");
+      });
+    });
+    const dir = env.MURMUR_HOME as string;
+    fs.mkdirSync(path.join(dir, "sessions"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "credentials.json"),
+      JSON.stringify({ server, token: "t", machineId: "m1" }),
+    );
+    expect((await murmur("on", repo)).code).toBe(0);
+    const transcript = path.join(home, "s1.jsonl");
+    fs.writeFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: "assistant",
+        uuid: "u1",
+        timestamp: "2026-11-07T09:00:00.000Z",
+        cwd: repo,
+        message: { content: [{ type: "text", text: "Tokens are in." }] },
+      })}\n`,
+    );
+    fs.writeFileSync(
+      path.join(dir, "sessions", "s1.json"),
+      JSON.stringify({
+        backfill: "done",
+        project: repo,
+        transcriptPath: transcript,
+        cwd: repo,
+        textOffset: 0,
+      }),
+    );
+    // Logs every open or read of the transcript, by process.
+    const log = path.join(home, "opens.log");
+    const spy = path.join(home, "spy.cjs");
+    fs.writeFileSync(
+      spy,
+      `const fs = require("node:fs");
+const who = process.argv.includes("--flush") ? "child" : "hook";
+for (const name of ["openSync", "readFileSync", "createReadStream", "open", "readFile"]) {
+  const real = fs[name];
+  fs[name] = function (p, ...rest) {
+    if (String(p) === process.env.SPY_PATH) fs.appendFileSync(process.env.SPY_LOG, who + "\\n");
+    return real.call(this, p, ...rest);
+  };
+}`,
+    );
+    const t0 = Date.now();
+    const r = runHook(
+      "Stop",
+      {
+        hook_event_name: "Stop",
+        session_id: "s1",
+        cwd: repo,
+        transcript_path: transcript,
+      },
+      { NODE_OPTIONS: `--require ${spy}`, SPY_PATH: transcript, SPY_LOG: log },
+    );
+    expect(Date.now() - t0).toBeLessThan(1500);
+    expect(r.status).toBe(0);
+    for (
+      let i = 0;
+      i < 60 && !posted.some((e) => e.hook === "AssistantText");
+      i++
+    )
+      await new Promise((ok) => setTimeout(ok, 50));
+    expect(
+      posted
+        .filter((e) => e.hook === "AssistantText")
+        .map((e) => e.payload.text),
+    ).toEqual(["Tokens are in."]);
+    expect(fs.readFileSync(log, "utf8").trim().split("\n")).not.toContain(
+      "hook",
+    );
+    expect(fs.readFileSync(log, "utf8")).toContain("child");
+  });
+
   it("bin/murmur login leaves a poller that stores the token", async () => {
     let polls = 0;
     const server = await listen((req, res) => {

@@ -15,6 +15,15 @@ interface Paused {
   projects: string[];
 }
 
+// docs/hook-facts.md section 6. Other entrypoints (cli, IDE extensions, desktop)
+// are interactive and must upload.
+export function isHeadless(env: NodeJS.ProcessEnv): boolean {
+  return (
+    (env.CLAUDE_CODE_ENTRYPOINT ?? "").startsWith("sdk") ||
+    env.CLAUDE_CODE_SESSION_ATTENDED === "0"
+  );
+}
+
 export const DEFAULT_SERVER: string =
   process.env.MURMUR_SERVER ?? "http://localhost:8787";
 
@@ -252,6 +261,11 @@ export interface SessionState extends Narration {
   cwd?: string;
   /** When the backfill last started, or was last handed to a new child. */
   runningSince?: string;
+  /**
+   * Byte offset in the transcript up to which Claude's text was read live (or skipped,
+   * while off or paused). Unset after a backfill: the first read starts at its cutoff.
+   */
+  textOffset?: number;
   /** The narration instruction reached Claude in this session. */
   instructed?: boolean;
   /**

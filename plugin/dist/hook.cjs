@@ -35,6 +35,7 @@ __export(hook_exports, {
 module.exports = __toCommonJS(hook_exports);
 var import_node_child_process = require("node:child_process");
 var import_node_crypto2 = require("node:crypto");
+var import_node_fs4 = __toESM(require("node:fs"), 1);
 
 // ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/external.js
 var external_exports = {};
@@ -19994,6 +19995,9 @@ Keep each call short. Never mention these tools to the user unless asked.`;
 var MID_SESSION_LINE = "This session was already under way. Call `map` now for the work in progress, then narrate as below.";
 
 // src/local.ts
+function isHeadless(env) {
+  return (env.CLAUDE_CODE_ENTRYPOINT ?? "").startsWith("sdk") || env.CLAUDE_CODE_SESSION_ATTENDED === "0";
+}
 var DEFAULT_SERVER = process.env.MURMUR_SERVER ?? "http://localhost:8787";
 function murmurDir() {
   if (process.env.MURMUR_HOME) return process.env.MURMUR_HOME;
@@ -20319,7 +20323,7 @@ function stableId(sessionId, hook, p) {
 }
 var obj2 = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : void 0;
 var str = (v) => typeof v === "string" && v ? v : void 0;
-function* readLines(file2, tailBytes) {
+function* readLines(file2, tailBytes, at) {
   let fd;
   try {
     fd = import_node_fs3.default.openSync(file2, "r");
@@ -20328,10 +20332,11 @@ function* readLines(file2, tailBytes) {
   }
   try {
     const size = import_node_fs3.default.fstatSync(fd).size;
-    let pos = Math.max(0, size - tailBytes);
+    let pos = at ? at.from <= size ? at.from : 0 : Math.max(0, size - tailBytes);
+    let end = pos;
     const buf = Buffer.alloc(CHUNK);
     let skip = false;
-    if (pos > 0) {
+    if (pos > 0 && !at) {
       import_node_fs3.default.readSync(fd, buf, 0, 1, pos - 1);
       skip = buf[0] !== 10;
     }
@@ -20351,6 +20356,8 @@ function* readLines(file2, tailBytes) {
       for (let nl = data.indexOf(10); nl !== -1; nl = data.indexOf(10)) {
         const line = data.subarray(0, nl);
         data = data.subarray(nl + 1);
+        end += nl + 1;
+        if (at) at.end = end;
         if (skip) skip = false;
         else {
           const e = parse3(line);
@@ -20359,7 +20366,7 @@ function* readLines(file2, tailBytes) {
       }
       rest = Buffer.from(data);
     }
-    if (!skip && rest.length) {
+    if (!at && !skip && rest.length) {
       const e = parse3(rest);
       if (e) yield e;
     }
@@ -20395,6 +20402,34 @@ function backfillStale(s, now) {
   if (s.backfill !== "pending" && s.backfill !== "running") return false;
   return !(now - Date.parse(s.runningSince ?? s.cutoff ?? "") <= STALE_MS);
 }
+function entryEvent(b, e, index, hook, fields) {
+  const cwd = str(e.cwd) ?? b.cwd;
+  const payload = {
+    ...fields,
+    hook_event_name: hook,
+    session_id: b.sessionId,
+    cwd
+  };
+  return scrubEvent({
+    id: stableId(b.sessionId, hook, payload) ?? uuidFrom(`murmur-backfill:${b.sessionId}:${e.uuid}:${index}:${hook}`),
+    sessionId: b.sessionId,
+    machineId: b.machineId,
+    cwd,
+    ts: new Date(Date.parse(e.timestamp)).toISOString(),
+    hook,
+    payload
+  });
+}
+function textBlocks(e) {
+  const content = obj2(e.message)?.content;
+  if (e.type !== "assistant" || e.isSidechain === true || !Array.isArray(content))
+    return [];
+  return content.flatMap((raw, i) => {
+    const block = obj2(raw);
+    const text2 = block?.type === "text" ? str(block.text) : void 0;
+    return text2?.trim() ? [{ i, text: text2 }] : [];
+  });
+}
 function readBackfill(b, {
   maxEvents = MAX_EVENTS2,
   maxBytes = MAX_BYTES2,
@@ -20404,24 +20439,7 @@ function readBackfill(b, {
   const cutoff = Date.parse(b.cutoff);
   const out = [];
   const emit = (e, index, hook, fields) => {
-    const cwd = str(e.cwd) ?? b.cwd;
-    const payload = {
-      ...fields,
-      hook_event_name: hook,
-      session_id: b.sessionId,
-      cwd
-    };
-    out.push(
-      scrubEvent({
-        id: stableId(b.sessionId, hook, payload) ?? uuidFrom(`murmur-backfill:${b.sessionId}:${e.uuid}:${index}:${hook}`),
-        sessionId: b.sessionId,
-        machineId: b.machineId,
-        cwd,
-        ts: new Date(Date.parse(e.timestamp)).toISOString(),
-        hook,
-        payload
-      })
-    );
+    out.push(entryEvent(b, e, index, hook, fields));
   };
   const usable = (e) => {
     const ts = typeof e.timestamp === "string" ? Date.parse(e.timestamp) : NaN;
@@ -20438,7 +20456,8 @@ function readBackfill(b, {
       first ??= e;
       last = e;
       const content = obj2(e.message)?.content;
-      if (e.type === "user" && obj2(e.origin)?.kind === "human" && !agent.agent_id) {
+      const kind = obj2(e.origin)?.kind;
+      if (e.type === "user" && (kind === "human" || kind === "task-notification") && !agent.agent_id) {
         const prompt = promptText(content);
         if (prompt) {
           emit(e, 0, "UserPromptSubmit", {
@@ -20448,6 +20467,9 @@ function readBackfill(b, {
           newest = { at: out.length - 1, text: prompt };
         }
       }
+      if (!agent.agent_id)
+        for (const { i, text: text2 } of textBlocks(e))
+          emit(e, i, "AssistantText", { text: text2 });
       if (!Array.isArray(content)) continue;
       content.forEach((raw, i) => {
         const block = obj2(raw);
@@ -20551,9 +20573,33 @@ async function runBackfill(sessionId, opts = {}) {
   for (const e of events) enqueue(e);
   const { triggerPrompt: _prompt, ...rest } = readSession(sessionId);
   writeSession(sessionId, { ...rest, backfill: "done" });
+  catchUpText(sessionId);
   if (readCredentials()?.token === creds.token)
     await flush(creds, { budgetMs: 5e4, ...opts });
   return events.length;
+}
+function catchUpText(sessionId, env = process.env) {
+  if (isHeadless(env) && env.MURMUR_ALLOW_HEADLESS !== "1") return 0;
+  const creds = readCredentials();
+  if (!creds || isRevoked()) return 0;
+  const s = readSession(sessionId);
+  if (s.backfill !== "done" || !s.transcriptPath || !s.cwd) return 0;
+  const from = s.textOffset ?? 0;
+  const floor = s.textOffset === void 0 && s.cutoff ? Date.parse(s.cutoff) : -Infinity;
+  const quiet = sessionProjectState(s.cwd, sessionId) !== "on" || isPaused(s.cwd, sessionId) || s.project !== void 0 && isPaused(s.project);
+  const at = { from, end: from };
+  const b = { sessionId, machineId: creds.machineId, cwd: s.cwd };
+  let n = 0;
+  for (const e of readLines(s.transcriptPath, 0, at)) {
+    if (quiet || !str(e.uuid) || !(Date.parse(e.timestamp) >= floor))
+      continue;
+    for (const { i, text: text2 } of textBlocks(e)) {
+      enqueue(entryEvent(b, e, i, "AssistantText", { text: text2 }));
+      n++;
+    }
+  }
+  updateSession(sessionId, { textOffset: at.end });
+  return n;
 }
 
 // src/hook.ts
@@ -20569,8 +20615,17 @@ var show = (line) => ({
   stdout: JSON.stringify({ systemMessage: line }),
   event: null
 });
-function isHeadless(env) {
-  return (env.CLAUDE_CODE_ENTRYPOINT ?? "").startsWith("sdk") || env.CLAUDE_CODE_SESSION_ATTENDED === "0";
+function textStart(transcriptPath) {
+  if (typeof transcriptPath !== "string" || !transcriptPath) return {};
+  try {
+    return { textOffset: import_node_fs4.default.statSync(transcriptPath).size };
+  } catch {
+    return { textOffset: 0 };
+  }
+}
+function skipText(sessionId, hook, transcriptPath) {
+  if (hook === "Stop" && !isNewSession(sessionId))
+    updateSession(sessionId, textStart(transcriptPath));
 }
 function handleHook(payload, env, now) {
   const hook = payload.hook_event_name;
@@ -20594,6 +20649,7 @@ function handleHook(payload, env, now) {
   if (state === "off") {
     if (sessionId && isNewSession(sessionId))
       updateSession(sessionId, { backfill: "done" });
+    else if (sessionId) skipText(sessionId, hook, payload.transcript_path);
     return NONE2;
   }
   if (state !== "on") return NONE2;
@@ -20604,13 +20660,17 @@ function handleHook(payload, env, now) {
   const fresh = isNewSession(sessionId);
   const seen = readSession(sessionId);
   const project = seen.project ?? projectKey(cwd);
-  if (!seen.project || !fresh && !seen.backfill)
+  const transcript = payload.transcript_path;
+  const noTranscript = !fresh && !seen.transcriptPath && typeof transcript === "string" && !!transcript;
+  if (!seen.project || !fresh && !seen.backfill || noTranscript)
     updateSession(sessionId, {
       project,
-      ...fresh ? {} : { backfill: seen.backfill ?? "done" }
+      ...fresh ? {} : { backfill: seen.backfill ?? "done" },
+      ...noTranscript ? { transcriptPath: transcript, cwd, ...textStart(transcript) } : {}
     });
   if (isPaused(cwd, sessionId) || isPaused(project)) {
     if (fresh) updateSession(sessionId, { backfill: "done" });
+    else skipText(sessionId, hook, transcript);
     return NONE2;
   }
   const ts = now.toISOString();
@@ -20636,7 +20696,11 @@ function handleHook(payload, env, now) {
         cwd
       });
       backfill = sessionId;
-    } else updateSession(sessionId, { backfill: "done" });
+    } else
+      updateSession(sessionId, {
+        backfill: "done",
+        ...typeof transcriptPath === "string" && transcriptPath ? { transcriptPath, cwd, ...textStart(transcriptPath) } : {}
+      });
   } else if (backfillStale(readSession(sessionId), now.getTime())) {
     updateSession(sessionId, { backfill: "pending", runningSince: ts });
     backfill = sessionId;
@@ -20693,7 +20757,10 @@ function trackNarration(sessionId, hook, p, prompt) {
 var BACKFILL = process.argv.indexOf("--backfill");
 async function main() {
   const creds = readCredentials();
-  if (process.argv.includes("--flush")) {
+  const flushAt = process.argv.indexOf("--flush");
+  if (flushAt >= 0) {
+    const id = process.argv[flushAt + 1];
+    if (id) catchUpText(id);
     if (creds) await flush(creds);
     return;
   }
@@ -20716,7 +20783,7 @@ async function main() {
   if (!event || !creds) return;
   enqueue(event);
   if (backfill || SYNC_HOOKS.has(event.hook)) {
-    const args = backfill ? ["--backfill", backfill] : ["--flush"];
+    const args = backfill ? ["--backfill", backfill] : ["--flush", event.sessionId];
     (0, import_node_child_process.spawn)(process.execPath, [process.argv[1], ...args], {
       detached: true,
       stdio: "ignore",
