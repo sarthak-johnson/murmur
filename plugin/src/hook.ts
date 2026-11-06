@@ -9,6 +9,7 @@ import {
   scrubEvent,
 } from "@murmur/core";
 import { backfillStale, runBackfill, stableId } from "./backfill.js";
+import { MID_SESSION_LINE } from "./instruction.js";
 import {
   clearProjectPause,
   isNewSession,
@@ -16,11 +17,12 @@ import {
   isRevoked,
   NARRATION_INSTRUCTION,
   NO_NARRATION,
+  projectKey,
   projectName,
-  projectState,
   pruneSessions,
   readCredentials,
   readSession,
+  sessionProjectState,
   setProjectState,
   updateSession,
   writeSession,
@@ -79,7 +81,7 @@ export function handleHook(
     clearProjectPause(cwd);
     pruneSessions(now);
   }
-  const state = projectState(cwd);
+  const state = sessionProjectState(cwd, sessionId);
   if (state === undefined) {
     if (!start) return NONE;
     setProjectState(cwd, "asked");
@@ -88,7 +90,7 @@ export function handleHook(
   if (state === "off") {
     // A session seen while its project is off is never imported after /murmur:on.
     if (sessionId && isNewSession(sessionId))
-      writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+      updateSession(sessionId, { backfill: "done" });
     return NONE;
   }
   if (state !== "on") return NONE;
@@ -97,9 +99,19 @@ export function handleHook(
   if (isRevoked()) return start ? show(REVOKED_LINE) : NONE;
   if (!sessionId) return NONE;
   const fresh = isNewSession(sessionId);
-  if (isPaused(cwd, sessionId)) {
+  // First seen while its project is on: from now on the session follows that project,
+  // so a cd into a worktree or another folder keeps it on.
+  const seen = readSession(sessionId);
+  const project = seen.project ?? projectKey(cwd);
+  // A session file that could not be read is rewritten as already imported.
+  if (!seen.project || (!fresh && !seen.backfill))
+    updateSession(sessionId, {
+      project,
+      ...(fresh ? {} : { backfill: seen.backfill ?? "done" }),
+    });
+  if (isPaused(cwd, sessionId) || isPaused(project)) {
     // What happens while paused is never shown, not even by a later backfill.
-    if (fresh) writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+    if (fresh) updateSession(sessionId, { backfill: "done" });
     return NONE;
   }
 
@@ -120,8 +132,7 @@ export function handleHook(
     const transcriptPath = payload.transcript_path;
     const isNew = start && payload.source === "startup";
     if (!isNew && typeof transcriptPath === "string" && transcriptPath) {
-      writeSession(sessionId, {
-        ...NO_NARRATION,
+      updateSession(sessionId, {
         backfill: "pending",
         cutoff: ts,
         ...(hook === "UserPromptSubmit" && typeof payload.prompt === "string"
@@ -131,7 +142,7 @@ export function handleHook(
         cwd,
       });
       backfill = sessionId;
-    } else writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+    } else updateSession(sessionId, { backfill: "done" });
   } else if (backfillStale(readSession(sessionId), now.getTime())) {
     // Its child died: hand the same cutoff to a new one.
     updateSession(sessionId, { backfill: "pending", runningSince: ts });
@@ -139,7 +150,8 @@ export function handleHook(
   }
   let stdout = trackNarration(sessionId, hook, payload);
   // SessionStart injects for every source, so the instruction survives compaction. A
-  // session that started before Murmur was on gets it once, with its next prompt.
+  // session that started before Murmur was on gets it once, with its next prompt, and
+  // maps the work already under way.
   if (
     start ||
     (hook === "UserPromptSubmit" && !readSession(sessionId).instructed)
@@ -148,7 +160,9 @@ export function handleHook(
     stdout = JSON.stringify({
       hookSpecificOutput: {
         hookEventName: hook,
-        additionalContext: NARRATION_INSTRUCTION,
+        additionalContext: start
+          ? NARRATION_INSTRUCTION
+          : `${MID_SESSION_LINE}\n${NARRATION_INSTRUCTION}`,
       },
     });
   }

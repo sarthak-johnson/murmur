@@ -8,11 +8,15 @@ import {
   dropQueued,
   isPaused,
   isRevoked,
+  projectKey,
   projectName,
   projectState,
   readCredentials,
+  readSession,
+  sessionProjectState,
   setPaused,
   setProjectState,
+  updateSession,
   writeCredentials,
 } from "./local.js";
 
@@ -100,13 +104,18 @@ export async function poll(
 
 function status(cwd: string, session: string | undefined): string {
   const c = readCredentials();
-  const state = projectState(cwd);
+  const state = sessionProjectState(cwd, session);
+  const bound = session ? readSession(session).project : undefined;
+  const follows =
+    bound && projectState(cwd) === undefined && bound !== projectKey(cwd)
+      ? ` (this session follows ${projectName(bound)})`
+      : "";
   return [
     c && isRevoked()
       ? "This machine was disconnected. Run /murmur:login."
       : `Logged in: ${c ? "yes" : "no"}`,
     `Server: ${c?.server ?? DEFAULT_SERVER}`,
-    `This project: ${state === "on" || state === "off" ? state : "not set"}`,
+    `This project: ${state === "on" || state === "off" ? state : "not set"}${follows}`,
     `Paused: ${isPaused(cwd, session) ? "yes" : "no"}`,
   ].join("\n");
 }
@@ -129,6 +138,8 @@ export async function run(
       return "Logged out. Unsent events were deleted, and this machine sends nothing more to Murmur.";
     case "on":
       setProjectState(cwd, "on");
+      // Only /murmur:on (no folder) binds the session; `on <folder>` by hand does not.
+      if (session && !arg) updateSession(session, { project: projectKey(cwd) });
       return readCredentials()
         ? `Murmur is on for ${projectName(cwd)}.`
         : `Murmur is on for ${projectName(cwd)}. Run /murmur:login to connect.`;

@@ -3,13 +3,18 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { poll, run } from "../src/cli.js";
 import {
+  isNewSession,
+  NO_NARRATION,
   queueDir,
   readCredentials,
+  readSession,
+  setProjectState,
   setRevoked,
   writeCredentials,
+  writeSession,
 } from "../src/local.js";
 import { enqueue } from "../src/upload.js";
 
@@ -80,6 +85,35 @@ describe("cli", () => {
     expect(out).toContain("This project: on");
     expect(out).toContain("Logged in: no");
     expect(out).toContain("Paused: no");
+  });
+
+  it("on in a session binds the session to the project and leaves it unseen", async () => {
+    // /murmur:on runs `murmur on` with no folder, in the session's folder.
+    const cwd = vi
+      .spyOn(process, "cwd")
+      .mockReturnValue(path.join(repo, "sub"));
+    await run(["on"], { CLAUDE_CODE_SESSION_ID: "s1" });
+    cwd.mockRestore();
+    expect(readSession("s1").project).toBe(repo);
+    // Its first hook still imports what came before.
+    expect(isNewSession("s1")).toBe(true);
+    await run(["on", repo], {});
+    expect(isNewSession("")).toBe(true);
+  });
+
+  it("on for another folder by hand does not bind the session", async () => {
+    await run(["on", repo], { CLAUDE_CODE_SESSION_ID: "s1" });
+    expect(readSession("s1").project).toBeUndefined();
+  });
+
+  it("status in a bound session names the project it follows", async () => {
+    setProjectState(repo, "on");
+    writeSession("s1", { ...NO_NARRATION, project: repo });
+    const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "else-"));
+    const out = await run(["status", elsewhere], {
+      CLAUDE_CODE_SESSION_ID: "s1",
+    });
+    expect(out).toContain(`This project: on (this session follows ${repo})`);
   });
 
   it("pause is per session and resume undoes it", async () => {

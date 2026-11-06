@@ -19955,6 +19955,7 @@ Keep it accurate with two tools. They only report; they never change what you bu
    {"now": "Wrote add() in math.js", "why": "the test needs it first", "part": "math", "task": "t1", "taskStatus": "done", "files": [{"path": "math.js", "role": "the add function"}]}
 
 Keep each call short. Never mention these tools to the user unless asked.`;
+var MID_SESSION_LINE = "This session was already under way. Call `map` now for the work in progress, then narrate as below.";
 
 // src/local.ts
 var DEFAULT_SERVER = process.env.MURMUR_SERVER ?? "http://localhost:8787";
@@ -19988,8 +19989,44 @@ function projectKey(cwd) {
   const start = import_node_path.default.resolve(cwd);
   const home = import_node_path.default.resolve(import_node_os.default.homedir());
   for (let d = start; import_node_path.default.dirname(d) !== d; d = import_node_path.default.dirname(d))
-    if (d !== home && import_node_fs.default.existsSync(import_node_path.default.join(d, ".git"))) return d;
+    if (d !== home && import_node_fs.default.existsSync(import_node_path.default.join(d, ".git")))
+      return worktreeMain(d) ?? d;
   return start;
+}
+function worktreeMain(root) {
+  let text2;
+  try {
+    text2 = import_node_fs.default.readFileSync(import_node_path.default.join(root, ".git"), "utf8");
+  } catch {
+    return void 0;
+  }
+  const gitdir = /^gitdir:\s*(.+?)\s*$/m.exec(text2)?.[1];
+  if (!gitdir) return void 0;
+  const worktrees = import_node_path.default.dirname(import_node_path.default.resolve(root, gitdir));
+  const dotGit = import_node_path.default.dirname(worktrees);
+  const main2 = import_node_path.default.dirname(dotGit);
+  const home = import_node_path.default.resolve(import_node_os.default.homedir());
+  if (import_node_path.default.basename(worktrees) !== "worktrees" || import_node_path.default.basename(dotGit) !== ".git" || main2 === home || import_node_path.default.dirname(main2) === main2 || !isDir(dotGit))
+    return void 0;
+  const real = realpath(main2);
+  if (real === realpath(home)) return void 0;
+  for (let d = root; import_node_path.default.dirname(d) !== d; d = import_node_path.default.dirname(d))
+    if (realpath(d) === real) return d;
+  return main2;
+}
+function isDir(p) {
+  try {
+    return import_node_fs.default.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function realpath(p) {
+  try {
+    return import_node_fs.default.realpathSync(p);
+  } catch {
+    return p;
+  }
 }
 function projectName(cwd) {
   const key = projectKey(cwd);
@@ -20013,8 +20050,14 @@ function setRevoked(on) {
   import_node_fs.default.writeFileSync(revokedFile(), "");
 }
 var queueDir = () => import_node_path.default.join(murmurDir(), "queue");
+var projects = () => readJson("projects.json", {});
 function projectState(cwd) {
-  return readJson("projects.json", {})[projectKey(cwd)];
+  return projects()[projectKey(cwd)];
+}
+function sessionProjectState(cwd, sessionId) {
+  const here = projectState(cwd);
+  const bound = sessionId ? readSession(sessionId).project : void 0;
+  return here !== void 0 || !bound ? here : projects()[bound];
 }
 function setProjectState(cwd, s) {
   const all = readJson("projects.json", {});
@@ -20055,7 +20098,13 @@ var NO_NARRATION = {
   blocked: false
 };
 function isNewSession(sessionId) {
-  return !import_node_fs.default.existsSync(import_node_path.default.join(murmurDir(), sessionFile(sessionId)));
+  if (!import_node_fs.default.existsSync(import_node_path.default.join(murmurDir(), sessionFile(sessionId))))
+    return true;
+  const s = readJson(
+    sessionFile(sessionId),
+    null
+  );
+  return s !== null && s.backfill === void 0;
 }
 function readSession(sessionId) {
   return {
@@ -20151,8 +20200,10 @@ async function flush(c, {
   const on = /* @__PURE__ */ new Map();
   const wanted = (e) => {
     if (e.machineId !== c.machineId) return false;
-    if (!on.has(e.cwd)) on.set(e.cwd, projectState(e.cwd) === "on");
-    return on.get(e.cwd);
+    const key = `${e.sessionId}\0${e.cwd}`;
+    if (!on.has(key))
+      on.set(key, sessionProjectState(e.cwd, e.sessionId) === "on");
+    return on.get(key);
   };
   let names = [];
   let sent = 0;
@@ -20466,7 +20517,7 @@ function handleHook(payload, env, now) {
     clearProjectPause(cwd);
     pruneSessions(now);
   }
-  const state = projectState(cwd);
+  const state = sessionProjectState(cwd, sessionId);
   if (state === void 0) {
     if (!start) return NONE2;
     setProjectState(cwd, "asked");
@@ -20474,7 +20525,7 @@ function handleHook(payload, env, now) {
   }
   if (state === "off") {
     if (sessionId && isNewSession(sessionId))
-      writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+      updateSession(sessionId, { backfill: "done" });
     return NONE2;
   }
   if (state !== "on") return NONE2;
@@ -20483,8 +20534,15 @@ function handleHook(payload, env, now) {
   if (isRevoked()) return start ? show(REVOKED_LINE) : NONE2;
   if (!sessionId) return NONE2;
   const fresh = isNewSession(sessionId);
-  if (isPaused(cwd, sessionId)) {
-    if (fresh) writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+  const seen = readSession(sessionId);
+  const project = seen.project ?? projectKey(cwd);
+  if (!seen.project || !fresh && !seen.backfill)
+    updateSession(sessionId, {
+      project,
+      ...fresh ? {} : { backfill: seen.backfill ?? "done" }
+    });
+  if (isPaused(cwd, sessionId) || isPaused(project)) {
+    if (fresh) updateSession(sessionId, { backfill: "done" });
     return NONE2;
   }
   const ts = now.toISOString();
@@ -20502,8 +20560,7 @@ function handleHook(payload, env, now) {
     const transcriptPath = payload.transcript_path;
     const isNew = start && payload.source === "startup";
     if (!isNew && typeof transcriptPath === "string" && transcriptPath) {
-      writeSession(sessionId, {
-        ...NO_NARRATION,
+      updateSession(sessionId, {
         backfill: "pending",
         cutoff: ts,
         ...hook === "UserPromptSubmit" && typeof payload.prompt === "string" ? { triggerPrompt: payload.prompt } : {},
@@ -20511,7 +20568,7 @@ function handleHook(payload, env, now) {
         cwd
       });
       backfill = sessionId;
-    } else writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+    } else updateSession(sessionId, { backfill: "done" });
   } else if (backfillStale(readSession(sessionId), now.getTime())) {
     updateSession(sessionId, { backfill: "pending", runningSince: ts });
     backfill = sessionId;
@@ -20522,7 +20579,8 @@ function handleHook(payload, env, now) {
     stdout = JSON.stringify({
       hookSpecificOutput: {
         hookEventName: hook,
-        additionalContext: NARRATION_INSTRUCTION
+        additionalContext: start ? NARRATION_INSTRUCTION : `${MID_SESSION_LINE}
+${NARRATION_INSTRUCTION}`
       }
     });
   }

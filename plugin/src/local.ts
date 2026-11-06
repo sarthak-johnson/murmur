@@ -57,8 +57,59 @@ export function projectKey(cwd: string): string {
   const start = path.resolve(cwd);
   const home = path.resolve(os.homedir());
   for (let d = start; path.dirname(d) !== d; d = path.dirname(d))
-    if (d !== home && fs.existsSync(path.join(d, ".git"))) return d;
+    if (d !== home && fs.existsSync(path.join(d, ".git")))
+      return worktreeMain(d) ?? d;
   return start;
+}
+
+/**
+ * The main repo of the git worktree at `root`, whose .git file points into
+ * <main>/.git/worktrees/<name>. A submodule's .git file points elsewhere: undefined.
+ */
+function worktreeMain(root: string): string | undefined {
+  let text: string;
+  try {
+    text = fs.readFileSync(path.join(root, ".git"), "utf8");
+  } catch {
+    return undefined; // a .git folder
+  }
+  const gitdir = /^gitdir:\s*(.+?)\s*$/m.exec(text)?.[1];
+  if (!gitdir) return undefined;
+  const worktrees = path.dirname(path.resolve(root, gitdir));
+  const dotGit = path.dirname(worktrees);
+  const main = path.dirname(dotGit);
+  const home = path.resolve(os.homedir());
+  if (
+    path.basename(worktrees) !== "worktrees" ||
+    path.basename(dotGit) !== ".git" ||
+    main === home ||
+    path.dirname(main) === main ||
+    !isDir(dotGit)
+  )
+    return undefined;
+  // Git writes the real path; keep the spelling `on` would store when run at the main
+  // root through a symlink (macOS /var is /private/var).
+  const real = realpath(main);
+  if (real === realpath(home)) return undefined; // home reached through a symlink
+  for (let d = root; path.dirname(d) !== d; d = path.dirname(d))
+    if (realpath(d) === real) return d;
+  // ponytail: a worktree outside its repo, reached through a symlink, keeps git's real
+  // spelling; a session that starts there asks once. Map via realpath of both if it bites.
+  return main;
+}
+function isDir(p: string): boolean {
+  try {
+    return fs.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function realpath(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
 }
 
 /** The project folder as people read it: home shown as ~. */
@@ -121,10 +172,23 @@ export function dropQueued(cwd: string): void {
   }
 }
 
+const projects = () =>
+  readJson<Record<string, ProjectState>>("projects.json", {});
 export function projectState(cwd: string): ProjectState | undefined {
-  return readJson<Record<string, ProjectState>>("projects.json", {})[
-    projectKey(cwd)
-  ];
+  return projects()[projectKey(cwd)];
+}
+/**
+ * What decides whether an event of `sessionId` at `cwd` goes: the state of the project
+ * at `cwd` when it has one (asked, on or off); in a folder with no state, once the
+ * session is bound to a project, that project's state.
+ */
+export function sessionProjectState(
+  cwd: string,
+  sessionId: string | undefined,
+): ProjectState | undefined {
+  const here = projectState(cwd);
+  const bound = sessionId ? readSession(sessionId).project : undefined;
+  return here !== undefined || !bound ? here : projects()[bound];
 }
 export function setProjectState(cwd: string, s: ProjectState): void {
   const all = readJson<Record<string, ProjectState>>("projects.json", {});
@@ -190,6 +254,11 @@ export interface SessionState extends Narration {
   runningSince?: string;
   /** The narration instruction reached Claude in this session. */
   instructed?: boolean;
+  /**
+   * The project key the session was first seen in while it was on, or where /murmur:on
+   * ran in it. Its events follow this project's state, wherever the session moves.
+   */
+  project?: string;
 }
 const sessionFile = (sessionId: string) =>
   path.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
@@ -201,9 +270,19 @@ export const NO_NARRATION: Narration = {
   done: [],
   blocked: false,
 };
-/** A session Murmur has never written state for. */
+/**
+ * A session no hook has seen yet. /murmur:on may already have bound it to a project;
+ * every hook that sees a session sets `backfill`. A file that cannot be read counts as
+ * seen: importing again would resend prompts the server cannot dedupe.
+ */
 export function isNewSession(sessionId: string): boolean {
-  return !fs.existsSync(path.join(murmurDir(), sessionFile(sessionId)));
+  if (!fs.existsSync(path.join(murmurDir(), sessionFile(sessionId))))
+    return true;
+  const s = readJson<Partial<SessionState> | null>(
+    sessionFile(sessionId),
+    null,
+  );
+  return s !== null && s.backfill === undefined;
 }
 export function readSession(sessionId: string): SessionState {
   return {

@@ -21,3 +21,7 @@ Keep it accurate with two tools. They only report; they never change what you bu
    {"now": "Wrote add() in math.js", "why": "the test needs it first", "part": "math", "task": "t1", "taskStatus": "done", "files": [{"path": "math.js", "role": "the add function"}]}
 
 Keep each call short. Never mention these tools to the user unless asked.`;
+
+/** Goes before the instruction when it reaches a session already under way. */
+export const MID_SESSION_LINE =
+  "This session was already under way. Call `map` now for the work in progress, then narrate as below.";

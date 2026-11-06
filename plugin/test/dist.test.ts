@@ -10,6 +10,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readBackfill } from "../src/backfill.js";
+import { MID_SESSION_LINE } from "../src/instruction.js";
 import { NARRATION_INSTRUCTION } from "../src/local.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -178,7 +179,7 @@ describe("built plugin", () => {
     expect(JSON.parse(r.stdout)).toEqual({
       hookSpecificOutput: {
         hookEventName: "UserPromptSubmit",
-        additionalContext: NARRATION_INSTRUCTION,
+        additionalContext: `${MID_SESSION_LINE}\n${NARRATION_INSTRUCTION}`,
       },
     });
   });
