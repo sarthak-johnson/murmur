@@ -10,7 +10,8 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "lint": "biome check .",
-    "build:plugin": "pnpm --filter @murmur/plugin build"
+    "build:plugin": "pnpm --filter @murmur/plugin build",
+    "e2e": "pnpm --filter @murmur/web build && pnpm --filter @murmur/e2e e2e"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4"

@@ -3,6 +3,7 @@ packages:
   - plugin
   - server
   - web
+  - e2e
 allowBuilds:
   esbuild: false
 # Package test suites run one at a time: the server suite boots PGlite in every worker

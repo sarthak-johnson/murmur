@@ -1,0 +1,16 @@
+{
+  "name": "@murmur/e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "e2e": "vitest run"
+  },
+  "devDependencies": {
+    "@murmur/core": "workspace:*",
+    "@types/node": "26.6.6",
+    "playwright": "1.64.1",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}
