@@ -23,6 +23,11 @@ const TOKEN_PATTERNS = [
   /(?<![A-Za-z])Bearer[ \t]+(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]{8,}/gi,
 ];
 
+// Keep the header name, drop the whole credential, scheme word included
+// (Basic, Bearer, token, Digest...), so "Authorization: Basic <b64>" never leaks.
+const AUTH_HEADER =
+  /((?<![\w-])(?:proxy-)?authorization["']?[ \t]*[:=][ \t]*["']?)(?:[A-Za-z]+[ \t]+)?[^\s"']+/gi;
+
 // Keep the user, drop the password: scheme://user:pass@ and curl -u user:pass.
 const USER_PASS = [
   /((?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s:/@]+:)[^\s@/]+(?=@)/g,
@@ -50,6 +55,7 @@ const CUT = MAX_STRING + 4096;
 export function scrubString(s: string): string {
   let out = s;
   for (const p of TOKEN_PATTERNS) out = out.replace(p, R);
+  out = out.replace(AUTH_HEADER, `$1${R}`);
   for (const p of USER_PASS) out = out.replace(p, `$1${R}`);
   out = out.replace(KEY_VALUE, (m, name: string, sep: string, q?: string) =>
     KEY_WORD.test(name) ? `${name}${sep}${q ?? ""}${R}` : m,

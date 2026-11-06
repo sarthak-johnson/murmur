@@ -143,6 +143,20 @@ test.each([
     "[redacted]",
   ],
   ["Token=abc next", "Token=[redacted] next"],
+  [
+    "Authorization: Basic YWxhZGRpbjpvcGVuc2VzYW1l",
+    "Authorization: [redacted]",
+  ],
+  [
+    `curl -H "Authorization: token ghxabcdefghijkl" https://api.x.com`,
+    `curl -H "Authorization: [redacted]" https://api.x.com`,
+  ],
+  ["Authorization: Bearer abcdefghijklmnop", "Authorization: [redacted]"],
+  [
+    `{"Authorization": "Basic YWxhZGRpbjpvcGVu"}`,
+    `{"Authorization": "[redacted]"}`,
+  ],
+  ["proxy-authorization: Digest abc", "proxy-authorization: [redacted]"],
   ["PORT=3000 name: Sam", "PORT=3000 name: Sam"],
 ])("redacts %j", (input, out) => {
   expect(scrubString(input)).toBe(out);
@@ -170,6 +184,8 @@ test.each([
   ["dash u user", `-u ${"a".repeat(N)}`],
   ["bearer", "Bearer ".repeat(N / 7)],
   ["bearer run", `Bearer ${"a".repeat(N)}`],
+  ["authorization headers", "Authorization: Basic ".repeat(N / 21)],
+  ["authorization spaces", `Authorization:${" ".repeat(N)}`],
   [
     "prefixes",
     "AIza npm_ glpat- ghp_ xoxb- sk_live_ AKIA sk-ant- ".repeat(N / 48),
