@@ -12,6 +12,7 @@ export function useSession(sessionId: string): {
   view: SessionView | null;
   viewAt(ts: string): SessionView | null;
   status: SessionStatus;
+  events: MurmurEvent[];
 } {
   const [events, setEvents] = useState<MurmurEvent[] | null>(null);
   const [status, setStatus] = useState<SessionStatus>("loading");
@@ -113,5 +114,5 @@ export function useSession(sessionId: string): {
     };
   }, [events]);
 
-  return { view, viewAt, status };
+  return { view, viewAt, status, events: events ?? [] };
 }

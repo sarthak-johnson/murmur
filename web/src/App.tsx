@@ -5,6 +5,7 @@ import { Login } from "./pages/Login";
 import { LiveSkeleton, SessionPage } from "./pages/Session";
 import { Sessions } from "./pages/Sessions";
 import { Settings } from "./pages/Settings";
+import { PartPage } from "./part/PartDetail";
 import { navigate, useRoute } from "./router";
 
 const PENDING = "murmur:pendingDevice";
@@ -131,9 +132,12 @@ export function App() {
       break;
     case "part":
       page = (
-        <main className="page">
-          <p className="muted">Part details arrive in a later task.</p>
-        </main>
+        <PartPage
+          key={route.sessionId}
+          sessionId={route.sessionId}
+          requestId={route.requestId}
+          partId={route.partId}
+        />
       );
       break;
   }
