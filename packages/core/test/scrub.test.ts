@@ -290,3 +290,41 @@ test("the cut marker survives a cut inside name=value", () => {
   ).payload.tool_response as { stdout: string };
   expect(out.stdout).toMatch(/…\[truncated \d+ chars\]$/);
 });
+
+test("a Bash result keeps its bashEditDiff whole, secrets still redacted, the rest cut", () => {
+  const lines = Array.from(
+    { length: 400 },
+    (_, i) => `+line ${i} of the stylesheet`,
+  );
+  // A minified line is longer than an unshown result may be.
+  lines.push(`+${"a{b:c}".repeat(1000)}`);
+  lines.push("+API_KEY=abc123secretvalue");
+  const r = scrubEvent(
+    ev({
+      tool_name: "Bash",
+      tool_response: {
+        stdout: "o".repeat(50_000),
+        bashEditDiff: {
+          files: [
+            {
+              filePath: "/p/a.css",
+              hunks: [
+                { oldStart: 0, oldLines: 0, newStart: 1, newLines: 402, lines },
+              ],
+            },
+          ],
+        },
+      },
+    }),
+  ).payload.tool_response as {
+    stdout: string;
+    bashEditDiff: {
+      files: { hunks: { lines: string[]; newLines: number }[] }[];
+    };
+  };
+  const hunk = r.bashEditDiff.files[0]?.hunks[0];
+  expect(hunk?.newLines).toBe(402);
+  expect(hunk?.lines.slice(0, 401)).toEqual(lines.slice(0, 401));
+  expect(hunk?.lines[401]).toBe("+API_KEY=[redacted]");
+  expect(r.stdout.length).toBeLessThan(OUTPUT_MAX + 40);
+});

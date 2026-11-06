@@ -781,8 +781,8 @@ function defineLazy(object2, key, getter) {
     configurable: true
   });
 }
-function objectClone(obj2) {
-  return Object.create(Object.getPrototypeOf(obj2), Object.getOwnPropertyDescriptors(obj2));
+function objectClone(obj3) {
+  return Object.create(Object.getPrototypeOf(obj3), Object.getOwnPropertyDescriptors(obj3));
 }
 function assignProp(target, prop, value) {
   Object.defineProperty(target, prop, {
@@ -853,10 +853,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj2, path4) {
+function getElementAtPath(obj3, path4) {
   if (!path4)
-    return obj2;
-  return path4.reduce((acc, key) => acc?.[key], obj2);
+    return obj3;
+  return path4.reduce((acc, key) => acc?.[key], obj3);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -1292,9 +1292,9 @@ function parsedType(data) {
       if (Array.isArray(data)) {
         return "array";
       }
-      const obj2 = data;
-      if (obj2 && Object.getPrototypeOf(obj2) !== Object.prototype && "constructor" in obj2 && obj2.constructor) {
-        return obj2.constructor.name;
+      const obj3 = data;
+      if (obj3 && Object.getPrototypeOf(obj3) !== Object.prototype && "constructor" in obj3 && obj3.constructor) {
+        return obj3.constructor.name;
       }
     }
   }
@@ -1312,8 +1312,8 @@ function issue(...args) {
   }
   return { ...iss };
 }
-function cleanEnum(obj2) {
-  return Object.entries(obj2).filter(([k, _]) => {
+function cleanEnum(obj3) {
+  return Object.entries(obj3).filter(([k, _]) => {
     return Number.isNaN(Number.parseInt(k, 10));
   }).map((el) => el[1]);
 }
@@ -1638,15 +1638,15 @@ var $ZodError = $constructor("$ZodError", initializer);
 var $ZodRealError = $constructor("$ZodError", initializer, void 0, {
   Parent: Error
 });
-function node(obj2, key, make) {
-  if (!Object.prototype.hasOwnProperty.call(obj2, key)) {
+function node(obj3, key, make) {
+  if (!Object.prototype.hasOwnProperty.call(obj3, key)) {
     if (key === "__proto__") {
-      Object.defineProperty(obj2, key, { value: make(), writable: true, enumerable: true, configurable: true });
+      Object.defineProperty(obj3, key, { value: make(), writable: true, enumerable: true, configurable: true });
     } else {
-      obj2[key] = make();
+      obj3[key] = make();
     }
   }
-  return obj2[key];
+  return obj3[key];
 }
 function flattenError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = {};
@@ -19928,18 +19928,28 @@ function walk(v, env = false, max = MAX_STRING) {
 }
 var OUTPUT_MAX = 2e3;
 var SHOWN_RESULTS = /* @__PURE__ */ new Set(["Edit", "Write", "Agent"]);
+var obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
 function scrubEvent(e) {
   const p = e.payload;
   if (e.hook !== "PostToolUse" && e.hook !== "PostToolUseFailure")
     return { ...e, payload: walk(p) };
   const { tool_response, error: error62, ...rest } = p;
   const payload = walk(rest);
-  if ("tool_response" in p)
+  if ("tool_response" in p) {
+    const { bashEditDiff, ...output2 } = obj(tool_response);
+    const bash = p.tool_name === "Bash" && bashEditDiff !== void 0;
     payload.tool_response = walk(
-      tool_response,
+      bash ? output2 : tool_response,
       false,
       SHOWN_RESULTS.has(String(p.tool_name)) ? MAX_STRING : OUTPUT_MAX
     );
+    if (bash)
+      payload.tool_response.bashEditDiff = walk(
+        bashEditDiff,
+        false,
+        MAX_STRING
+      );
+  }
   if ("error" in p) payload.error = walk(error62, false, OUTPUT_MAX);
   return { ...e, payload };
 }
@@ -20307,7 +20317,7 @@ function stableId(sessionId, hook, p) {
   const key = TOOL_HOOKS.has(hook) ? p.tool_use_id : hook === "SubagentStart" || hook === "SubagentStop" ? p.agent_id : void 0;
   return typeof key === "string" && key ? uuidFrom(`murmur:${sessionId}:${hook}:${key}`) : void 0;
 }
-var obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : void 0;
+var obj2 = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : void 0;
 var str = (v) => typeof v === "string" && v ? v : void 0;
 function* readLines(file2, tailBytes) {
   let fd;
@@ -20328,7 +20338,7 @@ function* readLines(file2, tailBytes) {
     let rest = Buffer.alloc(0);
     const parse3 = (line) => {
       try {
-        return obj(JSON.parse(line.toString("utf8")));
+        return obj2(JSON.parse(line.toString("utf8")));
       } catch {
         return void 0;
       }
@@ -20360,7 +20370,7 @@ function* readLines(file2, tailBytes) {
 }
 function readMeta(file2) {
   try {
-    return obj(JSON.parse(import_node_fs3.default.readFileSync(file2, "utf8"))) ?? {};
+    return obj2(JSON.parse(import_node_fs3.default.readFileSync(file2, "utf8"))) ?? {};
   } catch {
     return {};
   }
@@ -20376,7 +20386,7 @@ function promptText(content) {
   }
   if (!Array.isArray(content)) return void 0;
   const text2 = content.flatMap((b) => {
-    const block = obj(b);
+    const block = obj2(b);
     return block?.type === "text" && typeof block.text === "string" ? [block.text] : [];
   }).join("\n");
   return text2 || void 0;
@@ -20427,8 +20437,8 @@ function readBackfill(b, {
       if (!usable(e)) continue;
       first ??= e;
       last = e;
-      const content = obj(e.message)?.content;
-      if (e.type === "user" && obj(e.origin)?.kind === "human" && !agent.agent_id) {
+      const content = obj2(e.message)?.content;
+      if (e.type === "user" && obj2(e.origin)?.kind === "human" && !agent.agent_id) {
         const prompt = promptText(content);
         if (prompt) {
           emit(e, 0, "UserPromptSubmit", {
@@ -20440,7 +20450,7 @@ function readBackfill(b, {
       }
       if (!Array.isArray(content)) continue;
       content.forEach((raw, i) => {
-        const block = obj(raw);
+        const block = obj2(raw);
         if (!block) return;
         if (e.type === "assistant" && block.type === "tool_use") {
           const id = str(block.id);
@@ -20456,7 +20466,7 @@ function readBackfill(b, {
           const id = str(block.tool_use_id);
           const use = id ? uses.get(id) : void 0;
           if (!use || !id) return;
-          if (obj(e.toolUseResult)?.status !== "async_launched") ended.add(id);
+          if (obj2(e.toolUseResult)?.status !== "async_launched") ended.add(id);
           emit(
             e,
             i,

@@ -1,7 +1,10 @@
 /*
- * Files touched, from successful Edit and Write calls (PostToolUse only).
+ * Files touched, from successful Edit and Write calls, and Bash calls whose result has a
+ * `bashEditDiff` (a command that changed files: `sed -i`, `python3 -`, `cp`), PostToolUse only.
  * - Counts are the `+` and `-` lines of `tool_response.structuredPatch`; a Write with
- *   `type: "create"` and an empty patch counts its content lines as added.
+ *   `type: "create"` and an empty patch counts its content lines as added. A Bash diff
+ *   counts each file's hunk lines the same way; a file whose only hunk starts at line 0
+ *   of 0 lines is new.
  * - A touch goes to the part of the latest narrate before it naming the path in `files`,
  *   else the first such narrate after it, else the latest narrate before it, else `looseFiles`.
  * - One entry per path per part: counts add up, `isNew` if any touch created the file.
@@ -25,14 +28,15 @@ export function applyFiles(
       naming.set(path, [...(naming.get(path) ?? []), x]);
     }
   events.forEach((e, i) => {
-    const t = touchOf(e);
-    if (!t) return;
+    for (const t of touchesOf(e)) addAt(t, i);
+  });
+  function addAt(t: Touch, i: number) {
     const named = naming.get(t.path) ?? [];
     const by = named.findLast((x) => x.i < i) ?? named.find((x) => x.i > i);
     const partId = by?.part ?? before[i]?.part;
     const part = req.parts.find((p) => p.id === partId);
     addTouch(part ? part.files : req.looseFiles, t);
-  });
+  }
   for (const p of req.parts) p.files = p.files.filter((f) => f.eventIds.length);
 }
 
@@ -48,19 +52,54 @@ export function addTouch(files: FileTouch[], t: Touch): void {
   }
 }
 
-export function touchOf(e: MurmurEvent): Touch | undefined {
-  const { tool_name: tool, tool_response: res } = e.payload;
-  if (e.hook !== "PostToolUse" || (tool !== "Edit" && tool !== "Write")) return;
-  if (!res || typeof res !== "object") return;
-  const r = res as Record<string, unknown>;
-  if (typeof r.filePath !== "string") return;
-  const lines = Array.isArray(r.structuredPatch)
-    ? r.structuredPatch.flatMap((h) =>
+const hunkLines = (hunks: unknown): unknown[] =>
+  Array.isArray(hunks)
+    ? hunks.flatMap((h) =>
         Array.isArray(h?.lines) ? (h.lines as unknown[]) : [],
       )
     : [];
-  const count = (c: string) =>
-    lines.filter((l) => typeof l === "string" && l.startsWith(c)).length;
+const counter = (lines: unknown[]) => (c: string) =>
+  lines.filter((l) => typeof l === "string" && l.startsWith(c)).length;
+
+/** Every file a successful call changed, with its counts. */
+export function touchesOf(e: MurmurEvent): Touch[] {
+  const { tool_name: tool, tool_response: res } = e.payload;
+  if (e.hook !== "PostToolUse" || !res || typeof res !== "object") return [];
+  const r = res as Record<string, unknown>;
+  if (tool === "Edit" || tool === "Write") {
+    const t = editTouch(e, r);
+    return t ? [t] : [];
+  }
+  if (tool !== "Bash") return [];
+  const diff = r.bashEditDiff as { files?: unknown } | undefined;
+  const files = Array.isArray(diff?.files) ? diff.files : [];
+  return files.flatMap((f: Record<string, unknown> | null) => {
+    if (typeof f?.filePath !== "string") return [];
+    const count = counter(hunkLines(f.hunks));
+    const hunks = Array.isArray(f.hunks) ? f.hunks : [];
+    const isNew =
+      hunks.length === 1 &&
+      hunks[0]?.oldStart === 0 &&
+      hunks[0]?.oldLines === 0;
+    return [
+      {
+        path: relPath(f.filePath, e.cwd),
+        added: count("+"),
+        removed: count("-"),
+        isNew,
+        eventIds: [e.id],
+      },
+    ];
+  });
+}
+
+function editTouch(
+  e: MurmurEvent,
+  r: Record<string, unknown>,
+): Touch | undefined {
+  if (typeof r.filePath !== "string") return;
+  const lines = hunkLines(r.structuredPatch);
+  const count = counter(lines);
   const isNew = r.type === "create";
   const content = typeof r.content === "string" ? r.content : "";
   const created =

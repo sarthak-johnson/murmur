@@ -11,7 +11,7 @@
  *   was quiet for over 10 minutes before the session's latest event; else running.
  *   Both only ever turn true as events arrive, so a run never flips back. A part is
  *   `now` while a run runs, else `done`; its task is `failed` when its last run failed.
- * - Files: Edit and Write inside a run's subagent go to its part, even after the next
+ * - Files: Edit, Write and Bash file changes (`touchesOf`) inside a run's subagent go to its part, even after the next
  *   prompt. Main-thread ones group by the folder of their display path (from the cwd of
  *   the request's prompt, the first event of its list); a one-file folder
  *   joins its nearest folder with a part; the 6 biggest folders become parts. Root files,
@@ -20,7 +20,7 @@
  *   with "same files". With no TaskCreated plan, one "What Claude did" phase lists them.
  */
 import type { MurmurEvent } from "../events.js";
-import { addTouch, displayPath, touchOf } from "./files.js";
+import { addTouch, displayPath, touchesOf } from "./files.js";
 import { addOnce } from "./requests.js";
 import type {
   AgentView,
@@ -163,16 +163,15 @@ export function inferHistory(
   for (const req of reqs) if (req.planInferred) req.looseFiles = [];
   events.forEach((list, j) => {
     const req = reqs[j] as RequestView;
-    for (const e of list) {
-      const t = touchOf(e);
-      if (!t) continue;
-      const agentId = str(e.payload.agent_id);
-      const part = owner.get(agentId);
-      if (part) addTouch(part.files, t);
-      else if (!req.planInferred) continue;
-      else if (agentId) addTouch(req.looseFiles, t);
-      else main[j]?.push({ touch: t, ts: e.ts });
-    }
+    for (const e of list)
+      for (const t of touchesOf(e)) {
+        const agentId = str(e.payload.agent_id);
+        const part = owner.get(agentId);
+        if (part) addTouch(part.files, t);
+        else if (!req.planInferred) continue;
+        else if (agentId) addTouch(req.looseFiles, t);
+        else main[j]?.push({ touch: t, ts: e.ts });
+      }
   });
 
   // Pass 3: folder parts, order, links and plan.

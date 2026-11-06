@@ -134,3 +134,127 @@ test("feature.jsonl counts the write then the edit of greet.txt", () => {
     },
   ]);
 });
+
+/** A Bash result whose command changed `files`, as Claude Code reports it. */
+const bashEdit = (
+  n: number,
+  files: { filePath: string; hunks: Record<string, unknown>[] }[],
+  extra: Record<string, unknown> = {},
+) => ({
+  ...tool(n, "Bash", { command: "python3 - <<'EOF' ..." }),
+  payload: {
+    tool_name: "Bash",
+    tool_use_id: `t${n}`,
+    tool_input: { command: "python3 - <<'EOF' ..." },
+    tool_response: { stdout: "", stderr: "", bashEditDiff: { files } },
+    ...extra,
+  },
+});
+
+test("a Bash result's bashEditDiff counts as a change to each file", () => {
+  const [req] = reduce([
+    prompt(1, "fix it"),
+    bashEdit(2, [
+      {
+        filePath: "/p/index.css",
+        hunks: [
+          {
+            oldStart: 140,
+            oldLines: 2,
+            newStart: 140,
+            newLines: 3,
+            lines: [" a", "-b", "+c", "+d"],
+          },
+        ],
+      },
+      {
+        filePath: "/p/new.test.js",
+        hunks: [
+          {
+            oldStart: 0,
+            oldLines: 0,
+            newStart: 1,
+            newLines: 2,
+            lines: ["+x", "+y"],
+          },
+        ],
+      },
+    ]),
+    tool(3, "Bash", { command: "ls" }),
+  ]).requests;
+  expect(req?.looseFiles).toEqual([
+    {
+      path: "index.css",
+      added: 2,
+      removed: 1,
+      isNew: false,
+      eventIds: ["e2"],
+    },
+    {
+      path: "new.test.js",
+      added: 2,
+      removed: 0,
+      isNew: true,
+      eventIds: ["e2"],
+    },
+  ]);
+  expect(req?.tally.files).toBe(2);
+});
+
+test("Task 1's helper changed files only through Bash in a worktree: they are its part's", () => {
+  const cwd = "/Users/me/app";
+  // Claude Code records a subagent working in a worktree with the worktree as its cwd.
+  const wt = `${cwd}/.claude/worktrees/lit-plate`;
+  const sub = (e: ReturnType<typeof tool>) => ({
+    ...e,
+    cwd: wt,
+    payload: {
+      ...e.payload,
+      agent_id: "a1",
+      agent_type: "general-purpose",
+      cwd: wt,
+    },
+  });
+  const diff = (path: string) => ({
+    filePath: `${wt}/frontend/${path}`,
+    hunks: [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 1,
+        lines: ["-a", "+b"],
+      },
+    ],
+  });
+  const at = (e: ReturnType<typeof tool>) => ({ ...e, cwd });
+  const [req] = reduce([
+    at(prompt(1, "Yes please go ahead")),
+    at(
+      tool(
+        2,
+        "Agent",
+        {
+          description: "Implement Task 1: Lit plate tokens",
+          prompt: "Build it",
+          subagent_type: "general-purpose",
+        },
+        "PreToolUse",
+      ),
+    ),
+    at({
+      ...tool(3, "x", {}),
+      hook: "SubagentStart",
+      payload: { agent_id: "a1", agent_type: "general-purpose" },
+    }),
+    sub(bashEdit(4, [diff("src/styles/index.css"), diff("index.html")])),
+    sub(bashEdit(5, [diff("src/context/ThemeContext.jsx")])),
+  ]).requests;
+  const part = req?.parts.find((p) => p.title === "Task 1: Lit plate tokens");
+  expect(part?.files.map((f) => f.path)).toEqual([
+    "frontend/src/styles/index.css",
+    "frontend/index.html",
+    "frontend/src/context/ThemeContext.jsx",
+  ]);
+  expect(req?.looseFiles).toEqual([]);
+});

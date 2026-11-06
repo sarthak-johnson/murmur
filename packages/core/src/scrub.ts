@@ -121,8 +121,14 @@ function walk(v: unknown, env = false, max = MAX_STRING): unknown {
 
 /** How much of a tool result is sent when the view never shows it (file reads, screenshots). */
 export const OUTPUT_MAX = 2000;
-// The view reads these results: diffs from Edit and Write, the helper's id from Agent.
+// The view reads these results: diffs from Edit and Write, the helper's id and report
+// from Agent. A Bash result's `bashEditDiff` is read too, and kept apart.
 const SHOWN_RESULTS = new Set(["Edit", "Write", "Agent"]);
+
+const obj = (v: unknown): Record<string, unknown> =>
+  v && typeof v === "object" && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : {};
 
 export function scrubEvent(e: MurmurEvent): MurmurEvent {
   const p = e.payload;
@@ -132,12 +138,22 @@ export function scrubEvent(e: MurmurEvent): MurmurEvent {
   // failure carries its output in `error`, which no view shows.
   const { tool_response, error, ...rest } = p;
   const payload = walk(rest) as Record<string, unknown>;
-  if ("tool_response" in p)
+  if ("tool_response" in p) {
+    // A Bash result's file diff is shown like an Edit's; the rest of it is not.
+    const { bashEditDiff, ...output } = obj(tool_response);
+    const bash = p.tool_name === "Bash" && bashEditDiff !== undefined;
     payload.tool_response = walk(
-      tool_response,
+      bash ? output : tool_response,
       false,
       SHOWN_RESULTS.has(String(p.tool_name)) ? MAX_STRING : OUTPUT_MAX,
     );
+    if (bash)
+      (payload.tool_response as Record<string, unknown>).bashEditDiff = walk(
+        bashEditDiff,
+        false,
+        MAX_STRING,
+      );
+  }
   if ("error" in p) payload.error = walk(error, false, OUTPUT_MAX);
   return { ...e, payload };
 }
