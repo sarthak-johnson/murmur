@@ -8,6 +8,8 @@ import { enqueue, flush } from "../src/upload.js";
 
 const CREDS = { server: "http://srv", token: "tok", machineId: "m1" };
 const T0 = Date.parse("2026-11-06T10:00:00.000Z");
+// Only the time-budget test uses a real budget; a loaded machine must not make the rest flaky.
+const NO_DEADLINE = 60_000;
 
 beforeEach(() => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "murmur-upload-"));
@@ -47,14 +49,23 @@ describe("queue", () => {
   it("flush keeps files when the server is down and sends them in order later", async () => {
     for (const i of [3, 1, 2]) enqueue(ev(i));
     const down = fakeFetch(["throw"]);
-    expect(await flush(CREDS, down.fn)).toEqual({ sent: 0, kept: 3 });
+    expect(await flush(CREDS, down.fn, NO_DEADLINE)).toEqual({
+      sent: 0,
+      kept: 3,
+    });
     expect(queued()).toHaveLength(3);
 
     const err = fakeFetch([503]);
-    expect(await flush(CREDS, err.fn)).toEqual({ sent: 0, kept: 3 });
+    expect(await flush(CREDS, err.fn, NO_DEADLINE)).toEqual({
+      sent: 0,
+      kept: 3,
+    });
 
     const up = fakeFetch([200]);
-    expect(await flush(CREDS, up.fn)).toEqual({ sent: 3, kept: 0 });
+    expect(await flush(CREDS, up.fn, NO_DEADLINE)).toEqual({
+      sent: 3,
+      kept: 0,
+    });
     expect(up.calls).toEqual([
       {
         url: "http://srv/api/ingest",
@@ -69,7 +80,10 @@ describe("queue", () => {
   it("flush splits 450 events into batches of 200, 200, 50", async () => {
     for (let i = 0; i < 450; i++) enqueue(ev(i));
     const f = fakeFetch([200]);
-    expect(await flush(CREDS, f.fn)).toEqual({ sent: 450, kept: 0 });
+    expect(await flush(CREDS, f.fn, NO_DEADLINE)).toEqual({
+      sent: 450,
+      kept: 0,
+    });
     expect(f.calls.map((c) => c.ids.length)).toEqual([200, 200, 50]);
     expect(f.calls.flatMap((c) => c.ids)).toEqual(
       Array.from({ length: 450 }, (_, i) => ev(i).id),
@@ -79,7 +93,10 @@ describe("queue", () => {
   it("a failed batch stops the run and keeps it and everything after", async () => {
     for (let i = 0; i < 450; i++) enqueue(ev(i));
     const f = fakeFetch([200, 500]);
-    expect(await flush(CREDS, f.fn)).toEqual({ sent: 200, kept: 250 });
+    expect(await flush(CREDS, f.fn, NO_DEADLINE)).toEqual({
+      sent: 200,
+      kept: 250,
+    });
     expect(f.calls).toHaveLength(2);
     expect(queued()).toHaveLength(250);
   });
@@ -91,7 +108,7 @@ describe("queue", () => {
     enqueue(ev(2, { chunks }));
     enqueue(ev(3));
     const f = fakeFetch([200]);
-    expect(await flush(CREDS, f.fn)).toEqual({ sent: 3, kept: 0 });
+    expect(await flush(CREDS, f.fn, NO_DEADLINE)).toEqual({ sent: 3, kept: 0 });
     expect(f.calls.map((c) => c.ids)).toEqual([
       ["e0001"],
       ["e0002"],
@@ -104,7 +121,10 @@ describe("queue", () => {
     const chunk = "z".repeat(200 * 1024);
     for (let i = 0; i < 60; i++) enqueue(ev(i, { chunk }));
     const f = fakeFetch([200]);
-    expect(await flush(CREDS, f.fn)).toEqual({ sent: 60, kept: 0 });
+    expect(await flush(CREDS, f.fn, NO_DEADLINE)).toEqual({
+      sent: 60,
+      kept: 0,
+    });
     expect(f.calls.length).toBeGreaterThan(2);
     for (const c of f.calls) expect(c.bytes).toBeLessThan(5_000_000);
   });
@@ -112,7 +132,7 @@ describe("queue", () => {
   it("a lone event the server rejects as too large is dropped, not retried", async () => {
     enqueue(ev(1));
     const f = fakeFetch([413]);
-    expect(await flush(CREDS, f.fn)).toEqual({ sent: 0, kept: 0 });
+    expect(await flush(CREDS, f.fn, NO_DEADLINE)).toEqual({ sent: 0, kept: 0 });
     expect(queued()).toEqual([]);
   });
 
@@ -123,7 +143,7 @@ describe("queue", () => {
     fs.writeFileSync(path.join(dir, "000000000000001-wrong.json"), '{"id":1}');
     fs.writeFileSync(path.join(dir, ".tmp-partial.json"), "{");
     const f = fakeFetch([200]);
-    expect(await flush(CREDS, f.fn)).toEqual({ sent: 1, kept: 0 });
+    expect(await flush(CREDS, f.fn, NO_DEADLINE)).toEqual({ sent: 1, kept: 0 });
     expect(f.calls.map((c) => c.ids)).toEqual([["e0001"]]);
     expect(queued()).toEqual([".tmp-partial.json"]);
   });
@@ -136,12 +156,12 @@ describe("queue", () => {
       for (const f of fs.readdirSync(dir)) fs.rmSync(path.join(dir, f));
       return new Response("{}", { status: 200 });
     }) as unknown as typeof fetch;
-    expect(await flush(CREDS, fn)).toEqual({ sent: 2, kept: 0 });
+    expect(await flush(CREDS, fn, NO_DEADLINE)).toEqual({ sent: 2, kept: 0 });
   });
 
   it("flush with no queue dir sends nothing", async () => {
     const f = fakeFetch([200]);
-    expect(await flush(CREDS, f.fn)).toEqual({ sent: 0, kept: 0 });
+    expect(await flush(CREDS, f.fn, NO_DEADLINE)).toEqual({ sent: 0, kept: 0 });
     expect(f.calls).toEqual([]);
   });
 
