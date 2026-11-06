@@ -1,5 +1,6 @@
 import { type Context, Hono } from "hono";
 import { except } from "hono/combine";
+import { accountRoutes } from "./account.js";
 import {
   type AppEnv,
   authRoutes,
@@ -58,5 +59,6 @@ export function createApp(deps: Deps): Hono<AppEnv> {
   ingestRoutes(app, deps);
   sessionRoutes(app, deps);
   streamRoutes(app, deps);
+  accountRoutes(app, deps);
   return app;
 }
