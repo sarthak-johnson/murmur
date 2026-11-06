@@ -93,8 +93,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\"",
-            "async": true
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hook.cjs\""
           }
         ]
       }

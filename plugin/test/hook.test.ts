@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { MAX_STRING } from "@murmur/core";
+import { MAP_TOOL, MAX_STRING, NARRATE_TOOL } from "@murmur/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handleHook } from "../src/hook.js";
 import {
@@ -180,5 +180,106 @@ describe("handleHook", () => {
     expect(
       handleHook({ hook_event_name: "Stop", session_id: "s1" }, ENV, NOW).event,
     ).toBeNull();
+  });
+
+  describe("Stop asks for the missing narration once per request", () => {
+    const BLOCK = {
+      decision: "block",
+      reason:
+        "Murmur: before you finish, call narrate to mark each finished task done and say what you did.",
+    };
+    const post = (tool: string, input: Record<string, unknown>) =>
+      payload("PostToolUse", { tool_name: tool, tool_input: input });
+    const map = () => post(MAP_TOOL, { kind: "feature", goal: "g" });
+    const narrate = (task?: string, taskStatus?: string) =>
+      post(NARRATE_TOOL, { now: "n", why: "w", task, taskStatus });
+    const stop = (active = false) =>
+      payload("Stop", { stop_hook_active: active });
+    const run = (...ps: Record<string, unknown>[]) =>
+      ps.map((p) => handleHook(p, ENV, NOW));
+    beforeEach(() => {
+      login();
+      setProjectState(repo, "on");
+    });
+
+    it("blocks once when a mapped request never narrated, again after a new prompt", () => {
+      const [, , first, second] = run(
+        payload("UserPromptSubmit"),
+        map(),
+        stop(),
+        stop(),
+      );
+      expect(JSON.parse(first?.stdout ?? "")).toEqual(BLOCK);
+      expect(first?.event?.hook).toBe("Stop");
+      expect(second?.stdout).toBe("");
+      const [, , again] = run(payload("UserPromptSubmit"), map(), stop());
+      expect(JSON.parse(again?.stdout ?? "")).toEqual(BLOCK);
+    });
+
+    it("blocks when a narrated task is not narrated done", () => {
+      const [, , , r] = run(
+        payload("UserPromptSubmit"),
+        map(),
+        narrate("t1", "running"),
+        stop(),
+      );
+      expect(JSON.parse(r?.stdout ?? "")).toEqual(BLOCK);
+    });
+
+    it("stays quiet when narrate marked its tasks done", () => {
+      const [, , , , , r] = run(
+        payload("UserPromptSubmit"),
+        map(),
+        narrate("t1", "running"),
+        narrate("t2", "done"),
+        narrate("t1", "done"),
+        stop(),
+      );
+      expect(r?.stdout).toBe("");
+      const [, , , plain] = run(
+        payload("UserPromptSubmit"),
+        map(),
+        narrate(),
+        stop(),
+      );
+      expect(plain?.stdout).toBe("");
+    });
+
+    it("stays quiet when stop_hook_active, with no map, or for other sessions", () => {
+      const [, , active] = run(payload("UserPromptSubmit"), map(), stop(true));
+      expect(active?.stdout).toBe("");
+      const [, noMap] = run(payload("UserPromptSubmit"), stop());
+      expect(noMap?.stdout).toBe("");
+      run(payload("UserPromptSubmit"), map());
+      const other = handleHook(payload("Stop", { session_id: "s2" }), ENV, NOW);
+      expect(other.stdout).toBe("");
+    });
+
+    it("headless runs only gate when MURMUR_ALLOW_HEADLESS=1", () => {
+      const headless = { CLAUDE_CODE_ENTRYPOINT: "sdk-cli" };
+      for (const p of [payload("UserPromptSubmit"), map()])
+        handleHook(p, headless, NOW);
+      expect(handleHook(stop(), headless, NOW).stdout).toBe("");
+      const allowed = { ...headless, MURMUR_ALLOW_HEADLESS: "1" };
+      for (const p of [payload("UserPromptSubmit"), map()])
+        handleHook(p, allowed, NOW);
+      expect(JSON.parse(handleHook(stop(), allowed, NOW).stdout)).toEqual(
+        BLOCK,
+      );
+    });
+  });
+
+  it("Stop is a synchronous hook so its block and upload finish before Claude stops", () => {
+    const hooks = JSON.parse(
+      fs.readFileSync(
+        path.join(import.meta.dirname, "../hooks/hooks.json"),
+        "utf8",
+      ),
+    ).hooks;
+    expect(hooks.Stop).toHaveLength(1);
+    expect(hooks.Stop[0].matcher).toBeUndefined();
+    expect(hooks.Stop[0].hooks).toEqual([
+      { type: "command", command: hooks.SessionStart[0].hooks[0].command },
+    ]);
   });
 });

@@ -58,14 +58,15 @@ function readJson(name, fallback) {
   }
 }
 function writeJson(name, value, mode = 420) {
-  const dir = murmurDir();
+  const file = import_node_path.default.join(murmurDir(), name);
+  const dir = import_node_path.default.dirname(file);
   import_node_fs.default.mkdirSync(dir, { recursive: true, mode: 448 });
   const tmp = import_node_path.default.join(
     dir,
-    `.${name}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`
+    `.${import_node_path.default.basename(file)}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`
   );
   import_node_fs.default.writeFileSync(tmp, JSON.stringify(value), { mode });
-  import_node_fs.default.renameSync(tmp, import_node_path.default.join(dir, name));
+  import_node_fs.default.renameSync(tmp, file);
 }
 function projectKey(cwd) {
   const start = import_node_path.default.resolve(cwd);

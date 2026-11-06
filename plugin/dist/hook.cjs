@@ -19783,6 +19783,8 @@ var MurmurEventSchema = external_exports.object({
 });
 
 // ../packages/core/src/narration.ts
+var MAP_TOOL = "mcp__plugin_murmur_murmur__map";
+var NARRATE_TOOL = "mcp__plugin_murmur_murmur__narrate";
 var text = external_exports.string().max(300);
 var list = (item) => external_exports.array(item).max(20);
 var status = external_exports.enum(["running", "done", "failed"]);
@@ -19901,13 +19903,16 @@ Keep it accurate with two tools. They only report; they never change what you bu
    For a bug, the parts are the symptom, suspects, what you ruled out, the cause and the fix.
    For a refactor, before and after. For a question, the question, sources and answer.
    Call \`map\` again whenever the plan or the parts change.
-2. Call \`narrate\` at each meaningful step, not every tool call:
-   what you are doing now and why, in plain words a junior developer understands,
-   the part and task it belongs to, and the task's status.
+2. Call \`narrate\` right after \`map\`, after each batch of edits, after each test or command result,
+   and when a task finishes, with taskStatus "done". A task is not done until you narrate it done.
+   Say what you are doing now and why, in plain words a junior developer understands,
+   with the part and task it belongs to and the task's status.
    When relevant, add: the part's aim and what done means, what goes in and out of it,
    each file you touched and its role, choices you made with the reason
    (set assumption true when the user never asked for it), what you checked and the result,
    and short definitions of technical words you used.
+   Example:
+   {"now": "Wrote add() in math.js", "why": "the test needs it first", "part": "math", "task": "t1", "taskStatus": "done", "files": [{"path": "math.js", "role": "the add function"}]}
 
 Keep each call short. Never mention these tools to the user unless asked.`;
 
@@ -19929,14 +19934,15 @@ function readJson(name, fallback) {
   }
 }
 function writeJson(name, value, mode = 420) {
-  const dir = murmurDir();
+  const file2 = import_node_path.default.join(murmurDir(), name);
+  const dir = import_node_path.default.dirname(file2);
   import_node_fs.default.mkdirSync(dir, { recursive: true, mode: 448 });
   const tmp = import_node_path.default.join(
     dir,
-    `.${name}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`
+    `.${import_node_path.default.basename(file2)}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`
   );
   import_node_fs.default.writeFileSync(tmp, JSON.stringify(value), { mode });
-  import_node_fs.default.renameSync(tmp, import_node_path.default.join(dir, name));
+  import_node_fs.default.renameSync(tmp, file2);
 }
 function projectKey(cwd) {
   const start = import_node_path.default.resolve(cwd);
@@ -19980,6 +19986,26 @@ function setPaused(cwd, paused, sessionId) {
 }
 function clearProjectPause(cwd) {
   setPaused(cwd, false);
+}
+var narrationFile = (sessionId) => import_node_path.default.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
+var NO_NARRATION = {
+  mapped: false,
+  narrates: 0,
+  named: [],
+  done: [],
+  blocked: false
+};
+function readNarration(sessionId) {
+  return {
+    ...NO_NARRATION,
+    ...readJson(narrationFile(sessionId), {})
+  };
+}
+function writeNarration(sessionId, n) {
+  writeJson(narrationFile(sessionId), n);
+}
+function clearNarration(sessionId) {
+  import_node_fs.default.rmSync(import_node_path.default.join(murmurDir(), narrationFile(sessionId)), { force: true });
 }
 
 // src/upload.ts
@@ -20063,6 +20089,10 @@ async function flush(c, fetchImpl = fetch, budgetMs = 3e3) {
 // src/hook.ts
 var ASK_LINE = "Murmur: show this project in Murmur? Run /murmur:on to turn it on, or /murmur:off to stop asking.";
 var LOGIN_LINE = "Murmur: run /murmur:login to connect.";
+var BLOCK = JSON.stringify({
+  decision: "block",
+  reason: "Murmur: before you finish, call narrate to mark each finished task done and say what you did."
+});
 var NONE2 = { stdout: "", event: null };
 var show = (line) => ({
   stdout: JSON.stringify({ systemMessage: line }),
@@ -20105,8 +20135,36 @@ function handleHook(payload, env, now) {
       hookEventName: "SessionStart",
       additionalContext: NARRATION_INSTRUCTION
     }
-  }) : "";
+  }) : trackNarration(sessionId, hook, payload);
   return { stdout, event };
+}
+function trackNarration(sessionId, hook, p) {
+  if (hook === "UserPromptSubmit") writeNarration(sessionId, NO_NARRATION);
+  if (hook === "SessionEnd") clearNarration(sessionId);
+  const tool = hook === "PostToolUse" ? p.tool_name : void 0;
+  if (tool !== MAP_TOOL && tool !== NARRATE_TOOL && hook !== "Stop") return "";
+  const n = readNarration(sessionId);
+  if (tool === MAP_TOOL) n.mapped = true;
+  if (tool === NARRATE_TOOL) {
+    const input2 = p.tool_input ?? {};
+    n.narrates++;
+    if (typeof input2.task === "string" && input2.task) {
+      const task = input2.task;
+      if (!n.named.includes(task)) n.named.push(task);
+      n.done = n.done.filter((t) => t !== task);
+      if (input2.taskStatus === "done") n.done.push(task);
+    }
+  }
+  let out = "";
+  if (hook === "Stop") {
+    const told = n.narrates > 0 && n.named.every((t) => n.done.includes(t));
+    if (p.stop_hook_active === true || !n.mapped || n.blocked || told)
+      return "";
+    n.blocked = true;
+    out = BLOCK;
+  }
+  writeNarration(sessionId, n);
+  return out;
 }
 async function main() {
   const creds = readCredentials();

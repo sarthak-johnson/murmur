@@ -36,16 +36,17 @@ function readJson<T>(name: string, fallback: T): T {
   }
 }
 
-// Atomic: temp file in the same dir, then rename.
+// Atomic: temp file in the same dir, then rename. `name` may hold one subfolder.
 function writeJson(name: string, value: unknown, mode = 0o644): void {
-  const dir = murmurDir();
+  const file = path.join(murmurDir(), name);
+  const dir = path.dirname(file);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const tmp = path.join(
     dir,
-    `.${name}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`,
+    `.${path.basename(file)}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`,
   );
   fs.writeFileSync(tmp, JSON.stringify(value), { mode });
-  fs.renameSync(tmp, path.join(dir, name));
+  fs.renameSync(tmp, file);
 }
 
 function projectKey(cwd: string): string {
@@ -108,4 +109,36 @@ export function setPaused(
 }
 export function clearProjectPause(cwd: string): void {
   setPaused(cwd, false);
+}
+
+/** What the current request has reported so far, for the Stop hook. */
+export interface Narration {
+  mapped: boolean;
+  narrates: number;
+  /** Task ids named by narrate, and those whose latest narrate said done. */
+  named: string[];
+  done: string[];
+  /** The Stop block went out for this request. */
+  blocked: boolean;
+}
+const narrationFile = (sessionId: string) =>
+  path.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
+export const NO_NARRATION: Narration = {
+  mapped: false,
+  narrates: 0,
+  named: [],
+  done: [],
+  blocked: false,
+};
+export function readNarration(sessionId: string): Narration {
+  return {
+    ...NO_NARRATION,
+    ...readJson<Partial<Narration>>(narrationFile(sessionId), {}),
+  };
+}
+export function writeNarration(sessionId: string, n: Narration): void {
+  writeJson(narrationFile(sessionId), n);
+}
+export function clearNarration(sessionId: string): void {
+  fs.rmSync(path.join(murmurDir(), narrationFile(sessionId)), { force: true });
 }

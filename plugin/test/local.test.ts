@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { NarrateInput } from "@murmur/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { NARRATION_INSTRUCTION } from "../src/instruction.js";
 import {
@@ -76,5 +77,22 @@ describe("local state", () => {
     expect(NARRATION_INSTRUCTION).not.toContain("—");
     expect(NARRATION_INSTRUCTION).toContain("`map`");
     expect(NARRATION_INSTRUCTION).toContain("`narrate`");
+  });
+
+  it("instruction names every narrate trigger and carries a valid example", () => {
+    for (const s of [
+      "right after `map`",
+      "after each batch of edits",
+      "after each test or command result",
+      'taskStatus "done"',
+      "A task is not done until you narrate it done.",
+    ])
+      expect(NARRATION_INSTRUCTION).toContain(s);
+    const example = NARRATION_INSTRUCTION.split("\n").find((l) =>
+      l.trim().startsWith("{"),
+    );
+    expect(NarrateInput.safeParse(JSON.parse(example ?? "")).success).toBe(
+      true,
+    );
   });
 });

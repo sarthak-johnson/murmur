@@ -7,12 +7,15 @@ Keep it accurate with two tools. They only report; they never change what you bu
    For a bug, the parts are the symptom, suspects, what you ruled out, the cause and the fix.
    For a refactor, before and after. For a question, the question, sources and answer.
    Call \`map\` again whenever the plan or the parts change.
-2. Call \`narrate\` at each meaningful step, not every tool call:
-   what you are doing now and why, in plain words a junior developer understands,
-   the part and task it belongs to, and the task's status.
+2. Call \`narrate\` right after \`map\`, after each batch of edits, after each test or command result,
+   and when a task finishes, with taskStatus "done". A task is not done until you narrate it done.
+   Say what you are doing now and why, in plain words a junior developer understands,
+   with the part and task it belongs to and the task's status.
    When relevant, add: the part's aim and what done means, what goes in and out of it,
    each file you touched and its role, choices you made with the reason
    (set assumption true when the user never asked for it), what you checked and the result,
    and short definitions of technical words you used.
+   Example:
+   {"now": "Wrote add() in math.js", "why": "the test needs it first", "part": "math", "task": "t1", "taskStatus": "done", "files": [{"path": "math.js", "role": "the add function"}]}
 
 Keep each call short. Never mention these tools to the user unless asked.`;

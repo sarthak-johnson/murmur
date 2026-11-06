@@ -3,22 +3,33 @@ import { randomUUID } from "node:crypto";
 import {
   HOOK_NAMES,
   type HookName,
+  MAP_TOOL,
   type MurmurEvent,
+  NARRATE_TOOL,
   scrubEvent,
 } from "@murmur/core";
 import {
+  clearNarration,
   clearProjectPause,
   isPaused,
   NARRATION_INSTRUCTION,
+  NO_NARRATION,
   projectState,
   readCredentials,
+  readNarration,
   setProjectState,
+  writeNarration,
 } from "./local.js";
 import { enqueue, flush } from "./upload.js";
 
 const ASK_LINE =
   "Murmur: show this project in Murmur? Run /murmur:on to turn it on, or /murmur:off to stop asking.";
 const LOGIN_LINE = "Murmur: run /murmur:login to connect.";
+const BLOCK = JSON.stringify({
+  decision: "block",
+  reason:
+    "Murmur: before you finish, call narrate to mark each finished task done and say what you did.",
+});
 
 type Result = { stdout: string; event: MurmurEvent | null };
 const NONE: Result = { stdout: "", event: null };
@@ -85,8 +96,44 @@ export function handleHook(
           additionalContext: NARRATION_INSTRUCTION,
         },
       })
-    : "";
+    : trackNarration(sessionId, hook, payload);
   return { stdout, event };
+}
+
+// ponytail: async PostToolUse hooks read-modify-write this file without a lock, so two
+// narrate calls landing in the same few ms can lose one; worst case is one extra Stop block.
+/** Records map and narrate calls; on Stop, asks once per request for the missing narration. */
+function trackNarration(
+  sessionId: string,
+  hook: string,
+  p: Record<string, unknown>,
+): string {
+  if (hook === "UserPromptSubmit") writeNarration(sessionId, NO_NARRATION);
+  if (hook === "SessionEnd") clearNarration(sessionId);
+  const tool = hook === "PostToolUse" ? p.tool_name : undefined;
+  if (tool !== MAP_TOOL && tool !== NARRATE_TOOL && hook !== "Stop") return "";
+  const n = readNarration(sessionId);
+  if (tool === MAP_TOOL) n.mapped = true;
+  if (tool === NARRATE_TOOL) {
+    const input = (p.tool_input ?? {}) as Record<string, unknown>;
+    n.narrates++;
+    if (typeof input.task === "string" && input.task) {
+      const task = input.task;
+      if (!n.named.includes(task)) n.named.push(task);
+      n.done = n.done.filter((t) => t !== task);
+      if (input.taskStatus === "done") n.done.push(task);
+    }
+  }
+  let out = "";
+  if (hook === "Stop") {
+    const told = n.narrates > 0 && n.named.every((t) => n.done.includes(t));
+    if (p.stop_hook_active === true || !n.mapped || n.blocked || told)
+      return "";
+    n.blocked = true;
+    out = BLOCK;
+  }
+  writeNarration(sessionId, n);
+  return out;
 }
 
 async function main(): Promise<void> {
