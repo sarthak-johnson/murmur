@@ -327,6 +327,35 @@ test("second map keeps steps already on a part", () => {
   ]);
 });
 
+test("narrate naming only a task lands on that task's part", () => {
+  const [req] = reduce([
+    prompt(1, "add alerts"),
+    mapCall(2, {
+      ...MAP,
+      phases: [
+        ...MAP.phases,
+        { id: "3", title: "Loose", tasks: [{ id: "3.1", title: "No part" }] },
+      ],
+    }),
+    narrateCall(
+      3,
+      note({
+        task: "2.1",
+        step: { text: "Wrote save", status: "done" },
+        aim: { aim: "save", doneWhen: "201" },
+      }),
+    ),
+    narrateCall(
+      4,
+      note({ task: "3.1", step: { text: "lost", status: "done" } }),
+    ),
+  ]).requests;
+  expect(req?.parts[1]?.steps.map((s) => s.text)).toEqual(["Wrote save"]);
+  expect(req?.parts[1]?.aim).toEqual({ aim: "save", doneWhen: "201" });
+  expect(req?.parts[0]?.steps).toEqual([]);
+  expect(req?.now?.part).toBeUndefined();
+});
+
 test("unknown part id in narrate keeps now but adds no step to any part", () => {
   const [req] = reduce([
     prompt(1, "add alerts"),

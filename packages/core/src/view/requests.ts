@@ -6,6 +6,7 @@
  *   `done` if it has tasks and all are done, or a step on it is done and no later step is running;
  *   otherwise `todo`.
  * - Phase: `now` if any task in it is now or failed; `done` if it has tasks and all are done; else `todo`.
+ * A narrate naming a task but no part lands on that task's part.
  * A repeated `map` takes the new order and titles, keeps the detail of ids seen before, and drops vanished ids.
  */
 import type { MurmurEvent } from "../events.js";
@@ -119,10 +120,12 @@ function applyNarrate(
   e: MurmurEvent,
   n: NarrateInput,
 ): Named {
-  const part = req.parts.find((p) => p.id === n.part);
   const task = req.phases
     .flatMap((ph) => ph.tasks)
     .find((t) => t.id === n.task);
+  // No part named: fall back to the named task's part.
+  const partId = n.part ?? task?.part;
+  const part = req.parts.find((p) => p.id === partId);
   req.now = { text: n.now, why: n.why, ts: e.ts };
   if (part) req.now.part = part.id;
   if (task && n.taskStatus) task.status = TASK_STATUS[n.taskStatus];
