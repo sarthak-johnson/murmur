@@ -196,6 +196,20 @@ describe("queue", () => {
     ]);
   });
 
+  it("the 7 days count from when an event was queued, not from its own time", async () => {
+    const day = 24 * 3600 * 1000;
+    // Backfilled history: an old event queued just now is still sent.
+    enqueue(ev(1, {}, { ts: new Date(Date.now() - 30 * day).toISOString() }));
+    enqueue(ev(2));
+    const stale = path.join(murmurDir(), "queue", queued()[1] ?? "");
+    const old = new Date(Date.now() - 8 * day);
+    fs.utimesSync(stale, old, old);
+    const f = fakeFetch([200]);
+    expect(await flush(CREDS, opts(f))).toEqual({ sent: 1, kept: 0 });
+    expect(f.calls.map((c) => c.ids)).toEqual([["e0001"]]);
+    expect(queued()).toEqual([]);
+  });
+
   it("a 6 MB event alone is sent in its own batch after truncation", async () => {
     // Each string is under MAX_STRING, so scrubbing keeps all 6 MB.
     const chunks = Array.from({ length: 24 }, () => "y".repeat(256 * 1024));

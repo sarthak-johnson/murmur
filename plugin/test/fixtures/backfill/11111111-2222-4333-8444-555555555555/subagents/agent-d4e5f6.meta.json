@@ -1,6 +1,1 @@
-{
-  "agentType": "Explore",
-  "isBuiltIn": true,
-  "description": "Check the docs",
-  "toolUseId": "toolu_other"
-}
+{"agentType":"Explore","isBuiltIn":true,"description":"Check the docs","toolUseId":"toolu_other"}

@@ -2,11 +2,20 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { type HookName, type MurmurEvent, scrubEvent } from "@murmur/core";
-import { readCredentials, readSession, updateSession } from "./local.js";
+import {
+  readCredentials,
+  readSession,
+  type SessionState,
+  updateSession,
+} from "./local.js";
 import { enqueue, type FlushOptions, flush } from "./upload.js";
 
 const MAX_EVENTS = 5000;
 const MAX_BYTES = 20_000_000;
+// Only the newest events are kept, so only the end of each file is read.
+const TAIL_BYTES = 30_000_000;
+// A backfill pending or running this long died; the next hook starts it again.
+const STALE_MS = 10 * 60_000;
 
 /** A UUID in version 5 layout from the SHA-1 of `key`. */
 function uuidFrom(key: string): string {
@@ -18,23 +27,22 @@ function uuidFrom(key: string): string {
 const TOOL_HOOKS = new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure"]);
 
 /**
- * The id for an event both the live hook and the backfill can send. Claude Code writes a
- * prompt or tool call to the transcript before its hook runs, so the event that starts a
- * backfill is also in the history; sharing the id lets the server keep one copy.
+ * The id for a tool or subagent event both the live hook and the backfill can send. Claude
+ * Code writes a tool call to the transcript before its hook runs, so the event that starts
+ * a backfill is also in the history; sharing the id lets the server keep one copy.
+ * Prompts get none: many prompts share one prompt_id. The backfill skips the triggering
+ * prompt instead.
  */
 export function stableId(
   sessionId: string,
   hook: string,
   p: Record<string, unknown>,
 ): string | undefined {
-  const key =
-    hook === "UserPromptSubmit"
-      ? p.prompt_id
-      : TOOL_HOOKS.has(hook)
-        ? p.tool_use_id
-        : hook === "SubagentStart" || hook === "SubagentStop"
-          ? p.agent_id
-          : undefined;
+  const key = TOOL_HOOKS.has(hook)
+    ? p.tool_use_id
+    : hook === "SubagentStart" || hook === "SubagentStop"
+      ? p.agent_id
+      : undefined;
   return typeof key === "string" && key
     ? uuidFrom(`murmur:${sessionId}:${hook}:${key}`)
     : undefined;
@@ -56,10 +64,21 @@ const obj = (v: unknown): Record<string, unknown> | undefined =>
     : undefined;
 const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
 
-function readLines(file: string): Entry[] {
+/** The JSON lines in the last `tailBytes` of `file`, starting at a whole line. */
+function readLines(file: string, tailBytes: number): Entry[] {
   let text: string;
   try {
-    text = fs.readFileSync(file, "utf8");
+    const fd = fs.openSync(file, "r");
+    try {
+      const size = fs.fstatSync(fd).size;
+      const start = Math.max(0, size - tailBytes);
+      const buf = Buffer.alloc(size - start);
+      fs.readSync(fd, buf, 0, buf.length, start);
+      text = buf.toString("utf8");
+      if (start > 0) text = text.slice(text.indexOf("\n") + 1);
+    } finally {
+      fs.closeSync(fd);
+    }
   } catch {
     return [];
   }
@@ -81,13 +100,57 @@ function readMeta(file: string): Record<string, unknown> {
   }
 }
 
+const COMMAND = /^\s*<command-(?:name|message)>/;
+/** What the user typed: a slash command as `/name args`, text blocks joined. */
+function promptText(content: unknown): string | undefined {
+  if (typeof content === "string") {
+    if (!COMMAND.test(content)) return content;
+    const tag = (t: string) =>
+      new RegExp(`<command-${t}>([\\s\\S]*?)</command-${t}>`)
+        .exec(content)?.[1]
+        ?.trim() ?? "";
+    const name = tag("name");
+    if (!name) return undefined;
+    return `${name.startsWith("/") ? name : `/${name}`} ${tag("args")}`.trim();
+  }
+  if (!Array.isArray(content)) return undefined;
+  const text = content
+    .flatMap((b) => {
+      const block = obj(b);
+      return block?.type === "text" && typeof block.text === "string"
+        ? [block.text]
+        : [];
+    })
+    .join("\n");
+  return text || undefined;
+}
+
+/** Whether a pending or running backfill has waited too long and should start again. */
+export function backfillStale(s: SessionState, now: number): boolean {
+  if (s.backfill !== "pending" && s.backfill !== "running") return false;
+  return !(now - Date.parse(s.runningSince ?? s.cutoff ?? "") <= STALE_MS);
+}
+
+export interface ReadOptions {
+  maxEvents?: number;
+  maxBytes?: number;
+  tailBytes?: number;
+  /** Leave out the newest prompt: it is the live event that set the cutoff. */
+  skipNewestPrompt?: boolean;
+}
+
 /**
  * The session's history before `cutoff`, as the hook events Claude Code would have sent,
  * scrubbed and capped to the most recent events. Unreadable parts are skipped.
  */
 export function readBackfill(
   b: BackfillInput,
-  { maxEvents = MAX_EVENTS, maxBytes = MAX_BYTES } = {},
+  {
+    maxEvents = MAX_EVENTS,
+    maxBytes = MAX_BYTES,
+    tailBytes = TAIL_BYTES,
+    skipNewestPrompt = false,
+  }: ReadOptions = {},
 ): MurmurEvent[] {
   const cutoff = Date.parse(b.cutoff);
   const out: MurmurEvent[] = [];
@@ -126,17 +189,23 @@ export function readBackfill(
       return str(e.uuid) && ts < cutoff;
     });
 
+  // Agent calls whose result says the helper finished (not just launched it).
+  const ended = new Set<string>();
   const mapEntries = (list: Entry[], agent: Record<string, unknown>) => {
     const uses = new Map<string, Block>();
     for (const e of list) {
       const content = obj(e.message)?.content;
-      if (e.type === "user" && typeof content === "string") {
-        if (obj(e.origin)?.kind === "human" && !agent.agent_id)
+      if (
+        e.type === "user" &&
+        obj(e.origin)?.kind === "human" &&
+        !agent.agent_id
+      ) {
+        const prompt = promptText(content);
+        if (prompt)
           emit(e, 0, "UserPromptSubmit", {
-            prompt: content,
+            prompt,
             ...(str(e.promptId) ? { prompt_id: e.promptId } : {}),
           });
-        continue;
       }
       if (!Array.isArray(content)) continue;
       content.forEach((raw: unknown, i) => {
@@ -155,7 +224,8 @@ export function readBackfill(
         } else if (e.type === "user" && block.type === "tool_result") {
           const id = str(block.tool_use_id);
           const use = id ? uses.get(id) : undefined;
-          if (!use) return;
+          if (!use || !id) return;
+          if (obj(e.toolUseResult)?.status !== "async_launched") ended.add(id);
           emit(
             e,
             i,
@@ -173,7 +243,11 @@ export function readBackfill(
     }
   };
 
-  mapEntries(usable(readLines(b.transcriptPath)), {});
+  mapEntries(usable(readLines(b.transcriptPath, tailBytes)), {});
+  if (skipNewestPrompt) {
+    const i = out.findLastIndex((e) => e.hook === "UserPromptSubmit");
+    if (i >= 0) out.splice(i, 1);
+  }
 
   const dir = path.join(
     path.dirname(b.transcriptPath),
@@ -191,14 +265,17 @@ export function readBackfill(
       agent_id: agentId,
       agent_type: typeof meta.agentType === "string" ? meta.agentType : "",
     };
-    const list = usable(readLines(path.join(dir, name)));
+    const list = usable(readLines(path.join(dir, name), tailBytes));
     const first = list[0];
     const last = list.at(-1);
     if (!first || !last) continue;
     emit(first, 0, "SubagentStart", agent);
     mapEntries(list, agent);
-    // A running subagent's meta has no `finished`; its stop comes live later.
-    if (meta.finished === true) emit(last, 0, "SubagentStop", agent);
+    // A running subagent's meta has no `finished` and its Agent call has no result yet;
+    // its stop comes live later.
+    const call = str(meta.toolUseId);
+    if (meta.finished === true || (call && ended.has(call)))
+      emit(last, 0, "SubagentStop", agent);
   }
 
   out.sort((x, y) => Date.parse(x.ts) - Date.parse(y.ts));
@@ -214,8 +291,9 @@ export function readBackfill(
 }
 
 /**
- * Runs in the detached `hook.cjs --backfill <sessionId>` child: queues the pending history
- * once, then flushes. Returns how many events it queued.
+ * Runs in the detached `hook.cjs --backfill <sessionId>` child: queues the pending (or
+ * stale) history once, then flushes. Returns how many events it queued. A retry queues
+ * the same ids again, so the server keeps one copy.
  */
 export async function runBackfill(
   sessionId: string,
@@ -223,19 +301,28 @@ export async function runBackfill(
 ): Promise<number> {
   const creds = readCredentials();
   const s = readSession(sessionId);
-  if (!creds || s.backfill !== "pending") return 0;
-  updateSession(sessionId, { backfill: "running" });
+  if (!creds || !(s.backfill === "pending" || backfillStale(s, Date.now())))
+    return 0;
+  updateSession(sessionId, {
+    backfill: "running",
+    runningSince: new Date().toISOString(),
+  });
   let events: MurmurEvent[] = [];
   if (s.cutoff && s.transcriptPath && s.cwd)
-    events = readBackfill({
-      sessionId,
-      machineId: creds.machineId,
-      cwd: s.cwd,
-      transcriptPath: s.transcriptPath,
-      cutoff: s.cutoff,
-    });
+    events = readBackfill(
+      {
+        sessionId,
+        machineId: creds.machineId,
+        cwd: s.cwd,
+        transcriptPath: s.transcriptPath,
+        cutoff: s.cutoff,
+      },
+      { skipNewestPrompt: s.trigger === "UserPromptSubmit" },
+    );
   for (const e of events) enqueue(e);
   updateSession(sessionId, { backfill: "done" });
-  await flush(creds, { budgetMs: 50_000, ...opts });
+  // A logout or new login while this ran must not send with the old token.
+  if (readCredentials()?.token === creds.token)
+    await flush(creds, { budgetMs: 50_000, ...opts });
   return events.length;
 }

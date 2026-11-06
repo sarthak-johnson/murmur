@@ -5,6 +5,7 @@ import { MAP_TOOL, MAX_STRING, NARRATE_TOOL } from "@murmur/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handleHook } from "../src/hook.js";
 import {
+  murmurDir,
   NARRATION_INSTRUCTION,
   projectState,
   readSession,
@@ -355,6 +356,7 @@ describe("handleHook", () => {
         cutoff: NOW.toISOString(),
         transcriptPath: TP,
         cwd: repo,
+        trigger: "UserPromptSubmit",
       });
       const tool = payload("PreToolUse", { transcript_path: TP });
       expect(handleHook(tool, ENV, NOW).backfill).toBeUndefined();
@@ -418,12 +420,13 @@ describe("handleHook", () => {
       expect(handleHook(prompt(), ENV, NOW).backfill).toBe("s1");
     });
 
-    it("live tool, prompt and subagent events get the ids the backfill gives them", () => {
+    it("live tool and subagent events get the ids the backfill gives them, prompts do not", () => {
       login();
       setProjectState(repo, "on");
+      // prompt_id is shared by many prompts in a real session.
       const a = handleHook(prompt({ prompt_id: "p1" }), ENV, NOW).event?.id;
       const b = handleHook(prompt({ prompt_id: "p1" }), ENV, NOW).event?.id;
-      expect(a).toBe(b);
+      expect(a).not.toBe(b);
       const pre = (id: string) =>
         handleHook(payload("PreToolUse", { tool_use_id: id }), ENV, NOW).event
           ?.id;
@@ -431,6 +434,78 @@ describe("handleHook", () => {
       expect(pre("toolu_1")).not.toBe(pre("toolu_2"));
       const stop = () => handleHook(payload("Stop"), ENV, NOW).event?.id;
       expect(stop()).not.toBe(stop());
+    });
+  });
+
+  describe("backfill edge cases", () => {
+    const TP = "/t/s1.jsonl";
+    const prompt = (extra = {}) =>
+      payload("UserPromptSubmit", {
+        prompt: "hi",
+        transcript_path: TP,
+        ...extra,
+      });
+
+    it("a session seen while its project was off is never imported, one never asked about is", () => {
+      login();
+      setProjectState(repo, "off");
+      expect(handleHook(prompt(), ENV, NOW).event).toBeNull();
+      expect(readSession("s1").backfill).toBe("done");
+      setProjectState(repo, "on");
+      expect(handleHook(prompt(), ENV, NOW).backfill).toBeUndefined();
+
+      const other = path.join(path.dirname(repo), "other");
+      fs.mkdirSync(path.join(other, ".git"), { recursive: true });
+      const s2 = { ...prompt(), session_id: "s2", cwd: other };
+      expect(handleHook(s2, ENV, NOW).event).toBeNull();
+      setProjectState(other, "on");
+      expect(handleHook(s2, ENV, NOW).backfill).toBe("s2");
+    });
+
+    it("a backfill stuck for over 10 minutes starts again", () => {
+      login();
+      setProjectState(repo, "on");
+      handleHook(prompt(), ENV, NOW);
+      const later = (min: number) => new Date(NOW.getTime() + min * 60_000);
+      const tool = payload("PreToolUse");
+      // Pending, and its child never ran.
+      expect(handleHook(tool, ENV, later(5)).backfill).toBeUndefined();
+      expect(handleHook(tool, ENV, later(11)).backfill).toBe("s1");
+      const s = readSession("s1");
+      fs.writeFileSync(
+        path.join(murmurDir(), "sessions", "s1.json"),
+        JSON.stringify({
+          ...s,
+          backfill: "running",
+          runningSince: later(20).toISOString(),
+        }),
+      );
+      expect(handleHook(tool, ENV, later(25)).backfill).toBeUndefined();
+      expect(handleHook(tool, ENV, later(31)).backfill).toBe("s1");
+      fs.writeFileSync(
+        path.join(murmurDir(), "sessions", "s1.json"),
+        JSON.stringify({ ...s, backfill: "done" }),
+      );
+      expect(handleHook(tool, ENV, later(60)).backfill).toBeUndefined();
+    });
+
+    it("a startup SessionStart deletes session state idle for over 30 days", () => {
+      login();
+      setProjectState(repo, "on");
+      for (const id of ["old", "recent"])
+        handleHook(payload("Stop", { session_id: id }), ENV, NOW);
+      const file = (id: string) =>
+        path.join(murmurDir(), "sessions", `${id}.json`);
+      const day = 24 * 3600 * 1000;
+      const at = (d: number) => new Date(NOW.getTime() - d * day);
+      fs.utimesSync(file("old"), at(31), at(31));
+      fs.utimesSync(file("recent"), at(29), at(29));
+      handleHook(start("resume"), ENV, NOW);
+      expect(fs.existsSync(file("old"))).toBe(true);
+      handleHook(start(), ENV, NOW);
+      expect(fs.existsSync(file("old"))).toBe(false);
+      expect(fs.existsSync(file("recent"))).toBe(true);
+      expect(fs.existsSync(file("s1"))).toBe(true);
     });
   });
 

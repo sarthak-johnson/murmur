@@ -1,7 +1,1 @@
-{
-  "agentType": "general-purpose",
-  "isBuiltIn": true,
-  "description": "Look around",
-  "toolUseId": "toolu_agent",
-  "finished": true
-}
+{"agentType":"general-purpose","isBuiltIn":true,"description":"Look around","toolUseId":"toolu_agent"}

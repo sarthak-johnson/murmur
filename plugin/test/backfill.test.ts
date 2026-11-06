@@ -2,15 +2,29 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { type MurmurEvent, reduce } from "@murmur/core";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readBackfill, runBackfill, stableId } from "../src/backfill.js";
 import {
+  type Credentials,
   murmurDir,
   readSession,
   setProjectState,
   writeCredentials,
   writeSession,
 } from "../src/local.js";
+
+// Lets a test change what readCredentials returns partway through a run.
+const creds = vi.hoisted(() => ({
+  next: [] as (Credentials | null)[],
+}));
+vi.mock("../src/local.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/local.js")>();
+  return {
+    ...real,
+    readCredentials: () =>
+      creds.next.length ? creds.next.shift() : real.readCredentials(),
+  };
+});
 
 const SID = "11111111-2222-4333-8444-555555555555";
 const FIXTURE = path.join(import.meta.dirname, "fixtures/backfill");
@@ -54,10 +68,14 @@ describe("readBackfill", () => {
       "PostToolUse Bash sub",
       "SubagentStop a1b2c3 ",
       "PostToolUse Agent ",
-      // A subagent whose meta is not finished starts but never stops.
+      "PreToolUse Agent ",
+      "PostToolUse Agent ",
+      // Launched in the background and not finished: it starts but never stops.
       "SubagentStart d4e5f6 ",
       "PreToolUse Read sub",
       "PreToolUse Bash ",
+      "UserPromptSubmit /murmur:on now ",
+      "UserPromptSubmit Here is how it looks\nmake it match ",
       "UserPromptSubmit Now add a README ",
     ]);
     for (const e of events) {
@@ -105,6 +123,8 @@ describe("readBackfill", () => {
     const view = reduce(readBackfill(input()));
     expect(view.requests.map((r) => r.prompt)).toEqual([
       "Add a greet function with a test",
+      "/murmur:on now",
+      "Here is how it looks\nmake it match",
       "Now add a README",
     ]);
     const req = view.requests[0];
@@ -122,18 +142,59 @@ describe("readBackfill", () => {
 
   it("emits nothing at or after the cutoff", () => {
     const events = readBackfill(input({ cutoff: t(15) }));
-    expect(events.length).toBe(12);
+    expect(events.length).toBe(11);
     expect(events.every((e) => e.ts < t(15))).toBe(true);
-    expect(events.at(-1)?.hook).toBe("SubagentStop");
+    // The Agent call's result, which ends the helper, is at the cutoff.
+    expect(events.map(brief)).not.toContain("SubagentStop a1b2c3 ");
   });
 
-  it("gives the same ids on every run, and the live hook's id for the same event", () => {
+  it("prompts sharing a promptId stay apart, and the newest can be skipped", () => {
+    const prompts = (o = {}) =>
+      readBackfill(input(), o).filter((e) => e.hook === "UserPromptSubmit");
+    const all = prompts();
+    expect(all.filter((e) => e.payload.prompt_id === "p-1")).toHaveLength(3);
+    expect(new Set(all.map((e) => e.id)).size).toBe(4);
+    const skipped = prompts({ skipNewestPrompt: true });
+    expect(skipped.map((e) => e.id)).toEqual(all.slice(0, 3).map((e) => e.id));
+    // Only the main transcript's newest prompt goes, not other events.
+    expect(readBackfill(input(), { skipNewestPrompt: true })).toHaveLength(
+      readBackfill(input()).length - 1,
+    );
+  });
+
+  it("reads only the tail of a large transcript, from a whole line", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "murmur-transcript-"));
+    const file = path.join(dir, `${SID}.jsonl`);
+    const line = (i: number) =>
+      JSON.stringify({
+        type: "user",
+        uuid: `x${i}`,
+        timestamp: t(i),
+        origin: { kind: "human" },
+        message: { role: "user", content: `prompt ${i}` },
+      });
+    const lines = Array.from({ length: 2000 }, (_, i) => line(i));
+    fs.writeFileSync(file, `${lines.join("\n")}\n`);
+    const tail = Buffer.byteLength(lines.slice(-10).join("\n")) + 30;
+    const events = readBackfill(
+      input({ transcriptPath: file, cutoff: t(5000) }),
+      { tailBytes: tail },
+    );
+    expect(events.map((e) => e.payload.prompt)).toEqual(
+      Array.from({ length: 10 }, (_, i) => `prompt ${1990 + i}`),
+    );
+  });
+
+  it("gives the same ids on every run, and the live hook's id for tool and subagent events", () => {
     const a = readBackfill(input()).map((e) => e.id);
     expect(readBackfill(input()).map((e) => e.id)).toEqual(a);
     expect(new Set(a).size).toBe(a.length);
-    const first = readBackfill(input())[0] as MurmurEvent;
-    expect(first.id).toBe(
+    expect(
       stableId(SID, "UserPromptSubmit", { prompt_id: "p-1" }),
+    ).toBeUndefined();
+    const start = readBackfill(input()).find((e) => e.hook === "SubagentStart");
+    expect(start?.id).toBe(
+      stableId(SID, "SubagentStart", { agent_id: "a1b2c3" }),
     );
     const pre = readBackfill(input()).find(
       (e) => e.payload.tool_use_id === "toolu_edit",
@@ -217,14 +278,7 @@ describe("runBackfill", () => {
       );
       return new Response("{}");
     }) as unknown as typeof globalThis.fetch;
-    // Old timestamps: the queue's 7-day cap is relative to now, so keep it out of this test.
-    const old = Date.now;
-    Date.now = () => Date.parse(t(20));
-    try {
-      expect(await runBackfill(SID, { fetch })).toBe(12);
-    } finally {
-      Date.now = old;
-    }
+    expect(await runBackfill(SID, { fetch })).toBe(11);
     expect(sent).toEqual(
       readBackfill(input({ cutoff: t(15) })).map((e) => e.id),
     );
@@ -245,8 +299,72 @@ describe("runBackfill", () => {
     writeSession(SID, pending);
     expect(await runBackfill(SID)).toBe(0);
     writeCredentials({ server: "http://srv", token: "tok", machineId: "m1" });
-    writeSession(SID, { ...pending, backfill: "running" });
+    writeSession(SID, {
+      ...pending,
+      backfill: "running",
+      runningSince: new Date(Date.now() - 60_000).toISOString(),
+    });
     expect(await runBackfill(SID)).toBe(0);
     expect(queued()).toEqual([]);
+  });
+
+  const sender = () => {
+    const sent: string[] = [];
+    const fetch = (async (_url: string, init: RequestInit) => {
+      sent.push(
+        ...JSON.parse(init.body as string).events.map((e: MurmurEvent) => e.id),
+      );
+      return new Response("{}");
+    }) as unknown as typeof globalThis.fetch;
+    return { sent, fetch };
+  };
+  const pendingAt = (extra = {}) =>
+    writeSession(SID, {
+      ...readSession(SID),
+      backfill: "pending",
+      cutoff: t(100),
+      transcriptPath: TRANSCRIPT,
+      cwd: "/work/demo",
+      ...extra,
+    });
+
+  it("retries a run that has been running for over 10 minutes", async () => {
+    writeCredentials({ server: "http://srv", token: "tok", machineId: "m1" });
+    setProjectState("/work/demo", "on");
+    pendingAt({
+      backfill: "running",
+      runningSince: new Date(Date.now() - 11 * 60_000).toISOString(),
+    });
+    const { sent, fetch } = sender();
+    expect(await runBackfill(SID, { fetch })).toBe(21);
+    expect(sent).toHaveLength(21);
+    expect(readSession(SID).backfill).toBe("done");
+  });
+
+  it("a prompt trigger is not imported twice", async () => {
+    writeCredentials({ server: "http://srv", token: "tok", machineId: "m1" });
+    setProjectState("/work/demo", "on");
+    pendingAt({ trigger: "UserPromptSubmit" });
+    const { sent, fetch } = sender();
+    expect(await runBackfill(SID, { fetch })).toBe(20);
+    expect(sent).toEqual(
+      readBackfill(input(), { skipNewestPrompt: true }).map((e) => e.id),
+    );
+  });
+
+  it("skips the flush when the login changed while it ran", async () => {
+    const a = { server: "http://srv", token: "tok", machineId: "m1" };
+    writeCredentials(a);
+    setProjectState("/work/demo", "on");
+    pendingAt();
+    const { sent, fetch } = sender();
+    creds.next = [a, { ...a, token: "other" }];
+    expect(await runBackfill(SID, { fetch })).toBe(21);
+    expect(sent).toEqual([]);
+    pendingAt({ backfill: "pending" });
+    creds.next = [a, null];
+    await runBackfill(SID, { fetch });
+    expect(sent).toEqual([]);
+    creds.next = [];
   });
 });

@@ -182,8 +182,12 @@ export interface SessionState extends Narration {
   backfill?: "pending" | "running" | "done";
   /** Only transcript entries older than this go in the backfill. */
   cutoff?: string;
+  /** The hook whose event set the cutoff. */
+  trigger?: string;
   transcriptPath?: string;
   cwd?: string;
+  /** When the backfill last started, or was last handed to a new child. */
+  runningSince?: string;
   /** The narration instruction reached Claude in this session. */
   instructed?: boolean;
 }
@@ -209,6 +213,24 @@ export function readSession(sessionId: string): SessionState {
 }
 export function writeSession(sessionId: string, s: SessionState): void {
   writeJson(sessionFile(sessionId), s);
+}
+const SESSION_DAYS = 30;
+/** Deletes the state of sessions idle for over 30 days. */
+export function pruneSessions(now: Date): void {
+  const dir = path.join(murmurDir(), "sessions");
+  const oldest = now.getTime() - SESSION_DAYS * 24 * 3600 * 1000;
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const file = path.join(dir, name);
+    try {
+      if (fs.statSync(file).mtimeMs < oldest) fs.rmSync(file, { force: true });
+    } catch {}
+  }
 }
 export function updateSession(
   sessionId: string,

@@ -8,7 +8,7 @@ import {
   NARRATE_TOOL,
   scrubEvent,
 } from "@murmur/core";
-import { runBackfill, stableId } from "./backfill.js";
+import { backfillStale, runBackfill, stableId } from "./backfill.js";
 import {
   clearProjectPause,
   isNewSession,
@@ -18,6 +18,7 @@ import {
   NO_NARRATION,
   projectName,
   projectState,
+  pruneSessions,
   readCredentials,
   readSession,
   setProjectState,
@@ -74,12 +75,21 @@ export function handleHook(
       : env.CLAUDE_CODE_SESSION_ID;
   const start = hook === "SessionStart";
 
-  if (start && payload.source === "startup") clearProjectPause(cwd);
+  if (start && payload.source === "startup") {
+    clearProjectPause(cwd);
+    pruneSessions(now);
+  }
   const state = projectState(cwd);
   if (state === undefined) {
     if (!start) return NONE;
     setProjectState(cwd, "asked");
     return show(askLine(cwd));
+  }
+  if (state === "off") {
+    // A session seen while its project is off is never imported after /murmur:on.
+    if (sessionId && isNewSession(sessionId))
+      writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+    return NONE;
   }
   if (state !== "on") return NONE;
   const creds = readCredentials();
@@ -114,11 +124,16 @@ export function handleHook(
         ...NO_NARRATION,
         backfill: "pending",
         cutoff: ts,
+        trigger: hook,
         transcriptPath,
         cwd,
       });
       backfill = sessionId;
     } else writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+  } else if (backfillStale(readSession(sessionId), now.getTime())) {
+    // Its child died: hand the same cutoff to a new one.
+    updateSession(sessionId, { backfill: "pending", runningSince: ts });
+    backfill = sessionId;
   }
   let stdout = trackNarration(sessionId, hook, payload);
   // SessionStart injects for every source, so the instruction survives compaction. A

@@ -20066,6 +20066,24 @@ function readSession(sessionId) {
 function writeSession(sessionId, s) {
   writeJson(sessionFile(sessionId), s);
 }
+var SESSION_DAYS = 30;
+function pruneSessions(now) {
+  const dir = import_node_path.default.join(murmurDir(), "sessions");
+  const oldest = now.getTime() - SESSION_DAYS * 24 * 3600 * 1e3;
+  let names = [];
+  try {
+    names = import_node_fs.default.readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const file2 = import_node_path.default.join(dir, name);
+    try {
+      if (import_node_fs.default.statSync(file2).mtimeMs < oldest) import_node_fs.default.rmSync(file2, { force: true });
+    } catch {
+    }
+  }
+}
 function updateSession(sessionId, patch) {
   writeSession(sessionId, { ...readSession(sessionId), ...patch });
 }
@@ -20109,13 +20127,15 @@ function prune(dir, names, maxBytes) {
   let total = 0;
   for (const name of names.toReversed()) {
     const file2 = import_node_path2.default.join(dir, name);
+    let queuedAt;
     try {
-      total += import_node_fs2.default.statSync(file2).size;
+      const st = import_node_fs2.default.statSync(file2);
+      total += st.size;
+      queuedAt = st.mtimeMs;
     } catch {
       continue;
     }
-    if (total > maxBytes || Number(name.slice(0, 15)) < oldest)
-      import_node_fs2.default.rmSync(file2, { force: true });
+    if (total > maxBytes || queuedAt < oldest) import_node_fs2.default.rmSync(file2, { force: true });
     else keep.push(name);
   }
   return keep.reverse();
@@ -20197,6 +20217,8 @@ async function flush(c, {
 // src/backfill.ts
 var MAX_EVENTS2 = 5e3;
 var MAX_BYTES2 = 2e7;
+var TAIL_BYTES = 3e7;
+var STALE_MS = 10 * 6e4;
 function uuidFrom(key) {
   const h = (0, import_node_crypto.createHash)("sha1").update(key).digest("hex");
   const variant = (Number.parseInt(h[16], 16) & 3 | 8).toString(16);
@@ -20204,15 +20226,25 @@ function uuidFrom(key) {
 }
 var TOOL_HOOKS = /* @__PURE__ */ new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure"]);
 function stableId(sessionId, hook, p) {
-  const key = hook === "UserPromptSubmit" ? p.prompt_id : TOOL_HOOKS.has(hook) ? p.tool_use_id : hook === "SubagentStart" || hook === "SubagentStop" ? p.agent_id : void 0;
+  const key = TOOL_HOOKS.has(hook) ? p.tool_use_id : hook === "SubagentStart" || hook === "SubagentStop" ? p.agent_id : void 0;
   return typeof key === "string" && key ? uuidFrom(`murmur:${sessionId}:${hook}:${key}`) : void 0;
 }
 var obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : void 0;
 var str = (v) => typeof v === "string" && v ? v : void 0;
-function readLines(file2) {
+function readLines(file2, tailBytes) {
   let text2;
   try {
-    text2 = import_node_fs3.default.readFileSync(file2, "utf8");
+    const fd = import_node_fs3.default.openSync(file2, "r");
+    try {
+      const size = import_node_fs3.default.fstatSync(fd).size;
+      const start = Math.max(0, size - tailBytes);
+      const buf = Buffer.alloc(size - start);
+      import_node_fs3.default.readSync(fd, buf, 0, buf.length, start);
+      text2 = buf.toString("utf8");
+      if (start > 0) text2 = text2.slice(text2.indexOf("\n") + 1);
+    } finally {
+      import_node_fs3.default.closeSync(fd);
+    }
   } catch {
     return [];
   }
@@ -20232,7 +20264,32 @@ function readMeta(file2) {
     return {};
   }
 }
-function readBackfill(b, { maxEvents = MAX_EVENTS2, maxBytes = MAX_BYTES2 } = {}) {
+var COMMAND = /^\s*<command-(?:name|message)>/;
+function promptText(content) {
+  if (typeof content === "string") {
+    if (!COMMAND.test(content)) return content;
+    const tag = (t) => new RegExp(`<command-${t}>([\\s\\S]*?)</command-${t}>`).exec(content)?.[1]?.trim() ?? "";
+    const name = tag("name");
+    if (!name) return void 0;
+    return `${name.startsWith("/") ? name : `/${name}`} ${tag("args")}`.trim();
+  }
+  if (!Array.isArray(content)) return void 0;
+  const text2 = content.flatMap((b) => {
+    const block = obj(b);
+    return block?.type === "text" && typeof block.text === "string" ? [block.text] : [];
+  }).join("\n");
+  return text2 || void 0;
+}
+function backfillStale(s, now) {
+  if (s.backfill !== "pending" && s.backfill !== "running") return false;
+  return !(now - Date.parse(s.runningSince ?? s.cutoff ?? "") <= STALE_MS);
+}
+function readBackfill(b, {
+  maxEvents = MAX_EVENTS2,
+  maxBytes = MAX_BYTES2,
+  tailBytes = TAIL_BYTES,
+  skipNewestPrompt = false
+} = {}) {
   const cutoff = Date.parse(b.cutoff);
   const out = [];
   const emit = (e, index, hook, fields) => {
@@ -20259,17 +20316,18 @@ function readBackfill(b, { maxEvents = MAX_EVENTS2, maxBytes = MAX_BYTES2 } = {}
     const ts = typeof e.timestamp === "string" ? Date.parse(e.timestamp) : NaN;
     return str(e.uuid) && ts < cutoff;
   });
+  const ended = /* @__PURE__ */ new Set();
   const mapEntries = (list2, agent) => {
     const uses = /* @__PURE__ */ new Map();
     for (const e of list2) {
       const content = obj(e.message)?.content;
-      if (e.type === "user" && typeof content === "string") {
-        if (obj(e.origin)?.kind === "human" && !agent.agent_id)
+      if (e.type === "user" && obj(e.origin)?.kind === "human" && !agent.agent_id) {
+        const prompt = promptText(content);
+        if (prompt)
           emit(e, 0, "UserPromptSubmit", {
-            prompt: content,
+            prompt,
             ...str(e.promptId) ? { prompt_id: e.promptId } : {}
           });
-        continue;
       }
       if (!Array.isArray(content)) continue;
       content.forEach((raw, i) => {
@@ -20288,7 +20346,8 @@ function readBackfill(b, { maxEvents = MAX_EVENTS2, maxBytes = MAX_BYTES2 } = {}
         } else if (e.type === "user" && block.type === "tool_result") {
           const id = str(block.tool_use_id);
           const use = id ? uses.get(id) : void 0;
-          if (!use) return;
+          if (!use || !id) return;
+          if (obj(e.toolUseResult)?.status !== "async_launched") ended.add(id);
           emit(
             e,
             i,
@@ -20305,7 +20364,11 @@ function readBackfill(b, { maxEvents = MAX_EVENTS2, maxBytes = MAX_BYTES2 } = {}
       });
     }
   };
-  mapEntries(usable(readLines(b.transcriptPath)), {});
+  mapEntries(usable(readLines(b.transcriptPath, tailBytes)), {});
+  if (skipNewestPrompt) {
+    const i = out.findLastIndex((e) => e.hook === "UserPromptSubmit");
+    if (i >= 0) out.splice(i, 1);
+  }
   const dir = import_node_path3.default.join(
     import_node_path3.default.dirname(b.transcriptPath),
     b.sessionId,
@@ -20323,13 +20386,15 @@ function readBackfill(b, { maxEvents = MAX_EVENTS2, maxBytes = MAX_BYTES2 } = {}
       agent_id: agentId,
       agent_type: typeof meta3.agentType === "string" ? meta3.agentType : ""
     };
-    const list2 = usable(readLines(import_node_path3.default.join(dir, name)));
+    const list2 = usable(readLines(import_node_path3.default.join(dir, name), tailBytes));
     const first = list2[0];
     const last = list2.at(-1);
     if (!first || !last) continue;
     emit(first, 0, "SubagentStart", agent);
     mapEntries(list2, agent);
-    if (meta3.finished === true) emit(last, 0, "SubagentStop", agent);
+    const call = str(meta3.toolUseId);
+    if (meta3.finished === true || call && ended.has(call))
+      emit(last, 0, "SubagentStop", agent);
   }
   out.sort((x, y) => Date.parse(x.ts) - Date.parse(y.ts));
   let bytes = 0;
@@ -20345,20 +20410,28 @@ function readBackfill(b, { maxEvents = MAX_EVENTS2, maxBytes = MAX_BYTES2 } = {}
 async function runBackfill(sessionId, opts = {}) {
   const creds = readCredentials();
   const s = readSession(sessionId);
-  if (!creds || s.backfill !== "pending") return 0;
-  updateSession(sessionId, { backfill: "running" });
+  if (!creds || !(s.backfill === "pending" || backfillStale(s, Date.now())))
+    return 0;
+  updateSession(sessionId, {
+    backfill: "running",
+    runningSince: (/* @__PURE__ */ new Date()).toISOString()
+  });
   let events = [];
   if (s.cutoff && s.transcriptPath && s.cwd)
-    events = readBackfill({
-      sessionId,
-      machineId: creds.machineId,
-      cwd: s.cwd,
-      transcriptPath: s.transcriptPath,
-      cutoff: s.cutoff
-    });
+    events = readBackfill(
+      {
+        sessionId,
+        machineId: creds.machineId,
+        cwd: s.cwd,
+        transcriptPath: s.transcriptPath,
+        cutoff: s.cutoff
+      },
+      { skipNewestPrompt: s.trigger === "UserPromptSubmit" }
+    );
   for (const e of events) enqueue(e);
   updateSession(sessionId, { backfill: "done" });
-  await flush(creds, { budgetMs: 5e4, ...opts });
+  if (readCredentials()?.token === creds.token)
+    await flush(creds, { budgetMs: 5e4, ...opts });
   return events.length;
 }
 
@@ -20387,12 +20460,20 @@ function handleHook(payload, env, now) {
   if (typeof cwd !== "string" || !cwd) return NONE2;
   const sessionId = typeof payload.session_id === "string" && payload.session_id ? payload.session_id : env.CLAUDE_CODE_SESSION_ID;
   const start = hook === "SessionStart";
-  if (start && payload.source === "startup") clearProjectPause(cwd);
+  if (start && payload.source === "startup") {
+    clearProjectPause(cwd);
+    pruneSessions(now);
+  }
   const state = projectState(cwd);
   if (state === void 0) {
     if (!start) return NONE2;
     setProjectState(cwd, "asked");
     return show(askLine(cwd));
+  }
+  if (state === "off") {
+    if (sessionId && isNewSession(sessionId))
+      writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+    return NONE2;
   }
   if (state !== "on") return NONE2;
   const creds = readCredentials();
@@ -20423,11 +20504,15 @@ function handleHook(payload, env, now) {
         ...NO_NARRATION,
         backfill: "pending",
         cutoff: ts,
+        trigger: hook,
         transcriptPath,
         cwd
       });
       backfill = sessionId;
     } else writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+  } else if (backfillStale(readSession(sessionId), now.getTime())) {
+    updateSession(sessionId, { backfill: "pending", runningSince: ts });
+    backfill = sessionId;
   }
   let stdout = trackNarration(sessionId, hook, payload);
   if (start || hook === "UserPromptSubmit" && !readSession(sessionId).instructed) {
