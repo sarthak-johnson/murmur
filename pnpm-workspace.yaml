@@ -3,3 +3,5 @@ packages:
   - plugin
   - server
   - web
+allowBuilds:
+  esbuild: false

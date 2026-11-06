@@ -1,0 +1,11 @@
+#!/bin/sh
+# Runs the bundled CLI. Follows symlinks so a linked copy still finds dist/.
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+exec node "$(dirname "$self")/../dist/cli.cjs" "$@"

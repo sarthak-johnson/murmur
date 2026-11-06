@@ -1,0 +1,7 @@
+{
+  "name": "murmur",
+  "version": "0.1.0",
+  "description": "A live, plain-words view of your Claude Code session in the browser.",
+  "author": { "name": "Sarthak Johnson" },
+  "repository": "https://github.com/sarthak-johnson/murmur"
+}
