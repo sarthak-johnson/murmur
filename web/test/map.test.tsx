@@ -587,6 +587,59 @@ describe("MapView", () => {
       }
   });
 
+  it("other parts' chips and link labels never move when a helper finishes or a part's first helper starts", () => {
+    const ring = (status: Record<string, AgentView["status"]>) =>
+      request({
+        agents: Object.entries(status).map(([id, s]) => ({
+          ...agent(id, `Helper ${id}`),
+          status: s,
+        })),
+        parts: Array.from({ length: 8 }, (_, i) =>
+          part({
+            id: `p${i}`,
+            title: `Part ${i}`,
+            agents: [`a${i}`, `b${i}`].filter((id) => id in status),
+            links:
+              i === 4
+                ? [{ to: "p3", label: "same files" }]
+                : i === 0
+                  ? [{ to: "p4", label: "reads" }]
+                  : [],
+          }),
+        ),
+      });
+    const shown = (req: RequestView) => {
+      const { container, unmount } = render(
+        <MapView request={req} onOpenPart={() => {}} />,
+      );
+      const at = (el: Element) =>
+        `${el.getAttribute("x")},${el.getAttribute("y")}`;
+      const chips = Object.fromEntries(
+        [...container.querySelectorAll(".chip")].map((c) => [
+          c.querySelector(".chip-label")?.textContent,
+          at(c.querySelector("rect.chip-box") as Element),
+        ]),
+      );
+      const labels = [...container.querySelectorAll(".link-label")].map(at);
+      unmount();
+      return { chips, labels };
+    };
+    const base = shown(ring({ a2: "running", a4: "running", b4: "running" }));
+    expect(Object.keys(base.chips)).toHaveLength(3);
+    // b4 finishes: its chip goes, nothing else moves.
+    const finished = shown(ring({ a2: "running", a4: "running", b4: "done" }));
+    const { "Agent 3: Helper b4": gone, ...others } = base.chips;
+    expect(gone).toBeDefined();
+    expect(finished.chips).toEqual(others);
+    expect(finished.labels).toEqual(base.labels);
+    // p3 gets its first helper: every other chip and label stays.
+    const more = shown(
+      ring({ a2: "running", a4: "running", b4: "running", a3: "running" }),
+    );
+    expect(more.chips).toMatchObject(base.chips);
+    expect(more.labels).toEqual(base.labels);
+  });
+
   it("a ring part's chip stack stays put as its agents go from 1 to 3", () => {
     const agents = [
       agent("a1", "tests"),
