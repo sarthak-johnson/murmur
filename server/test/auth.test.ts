@@ -222,3 +222,14 @@ test("with client id and secret, /auth/github redirects to GitHub with read:user
   );
   expect(url.searchParams.get("state")).toMatch(/^[A-Za-z0-9_-]{43}$/);
 });
+
+test("every response forbids framing and content sniffing", async () => {
+  t = await testApp();
+  for (const url of ["/healthz", "/api/me", "/api/nope"]) {
+    const res = await t.app.request(url);
+    expect(res.headers.get("content-security-policy")).toBe(
+      "frame-ancestors 'none'",
+    );
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  }
+});

@@ -146,6 +146,13 @@ describe("account", () => {
 
 describe("loadConfig", () => {
   const base = { BASE_URL: "http://x" } as NodeJS.ProcessEnv;
+  const prod = {
+    NODE_ENV: "production",
+    DATABASE_URL: "postgres://db",
+    BASE_URL: "https://m.example",
+    GITHUB_CLIENT_ID: "id",
+    GITHUB_CLIENT_SECRET: "secret",
+  };
   it("devLogin is off by default and only on for exactly 1 outside production", () => {
     expect(loadConfig(base).config.devLogin).toBe(false);
     expect(loadConfig({ ...base, MURMUR_DEV_LOGIN: "1" }).config.devLogin).toBe(
@@ -154,10 +161,9 @@ describe("loadConfig", () => {
     expect(
       loadConfig({ ...base, MURMUR_DEV_LOGIN: "true" }).config.devLogin,
     ).toBe(false);
-    expect(
-      loadConfig({ ...base, MURMUR_DEV_LOGIN: "1", NODE_ENV: "production" })
-        .config.devLogin,
-    ).toBe(false);
+    expect(loadConfig({ ...prod, MURMUR_DEV_LOGIN: "1" }).config.devLogin).toBe(
+      false,
+    );
   });
   it("parses trustProxy, cookieSecure, port and base url", () => {
     expect(loadConfig(base).config.trustProxy).toBe(false);
@@ -175,5 +181,16 @@ describe("loadConfig", () => {
   });
   it("requires BASE_URL in production", () => {
     expect(() => loadConfig({ NODE_ENV: "production" })).toThrow(/BASE_URL/);
+  });
+  it("names every missing production setting at once", () => {
+    expect(loadConfig(prod).databaseUrl).toBe("postgres://db");
+    expect(() =>
+      loadConfig({ ...prod, DATABASE_URL: "", GITHUB_CLIENT_SECRET: "" }),
+    ).toThrow(
+      "Murmur cannot start in production without DATABASE_URL, GITHUB_CLIENT_SECRET.",
+    );
+    expect(() => loadConfig({ NODE_ENV: "production" })).toThrow(
+      "without DATABASE_URL, BASE_URL, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET.",
+    );
   });
 });

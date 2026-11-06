@@ -48,6 +48,12 @@ const NOT_COOKIE = ["/api/device/start", "/api/device/poll", "/api/ingest"];
 
 export function createApp(deps: Deps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  // On every response, the web app's files too: never framed, never type-sniffed.
+  app.use("*", async (c, next) => {
+    c.header("Content-Security-Policy", "frame-ancestors 'none'");
+    c.header("X-Content-Type-Options", "nosniff");
+    await next();
+  });
   app.get("/healthz", (c) => c.text("ok"));
   // Default deny: every other /api route is cookie-only, and its mutations are same-origin JSON.
   app.use(

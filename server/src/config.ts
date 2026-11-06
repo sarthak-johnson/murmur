@@ -7,10 +7,19 @@ export function loadConfig(env: NodeJS.ProcessEnv): {
   databaseUrl: string | undefined;
 } {
   const production = env.NODE_ENV === "production";
+  const required = [
+    "DATABASE_URL",
+    "BASE_URL",
+    "GITHUB_CLIENT_ID",
+    "GITHUB_CLIENT_SECRET",
+  ];
+  const missing = required.filter((k) => !env[k]);
+  if (production && missing.length)
+    throw new Error(
+      `Murmur cannot start in production without ${missing.join(", ")}.`,
+    );
   const port = Number(env.PORT) || 8787;
-  const baseUrl =
-    env.BASE_URL || (production ? "" : `http://localhost:${port}`);
-  if (!baseUrl) throw new Error("BASE_URL is required in production");
+  const baseUrl = env.BASE_URL || `http://localhost:${port}`;
   const config: Deps["config"] = {
     baseUrl,
     devLogin: env.MURMUR_DEV_LOGIN === "1" && !production,

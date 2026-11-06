@@ -9,7 +9,14 @@ import { loadConfig } from "./config.js";
 import { openDb } from "./db/client.js";
 import { runRetention } from "./retention.js";
 
-const { config, port, databaseUrl } = loadConfig(process.env);
+let loaded: ReturnType<typeof loadConfig>;
+try {
+  loaded = loadConfig(process.env);
+} catch (e) {
+  console.error((e as Error).message);
+  process.exit(1);
+}
+const { config, port, databaseUrl } = loaded;
 const { db, close } = await openDb(databaseUrl);
 const api = createApp({ db, now: () => new Date(), config });
 

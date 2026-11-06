@@ -80,4 +80,59 @@ describe("runRetention", () => {
     ).toBe(false);
     expect(await t.db.select().from(deviceCodes)).toHaveLength(0);
   });
+
+  it("a session and its events go in one statement, so an ingest in between cannot split them", async () => {
+    t = await testApp();
+    const now = new Date("2026-11-06T10:00:00Z");
+    const m = await linkMachine(t, "ann");
+    const old = new Date(now.getTime() - 100 * day);
+    await t.db.insert(sessions).values({
+      userId: m.userId,
+      sessionId: "s",
+      machineId: m.machineId,
+      cwd: "/r",
+      startedAt: old,
+      lastEventAt: old,
+    });
+    await t.db.insert(events).values({
+      userId: m.userId,
+      id: randomUUID(),
+      sessionId: "s",
+      ts: old,
+      hook: "PreToolUse",
+      payload: {},
+    });
+    // Acts like an ingest committing between retention's statements.
+    const db = new Proxy(t.db, {
+      get(target, key) {
+        if (key !== "transaction") return Reflect.get(target, key);
+        return (fn: (tx: unknown) => Promise<unknown>) =>
+          target.transaction((tx) => {
+            let calls = 0;
+            const spy = new Proxy(tx, {
+              get(txTarget, k) {
+                const v = Reflect.get(txTarget, k);
+                if (k !== "execute") return v;
+                return async (q: Parameters<typeof tx.execute>[0]) => {
+                  const r = await txTarget.execute(q);
+                  if (++calls === 1)
+                    await txTarget
+                      .update(sessions)
+                      .set({ lastEventAt: now })
+                      .where(eq(sessions.sessionId, "s"));
+                  return r;
+                };
+              },
+            });
+            return fn(spy);
+          });
+      },
+    });
+    await runRetention(db, now);
+    const left = await t.db.select().from(sessions);
+    const evs = await t.db.select().from(events);
+    // Deleted whole or kept whole, never a session without its events.
+    expect([left.length, evs.length]).not.toEqual([1, 0]);
+    expect(left.length).toBe(0);
+  });
 });

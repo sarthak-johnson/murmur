@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { fixedWindow } from "../src/ratelimit.js";
+import { fixedWindow, ipBucket } from "../src/ratelimit.js";
 
 const at = (ms: number) => new Date(ms);
 
@@ -52,4 +52,17 @@ test("200,000 distinct keys over time keep the map at or under the cap", () => {
   }
   expect(crowded.size).toBe(cap);
   expect(max).toBeLessThanOrEqual(cap);
+});
+
+test.each([
+  ["1.2.3.4", "1.2.3.4"],
+  ["::ffff:1.2.3.4", "1.2.3.4"],
+  ["2001:db8:1:2:3:4:5:6", "2001:db8:1:2::/64"],
+  ["2001:0DB8:0001:0002::9", "2001:db8:1:2::/64"],
+  ["2001:db8::1", "2001:db8:0:0::/64"],
+  ["::1", "0:0:0:0::/64"],
+  ["fe80::1%en0", "fe80:0:0:0::/64"],
+  ["not an ip", "not an ip"],
+])("ipBucket(%s) is %s", (ip, bucket) => {
+  expect(ipBucket(ip)).toBe(bucket);
 });

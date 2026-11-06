@@ -329,3 +329,42 @@ test("rotating a client-sent first X-Forwarded-For entry does not reset the star
   const over = await rawStart({ "X-Forwarded-For": "10.0.1.1,9.9.9.9" });
   expect(over.status).toBe(429);
 });
+
+const info = (cookie: string | undefined, code: string) =>
+  t?.app.request(`/api/device/info?code=${encodeURIComponent(code)}`, {
+    headers: cookie ? { Cookie: cookie } : {},
+  }) as Promise<Response>;
+
+test("device info names the machine for a live code, behind the cookie", async () => {
+  t = await testApp();
+  const cookie = await t.loginAs("ada");
+  const s = await start("ada-laptop");
+  const res = await info(cookie, s.userCode.toLowerCase());
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual({ machineName: "ada-laptop" });
+  expect((await info(undefined, s.userCode)).status).toBe(401);
+  expect((await info(cookie, "BBBB-BBBB")).status).toBe(404);
+  await approve(cookie, s.userCode);
+  expect((await info(cookie, s.userCode)).status).toBe(404);
+});
+
+test("failed device info lookups count toward the approve limit", async () => {
+  t = await testApp();
+  const cookie = await t.loginAs("ada");
+  for (let i = 0; i < 10; i++)
+    expect((await info(cookie, "BBBB-BBBB")).status).toBe(404);
+  expect((await info(cookie, "BBBB-BBBB")).status).toBe(429);
+});
+
+test("IPv6 clients share a start limit per /64", async () => {
+  t = await testApp({ clientIp: ipFromHeader });
+  for (let i = 0; i < 20; i++)
+    expect(
+      (await rawStart({ "x-test-ip": `2001:db8:1:2::${i.toString(16)}` }))
+        .status,
+    ).toBe(200);
+  expect(
+    (await rawStart({ "x-test-ip": "2001:0db8:0001:0002:ffff:1:2:3" })).status,
+  ).toBe(429);
+  expect((await rawStart({ "x-test-ip": "2001:db8:1:3::1" })).status).toBe(200);
+});

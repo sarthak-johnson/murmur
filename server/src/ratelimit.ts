@@ -1,3 +1,23 @@
+import { isIPv6 } from "node:net";
+
+/**
+ * The rate-limit bucket for a client address: IPv4 as is, IPv6 by its /64 (one home or
+ * host usually gets a whole /64, so per-address keys would be free to rotate).
+ */
+export function ipBucket(ip: string): string {
+  const v4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip)?.[1];
+  if (v4) return v4;
+  const addr = ip.split("%")[0] ?? "";
+  if (!isIPv6(addr)) return ip;
+  const [head = "", tail] = addr.toLowerCase().split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  const fill =
+    tail === undefined ? [] : Array(8 - h.length - t.length).fill("0");
+  const groups = [...h, ...fill, ...t].map((g) => g.replace(/^0+(?=.)/, ""));
+  return `${groups.slice(0, 4).join(":")}::/64`;
+}
+
 // ponytail: in-memory, one server instance; move to Postgres or a shared store before running more than one.
 
 interface Entry {
