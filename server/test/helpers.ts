@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { MurmurEvent } from "@murmur/core";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { afterAll, beforeAll } from "vitest";
 import { createApp, type Deps } from "../src/app.js";
 import { openDb } from "../src/db/client.js";
 import { ingestTokens, users } from "../src/db/schema.js";
@@ -14,8 +15,24 @@ export interface TestOptions {
   clientIp?: Deps["clientIp"];
 }
 
+// One migrated PGlite per test file (booting + migrating one per test blew the 5 s timeout
+// under parallel files). Each testApp() empties it; every table cascades from users.
+let shared: ReturnType<typeof openDb> | undefined;
+// Boot in a hook so the slow first boot is bounded by hookTimeout, not a test's timeout.
+beforeAll(async () => {
+  shared ??= openDb("memory://");
+  await shared;
+});
+afterAll(async () => {
+  if (shared) await (await shared).close();
+  shared = undefined;
+});
+
 export async function testApp(opts: TestOptions = {}) {
-  const { db, close } = await openDb("memory://");
+  shared ??= openDb("memory://");
+  const { db } = await shared;
+  await db.execute(sql`truncate table users cascade`);
+  const close = async () => {};
   const deps: Deps = {
     db,
     now: opts.now ?? (() => new Date()),
