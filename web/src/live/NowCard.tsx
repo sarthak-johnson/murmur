@@ -12,7 +12,10 @@ export function NowCard({ request }: { request: RequestView }) {
     .map((a, i) => ({ a, k: i + 1 }))
     .filter(({ a }) => a.status === "running");
   return (
-    <section className="now-col" aria-label="Now">
+    <section
+      className={running.length ? "now-col has-helpers" : "now-col"}
+      aria-label="Now"
+    >
       <div className="now-card">
         <div className="lbl lbl-now">Now</div>
         {now ? (
@@ -31,7 +34,7 @@ export function NowCard({ request }: { request: RequestView }) {
         )}
       </div>
       {running.length > 0 && (
-        <>
+        <div className="helpers-block">
           <div className="lbl">Helpers running</div>
           <ul className="helpers">
             {running.map(({ a, k }) => {
@@ -46,7 +49,7 @@ export function NowCard({ request }: { request: RequestView }) {
               );
             })}
           </ul>
-        </>
+        </div>
       )}
       <p className="started">
         <b>Started from:</b> "{cut(request.prompt, 120)}" ·{" "}

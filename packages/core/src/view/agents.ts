@@ -5,12 +5,13 @@
  *   stops), a start takes the oldest unclaimed Agent PreToolUse of the same
  *   `subagent_type`, else the oldest unclaimed one.
  * - Part: the latest part the subagent narrated, else the part current at its start.
+ *   It also joins the task and part current at its start, so it shows there unnarrated.
  * - A SubagentStop with no earlier start is ignored (Claude Code's prompt-suggestion
  *   generator fires one with an empty `agent_type` after every interactive Stop).
  * - `known` spans requests, so a background subagent stopping later still closes.
  */
 import type { MurmurEvent } from "../events.js";
-import type { Trace } from "./requests.js";
+import { addOnce, type Trace } from "./requests.js";
 import type { AgentView, RequestView } from "./types.js";
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -61,6 +62,13 @@ export function applyAgents(
       };
       known.set(id, agent);
       req.agents.push(agent);
+      // It helps with whatever Claude was on when it spawned, even if it never narrates.
+      const task = req.phases
+        .flatMap((ph) => ph.tasks)
+        .find((t) => t.id === before[i]?.task);
+      if (task) addOnce(task.agents, id);
+      const at = req.parts.find((p) => p.id === before[i]?.part);
+      if (at) addOnce(at.agents, id);
     }
     const agent = known.get(id);
     if (e.hook === "SubagentStop" && agent) {

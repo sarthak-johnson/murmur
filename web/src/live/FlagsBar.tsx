@@ -8,7 +8,7 @@ export function FlagsBar(props: { needsYou: NeedsYou | null; flags: Flag[] }) {
             key: `needs:${props.needsYou.since}`,
             ts: props.needsYou.since,
             cls: "flag-needs",
-            text: `Claude needs you: ${props.needsYou.text}`,
+            text: props.needsYou.text,
           },
         ]
       : []),
@@ -28,6 +28,9 @@ export function FlagsBar(props: { needsYou: NeedsYou | null; flags: Flag[] }) {
     <div className="flags" role="status">
       {items.map((it) => (
         <p key={it.key} className={`flag fade-in ${it.cls}`}>
+          {it.cls === "flag-needs" && (
+            <span className="needs-chip">Needs you</span>
+          )}
           {it.text}
         </p>
       ))}

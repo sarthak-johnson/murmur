@@ -1,9 +1,11 @@
-import type {
-  AgentView,
-  PartView,
-  RequestView,
-  SessionView,
-  TaskView,
+import {
+  type AgentView,
+  type MurmurEvent,
+  type PartView,
+  type RequestView,
+  reduce,
+  type SessionView,
+  type TaskView,
 } from "@murmur/core";
 import {
   cleanup,
@@ -255,11 +257,11 @@ describe("live screen", () => {
         },
       }),
     );
-    expect(
-      screen.getByText(
-        "Claude needs you: Claude needs your permission to use Bash",
-      ),
-    ).toBeTruthy();
+    const chip = screen.getByText("Needs you");
+    expect(chip.closest("p")?.textContent).toBe(
+      "Needs youClaude needs your permission to use Bash",
+    );
+    expect(screen.queryByText(/Claude needs you:/)).toBeNull();
   });
 
   it("a pending risky flag shows a bar, a stuck flag does not", () => {
@@ -415,5 +417,77 @@ describe("live screen", () => {
     expect(items[1]?.getAttribute("aria-current")).toBeNull();
     await userEvent.click(items[1] as HTMLElement);
     expect(location.pathname).toBe("/s/s1/r/r1");
+  });
+
+  it("a helper spawned during a task shows on its task row and map part", () => {
+    let n = 0;
+    const at = (
+      hook: MurmurEvent["hook"],
+      payload: Record<string, unknown>,
+    ): MurmurEvent => ({
+      id: `e${++n}`,
+      sessionId: "s1",
+      machineId: "m1",
+      cwd: "/p",
+      ts: new Date(Date.parse(T0) + n * 1000).toISOString(),
+      hook,
+      payload,
+    });
+    const call = (name: string, input: unknown, hook: MurmurEvent["hook"]) =>
+      at(hook, { tool_name: name, tool_input: input, tool_use_id: `t${n}` });
+    const view = reduce([
+      at("UserPromptSubmit", { prompt: "add price alerts" }),
+      call(
+        "mcp__plugin_murmur_murmur__map",
+        {
+          kind: "feature",
+          goal: "Price alerts",
+          phases: [
+            {
+              id: "2",
+              title: "Server side",
+              tasks: [
+                {
+                  id: "2.2",
+                  title: "Endpoint to save an alert",
+                  part: "endpoint",
+                },
+              ],
+            },
+          ],
+          parts: [{ id: "endpoint", title: "Server endpoint", phase: "2" }],
+        },
+        "PostToolUse",
+      ),
+      call(
+        "mcp__plugin_murmur_murmur__narrate",
+        {
+          now: "Building the endpoint",
+          why: "the screen needs it",
+          task: "2.2",
+          taskStatus: "running",
+        },
+        "PostToolUse",
+      ),
+      call(
+        "Agent",
+        {
+          description: "tests",
+          prompt: "write tests",
+          subagent_type: "general-purpose",
+        },
+        "PreToolUse",
+      ),
+      at("SubagentStart", { agent_id: "a1", agent_type: "general-purpose" }),
+    ]);
+    const req = view.requests[0] as RequestView;
+    show(view);
+    const plan = screen.getByRole("region", { name: /Plan/ });
+    const row = within(plan).getByRole("button", {
+      name: /Endpoint to save an alert/,
+    });
+    expect(within(row).getByText("↳ Agent 1 · tests")).toBeTruthy();
+    expect(screen.getByText("Agent 1: tests")).toBeTruthy();
+    expect(req.agents).toHaveLength(1);
   });
 });

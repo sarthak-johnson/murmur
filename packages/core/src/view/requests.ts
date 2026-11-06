@@ -193,7 +193,7 @@ function applyNarrate(
   return { part: part?.id, task: task?.id };
 }
 
-const addOnce = (list: string[], id: string) =>
+export const addOnce = (list: string[], id: string) =>
   list.includes(id) || list.push(id);
 
 function upsert<T>(list: T[], items: T[] | undefined, key: (x: T) => string) {

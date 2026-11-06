@@ -53,6 +53,30 @@ function StatusLine({ status }: { status: SessionStatus }) {
   return null;
 }
 
+function Skeleton() {
+  return (
+    <div className="skeleton" aria-hidden="true">
+      <div className="sk sk-strip" />
+      <div className="sk-grid">
+        <div className="sk sk-now" />
+        <div className="sk sk-plan" />
+        <div className="sk sk-map" />
+      </div>
+    </div>
+  );
+}
+
+/** The live screen before anything has loaded, also shown while /api/me loads. */
+export function LiveSkeleton() {
+  return (
+    <main className="live-page">
+      <div className="live-main">
+        <Skeleton />
+      </div>
+    </main>
+  );
+}
+
 /** The live screen for one session; SessionPage feeds it from the stream. */
 export function Live(props: {
   sessionId: string;
@@ -77,16 +101,7 @@ export function Live(props: {
           <div className="live-top">
             <StatusLine status={status} />
           </div>
-          {status !== "error" && (
-            <div className="skeleton" aria-hidden="true">
-              <div className="sk sk-strip" />
-              <div className="sk-grid">
-                <div className="sk" />
-                <div className="sk sk-map" />
-                <div className="sk" />
-              </div>
-            </div>
-          )}
+          {status !== "error" && <Skeleton />}
         </div>
       </main>
     );

@@ -61,4 +61,15 @@ describe("App", () => {
       await screen.findByRole("link", { name: "Sign in with GitHub" }),
     ).toBeTruthy();
   });
+
+  it("paints the header and the live skeleton before /api/me answers", () => {
+    history.pushState(null, "", "/s/s1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+    const { container } = render(<App />);
+    expect(screen.getByText("Murmur")).toBeTruthy();
+    expect(container.querySelector(".live-page .skeleton")).toBeTruthy();
+  });
 });

@@ -144,3 +144,16 @@ test("feature.jsonl links its subagent; interactive prompt suggestions are ignor
   const view = reduce(fixture("interactive.jsonl"));
   expect(view.requests.flatMap((r) => r.agents)).toEqual([]);
 });
+
+test("an agent started during a task joins that task and part without narrating", () => {
+  const view = reduce([
+    prompt(1, "add alerts"),
+    mapCall(2, MAP),
+    narrateCall(3, note({ task: "2.2", taskStatus: "running" })),
+    agentCall(4, "write its tests"),
+    start(5, "a1"),
+  ]);
+  const req = view.requests[0];
+  expect(req?.phases[1]?.tasks[1]?.agents).toEqual(["a1"]);
+  expect(req?.parts.find((p) => p.id === "api")?.agents).toEqual(["a1"]);
+});

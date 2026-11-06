@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type Me, UNAUTHORIZED } from "./api";
 import { Device } from "./pages/Device";
 import { Login } from "./pages/Login";
-import { SessionPage } from "./pages/Session";
+import { LiveSkeleton, SessionPage } from "./pages/Session";
 import { Sessions } from "./pages/Sessions";
 import { Settings } from "./pages/Settings";
 import { navigate, useRoute } from "./router";
@@ -75,7 +75,24 @@ export function App() {
     }
   }, [me, route]);
 
-  if (me === undefined) return null;
+  const wide = route.name === "session" || route.name === "request";
+  if (me === undefined)
+    return (
+      <>
+        <header className="header">
+          <div className={wide ? "header-in wide" : "header-in"}>
+            <span className="wordmark">Murmur</span>
+          </div>
+        </header>
+        {wide ? (
+          <LiveSkeleton />
+        ) : (
+          <main className="page" aria-hidden="true">
+            <div className="sk" />
+          </main>
+        )}
+      </>
+    );
   if (me === null) return <Login />;
 
   async function signOut() {
@@ -122,11 +139,7 @@ export function App() {
   }
   return (
     <>
-      <Header
-        me={me}
-        wide={route.name === "session" || route.name === "request"}
-        onSignOut={signOut}
-      />
+      <Header me={me} wide={wide} onSignOut={signOut} />
       {page}
     </>
   );

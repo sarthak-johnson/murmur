@@ -502,6 +502,18 @@ label {
   border: 1.5px solid var(--now);
   background: color-mix(in srgb, var(--now) 10%, var(--panel));
 }
+.needs-chip {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 0 6px;
+  border: 1px solid var(--now);
+  border-radius: 4px;
+  color: var(--now);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  vertical-align: 1px;
+}
 .flag-risky {
   border: 1.5px solid var(--bad);
   background: color-mix(in srgb, var(--bad) 10%, var(--panel));
@@ -574,16 +586,14 @@ label {
 .catch-up {
   margin: 0 0 12px;
   padding: 8px 12px;
-  border: 1px solid color-mix(in srgb, var(--agent) 45%, transparent);
-  background: color-mix(in srgb, var(--agent) 8%, var(--panel));
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
   border-radius: 8px;
   font-size: 13px;
 }
-.catch-up b {
-  color: var(--agent);
-}
 
-/* Grid: now | map | plan, assumptions under the plan */
+/* Grid: see the breakpoints at the end */
 .live-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -844,16 +854,47 @@ button.task:hover {
   min-height: 320px;
 }
 
+/* 1200-1679: Now is a full-width strip, then map | plan, assumptions under plan. */
 @media (min-width: 1200px) {
+  .live-page {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+  .requests ul {
+    display: block;
+    overflow: visible;
+  }
+  .requests li {
+    margin-bottom: 4px;
+  }
   .live-grid {
-    grid-template-columns: 300px minmax(420px, 1fr) 330px;
-    grid-template-rows: auto 1fr;
+    grid-template-columns: minmax(0, 1fr) 330px;
+    grid-template-rows: auto auto 1fr;
     grid-template-areas:
-      "now map plan"
-      "now map assume";
+      "now now"
+      "map plan"
+      "map assume";
   }
   .now-col {
     grid-area: now;
+  }
+  .now-col.has-helpers {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "card helpers"
+      "started helpers";
+    column-gap: 16px;
+    align-items: start;
+  }
+  .has-helpers .now-card {
+    grid-area: card;
+    margin-bottom: 0;
+  }
+  .has-helpers .helpers-block {
+    grid-area: helpers;
+  }
+  .has-helpers .started {
+    grid-area: started;
   }
   .map-panel {
     grid-area: map;
@@ -865,19 +906,42 @@ button.task:hover {
     grid-area: assume;
   }
   .sk-grid {
-    grid-template-columns: 300px minmax(0, 1fr) 330px;
+    grid-template-columns: minmax(0, 1fr) 330px;
+    grid-template-areas:
+      "now now"
+      "map plan";
+  }
+  .sk-now {
+    grid-area: now;
+    min-height: 110px;
+  }
+  .sk-map {
+    grid-area: map;
+  }
+  .sk-plan {
+    grid-area: plan;
   }
 }
-/* The requests column needs 220px beside the 1082px three-column grid. */
-@media (min-width: 1350px) {
-  .live-page {
-    grid-template-columns: 220px minmax(0, 1fr);
+/* 1680 and up: requests | now | map | plan. */
+@media (min-width: 1680px) {
+  .live-grid {
+    grid-template-columns: 300px minmax(0, 1fr) 330px;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "now map plan"
+      "now map assume";
   }
-  .requests ul {
+  .now-col.has-helpers {
     display: block;
-    overflow: visible;
   }
-  .requests li {
-    margin-bottom: 4px;
+  .has-helpers .now-card {
+    margin-bottom: 14px;
+  }
+  .sk-grid {
+    grid-template-columns: 300px minmax(0, 1fr) 330px;
+    grid-template-areas: "now map plan";
+  }
+  .sk-now {
+    min-height: 160px;
   }
 }
