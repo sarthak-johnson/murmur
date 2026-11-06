@@ -102,3 +102,17 @@ test("oversized strings are cut before scrubbing; N counts the original", () => 
     .big as string;
   expect(s.endsWith(`…[truncated ${MAX_STRING * 2} chars]`)).toBe(true);
 });
+
+test("marks truncation even when redaction shrinks the cut text below the limit", () => {
+  const pem = `-----BEGIN RSA PRIVATE KEY-----\n${"A".repeat(6000)}\n-----END RSA PRIVATE KEY-----`;
+  const s = scrubEvent(ev({ big: `${pem}${"y".repeat(MAX_STRING)}TAIL` }))
+    .payload.big as string;
+  expect(s).toMatch(/…\[truncated \d+ chars\]$/);
+  expect(s).not.toContain("TAIL");
+});
+
+test("truncation count is never negative when redaction lengthens the text", () => {
+  const s = scrubEvent(ev({ big: `API_KEY=a\n${"y".repeat(MAX_STRING - 12)}` }))
+    .payload.big as string;
+  expect(s).toMatch(/…\[truncated [1-9]\d* chars\]$/);
+});

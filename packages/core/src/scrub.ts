@@ -47,9 +47,11 @@ function walk(v: unknown, env = false): unknown {
     // Cut first so scrubbing never scans multi-MB strings; N counts the original.
     const cut = v.length > CUT ? v.slice(0, CUT) : v;
     const s = scrubString(env ? cut.replace(ANY_ASSIGN, `$1${R}`) : cut);
-    return s.length > MAX_STRING
-      ? `${s.slice(0, MAX_STRING)}…[truncated ${v.length - MAX_STRING} chars]`
-      : s;
+    // N = original chars never read (tail beyond the cut) + scrubbed chars sliced off.
+    // Never negative; the marker shows whenever anything was dropped.
+    const over = Math.max(0, s.length - MAX_STRING);
+    const n = v.length - cut.length + over;
+    return n > 0 ? `${s.slice(0, MAX_STRING)}…[truncated ${n} chars]` : s;
   }
   if (Array.isArray(v)) return v.map((x) => walk(x, env));
   if (v && typeof v === "object") {
