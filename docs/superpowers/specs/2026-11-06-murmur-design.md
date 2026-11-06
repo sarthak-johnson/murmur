@@ -1,8 +1,8 @@
-# session-map design
+# Murmur design
 
 Date: 6 Nov 2026.
 Status: approved by the author on 6 Nov 2026.
-"session-map" is a working name.
+The name was chosen by the author on 6 Nov 2026.
 
 ## 1. Intent
 
@@ -11,7 +11,7 @@ The terminal shows diffs, tool calls and long text, not the story.
 With subagents running, it gets worse.
 Most people never ask the agent to explain itself, so they ship code they couldn't explain.
 
-session-map is a live companion screen that sits in a browser on a second monitor beside the terminal.
+Murmur is a live companion screen that sits in a browser on a second monitor beside the terminal.
 It turns a running Claude Code session into something a person can follow at a glance: what is being built right now and why, where the work is in the plan, how the parts tie together, and what each subagent is doing.
 
 Evidence behind the idea:
@@ -129,7 +129,7 @@ Breadcrumb back to the whole map.
 
 Decided by the author: **opt-in per project**.
 - The plugin installs for all projects, but nothing uploads until the user turns a project on.
-- The first time a session starts in a project folder the plugin hasn't seen, it asks once in the terminal: "Show this project in session-map?"
+- The first time a session starts in a project folder the plugin hasn't seen, it asks once in the terminal: "Show this project in Murmur?"
 - The answer is remembered per project folder.
 - A pause command stops uploading for the current session, and a matching command turns a project off.
 - Headless runs (`claude -p`, Agent SDK, CI) never upload unless the user explicitly turns them on.
@@ -227,7 +227,7 @@ Constraints on narration:
 ### 5.4 Accounts and login
 
 - The user signs up on the website.
-- In Claude Code they run a login command (for example `/session-map login`).
+- In Claude Code they run a login command (for example `/murmur login`).
   It shows a short code, the user approves it in the browser, and the plugin stores a token tied to that account, like `gh auth login`.
 - Each linked machine shows up under the account.
 - There is no "Sign in with Claude" for third-party apps.

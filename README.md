@@ -1,4 +1,4 @@
-# session-map (working name)
+# Murmur
 
 A live companion screen for Claude Code, shown on a second monitor beside the terminal.
 It turns a running session into something a person can follow: what is being built right now and why, how the parts tie together, where the plan is, and what each subagent is doing.
