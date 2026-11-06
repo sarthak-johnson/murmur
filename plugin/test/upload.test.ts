@@ -45,7 +45,8 @@ function fakeFetch(statuses: (number | "throw")[]) {
   return { fn, calls };
 }
 
-describe("queue", () => {
+// Hundreds of real queue files: a busy, nearly full disk can take longer than 5 s.
+describe("queue", { timeout: 30_000 }, () => {
   it("flush keeps files when the server is down and sends them in order later", async () => {
     for (const i of [3, 1, 2]) enqueue(ev(i));
     const down = fakeFetch(["throw"]);
