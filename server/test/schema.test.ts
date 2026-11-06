@@ -1,9 +1,15 @@
 import { sql } from "drizzle-orm";
-import { expect, test } from "vitest";
+import { afterEach, expect, test } from "vitest";
 import { testApp } from "./helpers.js";
 
+const closers: (() => Promise<void>)[] = [];
+afterEach(async () => {
+  await Promise.all(closers.splice(0).map((c) => c()));
+});
+
 test("migrations create every table and the events index on PGlite", async () => {
-  const { db, app } = await testApp();
+  const { db, app, close } = await testApp();
+  closers.push(close);
   const tables = await db.execute(
     sql`select table_name from information_schema.tables where table_schema = 'public'`,
   );
