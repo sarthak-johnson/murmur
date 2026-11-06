@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { readBackfill } from "../src/backfill.js";
 import { NARRATION_INSTRUCTION } from "../src/local.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -146,6 +147,99 @@ describe("built plugin", () => {
         additionalContext: NARRATION_INSTRUCTION,
       },
     });
+  });
+
+  it("UserPromptSubmit answers fast with the instruction while the server hangs", async () => {
+    const hung = await listen(() => {});
+    fs.mkdirSync(env.MURMUR_HOME as string, { recursive: true });
+    fs.writeFileSync(
+      path.join(env.MURMUR_HOME as string, "credentials.json"),
+      JSON.stringify({ server: hung, token: "t", machineId: "m1" }),
+    );
+    expect((await murmur("on", repo)).code).toBe(0);
+    const transcript = path.join(home, "s1.jsonl");
+    fs.writeFileSync(transcript, "");
+    // Seen before, so no backfill child is left running against the hung server.
+    fs.mkdirSync(path.join(env.MURMUR_HOME as string, "sessions"));
+    fs.writeFileSync(
+      path.join(env.MURMUR_HOME as string, "sessions", "s1.json"),
+      JSON.stringify({ backfill: "done" }),
+    );
+    const t0 = Date.now();
+    const r = runHook("UserPromptSubmit", {
+      hook_event_name: "UserPromptSubmit",
+      session_id: "s1",
+      transcript_path: transcript,
+      cwd: repo,
+      prompt: "hi",
+    });
+    expect(Date.now() - t0).toBeLessThan(1500);
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "UserPromptSubmit",
+        additionalContext: NARRATION_INSTRUCTION,
+      },
+    });
+  });
+
+  it("hook.cjs --backfill uploads the pending history and marks it done", async () => {
+    const posted: string[] = [];
+    const server = await listen((req, res) => {
+      let body = "";
+      req.on("data", (c) => {
+        body += c;
+      });
+      req.on("end", () => {
+        posted.push(
+          ...JSON.parse(body).events.map((e: { id: string }) => e.id),
+        );
+        res.setHeader("Content-Type", "application/json");
+        res.end("{}");
+      });
+    });
+    const sid = "11111111-2222-4333-8444-555555555555";
+    const fixture = path.join(root, "test/fixtures/backfill", `${sid}.jsonl`);
+    const dir = env.MURMUR_HOME as string;
+    fs.mkdirSync(path.join(dir, "sessions"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "credentials.json"),
+      JSON.stringify({ server, token: "t", machineId: "m1" }),
+    );
+    fs.writeFileSync(
+      path.join(dir, "projects.json"),
+      JSON.stringify({ "/work/demo": "on" }),
+    );
+    const state = path.join(dir, "sessions", `${sid}.json`);
+    const cutoff = "2026-11-07T09:00:15.000Z";
+    fs.writeFileSync(
+      state,
+      JSON.stringify({
+        backfill: "pending",
+        cutoff,
+        transcriptPath: fixture,
+        cwd: "/work/demo",
+      }),
+    );
+    const code = await new Promise<number>((ok) =>
+      execFile(
+        process.execPath,
+        [path.join(root, "dist/hook.cjs"), "--backfill", sid],
+        { env },
+        (err) => ok(err ? Number(err.code) : 0),
+      ),
+    );
+    expect(code).toBe(0);
+    const want = readBackfill({
+      sessionId: sid,
+      machineId: "m1",
+      cwd: "/work/demo",
+      transcriptPath: fixture,
+      cutoff,
+    }).map((e) => e.id);
+    expect(want.length).toBeGreaterThan(5);
+    expect(posted).toEqual(want);
+    expect(JSON.parse(fs.readFileSync(state, "utf8")).backfill).toBe("done");
   });
 
   it("bin/murmur login leaves a poller that stores the token", async () => {

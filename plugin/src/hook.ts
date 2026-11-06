@@ -8,19 +8,22 @@ import {
   NARRATE_TOOL,
   scrubEvent,
 } from "@murmur/core";
+import { backfillStale, runBackfill, stableId } from "./backfill.js";
 import {
-  clearNarration,
   clearProjectPause,
+  isNewSession,
   isPaused,
   isRevoked,
   NARRATION_INSTRUCTION,
   NO_NARRATION,
   projectName,
   projectState,
+  pruneSessions,
   readCredentials,
-  readNarration,
+  readSession,
   setProjectState,
-  writeNarration,
+  updateSession,
+  writeSession,
 } from "./local.js";
 import { enqueue, flush } from "./upload.js";
 
@@ -35,7 +38,8 @@ const BLOCK = JSON.stringify({
     "Murmur: before you finish, call narrate to mark each finished task done and say what you did.",
 });
 
-type Result = { stdout: string; event: MurmurEvent | null };
+/** `backfill` names a session whose history the caller should import. */
+type Result = { stdout: string; event: MurmurEvent | null; backfill?: string };
 const NONE: Result = { stdout: "", event: null };
 const show = (line: string): Result => ({
   stdout: JSON.stringify({ systemMessage: line }),
@@ -71,38 +75,84 @@ export function handleHook(
       : env.CLAUDE_CODE_SESSION_ID;
   const start = hook === "SessionStart";
 
-  if (start && payload.source === "startup") clearProjectPause(cwd);
+  if (start && payload.source === "startup") {
+    clearProjectPause(cwd);
+    pruneSessions(now);
+  }
   const state = projectState(cwd);
   if (state === undefined) {
     if (!start) return NONE;
     setProjectState(cwd, "asked");
     return show(askLine(cwd));
   }
+  if (state === "off") {
+    // A session seen while its project is off is never imported after /murmur:on.
+    if (sessionId && isNewSession(sessionId))
+      writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+    return NONE;
+  }
   if (state !== "on") return NONE;
   const creds = readCredentials();
   if (!creds) return start ? show(LOGIN_LINE) : NONE;
   if (isRevoked()) return start ? show(REVOKED_LINE) : NONE;
-  if (!sessionId || isPaused(cwd, sessionId)) return NONE;
+  if (!sessionId) return NONE;
+  const fresh = isNewSession(sessionId);
+  if (isPaused(cwd, sessionId)) {
+    // What happens while paused is never shown, not even by a later backfill.
+    if (fresh) writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+    return NONE;
+  }
 
+  const ts = now.toISOString();
   const event = scrubEvent({
-    id: randomUUID(),
+    id: stableId(sessionId, hook, payload) ?? randomUUID(),
     sessionId,
     machineId: creds.machineId,
     cwd,
-    ts: now.toISOString(),
+    ts,
     hook: hook as HookName,
     payload,
   });
-  // Injected for every source, so the instruction survives compaction.
-  const stdout = start
-    ? JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: "SessionStart",
-          additionalContext: NARRATION_INSTRUCTION,
-        },
-      })
-    : trackNarration(sessionId, hook, payload);
-  return { stdout, event };
+  // The first event of a session Murmur has not seen: import what came before it,
+  // unless it is a brand new session.
+  let backfill: string | undefined;
+  if (fresh) {
+    const transcriptPath = payload.transcript_path;
+    const isNew = start && payload.source === "startup";
+    if (!isNew && typeof transcriptPath === "string" && transcriptPath) {
+      writeSession(sessionId, {
+        ...NO_NARRATION,
+        backfill: "pending",
+        cutoff: ts,
+        ...(hook === "UserPromptSubmit" && typeof payload.prompt === "string"
+          ? { triggerPrompt: payload.prompt }
+          : {}),
+        transcriptPath,
+        cwd,
+      });
+      backfill = sessionId;
+    } else writeSession(sessionId, { ...NO_NARRATION, backfill: "done" });
+  } else if (backfillStale(readSession(sessionId), now.getTime())) {
+    // Its child died: hand the same cutoff to a new one.
+    updateSession(sessionId, { backfill: "pending", runningSince: ts });
+    backfill = sessionId;
+  }
+  let stdout = trackNarration(sessionId, hook, payload);
+  // SessionStart injects for every source, so the instruction survives compaction. A
+  // session that started before Murmur was on gets it once, with its next prompt.
+  if (
+    start ||
+    (hook === "UserPromptSubmit" && !readSession(sessionId).instructed)
+  ) {
+    updateSession(sessionId, { instructed: true });
+    stdout = JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: hook,
+        additionalContext: NARRATION_INSTRUCTION,
+      },
+    });
+  }
+  return backfill ? { stdout, event, backfill } : { stdout, event };
 }
 
 // ponytail: async PostToolUse hooks read-modify-write this file without a lock, so two
@@ -113,11 +163,10 @@ function trackNarration(
   hook: string,
   p: Record<string, unknown>,
 ): string {
-  if (hook === "UserPromptSubmit") writeNarration(sessionId, NO_NARRATION);
-  if (hook === "SessionEnd") clearNarration(sessionId);
+  if (hook === "UserPromptSubmit") updateSession(sessionId, NO_NARRATION);
   const tool = hook === "PostToolUse" ? p.tool_name : undefined;
   if (tool !== MAP_TOOL && tool !== NARRATE_TOOL && hook !== "Stop") return "";
-  const n = readNarration(sessionId);
+  const n = readSession(sessionId);
   if (tool === MAP_TOOL) {
     n.mapped = true;
     const phases = (p.tool_input as { phases?: unknown } | undefined)?.phases;
@@ -148,9 +197,11 @@ function trackNarration(
     n.blocked = true;
     out = BLOCK;
   }
-  writeNarration(sessionId, n);
+  writeSession(sessionId, n);
   return out;
 }
+
+const BACKFILL = process.argv.indexOf("--backfill");
 
 async function main(): Promise<void> {
   const creds = readCredentials();
@@ -158,11 +209,16 @@ async function main(): Promise<void> {
     if (creds) await flush(creds);
     return;
   }
+  if (BACKFILL >= 0) {
+    const id = process.argv[BACKFILL + 1];
+    if (id) await runBackfill(id);
+    return;
+  }
   let input = "";
   for await (const chunk of process.stdin) input += chunk;
   const payload: unknown = JSON.parse(input);
   if (!payload || typeof payload !== "object") return;
-  const { stdout, event } = handleHook(
+  const { stdout, event, backfill } = handleHook(
     payload as Record<string, unknown>,
     process.env,
     new Date(),
@@ -171,9 +227,11 @@ async function main(): Promise<void> {
     await new Promise<void>((r) => process.stdout.write(stdout, () => r()));
   if (!event || !creds) return;
   enqueue(event);
-  if (event.hook === "SessionStart" || event.hook === "Stop") {
-    // These two are synchronous hooks, so their upload runs in a detached process.
-    spawn(process.execPath, [process.argv[1] as string, "--flush"], {
+  // Synchronous hooks never wait on the network: their upload runs in a detached
+  // process, as does a backfill, which flushes this event too.
+  if (backfill || SYNC_HOOKS.has(event.hook)) {
+    const args = backfill ? ["--backfill", backfill] : ["--flush"];
+    spawn(process.execPath, [process.argv[1] as string, ...args], {
       detached: true,
       stdio: "ignore",
       windowsHide: true,
@@ -182,12 +240,14 @@ async function main(): Promise<void> {
     await flush(creds);
   }
 }
+const SYNC_HOOKS = new Set(["SessionStart", "Stop", "UserPromptSubmit"]);
 
-// Never block or fail Claude: always exit 0, and within 5 s whatever happens.
+// Never block or fail Claude: always exit 0, and within 5 s whatever happens. A
+// backfill runs detached, so it gets a minute.
 if (/[\\/]hook\.(c?js|ts)$/.test(process.argv[1] ?? "")) {
   const done = () => process.exit(0);
   process.on("uncaughtException", done);
   process.stdout.on("error", () => {});
-  setTimeout(done, 5000).unref();
+  setTimeout(done, BACKFILL >= 0 ? 60_000 : 5000).unref();
   main().then(done, done);
 }

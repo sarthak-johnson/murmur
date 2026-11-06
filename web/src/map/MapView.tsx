@@ -443,7 +443,7 @@ function Chips(props: {
     const k = request.agents.findIndex((a) => a.id === id);
     const agent = request.agents[k];
     const text = agent
-      ? `Agent ${k + 1}: ${agent.description}`
+      ? `Agent ${k + 1}${agent.description ? `: ${agent.description}` : ""}`
       : `Agent: ${id}`;
     return {
       key: id,

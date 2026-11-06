@@ -67,7 +67,8 @@ export function NowCard({ request }: { request: RequestView }) {
               return (
                 <li key={a.id} className="helper fade-in">
                   <div>
-                    <b>Agent {k}</b> · {a.description}
+                    <b>Agent {k}</b>
+                    {a.description && ` · ${a.description}`}
                   </div>
                   {part && <div className="muted">{part}</div>}
                 </li>

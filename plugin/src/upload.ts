@@ -11,7 +11,8 @@ import {
 } from "./local.js";
 
 const MAX_EVENTS = 200;
-// The queue keeps at most 7 days and 50 MB; the oldest go first.
+// The queue keeps at most 7 days and 50 MB; the oldest go first. The 7 days are time
+// spent waiting in the queue (file mtime), so backfilled history is not dropped for its age.
 const MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const MAX_QUEUE_BYTES = 50_000_000;
 // Decimal MB, so batches fit whichever 5 MB the server's body limit means.
@@ -59,13 +60,15 @@ function prune(dir: string, names: string[], maxBytes: number): string[] {
   let total = 0;
   for (const name of names.toReversed()) {
     const file = path.join(dir, name);
+    let queuedAt: number;
     try {
-      total += fs.statSync(file).size;
+      const st = fs.statSync(file);
+      total += st.size;
+      queuedAt = st.mtimeMs;
     } catch {
       continue;
     }
-    if (total > maxBytes || Number(name.slice(0, 15)) < oldest)
-      fs.rmSync(file, { force: true });
+    if (total > maxBytes || queuedAt < oldest) fs.rmSync(file, { force: true });
     else keep.push(name);
   }
   return keep.reverse();

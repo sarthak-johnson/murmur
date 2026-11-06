@@ -5,8 +5,10 @@ import { MAP_TOOL, MAX_STRING, NARRATE_TOOL } from "@murmur/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handleHook } from "../src/hook.js";
 import {
+  murmurDir,
   NARRATION_INSTRUCTION,
   projectState,
+  readSession,
   setPaused,
   setProjectState,
   setRevoked,
@@ -334,17 +336,222 @@ describe("handleHook", () => {
     });
   });
 
-  it("Stop is a synchronous hook so its block reaches Claude before it stops", () => {
+  describe("backfill of a session Murmur has not seen", () => {
+    const TP = "/t/s1.jsonl";
+    const prompt = (extra = {}) =>
+      payload("UserPromptSubmit", {
+        prompt: "hi",
+        transcript_path: TP,
+        ...extra,
+      });
+
+    it("the first event marks it pending with its own time as the cutoff, once", () => {
+      login();
+      setProjectState(repo, "on");
+      const r = handleHook(prompt(), ENV, NOW);
+      expect(r.backfill).toBe("s1");
+      expect(r.event?.ts).toBe(NOW.toISOString());
+      expect(readSession("s1")).toMatchObject({
+        backfill: "pending",
+        cutoff: NOW.toISOString(),
+        transcriptPath: TP,
+        cwd: repo,
+        triggerPrompt: "hi",
+      });
+      const tool = payload("PreToolUse", { transcript_path: TP });
+      expect(handleHook(tool, ENV, NOW).backfill).toBeUndefined();
+      expect(handleHook(prompt(), ENV, NOW).backfill).toBeUndefined();
+      expect(readSession("s1").backfill).toBe("pending");
+      // Any first hook triggers it, here a resume, which names no prompt.
+      const resume = payload("SessionStart", {
+        source: "resume",
+        session_id: "s2",
+        transcript_path: TP,
+      });
+      expect(handleHook(resume, ENV, NOW).backfill).toBe("s2");
+      expect(readSession("s2").triggerPrompt).toBeUndefined();
+    });
+
+    it("a startup SessionStart is a new session with nothing to import", () => {
+      login();
+      setProjectState(repo, "on");
+      expect(handleHook(start(), ENV, NOW).backfill).toBeUndefined();
+      expect(readSession("s1").backfill).toBe("done");
+      expect(handleHook(prompt(), ENV, NOW).backfill).toBeUndefined();
+    });
+
+    it("a new prompt keeps the backfill state", () => {
+      login();
+      setProjectState(repo, "on");
+      handleHook(prompt(), ENV, NOW);
+      handleHook(payload("Stop"), ENV, NOW);
+      handleHook(payload("SessionEnd"), ENV, NOW);
+      expect(readSession("s1").backfill).toBe("pending");
+      expect(handleHook(prompt(), ENV, NOW).backfill).toBeUndefined();
+    });
+
+    it("off, unset, logged-out, revoked, paused and headless sessions never backfill", () => {
+      const none = () => handleHook(prompt(), ENV, NOW).backfill;
+      expect(none()).toBeUndefined();
+      setProjectState(repo, "off");
+      login();
+      expect(none()).toBeUndefined();
+      setProjectState(repo, "on");
+      setRevoked(true);
+      expect(none()).toBeUndefined();
+      setRevoked(false);
+      setPaused(repo, true, "s1");
+      expect(none()).toBeUndefined();
+      // History from a paused stretch is never imported later either.
+      setPaused(repo, false, "s1");
+      expect(none()).toBeUndefined();
+      const headless = { CLAUDE_CODE_ENTRYPOINT: "sdk-cli" };
+      const s3 = prompt({ session_id: "s3" });
+      expect(handleHook(s3, headless, NOW).backfill).toBeUndefined();
+      expect(
+        handleHook(s3, { ...headless, MURMUR_ALLOW_HEADLESS: "1" }, NOW)
+          .backfill,
+      ).toBe("s3");
+    });
+
+    it("logged out sends nothing and leaves the session unseen", () => {
+      setProjectState(repo, "on");
+      expect(handleHook(prompt(), ENV, NOW).backfill).toBeUndefined();
+      login();
+      expect(handleHook(prompt(), ENV, NOW).backfill).toBe("s1");
+    });
+
+    it("live tool and subagent events get the ids the backfill gives them, prompts do not", () => {
+      login();
+      setProjectState(repo, "on");
+      // prompt_id is shared by many prompts in a real session.
+      const a = handleHook(prompt({ prompt_id: "p1" }), ENV, NOW).event?.id;
+      const b = handleHook(prompt({ prompt_id: "p1" }), ENV, NOW).event?.id;
+      expect(a).not.toBe(b);
+      const pre = (id: string) =>
+        handleHook(payload("PreToolUse", { tool_use_id: id }), ENV, NOW).event
+          ?.id;
+      expect(pre("toolu_1")).toBe(pre("toolu_1"));
+      expect(pre("toolu_1")).not.toBe(pre("toolu_2"));
+      const stop = () => handleHook(payload("Stop"), ENV, NOW).event?.id;
+      expect(stop()).not.toBe(stop());
+    });
+  });
+
+  describe("backfill edge cases", () => {
+    const TP = "/t/s1.jsonl";
+    const prompt = (extra = {}) =>
+      payload("UserPromptSubmit", {
+        prompt: "hi",
+        transcript_path: TP,
+        ...extra,
+      });
+
+    it("a session seen while its project was off is never imported, one never asked about is", () => {
+      login();
+      setProjectState(repo, "off");
+      expect(handleHook(prompt(), ENV, NOW).event).toBeNull();
+      expect(readSession("s1").backfill).toBe("done");
+      setProjectState(repo, "on");
+      expect(handleHook(prompt(), ENV, NOW).backfill).toBeUndefined();
+
+      const other = path.join(path.dirname(repo), "other");
+      fs.mkdirSync(path.join(other, ".git"), { recursive: true });
+      const s2 = { ...prompt(), session_id: "s2", cwd: other };
+      expect(handleHook(s2, ENV, NOW).event).toBeNull();
+      setProjectState(other, "on");
+      expect(handleHook(s2, ENV, NOW).backfill).toBe("s2");
+    });
+
+    it("a backfill stuck for over 10 minutes starts again", () => {
+      login();
+      setProjectState(repo, "on");
+      handleHook(prompt(), ENV, NOW);
+      const later = (min: number) => new Date(NOW.getTime() + min * 60_000);
+      const tool = payload("PreToolUse");
+      // Pending, and its child never ran.
+      expect(handleHook(tool, ENV, later(5)).backfill).toBeUndefined();
+      expect(handleHook(tool, ENV, later(11)).backfill).toBe("s1");
+      const s = readSession("s1");
+      fs.writeFileSync(
+        path.join(murmurDir(), "sessions", "s1.json"),
+        JSON.stringify({
+          ...s,
+          backfill: "running",
+          runningSince: later(20).toISOString(),
+        }),
+      );
+      expect(handleHook(tool, ENV, later(25)).backfill).toBeUndefined();
+      expect(handleHook(tool, ENV, later(31)).backfill).toBe("s1");
+      fs.writeFileSync(
+        path.join(murmurDir(), "sessions", "s1.json"),
+        JSON.stringify({ ...s, backfill: "done" }),
+      );
+      expect(handleHook(tool, ENV, later(60)).backfill).toBeUndefined();
+    });
+
+    it("a startup SessionStart deletes session state idle for over 100 days, past server retention", () => {
+      login();
+      setProjectState(repo, "on");
+      for (const id of ["old", "recent"])
+        handleHook(payload("Stop", { session_id: id }), ENV, NOW);
+      const file = (id: string) =>
+        path.join(murmurDir(), "sessions", `${id}.json`);
+      const day = 24 * 3600 * 1000;
+      const at = (d: number) => new Date(NOW.getTime() - d * day);
+      fs.utimesSync(file("old"), at(101), at(101));
+      fs.utimesSync(file("recent"), at(95), at(95));
+      handleHook(start("resume"), ENV, NOW);
+      expect(fs.existsSync(file("old"))).toBe(true);
+      handleHook(start(), ENV, NOW);
+      expect(fs.existsSync(file("old"))).toBe(false);
+      expect(fs.existsSync(file("recent"))).toBe(true);
+      expect(fs.existsSync(file("s1"))).toBe(true);
+    });
+  });
+
+  describe("narration instruction from the next prompt", () => {
+    const UPS_INSTRUCTION = {
+      hookSpecificOutput: {
+        hookEventName: "UserPromptSubmit",
+        additionalContext: NARRATION_INSTRUCTION,
+      },
+    };
+
+    it("a session that missed SessionStart gets it once on its next prompt", () => {
+      login();
+      setProjectState(repo, "on");
+      const first = handleHook(payload("UserPromptSubmit"), ENV, NOW);
+      expect(JSON.parse(first.stdout)).toEqual(UPS_INSTRUCTION);
+      expect(first.event?.hook).toBe("UserPromptSubmit");
+      expect(handleHook(payload("UserPromptSubmit"), ENV, NOW).stdout).toBe("");
+      expect(readSession("s1").instructed).toBe(true);
+    });
+
+    it("never after SessionStart injected it, never for off projects", () => {
+      login();
+      setProjectState(repo, "on");
+      handleHook(start("resume"), ENV, NOW);
+      expect(handleHook(payload("UserPromptSubmit"), ENV, NOW).stdout).toBe("");
+      setProjectState(repo, "off");
+      const other = payload("UserPromptSubmit", { session_id: "s2" });
+      expect(handleHook(other, ENV, NOW)).toEqual({ stdout: "", event: null });
+    });
+  });
+
+  it("Stop and UserPromptSubmit are synchronous hooks so their output reaches Claude", () => {
     const hooks = JSON.parse(
       fs.readFileSync(
         path.join(import.meta.dirname, "../hooks/hooks.json"),
         "utf8",
       ),
     ).hooks;
-    expect(hooks.Stop).toHaveLength(1);
-    expect(hooks.Stop[0].matcher).toBeUndefined();
-    expect(hooks.Stop[0].hooks).toEqual([
-      { type: "command", command: hooks.SessionStart[0].hooks[0].command },
-    ]);
+    for (const name of ["Stop", "UserPromptSubmit"]) {
+      expect(hooks[name]).toHaveLength(1);
+      expect(hooks[name][0].matcher).toBeUndefined();
+      expect(hooks[name][0].hooks).toEqual([
+        { type: "command", command: hooks.SessionStart[0].hooks[0].command },
+      ]);
+    }
   });
 });

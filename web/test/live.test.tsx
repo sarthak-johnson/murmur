@@ -562,6 +562,24 @@ describe("live screen", () => {
     );
   });
 
+  it("a helper with no description shows just its name", () => {
+    show(
+      session({
+        requests: [request({ agents: [agent("a1", "", "endpoint")] })],
+      }),
+    );
+    const now = screen.getByRole("region", { name: "Now" });
+    expect(within(now).getByRole("listitem").textContent).toBe(
+      "Agent 1Server endpoint",
+    );
+    const plan = screen.getByRole("region", { name: /Plan/ });
+    const row = within(plan).getByRole("button", {
+      name: /Endpoint to save an alert/,
+    });
+    expect(within(row).getByText("↳ Agent 1")).toBeTruthy();
+    expect(screen.queryByText(/Agent 1 ·|Agent 1:/)).toBeNull();
+  });
+
   it("RequestList selects the last request by default", async () => {
     show(session());
     const list = screen.getByRole("navigation", { name: "Requests" });

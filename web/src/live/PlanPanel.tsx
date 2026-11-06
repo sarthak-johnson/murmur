@@ -100,7 +100,8 @@ function PhaseCard(props: {
                   const a = request.agents[k];
                   return a ? (
                     <span key={id} className="task-agent fade-in">
-                      ↳ Agent {k + 1} · {a.description}
+                      ↳ Agent {k + 1}
+                      {a.description && ` · ${a.description}`}
                     </span>
                   ) : null;
                 })}

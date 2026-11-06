@@ -7,7 +7,14 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!docs", "!**/*.md", "!e2e/fixtures", "!plugin/dist"]
+    "includes": [
+      "**",
+      "!docs",
+      "!**/*.md",
+      "!e2e/fixtures",
+      "!plugin/test/fixtures",
+      "!plugin/dist"
+    ]
   },
   "formatter": {
     "enabled": true,
