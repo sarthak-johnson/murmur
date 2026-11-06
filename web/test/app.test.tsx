@@ -70,6 +70,10 @@ describe("App", () => {
     );
     const { container } = render(<App />);
     expect(screen.getByText("Murmur")).toBeTruthy();
-    expect(container.querySelector(".live-page .skeleton")).toBeTruthy();
+    // Mirrors the loaded layout: requests placeholder first, then the main column.
+    const page = container.querySelector(".live-page");
+    expect(page?.children[0]?.className).toContain("sk-requests");
+    expect(page?.children[1]?.className).toBe("live-main");
+    expect(page?.children[1]?.querySelector(".skeleton")).toBeTruthy();
   });
 });

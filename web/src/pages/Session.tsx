@@ -67,11 +67,24 @@ function Skeleton() {
 }
 
 /** The live screen before anything has loaded, also shown while /api/me loads. */
-export function LiveSkeleton() {
+export function LiveSkeleton({ status }: { status?: SessionStatus }) {
   return (
     <main className="live-page">
+      {status !== "error" && (
+        <div className="sk-requests" aria-hidden="true">
+          <div className="sk sk-req" />
+          <div className="sk sk-req" />
+        </div>
+      )}
       <div className="live-main">
-        <Skeleton />
+        {/* Same rows as the loaded screen, so nothing jumps when data lands. */}
+        <div className="live-top">
+          {status !== "error" && (
+            <div className="sk sk-title" aria-hidden="true" />
+          )}
+          {status && <StatusLine status={status} />}
+        </div>
+        {status !== "error" && <Skeleton />}
       </div>
     </main>
   );
@@ -94,18 +107,7 @@ export function Live(props: {
     return () => clearInterval(t);
   }, []);
 
-  if (!view) {
-    return (
-      <main className="live-page">
-        <div className="live-main">
-          <div className="live-top">
-            <StatusLine status={status} />
-          </div>
-          {status !== "error" && <Skeleton />}
-        </div>
-      </main>
-    );
-  }
+  if (!view) return <LiveSkeleton status={status} />;
 
   const req =
     view.requests.find((r) => r.id === props.requestId) ?? view.requests.at(-1);

@@ -490,4 +490,19 @@ describe("live screen", () => {
     expect(screen.getByText("Agent 1: tests")).toBeTruthy();
     expect(req.agents).toHaveLength(1);
   });
+
+  it("the loading skeleton keeps a requests placeholder before the main column", () => {
+    const { container } = render(
+      <Live
+        sessionId="s1"
+        view={null}
+        viewAt={() => null}
+        status="loading"
+        lastLooked={null}
+      />,
+    );
+    const page = container.querySelector(".live-page");
+    expect(page?.children[0]?.className).toContain("sk-requests");
+    expect(page?.children[1]?.className).toBe("live-main");
+  });
 });
