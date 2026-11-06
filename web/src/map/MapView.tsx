@@ -171,8 +171,11 @@ export function MapView(props: {
 
   // Every part keeps a full chip stack's room on a fixed side, helpers or not,
   // so link labels avoid nodes, phase tags, chip room and each other, and never
-  // move as helpers start or finish. `tagged` is each box plus its phase tag.
-  const tagged = rects.map((r) => ({ ...r, y: r.y - 16, h: r.h + 16 }));
+  // move as helpers start or finish. `tagged` is each box plus its phase tag,
+  // if it shows one (rects past the parts are the goal, which has none).
+  const tagged = rects.map((r, j) =>
+    phaseNo(parts[j]?.phase) ? { ...r, y: r.y - 16, h: r.h + 16 } : r,
+  );
   const frame = linkFrame(kind, width);
   const ringIds = new Set(
     kind === "feature" ? nodes.slice(0, RING_SIZE).map((n) => n.id) : [],
@@ -238,13 +241,18 @@ export function MapView(props: {
           return { x, y, rect: { x: x - lw / 2, y: y - 8, w: lw, h: 14 } };
         }),
       );
-      // Least overlap wins; ties keep the earlier (preferred) spot.
-      const cost = (r: Rect) =>
-        (r.x < 0 || r.y < 0 || r.x + r.w > width ? 1e9 : 0) +
-        taken.reduce(
-          (sum, o) => (ring && !o.ring ? sum : sum + overlap(r, o)),
-          0,
+      // Least overlap wins, counted with a 3 px margin so a label's halo never
+      // touches a box; ties keep the earlier (preferred) spot.
+      const cost = (r: Rect) => {
+        const m = { x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 };
+        return (
+          (r.x < 0 || r.y < 0 || r.x + r.w > width ? 1e9 : 0) +
+          taken.reduce(
+            (sum, o) => (ring && !o.ring ? sum : sum + overlap(m, o)),
+            0,
+          )
         );
+      };
       const spot = spots.reduce((best, c) =>
         cost(c.rect) < cost(best.rect) ? c : best,
       );

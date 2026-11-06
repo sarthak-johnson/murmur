@@ -504,6 +504,35 @@ describe("MapView", () => {
     expect(hits).toEqual([]);
   });
 
+  it("a short link's label keeps a gap from the boxes around it", () => {
+    // Real case: Task 9 (first overflow row) shares files with Task 6 (ring bottom).
+    const parts = Array.from({ length: 11 }, (_, i) =>
+      part({
+        id: `p${i}`,
+        title: `Task ${i}`,
+        status: "done",
+        links: i === 10 ? [{ to: "p7", label: "same files" }] : [],
+      }),
+    );
+    const { container } = render(
+      <MapView request={request({ parts })} onOpenPart={() => {}} />,
+    );
+    const label = container.querySelector(".link-label") as SVGTextElement;
+    const w = textWidth("same files", 10.5) + 8;
+    const x = Number(label.getAttribute("x")) - w / 2;
+    const y = Number(label.getAttribute("y")) - 3 - 8;
+    const near = [...container.querySelectorAll("rect.box, rect.goal-box")]
+      .map(boxRect)
+      .filter(
+        (b) =>
+          x < b.x + b.w + 3 &&
+          b.x - 3 < x + w &&
+          y < b.y + b.h + 3 &&
+          b.y - 3 < y + 14,
+      );
+    expect(near).toEqual([]);
+  });
+
   it("a cut title ends at a word, and a cut path keeps its last folders", () => {
     render(
       <MapView
