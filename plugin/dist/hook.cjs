@@ -19902,7 +19902,13 @@ var isEnvFile = (o) => [o.file_path, o.filePath].some(
 function walk(v, env = false, max = MAX_STRING) {
   if (typeof v === "string") {
     const limit = max + CUT - MAX_STRING;
-    const cut2 = v.length > limit ? v.slice(0, limit) : v;
+    let cut2 = v.length > limit ? v.slice(0, limit) : v;
+    if (cut2.length < v.length) {
+      let i = cut2.length;
+      while (i > 0 && i > cut2.length - 1024 && !/\s/.test(cut2[i - 1]))
+        i--;
+      cut2 = cut2.slice(0, i);
+    }
     const s = scrubString(env ? cut2.replace(ANY_ASSIGN, `$1${R}`) : cut2);
     const over = Math.max(0, s.length - max);
     const n = v.length - cut2.length + over;
@@ -19922,10 +19928,17 @@ var OUTPUT_MAX = 2e3;
 var SHOWN_RESULTS = /* @__PURE__ */ new Set(["Edit", "Write", "Agent"]);
 function scrubEvent(e) {
   const p = e.payload;
-  const trim = "tool_response" in p && !SHOWN_RESULTS.has(String(p.tool_name)) && (e.hook === "PostToolUse" || e.hook === "PostToolUseFailure");
-  const payload = walk(
-    trim ? { ...p, tool_response: walk(p.tool_response, false, OUTPUT_MAX) } : p
-  );
+  if (e.hook !== "PostToolUse" && e.hook !== "PostToolUseFailure")
+    return { ...e, payload: walk(p) };
+  const { tool_response, error: error62, ...rest } = p;
+  const payload = walk(rest);
+  if ("tool_response" in p)
+    payload.tool_response = walk(
+      tool_response,
+      false,
+      SHOWN_RESULTS.has(String(p.tool_name)) ? MAX_STRING : OUTPUT_MAX
+    );
+  if ("error" in p) payload.error = walk(error62, false, OUTPUT_MAX);
   return { ...e, payload };
 }
 
@@ -20301,8 +20314,8 @@ function* readLines(file2, tailBytes) {
   try {
     const size = import_node_fs3.default.fstatSync(fd).size;
     let pos = Math.max(0, size - tailBytes);
-    let skip = pos > 0;
     const buf = Buffer.alloc(CHUNK);
+    let skip = pos > 0 && (import_node_fs3.default.readSync(fd, buf, 0, 1, pos - 1), buf[0] !== 10);
     let rest = Buffer.alloc(0);
     const parse3 = (line) => {
       try {

@@ -15,8 +15,8 @@ import { enqueue, type FlushOptions, flush } from "./upload.js";
 // session is ~7,000 events and ~20 MB.
 const MAX_EVENTS = 10_000;
 const MAX_BYTES = 20_000_000;
-// Files are streamed, so this only bounds the time a huge transcript takes: a long
-// session's whole history fits (a 5-day session is ~60 MB).
+// Files are streamed, so this only bounds the time a huge transcript takes. What fits
+// is set by MAX_BYTES: all of a few-day session, the last day or so of a longer one.
 const TAIL_BYTES = 512_000_000;
 const CHUNK = 1 << 20;
 // A backfill pending or running this long died; the next hook starts it again.
@@ -71,7 +71,7 @@ const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
 
 /**
  * The JSON lines in the last `tailBytes` of `file`, starting at a whole line, read in
- * chunks so memory holds one line at a time, not the file.
+ * chunks so the file is never in memory at once (the mapped events still are).
  */
 function* readLines(file: string, tailBytes: number): Generator<Entry> {
   let fd: number;
@@ -83,8 +83,9 @@ function* readLines(file: string, tailBytes: number): Generator<Entry> {
   try {
     const size = fs.fstatSync(fd).size;
     let pos = Math.max(0, size - tailBytes);
-    let skip = pos > 0; // the first line is cut
     const buf = Buffer.alloc(CHUNK);
+    // The first line is cut unless the window starts right after a newline.
+    let skip = pos > 0 && (fs.readSync(fd, buf, 0, 1, pos - 1), buf[0] !== 10);
     let rest = Buffer.alloc(0);
     const parse = (line: Buffer): Entry | undefined => {
       try {

@@ -216,6 +216,30 @@ describe("readBackfill", () => {
     );
   });
 
+  it("a window that starts right after a newline keeps that whole line", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "murmur-transcript-"));
+    const file = path.join(dir, `${SID}.jsonl`);
+    const line = (i: number) =>
+      JSON.stringify({
+        type: "user",
+        uuid: `x${i}`,
+        timestamp: t(i),
+        origin: { kind: "human" },
+        message: { role: "user", content: `prompt ${i}` },
+      });
+    const lines = [0, 1, 2, 3].map(line);
+    fs.writeFileSync(file, `${lines.join("\n")}\n`);
+    const tail = Buffer.byteLength(`${lines.slice(-2).join("\n")}\n`);
+    const events = readBackfill(
+      input({ transcriptPath: file, cutoff: t(50) }),
+      { tailBytes: tail },
+    );
+    expect(events.map((e) => e.payload.prompt)).toEqual([
+      "prompt 2",
+      "prompt 3",
+    ]);
+  });
+
   it("streams the whole file: lines longer than a read chunk, and a last line with no newline", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "murmur-transcript-"));
     const file = path.join(dir, `${SID}.jsonl`);

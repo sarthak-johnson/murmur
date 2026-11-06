@@ -92,7 +92,15 @@ function walk(v: unknown, env = false, max = MAX_STRING): unknown {
   if (typeof v === "string") {
     // Cut first so scrubbing never scans multi-MB strings; N counts the original.
     const limit = max + CUT - MAX_STRING;
-    const cut = v.length > limit ? v.slice(0, limit) : v;
+    let cut = v.length > limit ? v.slice(0, limit) : v;
+    // A token cut in half no longer matches its pattern, and redaction before it can pull
+    // it into the part shown: drop the word the cut split (up to 1 KB of it).
+    if (cut.length < v.length) {
+      let i = cut.length;
+      while (i > 0 && i > cut.length - 1024 && !/\s/.test(cut[i - 1] as string))
+        i--;
+      cut = cut.slice(0, i);
+    }
     const s = scrubString(env ? cut.replace(ANY_ASSIGN, `$1${R}`) : cut);
     // N = original chars never read (tail beyond the cut) + scrubbed chars sliced off.
     // Never negative; the marker shows whenever anything was dropped.
@@ -118,14 +126,18 @@ const SHOWN_RESULTS = new Set(["Edit", "Write", "Agent"]);
 
 export function scrubEvent(e: MurmurEvent): MurmurEvent {
   const p = e.payload;
-  const trim =
-    "tool_response" in p &&
-    !SHOWN_RESULTS.has(String(p.tool_name)) &&
-    (e.hook === "PostToolUse" || e.hook === "PostToolUseFailure");
-  const payload = walk(
-    trim
-      ? { ...p, tool_response: walk(p.tool_response, false, OUTPUT_MAX) }
-      : p,
-  ) as Record<string, unknown>;
+  if (e.hook !== "PostToolUse" && e.hook !== "PostToolUseFailure")
+    return { ...e, payload: walk(p) as Record<string, unknown> };
+  // Walked apart from the rest, so a cut marker is never scrubbed a second time. A live
+  // failure carries its output in `error`, which no view shows.
+  const { tool_response, error, ...rest } = p;
+  const payload = walk(rest) as Record<string, unknown>;
+  if ("tool_response" in p)
+    payload.tool_response = walk(
+      tool_response,
+      false,
+      SHOWN_RESULTS.has(String(p.tool_name)) ? MAX_STRING : OUTPUT_MAX,
+    );
+  if ("error" in p) payload.error = walk(error, false, OUTPUT_MAX);
   return { ...e, payload };
 }

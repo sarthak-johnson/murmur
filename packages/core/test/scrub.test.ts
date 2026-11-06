@@ -259,3 +259,34 @@ test("cuts the results nothing shows to their start; keeps Edit, Write and Agent
     ).content,
   ).toBe(big);
 });
+
+test("a token at the edge of a cut result never shows in part", () => {
+  const token = `ghp_${"A1b2C3d4E5".repeat(4)}`;
+  // Redaction shrinks the head by far more than the 4 KB scan margin.
+  const head = `Authorization: Basic ${"x".repeat(5000)}\n`;
+  // Puts the token across the scan window's edge, 4,096 past the 2,000 shown.
+  for (let pad = 1000; pad < 1100; pad += 3) {
+    const s = `${head}${"z".repeat(pad)}${token} tail ${"y".repeat(20_000)}`;
+    const out = scrubEvent({
+      ...ev({ tool_name: "Bash", tool_response: { stdout: s } }),
+    }).payload.tool_response as { stdout: string };
+    expect(out.stdout).not.toMatch(/ghp_A1b2/);
+  }
+});
+
+test("a live failure's error is cut like a result", () => {
+  const e = {
+    ...ev({ tool_name: "Bash", error: "e".repeat(50_000) }),
+    hook: "PostToolUseFailure" as const,
+  };
+  const err = scrubEvent(e).payload.error as string;
+  expect(err.length).toBeLessThan(OUTPUT_MAX + 40);
+});
+
+test("the cut marker survives a cut inside name=value", () => {
+  const s = `${"a".repeat(OUTPUT_MAX - 8)} token=${"v".repeat(10_000)}`;
+  const out = scrubEvent(
+    ev({ tool_name: "Bash", tool_response: { stdout: s } }),
+  ).payload.tool_response as { stdout: string };
+  expect(out.stdout).toMatch(/…\[truncated \d+ chars\]$/);
+});
