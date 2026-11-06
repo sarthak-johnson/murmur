@@ -19899,26 +19899,34 @@ function scrubString(s) {
 var isEnvFile = (o) => [o.file_path, o.filePath].some(
   (p) => typeof p === "string" && /^\.env(\..*)?$/.test(p.split(/[\\/]/).pop() ?? "")
 );
-function walk(v, env = false) {
+function walk(v, env = false, max = MAX_STRING) {
   if (typeof v === "string") {
-    const cut2 = v.length > CUT ? v.slice(0, CUT) : v;
+    const limit = max + CUT - MAX_STRING;
+    const cut2 = v.length > limit ? v.slice(0, limit) : v;
     const s = scrubString(env ? cut2.replace(ANY_ASSIGN, `$1${R}`) : cut2);
-    const over = Math.max(0, s.length - MAX_STRING);
+    const over = Math.max(0, s.length - max);
     const n = v.length - cut2.length + over;
-    return n > 0 ? `${s.slice(0, MAX_STRING)}\u2026[truncated ${n} chars]` : s;
+    return n > 0 ? `${s.slice(0, max)}\u2026[truncated ${n} chars]` : s;
   }
-  if (Array.isArray(v)) return v.map((x) => walk(x, env));
+  if (Array.isArray(v)) return v.map((x) => walk(x, env, max));
   if (v && typeof v === "object") {
     const o = v;
     const e = env || isEnvFile(o);
     return Object.fromEntries(
-      Object.entries(o).map(([k, x]) => [k, walk(x, e)])
+      Object.entries(o).map(([k, x]) => [k, walk(x, e, max)])
     );
   }
   return v;
 }
+var OUTPUT_MAX = 2e3;
+var SHOWN_RESULTS = /* @__PURE__ */ new Set(["Edit", "Write", "Agent"]);
 function scrubEvent(e) {
-  return { ...e, payload: walk(e.payload) };
+  const p = e.payload;
+  const trim = "tool_response" in p && !SHOWN_RESULTS.has(String(p.tool_name)) && (e.hook === "PostToolUse" || e.hook === "PostToolUseFailure");
+  const payload = walk(
+    trim ? { ...p, tool_response: walk(p.tool_response, false, OUTPUT_MAX) } : p
+  );
+  return { ...e, payload };
 }
 
 // src/backfill.ts
@@ -20266,9 +20274,10 @@ async function flush(c, {
 }
 
 // src/backfill.ts
-var MAX_EVENTS2 = 5e3;
+var MAX_EVENTS2 = 1e4;
 var MAX_BYTES2 = 2e7;
-var TAIL_BYTES = 3e7;
+var TAIL_BYTES = 512e6;
+var CHUNK = 1 << 20;
 var STALE_MS = 10 * 6e4;
 function uuidFrom(key) {
   const h = (0, import_node_crypto.createHash)("sha1").update(key).digest("hex");
@@ -20282,31 +20291,50 @@ function stableId(sessionId, hook, p) {
 }
 var obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : void 0;
 var str = (v) => typeof v === "string" && v ? v : void 0;
-function readLines(file2, tailBytes) {
-  let text2;
+function* readLines(file2, tailBytes) {
+  let fd;
   try {
-    const fd = import_node_fs3.default.openSync(file2, "r");
-    try {
-      const size = import_node_fs3.default.fstatSync(fd).size;
-      const start = Math.max(0, size - tailBytes);
-      const buf = Buffer.alloc(size - start);
-      import_node_fs3.default.readSync(fd, buf, 0, buf.length, start);
-      text2 = buf.toString("utf8");
-      if (start > 0) text2 = text2.slice(text2.indexOf("\n") + 1);
-    } finally {
-      import_node_fs3.default.closeSync(fd);
+    fd = import_node_fs3.default.openSync(file2, "r");
+  } catch {
+    return;
+  }
+  try {
+    const size = import_node_fs3.default.fstatSync(fd).size;
+    let pos = Math.max(0, size - tailBytes);
+    let skip = pos > 0;
+    const buf = Buffer.alloc(CHUNK);
+    let rest = Buffer.alloc(0);
+    const parse3 = (line) => {
+      try {
+        return obj(JSON.parse(line.toString("utf8")));
+      } catch {
+        return void 0;
+      }
+    };
+    while (pos < size) {
+      const n = import_node_fs3.default.readSync(fd, buf, 0, Math.min(CHUNK, size - pos), pos);
+      if (n <= 0) break;
+      pos += n;
+      let data = Buffer.concat([rest, buf.subarray(0, n)]);
+      for (let nl = data.indexOf(10); nl !== -1; nl = data.indexOf(10)) {
+        const line = data.subarray(0, nl);
+        data = data.subarray(nl + 1);
+        if (skip) skip = false;
+        else {
+          const e = parse3(line);
+          if (e) yield e;
+        }
+      }
+      rest = Buffer.from(data);
+    }
+    if (!skip && rest.length) {
+      const e = parse3(rest);
+      if (e) yield e;
     }
   } catch {
-    return [];
+  } finally {
+    import_node_fs3.default.closeSync(fd);
   }
-  return text2.split("\n").flatMap((line) => {
-    try {
-      const e = obj(JSON.parse(line));
-      return e ? [e] : [];
-    } catch {
-      return [];
-    }
-  });
 }
 function readMeta(file2) {
   try {
@@ -20363,15 +20391,20 @@ function readBackfill(b, {
       })
     );
   };
-  const usable = (list2) => list2.filter((e) => {
+  const usable = (e) => {
     const ts = typeof e.timestamp === "string" ? Date.parse(e.timestamp) : NaN;
-    return str(e.uuid) && ts < cutoff;
-  });
+    return Boolean(str(e.uuid)) && ts < cutoff;
+  };
   const ended = /* @__PURE__ */ new Set();
   let newest;
   const mapEntries = (list2, agent) => {
     const uses = /* @__PURE__ */ new Map();
+    let first;
+    let last;
     for (const e of list2) {
+      if (!usable(e)) continue;
+      first ??= e;
+      last = e;
       const content = obj(e.message)?.content;
       if (e.type === "user" && obj(e.origin)?.kind === "human" && !agent.agent_id) {
         const prompt = promptText(content);
@@ -20417,8 +20450,9 @@ function readBackfill(b, {
         }
       });
     }
+    return { first, last };
   };
-  mapEntries(usable(readLines(b.transcriptPath, tailBytes)), {});
+  mapEntries(readLines(b.transcriptPath, tailBytes), {});
   if (newest && skipPrompt !== void 0 && newest.text.trim() === skipPrompt.trim())
     out.splice(newest.at, 1);
   const dir = import_node_path3.default.join(
@@ -20438,12 +20472,14 @@ function readBackfill(b, {
       agent_id: agentId,
       agent_type: typeof meta3.agentType === "string" ? meta3.agentType : ""
     };
-    const list2 = usable(readLines(import_node_path3.default.join(dir, name), tailBytes));
-    const first = list2[0];
-    const last = list2.at(-1);
+    const at = out.length;
+    const { first, last } = mapEntries(
+      readLines(import_node_path3.default.join(dir, name), tailBytes),
+      agent
+    );
     if (!first || !last) continue;
     emit(first, 0, "SubagentStart", agent);
-    mapEntries(list2, agent);
+    out.splice(at, 0, out.pop());
     const call = str(meta3.toolUseId);
     if (meta3.finished === true || call && ended.has(call))
       emit(last, 0, "SubagentStop", agent);

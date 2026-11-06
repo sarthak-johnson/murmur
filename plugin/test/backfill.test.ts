@@ -216,6 +216,33 @@ describe("readBackfill", () => {
     );
   });
 
+  it("streams the whole file: lines longer than a read chunk, and a last line with no newline", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "murmur-transcript-"));
+    const file = path.join(dir, `${SID}.jsonl`);
+    const line = (i: number, pad = "") =>
+      JSON.stringify({
+        type: "user",
+        uuid: `x${i}`,
+        timestamp: t(i),
+        origin: { kind: "human" },
+        message: { role: "user", content: `prompt ${i}` },
+        pad,
+      });
+    const big = "a".repeat(2.5 * (1 << 20));
+    fs.writeFileSync(
+      file,
+      [line(0), line(1, big), line(2), line(3, big), line(4)].join("\n"),
+    );
+    const events = readBackfill(input({ transcriptPath: file, cutoff: t(50) }));
+    expect(events.map((e) => e.payload.prompt)).toEqual([
+      "prompt 0",
+      "prompt 1",
+      "prompt 2",
+      "prompt 3",
+      "prompt 4",
+    ]);
+  });
+
   it("gives the same ids on every run, and the live hook's id for tool and subagent events", () => {
     const a = readBackfill(input()).map((e) => e.id);
     expect(readBackfill(input()).map((e) => e.id)).toEqual(a);

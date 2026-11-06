@@ -11,10 +11,14 @@ import {
 } from "./local.js";
 import { enqueue, type FlushOptions, flush } from "./upload.js";
 
-const MAX_EVENTS = 5000;
+// With unshown tool results cut to their start, MAX_BYTES is the real bound; a 5-day
+// session is ~7,000 events and ~20 MB.
+const MAX_EVENTS = 10_000;
 const MAX_BYTES = 20_000_000;
-// Only the newest events are kept, so only the end of each file is read.
-const TAIL_BYTES = 30_000_000;
+// Files are streamed, so this only bounds the time a huge transcript takes: a long
+// session's whole history fits (a 5-day session is ~60 MB).
+const TAIL_BYTES = 512_000_000;
+const CHUNK = 1 << 20;
 // A backfill pending or running this long died; the next hook starts it again.
 const STALE_MS = 10 * 60_000;
 
@@ -65,32 +69,55 @@ const obj = (v: unknown): Record<string, unknown> | undefined =>
     : undefined;
 const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
 
-/** The JSON lines in the last `tailBytes` of `file`, starting at a whole line. */
-function readLines(file: string, tailBytes: number): Entry[] {
-  let text: string;
+/**
+ * The JSON lines in the last `tailBytes` of `file`, starting at a whole line, read in
+ * chunks so memory holds one line at a time, not the file.
+ */
+function* readLines(file: string, tailBytes: number): Generator<Entry> {
+  let fd: number;
   try {
-    const fd = fs.openSync(file, "r");
-    try {
-      const size = fs.fstatSync(fd).size;
-      const start = Math.max(0, size - tailBytes);
-      const buf = Buffer.alloc(size - start);
-      fs.readSync(fd, buf, 0, buf.length, start);
-      text = buf.toString("utf8");
-      if (start > 0) text = text.slice(text.indexOf("\n") + 1);
-    } finally {
-      fs.closeSync(fd);
+    fd = fs.openSync(file, "r");
+  } catch {
+    return;
+  }
+  try {
+    const size = fs.fstatSync(fd).size;
+    let pos = Math.max(0, size - tailBytes);
+    let skip = pos > 0; // the first line is cut
+    const buf = Buffer.alloc(CHUNK);
+    let rest = Buffer.alloc(0);
+    const parse = (line: Buffer): Entry | undefined => {
+      try {
+        return obj(JSON.parse(line.toString("utf8")));
+      } catch {
+        return undefined;
+      }
+    };
+    while (pos < size) {
+      const n = fs.readSync(fd, buf, 0, Math.min(CHUNK, size - pos), pos);
+      if (n <= 0) break;
+      pos += n;
+      let data = Buffer.concat([rest, buf.subarray(0, n)]);
+      for (let nl = data.indexOf(10); nl !== -1; nl = data.indexOf(10)) {
+        const line = data.subarray(0, nl);
+        data = data.subarray(nl + 1);
+        if (skip) skip = false;
+        else {
+          const e = parse(line);
+          if (e) yield e;
+        }
+      }
+      rest = Buffer.from(data);
+    }
+    if (!skip && rest.length) {
+      const e = parse(rest);
+      if (e) yield e;
     }
   } catch {
-    return [];
+    // Best effort: what was read so far stands.
+  } finally {
+    fs.closeSync(fd);
   }
-  return text.split("\n").flatMap((line) => {
-    try {
-      const e = obj(JSON.parse(line));
-      return e ? [e] : [];
-    } catch {
-      return [];
-    }
-  });
 }
 
 function readMeta(file: string): Record<string, unknown> {
@@ -186,19 +213,26 @@ export function readBackfill(
     );
   };
   // Entries that can become events: with a uuid and a time before the cutoff.
-  const usable = (list: Entry[]) =>
-    list.filter((e) => {
-      const ts =
-        typeof e.timestamp === "string" ? Date.parse(e.timestamp) : NaN;
-      return str(e.uuid) && ts < cutoff;
-    });
+  const usable = (e: Entry) => {
+    const ts = typeof e.timestamp === "string" ? Date.parse(e.timestamp) : NaN;
+    return Boolean(str(e.uuid)) && ts < cutoff;
+  };
 
   // Agent calls whose result says the helper finished (not just launched it).
   const ended = new Set<string>();
   let newest: { at: number; text: string } | undefined;
-  const mapEntries = (list: Entry[], agent: Record<string, unknown>) => {
+  // Maps the usable entries of `list`; returns the first and last of them.
+  const mapEntries = (
+    list: Iterable<Entry>,
+    agent: Record<string, unknown>,
+  ) => {
     const uses = new Map<string, Block>();
+    let first: Entry | undefined;
+    let last: Entry | undefined;
     for (const e of list) {
+      if (!usable(e)) continue;
+      first ??= e;
+      last = e;
       const content = obj(e.message)?.content;
       if (
         e.type === "user" &&
@@ -248,9 +282,10 @@ export function readBackfill(
         }
       });
     }
+    return { first, last };
   };
 
-  mapEntries(usable(readLines(b.transcriptPath, tailBytes)), {});
+  mapEntries(readLines(b.transcriptPath, tailBytes), {});
   // Compared before scrubbing, the way the user typed both.
   if (
     newest &&
@@ -275,12 +310,15 @@ export function readBackfill(
       agent_id: agentId,
       agent_type: typeof meta.agentType === "string" ? meta.agentType : "",
     };
-    const list = usable(readLines(path.join(dir, name), tailBytes));
-    const first = list[0];
-    const last = list.at(-1);
+    const at = out.length;
+    const { first, last } = mapEntries(
+      readLines(path.join(dir, name), tailBytes),
+      agent,
+    );
     if (!first || !last) continue;
+    // The start goes before the helper's own events, which can share its time.
     emit(first, 0, "SubagentStart", agent);
-    mapEntries(list, agent);
+    out.splice(at, 0, out.pop() as MurmurEvent);
     // A running subagent's meta has no `finished` and its Agent call has no result yet;
     // its stop comes live later.
     const call = str(meta.toolUseId);

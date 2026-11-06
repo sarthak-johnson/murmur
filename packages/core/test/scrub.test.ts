@@ -1,5 +1,10 @@
 import { expect, test } from "vitest";
-import { MAX_STRING, scrubEvent, scrubString } from "../src/index.js";
+import {
+  MAX_STRING,
+  OUTPUT_MAX,
+  scrubEvent,
+  scrubString,
+} from "../src/index.js";
 import { ev } from "./helpers.js";
 
 test("redacts known key formats", () => {
@@ -213,4 +218,44 @@ test.each([
   const t = performance.now();
   scrubString(s);
   expect(performance.now() - t).toBeLessThan(200);
+});
+
+test("cuts the results nothing shows to their start; keeps Edit, Write and Agent results whole", () => {
+  const big = "x".repeat(50_000);
+  const post = (tool_name: string, hook = "PostToolUse") => ({
+    ...ev({
+      tool_name,
+      tool_input: { file_path: "/p/a.ts", content: big },
+      tool_response: { file: { content: big }, stdout: big },
+    }),
+    hook,
+  });
+  for (const tool of ["Read", "Bash", "mcp__x__screenshot"]) {
+    const r = scrubEvent(post(tool) as never).payload.tool_response as {
+      file: { content: string };
+      stdout: string;
+    };
+    expect(r.stdout).toBe(
+      `${"x".repeat(OUTPUT_MAX)}…[truncated ${50_000 - OUTPUT_MAX} chars]`,
+    );
+    expect(r.file.content.length).toBeLessThan(OUTPUT_MAX + 40);
+  }
+  expect(
+    (
+      scrubEvent(post("Read", "PostToolUseFailure") as never).payload
+        .tool_response as { stdout: string }
+    ).stdout.length,
+  ).toBeLessThan(OUTPUT_MAX + 40);
+  for (const tool of ["Edit", "Write", "Agent"]) {
+    const p = scrubEvent(post(tool) as never).payload;
+    expect((p.tool_response as { stdout: string }).stdout).toBe(big);
+  }
+  // Inputs stay whole: a Write's content is the code change.
+  expect(
+    (
+      scrubEvent(post("Read") as never).payload.tool_input as {
+        content: string;
+      }
+    ).content,
+  ).toBe(big);
 });
