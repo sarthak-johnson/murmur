@@ -5,3 +5,6 @@ packages:
   - web
 allowBuilds:
   esbuild: false
+# Package test suites run one at a time: the server suite boots PGlite in every worker
+# and starves the plugin's wall-clock tests when they share the CPU.
+workspaceConcurrency: 1
