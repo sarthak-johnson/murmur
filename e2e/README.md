@@ -9,10 +9,10 @@ It is not part of `pnpm -r test` or CI, because it costs money and needs a logge
 2. Signs in as `e2e` through `/auth/dev`, runs `murmur login` with `MURMUR_HOME` in a temp dir, and approves the code through the API.
 3. Makes a fresh git repo in a temp dir with a fake `ANTHROPIC_API_KEY` in `.env`, and runs `murmur on` for it.
 4. Runs `claude -p` there with `--plugin-dir plugin`, `--setting-sources project,local` (so your own plugins and hooks stay out), `--permission-mode acceptEdits`, `--model sonnet` and `--max-budget-usd 1`.
-5. Asserts on `reduce` over the session's events: one request, a plan from `map`, at least one part, a `now` (narrated or inferred), a `Stop` event, at least one `narrate` call, every task named by `narrate` done (or an inferred `now`), `math.js` touched with lines added, and no event carrying the fake key.
+5. Asserts on `reduce` over the session's events: one request, a plan from `map`, at least one part, a `now` (narrated or inferred), a `Stop` event, at least one `narrate` call, every task the map declared narrated done, `math.js` touched with lines added, and no event carrying the fake key.
 6. Opens the live page (1440x900 and 375x812) and the first part's drill-down (1440x900) in Chromium, checks the page never scrolls sideways, and saves screenshots.
 
-At the end it stops the server, kills the login poller and deletes the temp dirs.
+At the end it stops the server (SIGKILL after 5 s if SIGTERM is not enough), kills the login poller, and deletes the temp dirs and the run's Claude Code transcript folder under `~/.claude/projects/`.
 
 ## Output
 

@@ -121,10 +121,23 @@ afterAll(async () => {
   if (server && server.exitCode === null) {
     const exited = new Promise((r) => server?.once("exit", r));
     server.kill("SIGTERM");
+    const kill = setTimeout(() => server?.kill("SIGKILL"), 5000);
     await exited;
+    clearTimeout(kill);
   }
   for (const d of [home, repo])
     if (d) fs.rmSync(d, { recursive: true, force: true });
+  // Claude Code keeps the run's transcripts under the repo path with every
+  // non-alphanumeric turned into "-"; remove only that one folder.
+  if (repo)
+    fs.rmSync(
+      path.join(
+        os.homedir(),
+        ".claude/projects",
+        repo.replace(/[^A-Za-z0-9]/g, "-"),
+      ),
+      { recursive: true, force: true },
+    );
 });
 
 it("shows a real Claude Code session", async () => {
@@ -237,15 +250,13 @@ it("shows a real Claude Code session", async () => {
     `narrate calls: ${narrates.length}, before the first Stop: ${narrates.filter((e) => e.ts < (stops[0]?.ts ?? "")).length}, Stop events: ${stops.length}, now: ${JSON.stringify(req?.now)}`,
   );
   expect(narrates.length, "narrate called at least once").toBeGreaterThan(0);
-  const named = new Set(
-    narrates.map((e) => (e.payload.tool_input as { task?: string }).task),
-  );
+  // Every task the map declared ends done, which only narrate can say.
   const tasks = req?.phases.flatMap((p) => p.tasks) ?? [];
-  const open = tasks.filter((t) => named.has(t.id) && t.status !== "done");
+  expect(tasks.length).toBeGreaterThan(0);
   expect(
-    open.length === 0 || req?.now?.inferred === true,
-    `narrated tasks not done: ${JSON.stringify(open)}`,
-  ).toBe(true);
+    tasks.filter((t) => t.status !== "done").map((t) => [t.id, t.status]),
+    "tasks not narrated done",
+  ).toEqual([]);
   const files = [
     ...(req?.parts.flatMap((p) => p.files) ?? []),
     ...(req?.looseFiles ?? []),
