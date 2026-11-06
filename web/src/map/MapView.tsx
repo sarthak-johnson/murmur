@@ -7,6 +7,7 @@ import {
   layoutMap,
   mapSize,
   type NodeBox,
+  RING_SIZE,
 } from "./layout";
 
 const DIM = 0.35;
@@ -139,13 +140,15 @@ export function MapView(props: {
 
   // Chip stacks go where they fit; link labels then avoid nodes, phase tags,
   // chips and each other.
+  // Each box plus the phase tag above it.
+  const tagged = rects.map((r) => ({ ...r, y: r.y - 16, h: r.h + 16 }));
   const chipSpots = placed.map(({ part, box }, i) => {
     const n = chipCount(part);
     if (!n) return null;
     const spot = chipSpot(
       box,
       n,
-      rects.filter((_, j) => j !== i),
+      tagged.filter((_, j) => j !== i),
       width,
       height,
     );
@@ -155,10 +158,7 @@ export function MapView(props: {
       rect: { x: spot.x, y: spot.y, w: CHIP_W, h: n * (CHIP_H + CHIP_GAP) },
     };
   });
-  const taken = [
-    ...rects.map((r) => ({ ...r, y: r.y - 16, h: r.h + 16 })),
-    ...chipSpots.flatMap((c) => (c ? [c.rect] : [])),
-  ];
+  const taken = [...tagged, ...chipSpots.flatMap((c) => (c ? [c.rect] : []))];
   const links = parts.flatMap((p) =>
     p.links.flatMap((l) => {
       const a = boxOf.get(p.id);
@@ -245,16 +245,18 @@ export function MapView(props: {
           </marker>
         </defs>
         {center.w > 0 &&
-          nodes.map((n) => (
-            <line
-              key={n.id}
-              className="spoke"
-              x1={center.x}
-              y1={center.y}
-              x2={n.x}
-              y2={n.y}
-            />
-          ))}
+          nodes
+            .slice(0, RING_SIZE)
+            .map((n) => (
+              <line
+                key={n.id}
+                className="spoke"
+                x1={center.x}
+                y1={center.y}
+                x2={n.x}
+                y2={n.y}
+              />
+            ))}
         {links.map((l) => (
           <path
             key={l.key}

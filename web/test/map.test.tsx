@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { AgentView, PartView, RequestView } from "@murmur/core";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -255,5 +257,40 @@ describe("MapView", () => {
         expect(apart).toBe(true);
       }
     });
+  });
+
+  it("draws spokes only to the eight ring parts", () => {
+    const req = request({
+      parts: Array.from({ length: 10 }, (_, i) =>
+        part({ id: `p${i}`, title: `Part ${i}` }),
+      ),
+    });
+    const { container } = render(
+      <MapView request={req} onOpenPart={() => {}} />,
+    );
+    expect(container.querySelectorAll("line.spoke")).toHaveLength(8);
+  });
+
+  it("fades new map items in, except under reduced motion", () => {
+    // Vitest stubs CSS imports, so read the file itself.
+    const css = readFileSync(
+      join(import.meta.dirname, "../src/theme.css"),
+      "utf8",
+    );
+    const flat = css.replace(/\s+/g, " ");
+    expect(flat).toMatch(
+      /@keyframes map-in \{ from \{ opacity: 0; \} to \{ opacity: 1; \} \}/,
+    );
+    const rule = flat.match(/([^{}]+)\{ animation: map-in 200ms[^}]*\}/);
+    const selectors = (rule?.[1] ?? "").split(",").map((x) => x.trim());
+    for (const sel of [
+      ".map-node",
+      ".map-chips",
+      ".map .link",
+      ".map .link-label",
+    ])
+      expect(selectors).toContain(sel);
+    const reduced = flat.slice(flat.indexOf("prefers-reduced-motion"));
+    expect(reduced).toMatch(/animation: none/);
   });
 });

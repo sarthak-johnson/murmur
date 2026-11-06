@@ -18,19 +18,36 @@ export const CHIP_GAP = 4;
 const PAD = 8;
 /** Room above a node for its phase tag. */
 const TAG_ROOM = 18;
-const ROW_GAP = 28;
+/** Room kept under every column node for its most chips (3), used or not. */
+const CHIP_ROOM = 80;
+const ROW_PITCH = NODE_H + CHIP_ROOM + 20;
 const COL_PITCH = 190;
 
-const FEATURE_SLOTS: [number, number][] = [
-  [0.2, 0.18],
-  [0.8, 0.18],
-  [0.8, 0.82],
-  [0.2, 0.82],
-  [0.1, 0.5],
-  [0.9, 0.5],
-  [0.5, 0.1],
-  [0.5, 0.9],
-];
+/** Feature maps: fixed pixel positions on a 720 x 440 base, never recomputed. */
+const BASE_W = 720;
+const BASE_H = 440;
+const clamp = (v: number, lo: number, hi: number) =>
+  Math.min(Math.max(v, lo), hi);
+const RING: [number, number][] = (
+  [
+    [0.2, 0.18],
+    [0.8, 0.18],
+    [0.8, 0.82],
+    [0.2, 0.82],
+    [0.1, 0.5],
+    [0.9, 0.5],
+    [0.5, 0.1],
+    [0.5, 0.9],
+  ] as const
+).map(([fx, fy]) => [
+  clamp(fx * BASE_W, NODE_W / 2 + PAD, BASE_W - NODE_W / 2 - PAD),
+  clamp(fy * BASE_H, NODE_H / 2 + TAG_ROOM, BASE_H - NODE_H / 2 - PAD),
+]);
+/** Parts past the ring: a grid below it, 4 per row, rows 70 px apart. */
+const GRID_COLS = 4;
+const GRID_TOP = 460;
+const GRID_PITCH = 70;
+export const RING_SIZE = RING.length;
 
 /** Number of chips a part shows: up to two agents, then one `+N more`. */
 export function chipCount(part: PartView): number {
@@ -38,12 +55,7 @@ export function chipCount(part: PartView): number {
   return n > 2 ? 3 : n;
 }
 
-function chipSpace(part: PartView): number {
-  const n = chipCount(part);
-  return n ? 8 + n * (CHIP_H + CHIP_GAP) : 0;
-}
-
-/** Columns for the column kinds, left to right, each in declaration order. */
+/** Every column the kind can have, used or not, so columns never move. */
 function columns(kind: MapInput["kind"], parts: PartView[]): PartView[][] {
   const order =
     kind === "bug"
@@ -53,94 +65,84 @@ function columns(kind: MapInput["kind"], parts: PartView[]): PartView[][] {
         : ["source", "", "answer"];
   const key = (p: PartView) => (p.tag && order.includes(p.tag) ? p.tag : "");
   const cols = order.map((t) => parts.filter((p) => key(p) === t));
-  if (kind === "question") return [cols.flat()];
-  // Bug keeps only the columns in use so five tags fit; refactor keeps all three.
-  return kind === "bug" ? cols.filter((c) => c.length) : cols;
+  return kind === "question" ? [cols.flat()] : cols;
 }
 
-/** The canvas size MapView should give `layoutMap` for these parts. */
+/**
+ * The canvas size MapView should give `layoutMap`. Width is fixed per kind;
+ * height only grows as parts arrive, so existing nodes keep their place.
+ */
 export function mapSize(
   kind: MapInput["kind"],
   parts: PartView[],
 ): { width: number; height: number } {
-  if (kind === "feature") return { width: 720, height: 440 };
+  if (kind === "feature") {
+    const rows = Math.ceil(Math.max(0, parts.length - RING_SIZE) / GRID_COLS);
+    return {
+      width: BASE_W,
+      height: rows
+        ? GRID_TOP + (rows - 1) * GRID_PITCH + NODE_H / 2 + 40
+        : BASE_H,
+    };
+  }
   const cols = columns(kind, parts);
-  const tallest = Math.max(
-    0,
-    ...cols.map((c) =>
-      c.reduce((h, p) => h + NODE_H + chipSpace(p) + ROW_GAP, 0),
-    ),
-  );
+  const tallest = Math.max(0, ...cols.map((c) => c.length));
   return {
-    width: Math.max(720, cols.length * COL_PITCH),
-    height: Math.max(160, TAG_ROOM + tallest),
+    width: Math.max(BASE_W, cols.length * COL_PITCH),
+    height: Math.max(160, TAG_ROOM + tallest * ROW_PITCH),
   };
 }
 
-const clamp = (v: number, lo: number, hi: number) =>
-  Math.min(Math.max(v, lo), hi);
-
 /**
- * Pure, deterministic map layout.
- * Feature: the goal is the centre box; part i takes slot i % 8 on ring
- * floor(i / 8), so adding parts never moves existing ones.
- * Bug, refactor, question: columns top-aligned, parts stacked in declaration
- * order with room for their agent chips. These kinds show the goal as a caption,
- * so `center` comes back with w = 0 and h = 0.
+ * Pure, deterministic map layout. `x`, `y` of each box are its centre.
+ * Feature: the goal is the centre box; parts 0-7 take the fixed ring slots in
+ * declaration order, later parts a grid below the ring. Feature positions are
+ * fixed pixels on a 720 x 440 base and ignore `width` and `height`.
+ * Bug, refactor, question: every column the kind has, at a fixed 190 px pitch,
+ * centred in `width`; parts stack from the top with fixed chip room under each.
+ * These kinds show the goal as a caption, so `center` has w = 0 and h = 0.
  */
 export function layoutMap(
   kind: MapInput["kind"],
   parts: PartView[],
   width: number,
-  height: number,
+  _height: number,
 ): { center: NodeBox; nodes: NodeBox[] } {
   if (kind === "feature") {
     const center = {
       id: "goal",
-      x: width / 2,
-      y: height / 2,
+      x: BASE_W / 2,
+      y: BASE_H / 2,
       w: CENTER_W,
       h: CENTER_H,
     };
-    // ponytail: rings past the first clamp to the canvas edge and can overlap
-    // once a request has more than 8 parts; a force layout fixes that if it shows up.
     const nodes = parts.map((p, i) => {
-      const [sx, sy] = FEATURE_SLOTS[i % 8] as [number, number];
-      const scale = 1.35 ** Math.floor(i / 8);
-      return {
-        id: p.id,
-        x: clamp(
-          width * (0.5 + (sx - 0.5) * scale),
-          NODE_W / 2 + PAD,
-          width - NODE_W / 2 - PAD,
-        ),
-        y: clamp(
-          height * (0.5 + (sy - 0.5) * scale),
-          NODE_H / 2 + TAG_ROOM,
-          height - NODE_H / 2 - PAD,
-        ),
-        w: NODE_W,
-        h: NODE_H,
-      };
+      const j = i - RING_SIZE;
+      const [x, y] =
+        j < 0
+          ? (RING[i] as [number, number])
+          : [
+              (BASE_W / GRID_COLS) * ((j % GRID_COLS) + 0.5),
+              GRID_TOP + Math.floor(j / GRID_COLS) * GRID_PITCH,
+            ];
+      return { id: p.id, x, y, w: NODE_W, h: NODE_H };
     });
     return { center, nodes };
   }
   const cols = columns(kind, parts);
-  const nodes: NodeBox[] = [];
+  const left = (width - cols.length * COL_PITCH) / 2;
+  const at = new Map<string, NodeBox>();
   cols.forEach((col, i) => {
-    let top = TAG_ROOM;
-    for (const p of col) {
-      nodes.push({
+    col.forEach((p, row) => {
+      at.set(p.id, {
         id: p.id,
-        x: (width * (i + 0.5)) / cols.length,
-        y: top + NODE_H / 2,
+        x: left + (i + 0.5) * COL_PITCH,
+        y: TAG_ROOM + row * ROW_PITCH + NODE_H / 2,
         w: NODE_W,
         h: NODE_H,
       });
-      top += NODE_H + chipSpace(p) + ROW_GAP;
-    }
+    });
   });
-  const order = new Map(parts.map((p, i) => [p.id, i]));
-  nodes.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  const nodes = parts.map((p) => at.get(p.id) as NodeBox);
   return { center: { id: "goal", x: width / 2, y: 0, w: 0, h: 0 }, nodes };
 }

@@ -1,6 +1,6 @@
 import type { PartView } from "@murmur/core";
 import { describe, expect, it } from "vitest";
-import { layoutMap, type NodeBox } from "../src/map/layout";
+import { layoutMap, mapSize, type NodeBox } from "../src/map/layout";
 
 function part(id: string, tag?: string): PartView {
   return {
@@ -17,6 +17,11 @@ function part(id: string, tag?: string): PartView {
     agents: [],
     failures: 0,
   };
+}
+
+function lay(kind: Parameters<typeof layoutMap>[0], parts: PartView[]) {
+  const { width, height } = mapSize(kind, parts);
+  return layoutMap(kind, parts, width, height);
 }
 
 function overlaps(a: NodeBox, b: NodeBox) {
@@ -94,5 +99,56 @@ describe("layoutMap", () => {
     expect(layoutMap("bug", parts, 720, 440)).toEqual(
       layoutMap("bug", parts, 720, 440),
     );
+  });
+
+  it("adding a part with a new tag never moves bug or refactor nodes", () => {
+    const bug = [part("sym", "symptom"), part("s1", "suspect")];
+    const bugBefore = lay("bug", bug).nodes;
+    for (const extra of [part("c", "cause"), part("x"), part("f", "fix")]) {
+      expect(lay("bug", [...bug, extra]).nodes.slice(0, 2)).toEqual(bugBefore);
+    }
+    const ref = [part("b", "before")];
+    const refBefore = lay("refactor", ref).nodes;
+    expect(lay("refactor", [...ref, part("a", "after")]).nodes[0]).toEqual(
+      refBefore[0],
+    );
+  });
+
+  it("adding agents to a part never moves any node", () => {
+    const parts = [
+      part("s1", "suspect"),
+      part("s2", "suspect"),
+      part("c", "cause"),
+    ];
+    const before = lay("bug", parts).nodes;
+    for (const n of [1, 2, 3, 5]) {
+      const first = parts[0] as PartView;
+      const withAgents = [
+        { ...first, agents: Array.from({ length: n }, (_, i) => `a${i}`) },
+        ...parts.slice(1),
+      ];
+      expect(lay("bug", withAgents).nodes).toEqual(before);
+    }
+  });
+
+  it("feature maps with 16 and 30 parts have no overlapping boxes", () => {
+    for (const count of [16, 30]) {
+      const parts = Array.from({ length: count }, (_, i) => part(`p${i}`));
+      const { width, height } = mapSize("feature", parts);
+      const { center, nodes } = layoutMap("feature", parts, width, height);
+      const all = [center, ...nodes];
+      all.forEach((a, i) => {
+        expect(a.y + a.h / 2).toBeLessThanOrEqual(height);
+        for (const b of all.slice(i + 1)) expect(overlaps(a, b)).toBe(false);
+      });
+    }
+  });
+
+  it("adding a ninth feature part leaves the first eight in place", () => {
+    const eight = "abcdefgh".split("").map((id) => part(id));
+    const before = lay("feature", eight).nodes;
+    const after = lay("feature", [...eight, part("i")]);
+    expect(after.nodes.slice(0, 8)).toEqual(before);
+    expect(after.center).toEqual(lay("feature", eight).center);
   });
 });
