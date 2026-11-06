@@ -266,6 +266,8 @@ export interface SessionState extends Narration {
    * while off or paused). Unset after a backfill: the first read starts at its cutoff.
    */
   textOffset?: number;
+  /** Imported requests (by id) the recap already asked about, whatever came back. */
+  recapped?: string[];
   /** The narration instruction reached Claude in this session. */
   instructed?: boolean;
   /**

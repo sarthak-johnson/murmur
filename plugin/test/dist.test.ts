@@ -25,6 +25,8 @@ beforeEach(() => {
   env = {
     PATH: process.env.PATH,
     MURMUR_HOME: path.join(home, "murmur"),
+    // Never the real `claude` on PATH; the recap test below brings a fake one.
+    MURMUR_RECAP: "0",
     CLAUDE_CODE_ENTRYPOINT: "cli",
     CLAUDE_CODE_SESSION_ATTENDED: "1",
   };
@@ -327,6 +329,113 @@ for (const name of ["openSync", "readFileSync", "createReadStream", "open", "rea
       "hook",
     );
     expect(fs.readFileSync(log, "utf8")).toContain("child");
+  });
+
+  it("hook.cjs --backfill recaps with the user's claude, and that run itself sends nothing", async () => {
+    const posted: { sessionId: string; payload: { recap?: boolean } }[] = [];
+    const server = await listen((req, res) => {
+      let body = "";
+      req.on("data", (c) => {
+        body += c;
+      });
+      req.on("end", () => {
+        posted.push(...JSON.parse(body).events);
+        res.setHeader("Content-Type", "application/json");
+        res.end("{}");
+      });
+    });
+    const sid = "11111111-2222-4333-8444-555555555555";
+    const fixture = path.join(root, "test/fixtures/backfill", `${sid}.jsonl`);
+    const dir = env.MURMUR_HOME as string;
+    fs.mkdirSync(path.join(dir, "sessions"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "credentials.json"),
+      JSON.stringify({ server, token: "t", machineId: "m1" }),
+    );
+    fs.writeFileSync(
+      path.join(dir, "projects.json"),
+      JSON.stringify({ "/work/demo": "on", [repo]: "on" }),
+    );
+    fs.writeFileSync(
+      path.join(dir, "sessions", `${sid}.json`),
+      JSON.stringify({
+        backfill: "pending",
+        cutoff: "2026-11-07T09:00:15.000Z",
+        transcriptPath: fixture,
+        cwd: "/work/demo",
+      }),
+    );
+    const recap = {
+      map: {
+        kind: "feature",
+        goal: "A greet function",
+        phases: [
+          {
+            id: "p1",
+            title: "Build",
+            tasks: [{ id: "t1", title: "Greet", part: "greet" }],
+          },
+        ],
+        parts: [{ id: "greet", title: "Greet function" }],
+      },
+      parts: [
+        { id: "greet", steps: [{ text: "Wrote greet", status: "done" }] },
+      ],
+      tasks: [{ id: "t1", status: "done", ended: "Written, tests missing." }],
+    };
+    // A fake claude that, like the real one in -p mode, runs the plugin's hooks as a
+    // headless session in an "on" project, with the env it was given.
+    const bin = path.join(home, "bin");
+    fs.mkdirSync(bin);
+    const answer = JSON.stringify([
+      { type: "result", is_error: false, result: JSON.stringify(recap) },
+    ]);
+    fs.writeFileSync(
+      path.join(bin, "claude"),
+      `#!/bin/sh
+echo "$@" > "${home}/claude-args"
+env > "${home}/claude-env"
+cat > /dev/null
+echo '{"hook_event_name":"UserPromptSubmit","session_id":"recap-run","cwd":"${repo}","prompt":"recap"}' | CLAUDE_CODE_ENTRYPOINT=sdk-cli CLAUDE_CODE_SESSION_ATTENDED=0 "${process.execPath}" "${root}/dist/hook.cjs" > /dev/null
+cat <<'JSON'
+${answer}
+JSON
+`,
+    );
+    fs.chmodSync(path.join(bin, "claude"), 0o755);
+    const { MURMUR_RECAP: _, ...rest } = env;
+    const code = await new Promise<number>((ok) =>
+      execFile(
+        process.execPath,
+        [path.join(root, "dist/hook.cjs"), "--backfill", sid],
+        {
+          env: {
+            ...rest,
+            PATH: `${bin}:${env.PATH}`,
+            MURMUR_ALLOW_HEADLESS: "1",
+          },
+        },
+        (err) => ok(err ? Number(err.code) : 0),
+      ),
+    );
+    expect(code).toBe(0);
+    expect(posted.filter((e) => e.payload.recap).length).toBeGreaterThan(2);
+    // Nothing from the recap run's own session.
+    expect(posted.map((e) => e.sessionId).filter((id) => id !== sid)).toEqual(
+      [],
+    );
+    expect(fs.readFileSync(path.join(home, "claude-args"), "utf8")).toContain(
+      "--safe-mode",
+    );
+    expect(
+      fs.readFileSync(path.join(home, "claude-env"), "utf8"),
+    ).not.toContain("MURMUR_ALLOW_HEADLESS");
+    const queue = path.join(dir, "queue");
+    expect(fs.existsSync(queue) ? fs.readdirSync(queue) : []).toEqual([]);
+    const state = JSON.parse(
+      fs.readFileSync(path.join(dir, "sessions", `${sid}.json`), "utf8"),
+    );
+    expect(state.recapped).toHaveLength(1);
   });
 
   it("bin/murmur login leaves a poller that stores the token", async () => {

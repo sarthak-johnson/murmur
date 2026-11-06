@@ -60,3 +60,30 @@ export const NarrateInput = z.object({
   words: list(z.object({ term: text, meaning: text })).optional(),
 });
 export type NarrateInput = z.infer<typeof NarrateInput>;
+
+/**
+ * What the recap asks the user's own Claude for, about one imported request it never
+ * mapped: the `map` input, each part's detail as `narrate` carries it (plus its steps,
+ * the paths it changed and the helpers, by their `H<n>` label, that worked on it), and
+ * one line per task on how it ended. The plugin turns it into `map` and `narrate` calls.
+ */
+export const RecapInput = z.object({
+  map: MapInput,
+  parts: list(
+    NarrateInput.pick({
+      aim: true,
+      choices: true,
+      checks: true,
+      words: true,
+      files: true,
+    }).extend({
+      id: text,
+      steps: list(z.object({ text, status })).optional(),
+      helpers: z.array(text).max(40).optional(),
+    }),
+  ),
+  tasks: z
+    .array(z.object({ id: text, status, ended: z.string().max(200) }))
+    .max(100),
+});
+export type RecapInput = z.infer<typeof RecapInput>;

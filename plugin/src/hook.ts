@@ -298,11 +298,11 @@ async function main(): Promise<void> {
 const SYNC_HOOKS = new Set(["SessionStart", "Stop", "UserPromptSubmit"]);
 
 // Never block or fail Claude: always exit 0, and within 5 s whatever happens. A
-// backfill runs detached, so it gets a minute.
+// backfill runs detached, so it gets 4 minutes: its uploads and the recap's runs.
 if (/[\\/]hook\.(c?js|ts)$/.test(process.argv[1] ?? "")) {
   const done = () => process.exit(0);
   process.on("uncaughtException", done);
   process.stdout.on("error", () => {});
-  setTimeout(done, BACKFILL >= 0 ? 60_000 : 5000).unref();
+  setTimeout(done, BACKFILL >= 0 ? 240_000 : 5000).unref();
   main().then(done, done);
 }

@@ -6,3 +6,4 @@ export { displayPath } from "./view/files.js";
 export { assumptionKey, isRisky } from "./view/flags.js";
 export * from "./view/reduce.js";
 export * from "./view/types.js";
+export { briefOf } from "./view/words.js";

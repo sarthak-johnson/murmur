@@ -36745,6 +36745,23 @@ var NarrateInput = external_exports.object({
   ).optional(),
   words: list(external_exports.object({ term: text, meaning: text })).optional()
 });
+var RecapInput = external_exports.object({
+  map: MapInput,
+  parts: list(
+    NarrateInput.pick({
+      aim: true,
+      choices: true,
+      checks: true,
+      words: true,
+      files: true
+    }).extend({
+      id: text,
+      steps: list(external_exports.object({ text, status })).optional(),
+      helpers: external_exports.array(text).max(40).optional()
+    })
+  ),
+  tasks: external_exports.array(external_exports.object({ id: text, status, ended: external_exports.string().max(200) })).max(100)
+});
 
 // ../packages/core/src/scrub.ts
 var MAX_STRING = 262144;

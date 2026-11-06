@@ -338,3 +338,21 @@ describe("helper brief", () => {
     expect(briefOf("Read the brief first: /tmp/BRIEF.md")).toBeUndefined();
   });
 });
+
+describe("recap", () => {
+  test("a map marked recap: true marks its request; a later live map clears it", () => {
+    const recap = {
+      ...mapCall(1, MAP),
+      payload: { ...mapCall(1, MAP).payload, recap: true },
+    };
+    const [req] = reduce([prompt(0, "add alerts"), recap]).requests;
+    expect(req).toMatchObject({ recap: true, planInferred: false });
+    const [live] = reduce([
+      prompt(0, "add alerts"),
+      recap,
+      mapCall(2, MAP),
+    ]).requests;
+    expect(live).not.toHaveProperty("recap");
+    expect(reduce([prompt(0, "go")]).requests[0]).not.toHaveProperty("recap");
+  });
+});

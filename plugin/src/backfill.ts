@@ -13,6 +13,7 @@ import {
   updateSession,
   writeSession,
 } from "./local.js";
+import { runRecap } from "./recap.js";
 import { enqueue, type FlushOptions, flush } from "./upload.js";
 
 // With unshown tool results cut to their start, MAX_BYTES is the real bound; a 5-day
@@ -434,7 +435,10 @@ export async function runBackfill(
   // What Claude said since the cutoff.
   catchUpText(sessionId);
   // A logout or new login while this ran must not send with the old token.
-  if (readCredentials()?.token === creds.token)
+  const same = () => readCredentials()?.token === creds.token;
+  if (same()) await flush(creds, { budgetMs: 50_000, ...opts });
+  // What the history alone cannot say, the user's own Claude says, then that goes too.
+  if ((await runRecap(sessionId, events)).ok && same())
     await flush(creds, { budgetMs: 50_000, ...opts });
   return events.length;
 }
