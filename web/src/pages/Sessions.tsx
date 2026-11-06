@@ -37,9 +37,10 @@ export function Sessions() {
   if (rows.length === 0) {
     return (
       <main className="page">
-        <p className="muted">
-          No sessions yet. In Claude Code run /plugin install murmur@murmur,
-          then /murmur:login.
+        <p className="panel muted">
+          No sessions yet. In Claude Code run{" "}
+          <code>/plugin install murmur@murmur</code>, then{" "}
+          <code>/murmur:login</code>.
         </p>
       </main>
     );

@@ -12,6 +12,21 @@ const MAX_BYTES = 5_000_000;
 const MAX_EVENTS = 500;
 const TITLE_CHARS = 80;
 
+/** Up to 80 code points unchanged; longer prompts cut at the last word boundary within 79, plus an ellipsis. */
+export function makeTitle(text: string): string {
+  const chars = Array.from(text);
+  if (chars.length <= TITLE_CHARS) return text;
+  const head = chars.slice(0, TITLE_CHARS - 1);
+  // Cut at a word boundary only if the next char is not mid-word already.
+  const rest = chars[TITLE_CHARS - 1] as string;
+  let cut = head.join("");
+  if (!/\s/.test(rest)) {
+    const at = cut.search(/\s\S*$/);
+    if (at > 0) cut = cut.slice(0, at);
+  }
+  return `${cut.trimEnd()}…`;
+}
+
 const tooLarge = (c: Context) => c.json({ error: "too_large" }, 413);
 
 /**
@@ -40,9 +55,7 @@ function sessionRow(
     (e) =>
       e.hook === "UserPromptSubmit" && typeof e.payload.prompt === "string",
   )?.payload.prompt as string | undefined;
-  const title = prompt?.trim()
-    ? Array.from(prompt.trim()).slice(0, TITLE_CHARS).join("")
-    : null;
+  const title = prompt?.trim() ? makeTitle(prompt.trim()) : null;
   return {
     userId,
     sessionId,

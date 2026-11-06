@@ -26,17 +26,19 @@ function RevokeButton({ onRevoke }: { onRevoke: () => void }) {
 export function Settings({ onSignedOut }: { onSignedOut: () => void }) {
   const [days, setDays] = useState("");
   const [msg, setMsg] = useState<{ text: string; bad: boolean } | null>(null);
-  const [machines, setMachines] = useState<Machine[]>([]);
+  const [machines, setMachines] = useState<Machine[] | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [confirm, setConfirm] = useState("");
 
   useEffect(() => {
     api.settings().then(
       (s) => setDays(String(s.retentionDays)),
-      () => {},
+      () => setLoadError("Could not load your settings."),
     );
     api.machines().then(
       (m) => setMachines(m.machines),
-      () => {},
+      () => setLoadError("Could not load machines."),
     );
   }, []);
 
@@ -60,18 +62,32 @@ export function Settings({ onSignedOut }: { onSignedOut: () => void }) {
   }
 
   async function revoke(machineId: string) {
-    await api.revokeMachine(machineId);
-    setMachines((m) => m.filter((x) => x.machineId !== machineId));
+    try {
+      await api.revokeMachine(machineId);
+      setMachines((m) => (m ?? []).filter((x) => x.machineId !== machineId));
+      setActionError("");
+    } catch {
+      setActionError("Could not revoke that machine. Try again.");
+    }
   }
 
   async function deleteAccount() {
-    await api.deleteAccount();
-    onSignedOut();
+    try {
+      await api.deleteAccount();
+      onSignedOut();
+    } catch {
+      setActionError("Could not delete your account. Try again.");
+    }
   }
 
   return (
     <main className="page">
       <h1>Settings</h1>
+      {(loadError || actionError) && (
+        <p className="error" role="alert">
+          {loadError || actionError}
+        </p>
+      )}
       <section className="panel">
         <h2>Retention</h2>
         <label htmlFor="retention">Keep sessions for (days)</label>
@@ -93,8 +109,8 @@ export function Settings({ onSignedOut }: { onSignedOut: () => void }) {
       </section>
       <section className="panel">
         <h2>Linked machines</h2>
-        {machines.length === 0 && <p className="muted">No linked machines.</p>}
-        {machines.map((m) => (
+        {machines?.length === 0 && <p className="muted">No linked machines.</p>}
+        {machines?.map((m) => (
           <div className="machine" key={m.machineId}>
             <div>
               <div>{m.machineName}</div>
@@ -107,7 +123,9 @@ export function Settings({ onSignedOut }: { onSignedOut: () => void }) {
       <WhatMurmurSends />
       <section className="panel">
         <h2>Delete account</h2>
-        <label htmlFor="confirm">Type {CONFIRM} to confirm</label>
+        <label htmlFor="confirm">
+          Type <code>{CONFIRM}</code> to confirm
+        </label>
         <input
           id="confirm"
           value={confirm}

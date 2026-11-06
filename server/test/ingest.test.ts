@@ -110,7 +110,7 @@ test("session row keeps the earliest start, latest event, first title and end", 
     ev("s1", "PreToolUse", { ts: at("30"), cwd: "/b" }),
   ]);
   let [row] = await t.db.select().from(sessions);
-  expect(row?.title).toBe("p".repeat(80));
+  expect(row?.title).toBe(`${"p".repeat(79)}…`);
   expect(row?.cwd).toBe("/b");
   // An older batch arrives late: start and cwd move back, last event and title stay.
   await ingest(t, token, [
@@ -124,7 +124,7 @@ test("session row keeps the earliest start, latest event, first title and end", 
   expect(row?.startedAt.toISOString()).toBe(at("10"));
   expect(row?.lastEventAt.toISOString()).toBe(at("30"));
   expect(row?.cwd).toBe("/a");
-  expect(row?.title).toBe("p".repeat(80));
+  expect(row?.title).toBe(`${"p".repeat(79)}…`);
   expect(row?.ended).toBe(false);
   await ingest(t, token, [ev("s1", "SessionEnd", { ts: at("40") })]);
   await ingest(t, token, [ev("s1", "Notification", { ts: at("50") })]);
@@ -158,4 +158,17 @@ test("lone surrogates are stored as U+FFFD instead of failing the batch", async 
     events: { payload: unknown }[];
   };
   expect(got[0]?.payload).toEqual({ "k�": "cut at a�" });
+});
+
+test("long titles cut at a word boundary with an ellipsis, short ones stay", async () => {
+  const { makeTitle } = await import("../src/ingest.js");
+  expect(makeTitle("a".repeat(80))).toBe("a".repeat(80));
+  const words =
+    "add a price alert to the watchlist page so that traders see moves quickly today";
+  const t = makeTitle(`${words} and more words`);
+  expect(t.endsWith("…")).toBe(true);
+  expect(Array.from(t).length).toBeLessThanOrEqual(80);
+  expect(`${words} and more words`.startsWith(t.slice(0, -1))).toBe(true);
+  expect(t.slice(0, -1).endsWith(" ")).toBe(false);
+  expect(`${words} and more words`[t.length - 1]).toBe(" ");
 });

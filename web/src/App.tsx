@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Me } from "./api";
+import { api, type Me, UNAUTHORIZED } from "./api";
 import { Device } from "./pages/Device";
 import { Login } from "./pages/Login";
 import { Sessions } from "./pages/Sessions";
@@ -24,19 +24,23 @@ function Header({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
   };
   return (
     <header className="header">
-      <a className="wordmark" href="/" onClick={go("/")}>
-        Murmur
-      </a>
-      <span className="user">
-        {me.avatarUrl && <img src={me.avatarUrl} alt="" />}
-        {me.login}
-      </span>
-      <a href="/settings" onClick={go("/settings")}>
-        Settings
-      </a>
-      <button type="button" className="link" onClick={onSignOut}>
-        Sign out
-      </button>
+      <div className="header-in">
+        <a className="wordmark" href="/" onClick={go("/")}>
+          Murmur
+        </a>
+        <span className="user">
+          {me.avatarUrl && <img src={me.avatarUrl} alt="" />}
+          {me.login}
+        </span>
+        <nav>
+          <a href="/settings" onClick={go("/settings")}>
+            Settings
+          </a>
+          <button type="button" className="link" onClick={onSignOut}>
+            Sign out
+          </button>
+        </nav>
+      </div>
     </header>
   );
 }
@@ -47,6 +51,12 @@ export function App() {
 
   useEffect(() => {
     api.me().then(setMe, () => setMe(null));
+  }, []);
+
+  useEffect(() => {
+    const out = () => setMe(null);
+    window.addEventListener(UNAUTHORIZED, out);
+    return () => window.removeEventListener(UNAUTHORIZED, out);
   }, []);
 
   // Signed out on /device: remember the code, the server returns to / after sign-in.

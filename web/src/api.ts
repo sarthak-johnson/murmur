@@ -26,6 +26,9 @@ export interface Decision {
   decision: string;
 }
 
+/** Fired on window when any call other than /api/me gets a 401. */
+export const UNAUTHORIZED = "murmur:unauthorized";
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -47,7 +50,12 @@ async function call<T>(
   }
   const res = await fetch(path, init);
   const data = (await res.json().catch(() => ({}))) as { error?: string };
-  if (!res.ok) throw new ApiError(res.status, data.error ?? "error");
+  if (!res.ok) {
+    // /api/me answers 401 for signed-out visitors; the app handles that itself.
+    if (res.status === 401 && path !== "/api/me")
+      window.dispatchEvent(new Event(UNAUTHORIZED));
+    throw new ApiError(res.status, data.error ?? "error");
+  }
   return data as T;
 }
 

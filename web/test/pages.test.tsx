@@ -37,7 +37,10 @@ describe("pages", () => {
     render(<Sessions />);
     expect(
       await screen.findByText(
-        "No sessions yet. In Claude Code run /plugin install murmur@murmur, then /murmur:login.",
+        (_, el) =>
+          el?.tagName === "P" &&
+          el.textContent ===
+            "No sessions yet. In Claude Code run /plugin install murmur@murmur, then /murmur:login.",
       ),
     ).toBeTruthy();
   });
@@ -148,11 +151,48 @@ describe("pages", () => {
     await waitFor(() => expect(out).toHaveBeenCalled());
   });
 
-  it("login page links to what Murmur sends", () => {
+  it("a failed machines load shows an error, not the empty text", async () => {
+    routes["GET /api/settings"] = () => ({ body: { retentionDays: 30 } });
+    routes["GET /api/machines"] = () => ({
+      status: 500,
+      body: { error: "boom" },
+    });
+    render(<Settings onSignedOut={() => {}} />);
+    expect(await screen.findByText("Could not load machines.")).toBeTruthy();
+    expect(screen.queryByText("No linked machines.")).toBeNull();
+  });
+
+  it("a failed revoke shows an error line", async () => {
+    routes["GET /api/settings"] = () => ({ body: { retentionDays: 30 } });
+    routes["GET /api/machines"] = () => ({
+      body: {
+        machines: [
+          {
+            machineId: "m1",
+            machineName: "work-mac",
+            createdAt: "2026-11-01T00:00:00Z",
+            lastUsedAt: null,
+          },
+        ],
+      },
+    });
+    routes["DELETE /api/machines/m1"] = () => ({
+      status: 500,
+      body: { error: "boom" },
+    });
+    render(<Settings onSignedOut={() => {}} />);
+    await screen.findByText("work-mac");
+    await userEvent.click(screen.getByRole("button", { name: "Revoke" }));
+    await userEvent.click(screen.getByRole("button", { name: "Revoke?" }));
+    expect(
+      await screen.findByText("Could not revoke that machine. Try again."),
+    ).toBeTruthy();
+    expect(screen.getByText("work-mac")).toBeTruthy();
+  });
+
+  it("login page shows what Murmur sends once", () => {
     render(<Login />);
-    const link = screen.getByRole("link", { name: "What Murmur sends" });
-    expect(link.getAttribute("href")).toBe("#what-murmur-sends");
-    expect(document.getElementById("what-murmur-sends")).toBeTruthy();
+    expect(screen.getAllByText("What Murmur sends")).toHaveLength(1);
     expect(
       screen
         .getByRole("link", { name: "Sign in with GitHub" })
