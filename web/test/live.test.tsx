@@ -692,6 +692,7 @@ describe("live screen", () => {
       finished: true,
       now: { text: "Editing style.css", why: "", ts: T0, inferred: true },
       tally: { helpers: 3, files: 19, commands: 51 },
+      agents: [],
     });
     show(view);
     const now = screen.getByRole("region", { name: "Now" });
@@ -702,6 +703,27 @@ describe("live screen", () => {
     expect(within(now).queryByText(/Editing/)).toBeNull();
     expect(within(now).queryByText("Helpers running")).toBeNull();
     expect(now.textContent).toContain('Started from: "add price alerts');
+  });
+
+  it("a Done card says when helpers are still running", () => {
+    const view = session();
+    const running = (id: string) => agent(id, "Build style A", "endpoint");
+    view.requests[1] = request({
+      planInferred: true,
+      finished: true,
+      agents: [running("a1"), { ...running("a2"), status: "done" }],
+    });
+    show(view);
+    const now = screen.getByRole("region", { name: "Now" });
+    expect(within(now).getByText("Done, 1 helper still running")).toBeTruthy();
+    cleanup();
+    view.requests[1] = request({
+      planInferred: true,
+      finished: true,
+      agents: [running("a1"), running("a2")],
+    });
+    show(view);
+    expect(screen.getByText("Done, 2 helpers still running")).toBeTruthy();
   });
 
   it("the Done line counts in plain words and skips zeros", () => {

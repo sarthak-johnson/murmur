@@ -31,11 +31,15 @@ export function NowCard(props: {
   const { now, agents, parts, looseFiles } = request;
   // A request Claude never mapped, once over, says what it did instead of a stale now.
   const done = request.planInferred && request.finished;
-  const running = done
-    ? []
-    : agents
-        .map((a, i) => ({ a, k: i + 1 }))
-        .filter(({ a }) => a.status === "running");
+  const live = agents
+    .map((a, i) => ({ a, k: i + 1 }))
+    .filter(({ a }) => a.status === "running");
+  const running = done ? [] : live;
+  // A background helper can outlive its request; the map still shows it running.
+  const doneLbl = [
+    "Done",
+    ...count(live.length, "helper still running", "helpers still running"),
+  ].join(", ");
   return (
     <section
       className={running.length ? "now-col has-helpers" : "now-col"}
@@ -43,7 +47,7 @@ export function NowCard(props: {
     >
       <div className={done ? "now-card done" : "now-card"}>
         <div className={done ? "lbl lbl-done" : "lbl lbl-now"}>
-          {done ? "Done" : "Now"}
+          {done ? doneLbl : "Now"}
           {(done || now?.inferred) && (
             <span className="inferred">inferred</span>
           )}
