@@ -20315,7 +20315,11 @@ function* readLines(file2, tailBytes) {
     const size = import_node_fs3.default.fstatSync(fd).size;
     let pos = Math.max(0, size - tailBytes);
     const buf = Buffer.alloc(CHUNK);
-    let skip = pos > 0 && (import_node_fs3.default.readSync(fd, buf, 0, 1, pos - 1), buf[0] !== 10);
+    let skip = false;
+    if (pos > 0) {
+      import_node_fs3.default.readSync(fd, buf, 0, 1, pos - 1);
+      skip = buf[0] !== 10;
+    }
     let rest = Buffer.alloc(0);
     const parse3 = (line) => {
       try {

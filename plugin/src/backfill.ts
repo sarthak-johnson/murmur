@@ -85,7 +85,11 @@ function* readLines(file: string, tailBytes: number): Generator<Entry> {
     let pos = Math.max(0, size - tailBytes);
     const buf = Buffer.alloc(CHUNK);
     // The first line is cut unless the window starts right after a newline.
-    let skip = pos > 0 && (fs.readSync(fd, buf, 0, 1, pos - 1), buf[0] !== 10);
+    let skip = false;
+    if (pos > 0) {
+      fs.readSync(fd, buf, 0, 1, pos - 1);
+      skip = buf[0] !== 10;
+    }
     let rest = Buffer.alloc(0);
     const parse = (line: Buffer): Entry | undefined => {
       try {

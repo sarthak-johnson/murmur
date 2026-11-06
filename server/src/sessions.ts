@@ -4,12 +4,7 @@ import type { Context, Hono } from "hono";
 import type { Deps } from "./app.js";
 import { type AppEnv, readBody } from "./auth.js";
 import type { Db } from "./db/client.js";
-import {
-  assumptionDecisions,
-  events,
-  ingestTokens,
-  sessions,
-} from "./db/schema.js";
+import { assumptionDecisions, events, sessions } from "./db/schema.js";
 
 export const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const PAGE = 5000;
