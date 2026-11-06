@@ -110,3 +110,16 @@ Remaining concerns:
 - The prompt rule assumes Claude Code writes the prompt entry before the UserPromptSubmit hook (measured at about 60 ms before); if a version ever writes it after, the previous prompt would be dropped instead.
 - A SubagentStop inferred from an Agent result uses the helper's last entry time; with a cutoff between that entry and the result, no stop is imported and none comes live, so the helper shows as running for good.
 - A session resumed after its state was pruned (idle 30 days) imports again, and its prompts would then duplicate (random live ids).
+
+## Trigger prompt matched by text (round 3)
+
+Controller ruling: the backfill leaves out the newest human prompt before the cutoff only when its text equals the triggering UserPromptSubmit `prompt`, both trimmed, after the same slash-command and text-block normalisation; otherwise it skips nothing.
+The session state now keeps `triggerPrompt` (the live payload's `prompt`, set only for a UserPromptSubmit trigger) instead of `trigger`, and `readBackfill` takes `skipPrompt`.
+The comparison runs on the text before scrubbing.
+
+RED: 3 failed (newest "b" not skipped for trigger "b", the prompt-triggered run queued 21 instead of 20, the state lacked `triggerPrompt`).
+GREEN: `pnpm build:plugin` 0, `pnpm lint` 0, `pnpm typecheck` 0, `pnpm test` 0 (163 + 90 + 89 + 95), each exit status checked separately.
+Tests: trigger "b" with transcript prompts "a", "b" imports "a"; trigger "b" with only "a" written imports "a"; trigger "b" with "b", "a" imports both; whitespace and a slash-command wrapper still match; a resume trigger stores no prompt.
+
+This replaces the round 2 concern about write order: if the entry is written after the hook, nothing is dropped, and the worst case is one duplicate prompt.
+Remaining: whether the live `prompt` of a slash command is exactly `/name args` is not verified against a real payload; if it differs, that one prompt shows twice.
