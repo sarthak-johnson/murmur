@@ -77,6 +77,8 @@ export interface NowView {
   why: string;
   part?: string;
   ts: string;
+  /** Read from the latest tool call or Stop because no narrate came after it. */
+  inferred?: boolean;
 }
 
 export interface FileTouch {

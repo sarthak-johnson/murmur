@@ -1,6 +1,16 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { reduce } from "../src/index.js";
-import { at, fixture, MAP, mapCall, prompt } from "./helpers.js";
+import {
+  at,
+  edit,
+  fixture,
+  MAP,
+  mapCall,
+  narrateCall,
+  note,
+  prompt,
+  tool,
+} from "./helpers.js";
 
 const req = (...e: ReturnType<typeof at>[]) => reduce(e).requests[0];
 
@@ -67,4 +77,72 @@ test("interactive fixture still reduces", () => {
   expect(reduce(fixture("interactive.jsonl")).requests.length).toBeGreaterThan(
     0,
   );
+});
+
+describe("now without narrate", () => {
+  const nowOf = (...e: ReturnType<typeof at>[]) =>
+    req(prompt(0, "Add price alerts"), ...e)?.now;
+  const inferred = (text: string, ts: number) => ({
+    text,
+    why: "",
+    ts: new Date(
+      Date.parse("2026-11-06T00:00:00.000Z") + ts * 1000,
+    ).toISOString(),
+    inferred: true,
+  });
+
+  test("each tool reads in plain words", () => {
+    expect(nowOf(edit(1, "src/math.js", ["+a"]))).toEqual(
+      inferred("Editing math.js", 1),
+    );
+    expect(
+      nowOf(tool(1, "Write", { file_path: "/p/a/b.ts" }, "PreToolUse")),
+    ).toEqual(inferred("Editing b.ts", 1));
+    expect(nowOf(tool(1, "Read", { file_path: "/p/README.md" }))).toEqual(
+      inferred("Reading README.md", 1),
+    );
+    expect(
+      nowOf(tool(1, "Bash", { command: `npm  test\n${"x".repeat(80)}` })),
+    ).toEqual(inferred(`Running npm test ${"x".repeat(51)}`, 1));
+    expect(
+      nowOf(tool(1, "Agent", { description: "Read greet file" }, "PreToolUse")),
+    ).toEqual(inferred("Started a helper: Read greet file", 1));
+    expect(nowOf(tool(1, "Grep", { pattern: "x" }))).toEqual(
+      inferred("Using Grep", 1),
+    );
+    expect(nowOf(tool(1, "Bash", {}, "PostToolUseFailure"))).toEqual(
+      inferred("Using Bash", 1),
+    );
+  });
+
+  test("a Stop with no later tool call finishes the request", () => {
+    expect(nowOf(edit(1, "a.js", ["+a"]), at(2, "Stop"))).toEqual(
+      inferred("Finished this request", 2),
+    );
+    expect(
+      nowOf(at(1, "Stop"), tool(2, "Read", { file_path: "/p/a.js" })),
+    ).toEqual(inferred("Reading a.js", 2));
+  });
+
+  test("the latest narrate wins over earlier tools and a later Stop", () => {
+    const narrated = {
+      text: "Writing the save endpoint",
+      why: "the screen needs it",
+    };
+    expect(
+      nowOf(edit(1, "a.js", ["+a"]), narrateCall(2, note()), at(3, "Stop")),
+    ).toMatchObject(narrated);
+    expect(
+      nowOf(edit(1, "a.js", ["+a"]), narrateCall(2, note()), at(3, "Stop"))
+        ?.inferred,
+    ).toBeUndefined();
+    expect(nowOf(narrateCall(1, note()), edit(2, "a.js", ["+a"]))).toEqual(
+      inferred("Editing a.js", 2),
+    );
+  });
+
+  test("map and narrate are not tool events, and nothing at all leaves now null", () => {
+    expect(nowOf(mapCall(1, MAP))).toBeNull();
+    expect(nowOf()).toBeNull();
+  });
 });

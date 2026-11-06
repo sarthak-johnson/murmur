@@ -43,7 +43,7 @@ test("splits requests on each prompt", () => {
     phases: [],
     parts: [],
     looseFiles: [],
-    now: null,
+    now: { text: "Running ls", why: "", inferred: true },
     agents: [],
     assumptions: [],
     flags: [],
