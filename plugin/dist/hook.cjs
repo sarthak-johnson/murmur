@@ -19857,6 +19857,21 @@ var TOKEN_PATTERNS = [
   // Opaque means it has a digit, so prose like "a Bearer token" stays.
   /(?<![A-Za-z])Bearer[ \t]+(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]{8,}/gi
 ];
+var AUTH_HEADER = /((?<!\w)authorization["']?[ \t]*[:=][ \t]*)(["']?)([^\n]*)/gi;
+var SCHEME = /^[A-Za-z][\w-]*[ \t]+/;
+var CLOSING_QUOTE = /["'](?=[\s);]|$)/;
+function authValue(_, head, q, rest) {
+  if (q) {
+    const end = rest.indexOf(q);
+    return `${head}${q}${R}${end < 0 ? "" : rest.slice(end)}`;
+  }
+  if (SCHEME.test(rest)) {
+    const close = CLOSING_QUOTE.exec(rest);
+    return `${head}${R}${close ? rest.slice(close.index) : ""}`;
+  }
+  const token = /^[^\s"']*/.exec(rest)[0];
+  return `${head}${R}${rest.slice(token.length)}`;
+}
 var USER_PASS = [
   /((?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s:/@]+:)[^\s@/]+(?=@)/g,
   /((?<!\S)(?:-u|--user)(?:[ \t]+|=)["']?[^\s:"']+:)[^\s"']+/g
@@ -19870,6 +19885,7 @@ var CUT = MAX_STRING + 4096;
 function scrubString(s) {
   let out = s;
   for (const p of TOKEN_PATTERNS) out = out.replace(p, R);
+  out = out.replace(AUTH_HEADER, authValue);
   for (const p of USER_PASS) out = out.replace(p, `$1${R}`);
   out = out.replace(
     KEY_VALUE,
@@ -20146,7 +20162,7 @@ async function flush(c, {
           signal: AbortSignal.timeout(left)
         });
         if (res.status === 401) {
-          setRevoked(true);
+          if (readCredentials()?.token === c.token) setRevoked(true);
           break;
         }
         if (res.status === 400) {

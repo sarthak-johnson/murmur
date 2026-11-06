@@ -23,6 +23,27 @@ const TOKEN_PATTERNS = [
   /(?<![A-Za-z])Bearer[ \t]+(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]{8,}/gi,
 ];
 
+// Keep the header name (Authorization, Proxy-, X-...), drop the whole credential.
+// Quoted value: up to its quote. Scheme word (Basic, token, Digest, AWS4-...):
+// everything up to a closing quote or the end of the line, so Digest and SigV4
+// parameters go too. Otherwise the first token. Each match reads one line once.
+const AUTH_HEADER =
+  /((?<!\w)authorization["']?[ \t]*[:=][ \t]*)(["']?)([^\n]*)/gi;
+const SCHEME = /^[A-Za-z][\w-]*[ \t]+/;
+const CLOSING_QUOTE = /["'](?=[\s);]|$)/;
+function authValue(_: string, head: string, q: string, rest: string): string {
+  if (q) {
+    const end = rest.indexOf(q);
+    return `${head}${q}${R}${end < 0 ? "" : rest.slice(end)}`;
+  }
+  if (SCHEME.test(rest)) {
+    const close = CLOSING_QUOTE.exec(rest);
+    return `${head}${R}${close ? rest.slice(close.index) : ""}`;
+  }
+  const token = (/^[^\s"']*/.exec(rest) as RegExpExecArray)[0];
+  return `${head}${R}${rest.slice(token.length)}`;
+}
+
 // Keep the user, drop the password: scheme://user:pass@ and curl -u user:pass.
 const USER_PASS = [
   /((?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s:/@]+:)[^\s@/]+(?=@)/g,
@@ -50,6 +71,7 @@ const CUT = MAX_STRING + 4096;
 export function scrubString(s: string): string {
   let out = s;
   for (const p of TOKEN_PATTERNS) out = out.replace(p, R);
+  out = out.replace(AUTH_HEADER, authValue);
   for (const p of USER_PASS) out = out.replace(p, `$1${R}`);
   out = out.replace(KEY_VALUE, (m, name: string, sep: string, q?: string) =>
     KEY_WORD.test(name) ? `${name}${sep}${q ?? ""}${R}` : m,

@@ -136,6 +136,7 @@ describe("queue", () => {
   });
 
   it("a 401 stops flushing and marks the machine disconnected", async () => {
+    writeCredentials(CREDS);
     for (let i = 1; i <= 3; i++) enqueue(ev(i));
     const f = fakeFetch([401]);
     expect(await flush(CREDS, opts(f, { batchSize: 1 }))).toEqual({
@@ -147,6 +148,21 @@ describe("queue", () => {
     expect(await flush(CREDS, opts(f))).toEqual({ sent: 0, kept: 3 });
     expect(f.calls).toHaveLength(1);
     writeCredentials({ ...CREDS, token: "new" });
+    expect(isRevoked()).toBe(false);
+  });
+
+  it("a 401 for a token replaced by a new login does not disconnect the new login", async () => {
+    enqueue(ev(1));
+    writeCredentials({ ...CREDS, token: "old" });
+    let calls = 0;
+    const late = (async () => {
+      calls++;
+      // A new login lands while the old token's request is in flight.
+      writeCredentials({ ...CREDS, token: "new" });
+      return new Response("{}", { status: 401 });
+    }) as unknown as typeof fetch;
+    await flush({ ...CREDS, token: "old" }, opts({ fn: late }));
+    expect(calls).toBe(1);
     expect(isRevoked()).toBe(false);
   });
 
