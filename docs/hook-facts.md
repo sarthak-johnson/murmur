@@ -18,6 +18,10 @@ On SessionStart the hook prints `{"systemMessage":"capture: hello"}`.
 | `e2e/fixtures/interactive.jsonl` | real interactive `claude` driven through `tmux`, manual (default) permission mode | permission prompt answered "Yes", idle wait, a `!` command, `/exit` |
 
 Paths are rewritten for the repo: the temp dir became `/tmp/murmur-fixtures/` and the home dir became `/Users/dev`.
+Interactive `scratchpad_dir` values had `/private/tmp/claude-501/` rewritten to `/tmp/claude/`.
+Every `ToolSearch` PostToolUse `tool_response` was replaced with `{"matches": [], "query": <the same query>, "total_deferred_tools": 0}`, because the real ones listed the author's MCP servers, connector tools and deferred tool counts.
+The real `matches` arrays were empty for every `select:TaskCreate,TaskUpdate` query, so that fact is unchanged; the one keyword search (`interactive.jsonl` line 14) really matched only unrelated connector tools and `TaskStop`.
+The failed `cat missing.txt` error in `feature.jsonl` line 10 came from the author's `cat` alias (bat, with ANSI colour codes) and was replaced with the plain `"Exit code 1\ncat: missing.txt: No such file or directory"`.
 Nothing else was changed, and no secrets were found.
 All runs used the author's normal user settings, so other installed plugins' hooks also ran (they do not appear in the fixtures).
 
@@ -25,7 +29,8 @@ All runs used the author's normal user settings, so other installed plugins' hoo
 
 Every payload has `session_id`, `transcript_path`, `cwd` and `hook_event_name`.
 Most have `prompt_id`, which changes per user prompt and is a clean way to split requests.
-Tool events, Stop, SubagentStop, UserPromptSubmit and PermissionRequest also carry `permission_mode` and `effort: {"level": ...}`.
+Tool events (PreToolUse, PostToolUse, PostToolUseFailure), PermissionRequest, Stop and SubagentStop also carry `permission_mode` and `effort: {"level": ...}`.
+UserPromptSubmit carries `permission_mode` but no `effort`.
 SessionStart, SessionEnd, Notification and SubagentStart carry no `permission_mode`.
 Inside a subagent, events add `agent_id` and `agent_type`.
 Interactive payloads also carry `scratchpad_dir`; headless ones do not.
@@ -76,7 +81,7 @@ Related shapes seen:
 
 - Bash success `tool_response`: `{"stdout", "stderr", "interrupted", "isImage", "noOutputExpected"}`.
 - Bash failure fires `PostToolUseFailure` (not PostToolUse) with no `tool_response`, and instead `"error": "Exit code 1\n..."`, `"is_interrupt": false`, `"duration_ms"`.
-  The error text can contain ANSI colour codes.
+  `error` is whatever the shell printed, so it can contain ANSI colour codes if the user's shell adds them.
 - Read `tool_response`: `{"type": "text", "file": {"filePath", "content", "numLines", "startLine", "totalLines"}}`.
 - Every PostToolUse and PostToolUseFailure carries `tool_use_id` and `duration_ms`.
 
