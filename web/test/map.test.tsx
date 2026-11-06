@@ -4,7 +4,7 @@ import type { AgentView, PartView, RequestView } from "@murmur/core";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MapView } from "../src/map/MapView";
+import { MapView, textWidth } from "../src/map/MapView";
 
 afterEach(cleanup);
 
@@ -451,6 +451,40 @@ describe("MapView", () => {
         a.y + a.h <= b.y ||
         b.y + b.h <= a.y,
     ).toBe(true);
+  });
+
+  it("a link label in a crowded overflow grid finds a clear spot", () => {
+    const agents = Array.from({ length: 36 }, (_, i) =>
+      agent(`a${i}`, `Implement Task ${i}`),
+    );
+    const parts = Array.from({ length: 12 }, (_, i) =>
+      part({
+        id: `p${i}`,
+        title: `Task ${i}`,
+        status: "done",
+        agents: [`a${3 * i}`, `a${3 * i + 1}`, `a${3 * i + 2}`],
+        links: i === 11 ? [{ to: "p8", label: "same files" }] : [],
+      }),
+    );
+    const { container } = render(
+      <MapView request={request({ agents, parts })} onOpenPart={() => {}} />,
+    );
+    const label = container.querySelector(".link-label") as SVGTextElement;
+    const w = textWidth("same files", 10.5) + 8;
+    const x = Number(label.getAttribute("x")) - w / 2;
+    const y = Number(label.getAttribute("y")) - 3 - 8;
+    const boxes = [
+      ...container.querySelectorAll("rect.chip-box, rect.box, rect.goal-box"),
+    ].map((r) => ({
+      x: Number(r.getAttribute("x")),
+      y: Number(r.getAttribute("y")),
+      w: Number(r.getAttribute("width")),
+      h: Number(r.getAttribute("height")),
+    }));
+    const hits = boxes.filter(
+      (b) => x < b.x + b.w && b.x < x + w && y < b.y + b.h && b.y < y + 14,
+    );
+    expect(hits).toEqual([]);
   });
 
   it("a cut title ends at a word, and a cut path keeps its last folders", () => {
