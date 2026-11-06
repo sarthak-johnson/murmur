@@ -122,6 +122,28 @@ describe("local state", () => {
     expect(projectKey(tree)).toBe(main);
   });
 
+  it("a worktree never maps to home, even when home is a symlink", () => {
+    const repo = fs.mkdtempSync(path.join(home, "dotfiles-"));
+    const tree = path.join(repo, "wt");
+    fs.mkdirSync(path.join(repo, ".git", "worktrees", "wt"), {
+      recursive: true,
+    });
+    fs.mkdirSync(tree);
+    fs.writeFileSync(
+      path.join(tree, ".git"),
+      `gitdir: ${path.join(fs.realpathSync(repo), ".git", "worktrees", "wt")}\n`,
+    );
+    const link = path.join(path.dirname(repo), `link-${path.basename(repo)}`);
+    fs.symlinkSync(repo, link);
+    const old = process.env.HOME;
+    process.env.HOME = link;
+    try {
+      expect(projectKey(path.join(link, "wt"))).toBe(path.join(link, "wt"));
+    } finally {
+      process.env.HOME = old;
+    }
+  });
+
   it("pause round-trips by folder and by session", () => {
     const root = fs.mkdtempSync(path.join(home, "repo-"));
     fs.mkdirSync(path.join(root, ".git"));

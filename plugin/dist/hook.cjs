@@ -20009,6 +20009,7 @@ function worktreeMain(root) {
   if (import_node_path.default.basename(worktrees) !== "worktrees" || import_node_path.default.basename(dotGit) !== ".git" || main2 === home || import_node_path.default.dirname(main2) === main2 || !isDir(dotGit))
     return void 0;
   const real = realpath(main2);
+  if (real === realpath(home)) return void 0;
   for (let d = root; import_node_path.default.dirname(d) !== d; d = import_node_path.default.dirname(d))
     if (realpath(d) === real) return d;
   return main2;

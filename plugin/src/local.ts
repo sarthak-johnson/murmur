@@ -90,8 +90,11 @@ function worktreeMain(root: string): string | undefined {
   // Git writes the real path; keep the spelling `on` would store when run at the main
   // root through a symlink (macOS /var is /private/var).
   const real = realpath(main);
+  if (real === realpath(home)) return undefined; // home reached through a symlink
   for (let d = root; path.dirname(d) !== d; d = path.dirname(d))
     if (realpath(d) === real) return d;
+  // ponytail: a worktree outside its repo, reached through a symlink, keeps git's real
+  // spelling; a session that starts there asks once. Map via realpath of both if it bites.
   return main;
 }
 function isDir(p: string): boolean {
