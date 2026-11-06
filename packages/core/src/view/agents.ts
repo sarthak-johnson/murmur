@@ -9,6 +9,7 @@
  * - A SubagentStop with no earlier start is ignored (Claude Code's prompt-suggestion
  *   generator fires one with an empty `agent_type` after every interactive Stop).
  * - `known` spans requests, so a background subagent stopping later still closes.
+ * Returns each claimed Agent call's `tool_use_id` with the subagent it started.
  */
 import type { MurmurEvent } from "../events.js";
 import { addOnce, type Trace } from "./requests.js";
@@ -23,7 +24,7 @@ export function applyAgents(
   events: MurmurEvent[],
   { before, narrated }: Trace,
   known: Map<string, AgentView>,
-): void {
+): Map<string, string> {
   const isAgent = (e: MurmurEvent) => e.payload.tool_name === "Agent";
   const calls = events.filter((e) => e.hook === "PreToolUse" && isAgent(e));
   const linked = new Map<string, string>(); // agentId -> tool_use_id
@@ -33,6 +34,7 @@ export function applyAgents(
       if (id) linked.set(id, str(e.payload.tool_use_id));
     }
   const claimed = new Set(linked.values());
+  const started = new Map<string, string>(); // tool_use_id -> agentId
   events.forEach((e, i) => {
     const id = str(e.payload.agent_id);
     if (e.hook === "SubagentStart" && id && !known.has(id)) {
@@ -46,7 +48,10 @@ export function applyAgents(
           (c) => str(obj(c.payload.tool_input).subagent_type) === type,
         ) ??
         free[0];
-      if (call) claimed.add(str(call.payload.tool_use_id));
+      if (call) {
+        claimed.add(str(call.payload.tool_use_id));
+        started.set(str(call.payload.tool_use_id), id);
+      }
       const input = obj(call?.payload.tool_input);
       const part =
         narrated.findLast((x) => x.part && x.e.payload.agent_id === id)?.part ??
@@ -78,4 +83,5 @@ export function applyAgents(
       if (text) agent.lastText = text;
     }
   });
+  return started;
 }

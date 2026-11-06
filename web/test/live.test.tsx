@@ -121,6 +121,8 @@ function request(r: Partial<RequestView> = {}): RequestView {
     agents: [agent("a1", "writing tests for this endpoint", "endpoint")],
     assumptions: [],
     flags: [],
+    finished: false,
+    tally: { helpers: 1, files: 0, commands: 0 },
     ...r,
   };
 }
@@ -662,6 +664,138 @@ describe("live screen", () => {
     expect(within(row).getByText("↳ Agent 1 · tests")).toBeTruthy();
     expect(screen.getByText("Agent 1: tests")).toBeTruthy();
     expect(req.agents).toHaveLength(1);
+  });
+
+  it("a finished inferred request shows a Done card instead of a stale now", () => {
+    const view = session();
+    view.requests[1] = request({
+      planInferred: true,
+      finished: true,
+      now: { text: "Editing style.css", why: "", ts: T0, inferred: true },
+      tally: { helpers: 3, files: 19, commands: 51 },
+    });
+    show(view);
+    const now = screen.getByRole("region", { name: "Now" });
+    expect(within(now).getByText("Done")).toBeTruthy();
+    expect(
+      within(now).getByText("3 helpers, 19 files changed, 51 commands run"),
+    ).toBeTruthy();
+    expect(within(now).queryByText(/Editing/)).toBeNull();
+    expect(within(now).queryByText("Helpers running")).toBeNull();
+    expect(now.textContent).toContain('Started from: "add price alerts');
+  });
+
+  it("the Done line counts in plain words and skips zeros", () => {
+    const view = session();
+    view.requests[1] = request({
+      planInferred: true,
+      finished: true,
+      tally: { helpers: 0, files: 1, commands: 1 },
+    });
+    show(view);
+    const now = screen.getByRole("region", { name: "Now" });
+    expect(within(now).getByText("1 file changed, 1 command run")).toBeTruthy();
+    cleanup();
+    view.requests[1] = request({
+      planInferred: true,
+      finished: true,
+      tally: { helpers: 0, files: 0, commands: 0 },
+    });
+    show(view);
+    expect(screen.getByText("Nothing changed")).toBeTruthy();
+  });
+
+  it("a running inferred request and a finished narrated one keep the Now card", () => {
+    const view = session();
+    view.requests[1] = request({ planInferred: true, finished: false });
+    show(view);
+    expect(
+      screen.getByText("Building the server endpoint that saves an alert"),
+    ).toBeTruthy();
+    expect(screen.queryByText("Done")).toBeNull();
+    cleanup();
+    view.requests[1] = request({ finished: true });
+    show(view);
+    expect(
+      screen.getByText("Building the server endpoint that saves an alert"),
+    ).toBeTruthy();
+  });
+
+  it("files touched shows 8 newest first, readable paths, then Show all N", async () => {
+    const tmp =
+      "/private/tmp/claude-501/-x-app/27a000a1-7dbc-4dd1-ab83-961149fc03ae";
+    const looseFiles = Array.from({ length: 10 }, (_, i) => ({
+      path: i === 9 ? `${tmp}/scratchpad/style/a/style.css` : `src/f${i}.ts`,
+      added: 117,
+      removed: 2,
+      isNew: false,
+      eventIds: [`e${i}`],
+    }));
+    const events: MurmurEvent[] = looseFiles.map((_, i) => ({
+      id: `e${i}`,
+      sessionId: "s1",
+      machineId: "m1",
+      cwd: "/x/app",
+      ts: new Date(Date.parse(T0) + i * 1000).toISOString(),
+      hook: "PostToolUse",
+      payload: {},
+    }));
+    const view = session();
+    view.requests[1] = request({ looseFiles });
+    render(
+      <Live
+        sessionId="s1"
+        view={view}
+        viewAt={() => null}
+        events={events}
+        status="live"
+        lastLooked={null}
+      />,
+    );
+    const now = screen.getByRole("region", { name: "Now" });
+    const names = () =>
+      within(now)
+        .getAllByRole("listitem")
+        .flatMap((li) => [...li.querySelectorAll(".pd-path")])
+        .map((el) => el.textContent);
+    expect(names()).toEqual([
+      "scratchpad/style/a/style.css",
+      "src/f8.ts",
+      "src/f7.ts",
+      "src/f6.ts",
+      "src/f5.ts",
+      "src/f4.ts",
+      "src/f3.ts",
+      "src/f2.ts",
+    ]);
+    const path = within(now).getByText("scratchpad/style/a/style.css");
+    expect(path.getAttribute("title")).toBe(
+      `${tmp}/scratchpad/style/a/style.css`,
+    );
+    expect(within(now).getByText("src/f8.ts").getAttribute("title")).toBe(
+      "/x/app/src/f8.ts",
+    );
+    // Breaks only after a slash.
+    expect(path.innerHTML).toBe("scratchpad/<wbr>style/<wbr>a/<wbr>style.css");
+    await userEvent.click(
+      within(now).getByRole("button", { name: "Show all 10" }),
+    );
+    expect(names()).toHaveLength(10);
+    await userEvent.click(
+      within(now).getByRole("button", { name: "Show fewer" }),
+    );
+    expect(names()).toHaveLength(8);
+  });
+
+  it("8 files or fewer need no toggle", () => {
+    const view = session();
+    view.requests[1] = request({
+      looseFiles: [
+        { path: "a.ts", added: 1, removed: 0, isNew: true, eventIds: [] },
+      ],
+    });
+    show(view);
+    expect(screen.queryByRole("button", { name: /Show all/ })).toBeNull();
   });
 
   it("the loading skeleton keeps a requests placeholder before the main column", () => {

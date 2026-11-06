@@ -2,6 +2,7 @@ import type { MurmurEvent } from "../events.js";
 import { applyAgents } from "./agents.js";
 import { applyFiles } from "./files.js";
 import { applyFlags, needsYou } from "./flags.js";
+import { inferHistory } from "./history.js";
 import { applyInference, inferNow } from "./infer.js";
 import { applyPlan, cut, newRequest } from "./requests.js";
 import type { AgentView, SessionView } from "./types.js";
@@ -10,16 +11,27 @@ import type { AgentView, SessionView } from "./types.js";
 export function reduce(events: MurmurEvent[]): SessionView {
   const sorted = sortEvents(events);
   const agents = new Map<string, AgentView>();
-  const requests = splitRequests(sorted).map(({ start, rest }, i, all) => {
+  const started = new Map<string, string>();
+  const ended = sorted.some((e) => e.hook === "SessionEnd");
+  const split = splitRequests(sorted);
+  const requests = split.map(({ start, rest }, i, all) => {
     const req = newRequest(start);
     const trace = applyPlan(req, rest);
     applyInference(req, rest);
     inferNow(req, rest, trace);
     applyFiles(req, rest, trace);
-    applyAgents(req, rest, trace, agents);
+    for (const [use, id] of applyAgents(req, rest, trace, agents))
+      started.set(use, id);
     applyFlags(req, rest, trace, i < all.length - 1);
+    req.finished = i < all.length - 1 || ended;
     return req;
   });
+  inferHistory(
+    requests,
+    split.map((s) => s.rest),
+    agents,
+    started,
+  );
   const first = sorted[0];
   return {
     sessionId: first?.sessionId ?? "",
@@ -27,7 +39,7 @@ export function reduce(events: MurmurEvent[]): SessionView {
     title: cut(requests[0]?.prompt ?? "", 80),
     startedAt: first?.ts ?? "",
     lastEventAt: sorted.at(-1)?.ts ?? "",
-    ended: sorted.some((e) => e.hook === "SessionEnd"),
+    ended,
     requests,
     needsYou: needsYou(sorted),
   };

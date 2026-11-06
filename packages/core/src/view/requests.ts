@@ -67,6 +67,8 @@ export function newRequest(start: MurmurEvent): RequestView {
     agents: [],
     assumptions: [],
     flags: [],
+    finished: false,
+    tally: { helpers: 0, files: 0, commands: 0 },
   };
 }
 

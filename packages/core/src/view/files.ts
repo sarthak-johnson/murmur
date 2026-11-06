@@ -31,20 +31,24 @@ export function applyFiles(
     const by = named.findLast((x) => x.i < i) ?? named.find((x) => x.i > i);
     const partId = by?.part ?? before[i]?.part;
     const part = req.parts.find((p) => p.id === partId);
-    const files = part ? part.files : req.looseFiles;
-    const file = files.find((f) => f.path === t.path);
-    if (!file) files.push(t);
-    else {
-      file.added += t.added;
-      file.removed += t.removed;
-      file.isNew ||= t.isNew;
-      file.eventIds.push(e.id);
-    }
+    addTouch(part ? part.files : req.looseFiles, t);
   });
   for (const p of req.parts) p.files = p.files.filter((f) => f.eventIds.length);
 }
 
-function touchOf(e: MurmurEvent): Touch | undefined {
+/** Adds a touch to `files`, summing into the entry for the same path. */
+export function addTouch(files: FileTouch[], t: Touch): void {
+  const file = files.find((f) => f.path === t.path);
+  if (!file) files.push({ ...t, eventIds: [...t.eventIds] });
+  else {
+    file.added += t.added;
+    file.removed += t.removed;
+    file.isNew ||= t.isNew;
+    file.eventIds.push(...t.eventIds);
+  }
+}
+
+export function touchOf(e: MurmurEvent): Touch | undefined {
   const { tool_name: tool, tool_response: res } = e.payload;
   if (e.hook !== "PostToolUse" || (tool !== "Edit" && tool !== "Write")) return;
   if (!res || typeof res !== "object") return;
@@ -68,4 +72,32 @@ function touchOf(e: MurmurEvent): Touch | undefined {
     isNew,
     eventIds: [e.id],
   };
+}
+
+// Prefixes that say nothing to a person: Claude's scratch and temp folders,
+// its per-project folder under ~/.claude, then plain temp folders.
+const NOISE = [
+  /^\/(?:private\/)?tmp\/claude-[^/]+\/-[^/]+\/[0-9a-f-]{36}\//,
+  /^\/(?:private\/)?tmp\/claude-[^/]+\//,
+  /^\/(?:Users|home)\/[^/]+\/\.claude\/projects\/[^/]+\//,
+  /^\/(?:private\/)?var\/folders\/[^/]+\/[^/]+\/T\//,
+  /^\/(?:private\/)?tmp\//,
+];
+const WORKTREE = /^\.claude\/worktrees\/[^/]+\//;
+const HOME = /^\/(?:Users|home)\/[^/]+\//;
+
+/**
+ * A path as a person reads it: relative to the project (a worktree inside it
+ * counts as the project), else with temp prefixes dropped, else `~/` for home,
+ * keeping the last 3 segments of anything longer.
+ */
+export function displayPath(path: string, cwd: string): string {
+  const rel = relPath(path, cwd);
+  if (!rel.startsWith("/")) return rel.replace(WORKTREE, "");
+  const noise = NOISE.find((re) => re.test(rel));
+  if (noise) return rel.replace(noise, "");
+  const home = HOME.exec(rel)?.[0];
+  const rest = rel.slice(home ? home.length : 1).split("/");
+  const tail = rest.length > 3 ? `…/${rest.slice(-3).join("/")}` : null;
+  return home ? `~/${tail ?? rest.join("/")}` : (tail ?? rel);
 }

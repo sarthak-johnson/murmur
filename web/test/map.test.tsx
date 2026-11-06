@@ -54,6 +54,8 @@ function request(r: Partial<RequestView> = {}): RequestView {
     agents: [],
     assumptions: [],
     flags: [],
+    finished: false,
+    tally: { helpers: 0, files: 0, commands: 0 },
     ...r,
   };
 }
@@ -209,6 +211,22 @@ describe("MapView", () => {
     ).toBeTruthy();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     expect(container.textContent).not.toContain(String.fromCharCode(0x2014));
+  });
+
+  it("the empty line shows only when there are no parts", () => {
+    render(
+      <MapView
+        request={request({
+          planInferred: true,
+          parts: [part({ id: "dir:web/src", title: "web/src" })],
+        })}
+        onOpenPart={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/The map appears/)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "web/src, not started" }),
+    ).toBeTruthy();
   });
 
   it("shows the goal as a caption for other kinds", () => {

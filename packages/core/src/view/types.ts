@@ -28,6 +28,10 @@ export interface RequestView {
   agents: AgentView[];
   assumptions: Assumption[];
   flags: Flag[];
+  /** A later request exists or the session ended. */
+  finished: boolean;
+  /** Helpers started, distinct files changed and commands run in this request. */
+  tally: { helpers: number; files: number; commands: number };
 }
 
 export interface PhaseView {

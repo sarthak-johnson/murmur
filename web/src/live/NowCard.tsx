@@ -1,4 +1,5 @@
-import type { RequestView } from "@murmur/core";
+import type { MurmurEvent, RequestView } from "@murmur/core";
+import { FileList, PathText } from "../files";
 import { ago } from "../format";
 
 const MINUS = "−";
@@ -8,22 +9,48 @@ const cut = (s: string, n: number) => {
   return cp.length > n ? `${cp.slice(0, n).join("").trimEnd()}…` : s;
 };
 
-export function NowCard({ request }: { request: RequestView }) {
+const count = (n: number, one: string, many: string) =>
+  n ? [`${n} ${n === 1 ? one : many}`] : [];
+
+/** What a finished request did, in one line. */
+function doneLine({ helpers, files, commands }: RequestView["tally"]) {
+  const bits = [
+    ...count(helpers, "helper", "helpers"),
+    ...count(files, "file changed", "files changed"),
+    ...count(commands, "command run", "commands run"),
+  ];
+  return bits.length ? bits.join(", ") : "Nothing changed";
+}
+
+export function NowCard(props: {
+  request: RequestView;
+  cwd?: string;
+  events?: MurmurEvent[];
+}) {
+  const { request, cwd = "", events = [] } = props;
   const { now, agents, parts, looseFiles } = request;
-  const running = agents
-    .map((a, i) => ({ a, k: i + 1 }))
-    .filter(({ a }) => a.status === "running");
+  // A request Claude never mapped, once over, says what it did instead of a stale now.
+  const done = request.planInferred && request.finished;
+  const running = done
+    ? []
+    : agents
+        .map((a, i) => ({ a, k: i + 1 }))
+        .filter(({ a }) => a.status === "running");
   return (
     <section
       className={running.length ? "now-col has-helpers" : "now-col"}
       aria-label="Now"
     >
-      <div className="now-card">
-        <div className="lbl lbl-now">
-          Now
-          {now?.inferred && <span className="inferred">inferred</span>}
+      <div className={done ? "now-card done" : "now-card"}>
+        <div className={done ? "lbl lbl-done" : "lbl lbl-now"}>
+          {done ? "Done" : "Now"}
+          {(done || now?.inferred) && (
+            <span className="inferred">inferred</span>
+          )}
         </div>
-        {now ? (
+        {done ? (
+          <p className="now-text">{doneLine(request.tally)}</p>
+        ) : now ? (
           <>
             <p className="now-text">{now.text}</p>
             {now.why && (
@@ -41,10 +68,13 @@ export function NowCard({ request }: { request: RequestView }) {
       {looseFiles.length > 0 && (
         <div className="now-files">
           <div className="lbl">Files touched</div>
-          <ul aria-label="Files touched">
-            {looseFiles.map((f) => (
+          <FileList
+            files={looseFiles}
+            events={events}
+            label="Files touched"
+            row={(f) => (
               <li key={f.path}>
-                <span className="pd-path">{f.path}</span>
+                <PathText path={f.path} cwd={cwd} />
                 <span className={f.added ? "pd-add" : "pd-add zero"}>
                   +{f.added}
                 </span>
@@ -54,8 +84,8 @@ export function NowCard({ request }: { request: RequestView }) {
                 </span>
                 {f.role && <span className="muted">{f.role}</span>}
               </li>
-            ))}
-          </ul>
+            )}
+          />
         </div>
       )}
       {running.length > 0 && (

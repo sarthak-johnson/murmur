@@ -5,6 +5,7 @@ import type {
   RequestView,
 } from "@murmur/core";
 import { useState } from "react";
+import { FileList, PathText } from "../files";
 import { MapView } from "../map/MapView";
 import { LiveSkeleton } from "../pages/Session";
 import { navigate } from "../router";
@@ -98,8 +99,12 @@ const described = (p: PartView) =>
   !!(p.aim || p.io) ||
   [p.steps, p.files, p.choices, p.checks, p.words].some((l) => l.length > 0);
 
-function FileRow(props: { file: FileTouch; byId: Map<string, MurmurEvent> }) {
-  const { file, byId } = props;
+function FileRow(props: {
+  file: FileTouch;
+  cwd: string;
+  byId: Map<string, MurmurEvent>;
+}) {
+  const { file, cwd, byId } = props;
   const [open, setOpen] = useState(false);
   return (
     <li>
@@ -109,7 +114,7 @@ function FileRow(props: { file: FileTouch; byId: Map<string, MurmurEvent> }) {
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        <span className="pd-path">{file.path}</span>
+        <PathText path={file.path} cwd={cwd} />
         <span className={file.added ? "pd-add" : "pd-add zero"}>
           +{file.added}
         </span>
@@ -141,12 +146,13 @@ export function PartDetail(props: Parameters<typeof PartBody>[0]) {
 
 function PartBody(props: {
   sessionId: string;
+  cwd?: string;
   request: RequestView;
   part: PartView;
   events: MurmurEvent[];
   onBack(): void;
 }) {
-  const { sessionId, request, part, events, onBack } = props;
+  const { sessionId, cwd = "", request, part, events, onBack } = props;
   const base = `/s/${enc(sessionId)}/r/${enc(request.id)}`;
   const byId = new Map(events.map((e) => [e.id, e]));
   const problem = request.phases
@@ -184,7 +190,10 @@ function PartBody(props: {
       </div>
       <div className="pd-cols">
         <div className="pd-centre">
-          <h1 className="pd-title">{part.title}</h1>
+          <h1 className="pd-title">
+            {part.title}
+            {request.planInferred && <span className="inferred">inferred</span>}
+          </h1>
           {!described(part) && (
             <p className="muted">Claude has not described this part yet.</p>
           )}
@@ -215,11 +224,14 @@ function PartBody(props: {
           {part.files.length > 0 && (
             <section>
               <h2 className="lbl">Files touched · {part.files.length}</h2>
-              <ul className="pd-list">
-                {part.files.map((f) => (
-                  <FileRow key={f.path} file={f} byId={byId} />
-                ))}
-              </ul>
+              <FileList
+                files={part.files}
+                events={events}
+                className="pd-list"
+                row={(f) => (
+                  <FileRow key={f.path} file={f} cwd={cwd} byId={byId} />
+                )}
+              />
             </section>
           )}
           {part.choices.length > 0 && (
@@ -345,6 +357,7 @@ export function PartPage(props: {
   return (
     <PartDetail
       sessionId={sessionId}
+      cwd={view.cwd}
       request={request}
       part={part}
       events={events}

@@ -1,4 +1,4 @@
-import { catchUp, type SessionView } from "@murmur/core";
+import { catchUp, type MurmurEvent, type SessionView } from "@murmur/core";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ApiError, api } from "../api";
 import { useLastLooked } from "../lastLooked";
@@ -16,12 +16,13 @@ export function SessionPage(props: {
   sessionId: string;
   requestId?: string | undefined;
 }) {
-  const { view, viewAt, status } = useSession(props.sessionId);
+  const { view, viewAt, status, events } = useSession(props.sessionId);
   const lastLooked = useLastLooked(props.sessionId);
   return (
     <Live
       {...props}
       view={view}
+      events={events}
       viewAt={viewAt}
       status={status}
       lastLooked={lastLooked}
@@ -146,10 +147,11 @@ export function Live(props: {
   requestId?: string | undefined;
   view: SessionView | null;
   viewAt(ts: string): SessionView | null;
+  events?: MurmurEvent[];
   status: SessionStatus;
   lastLooked: string | null;
 }) {
-  const { sessionId, view, viewAt, status, lastLooked } = props;
+  const { sessionId, view, viewAt, events = [], status, lastLooked } = props;
   // Relative times ("14 min ago") move on even when no events arrive.
   const [, tick] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
@@ -184,6 +186,7 @@ export function Live(props: {
             sessionId={sessionId}
             view={view}
             viewAt={viewAt}
+            events={events}
             lastLooked={lastLooked}
             requestId={req.id}
           />
@@ -199,10 +202,11 @@ function RequestScreen(props: {
   sessionId: string;
   view: SessionView;
   viewAt(ts: string): SessionView | null;
+  events: MurmurEvent[];
   lastLooked: string | null;
   requestId: string;
 }) {
-  const { sessionId, view, viewAt, lastLooked, requestId } = props;
+  const { sessionId, view, viewAt, events, lastLooked, requestId } = props;
   const req = view.requests.find((r) => r.id === requestId);
   const [phaseId, setPhaseId] = useState<string>();
   const [partId, setPartId] = useState<string>();
@@ -231,7 +235,7 @@ function RequestScreen(props: {
         onSelect={setPhaseId}
       />
       <div className="live-grid">
-        <NowCard request={req} />
+        <NowCard request={req} cwd={view.cwd} events={events} />
         <PlanPanel
           request={req}
           hoverPart={partId}

@@ -268,6 +268,46 @@ describe("PartDetail", () => {
     ).toBeNull();
   });
 
+  it("an inferred part is tagged and its files read as paths a person knows", async () => {
+    const tmp =
+      "/private/tmp/claude-501/-x-app/27a000a1-7dbc-4dd1-ab83-961149fc03ae";
+    const files = Array.from({ length: 9 }, (_, i) => ({
+      path: `${tmp}/scratchpad/f${i}.css`,
+      added: 1,
+      removed: 0,
+      isNew: true,
+      eventIds: [],
+    }));
+    const p = part({
+      id: "task:1",
+      title: "Task 1: Lit plate tokens",
+      status: "done",
+      files,
+      steps: [{ ts: "t", text: "Built", status: "done", eventIds: [] }],
+    });
+    render(
+      <PartDetail
+        sessionId="s1"
+        cwd="/x/app"
+        request={request([p], { planInferred: true })}
+        part={p}
+        events={events}
+        onBack={() => {}}
+      />,
+    );
+    const title = screen.getByRole("heading", { level: 1 });
+    expect(title.textContent).toBe("Task 1: Lit plate tokensinferred");
+    expect(screen.getByText("Files touched · 9")).toBeTruthy();
+    const shown = screen.getByText("scratchpad/f0.css");
+    expect(shown.getAttribute("title")).toBe(`${tmp}/scratchpad/f0.css`);
+    expect(screen.queryByText("scratchpad/f8.css")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Show all 9" }));
+    expect(screen.getByText("scratchpad/f8.css")).toBeTruthy();
+    expect(
+      screen.queryByText("Claude has not described this part yet."),
+    ).toBeNull();
+  });
+
   it("three failures read as stuck", () => {
     show({ ...full, failures: 3 });
     expect(screen.getByText("stuck")).toBeTruthy();

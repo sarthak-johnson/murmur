@@ -671,6 +671,12 @@ label {
 .lbl-now {
   color: var(--now);
 }
+.now-card.done {
+  border-color: var(--done);
+}
+.lbl-done {
+  color: var(--done);
+}
 .now-text {
   font-size: 16px;
   font-weight: 600;
@@ -691,7 +697,6 @@ label {
 }
 .now-files li {
   display: flex;
-  flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 12px;
   padding: 2px 0;
@@ -1167,7 +1172,6 @@ button.task:hover {
 }
 .pd-file {
   display: flex;
-  flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 12px;
   width: 100%;
@@ -1179,7 +1183,7 @@ button.task:hover {
 .pd-path {
   font-family: var(--font-code);
   font-size: 12.5px;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .pd-add {
   color: var(--done);
@@ -1277,4 +1281,25 @@ button.task:hover {
 .local-signin label {
   color: var(--muted);
   margin: 0;
+}
+/* A file row keeps its counts beside the name; the name wraps after a slash. */
+.pd-file > * {
+  flex: none;
+}
+.now-files li > * {
+  flex: none;
+}
+.pd-file > .pd-path,
+.pd-file > .muted {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.now-files li > .pd-path,
+.now-files li > .muted {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.show-all {
+  font-size: 12px;
+  margin-top: 2px;
 }
