@@ -22,10 +22,32 @@ export const cut = (s: string, n: number) => s.slice(0, n);
 
 const TASK_STATUS = { running: "now", done: "done", failed: "failed" } as const;
 
-interface Named {
+/** The part and task the latest narrate resolved to. */
+export interface Named {
   part: string | undefined;
   task: string | undefined;
 }
+
+/** A valid narrate call, at index `i` of the request's events. */
+export interface Narrated extends Named {
+  i: number;
+  e: MurmurEvent;
+  n: NarrateInput;
+}
+
+/** What later passes need: `before[i]` is the latest narrate before event `i`. */
+export interface Trace {
+  before: Named[];
+  narrated: Narrated[];
+}
+
+/** A path as shown: relative to `cwd` when inside it, no leading `./`. */
+export const relPath = (path: string, cwd: string) =>
+  path.startsWith(`${cwd}/`)
+    ? path.slice(cwd.length + 1)
+    : path.replace(/^\.\//, "");
+
+const str = (v: unknown) => (typeof v === "string" ? v : undefined);
 
 export function newRequest(start: MurmurEvent): RequestView {
   const p = start.payload.prompt;
@@ -54,15 +76,21 @@ const input = (e: MurmurEvent, tool: string) =>
     : undefined;
 
 /** Applies every map and narrate call in `events`, then sets statuses. */
-export function applyPlan(req: RequestView, events: MurmurEvent[]): void {
+export function applyPlan(req: RequestView, events: MurmurEvent[]): Trace {
   let last: Named = { part: undefined, task: undefined };
-  for (const e of events) {
+  const trace: Trace = { before: [], narrated: [] };
+  events.forEach((e, i) => {
+    trace.before.push(last);
     const map = MapInput.safeParse(input(e, MAP_TOOL));
     if (map.success) applyMap(req, map.data);
     const note = NarrateInput.safeParse(input(e, NARRATE_TOOL));
-    if (note.success) last = applyNarrate(req, e, note.data);
-  }
+    if (note.success) {
+      last = applyNarrate(req, e, note.data);
+      trace.narrated.push({ ...last, i, e, n: note.data });
+    }
+  });
   setStatuses(req, last);
+  return trace;
 }
 
 function applyMap(req: RequestView, map: MapInput): void {
@@ -126,19 +154,32 @@ function applyNarrate(
   // No part named: fall back to the named task's part.
   const partId = n.part ?? task?.part;
   const part = req.parts.find((p) => p.id === partId);
+  // Set when a subagent calls narrate itself.
+  const agentId = str(e.payload.agent_id);
   req.now = { text: n.now, why: n.why, ts: e.ts };
   if (part) req.now.part = part.id;
   if (task && n.taskStatus) task.status = TASK_STATUS[n.taskStatus];
+  if (task && agentId) addOnce(task.agents, agentId);
   if (part) {
-    if (n.step) part.steps.push({ ts: e.ts, ...n.step, eventIds: [e.id] });
+    if (n.step)
+      part.steps.push({
+        ts: e.ts,
+        ...n.step,
+        ...(agentId ? { agentId } : {}),
+        eventIds: [e.id],
+      });
+    if (agentId) addOnce(part.agents, agentId);
     if (n.aim) part.aim = n.aim;
     if (n.io) part.io = n.io;
+    // Role-only until files.ts merges a real touch in; dropped if none comes.
     for (const f of n.files ?? []) {
-      const file = part.files.find((x) => x.path === f.path);
+      const path = relPath(f.path, e.cwd);
+      const file = part.files.find((x) => x.path === path);
       if (file) file.role = f.role;
       else
         part.files.push({
-          ...f,
+          path,
+          role: f.role,
           added: 0,
           removed: 0,
           isNew: false,
@@ -151,6 +192,9 @@ function applyNarrate(
   }
   return { part: part?.id, task: task?.id };
 }
+
+const addOnce = (list: string[], id: string) =>
+  list.includes(id) || list.push(id);
 
 function upsert<T>(list: T[], items: T[] | undefined, key: (x: T) => string) {
   for (const item of items ?? []) {

@@ -1,41 +1,16 @@
 import { expect, test } from "vitest";
 import { MAP_TOOL, type MapInput, reduce } from "../src/index.js";
-import { at, fixture, mapCall, narrateCall, prompt, tool } from "./helpers.js";
-
-const MAP: MapInput = {
-  kind: "feature",
-  goal: "Price alerts",
-  phases: [
-    {
-      id: "1",
-      title: "Data",
-      tasks: [{ id: "1.1", title: "Alerts table", part: "db" }],
-    },
-    {
-      id: "2",
-      title: "API",
-      tasks: [
-        { id: "2.1", title: "Endpoint to save an alert", part: "api" },
-        { id: "2.2", title: "Endpoint to list alerts", part: "api" },
-      ],
-    },
-  ],
-  parts: [
-    { id: "db", title: "Alerts table", phase: "1", tag: "source" },
-    {
-      id: "api",
-      title: "Alerts API",
-      phase: "2",
-      links: [{ to: "db", label: "writes" }],
-    },
-  ],
-};
-
-const note = (extra: Record<string, unknown> = {}) => ({
-  now: "Writing the save endpoint",
-  why: "the screen needs it",
-  ...extra,
-});
+import {
+  at,
+  edit,
+  fixture,
+  MAP,
+  mapCall,
+  narrateCall,
+  note,
+  prompt,
+  tool,
+} from "./helpers.js";
 
 test("splits requests on each prompt", () => {
   const long = "a".repeat(100);
@@ -266,6 +241,7 @@ test("narrate merges part detail", () => {
         ],
       }),
     ),
+    edit(5, "src/api.ts", ["+x"]),
   ]).requests;
   expect(req?.parts[1]).toMatchObject({
     aim: { aim: "save alerts", doneWhen: "POST returns 201" },
@@ -274,10 +250,10 @@ test("narrate merges part detail", () => {
       {
         path: "src/api.ts",
         role: "the save endpoint",
-        added: 0,
+        added: 1,
         removed: 0,
         isNew: false,
-        eventIds: [],
+        eventIds: ["e5"],
       },
     ],
     choices: [
