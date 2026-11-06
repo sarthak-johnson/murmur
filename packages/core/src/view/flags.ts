@@ -2,14 +2,14 @@
  * Needs-you, stuck and risky flags, and the assumptions list.
  * - Needs-you (session wide): Notification `permission_prompt` / `elicitation_dialog` /
  *   `idle_prompt` / `agent_needs_input`, or PermissionRequest. A repeat of the same reason
- *   keeps the first. Cleared by UserPromptSubmit, PreToolUse, PostToolUse or SessionEnd.
+ *   keeps the first. Cleared by UserPromptSubmit, PreToolUse, PostToolUse(Failure) or SessionEnd.
  * - Stuck: a run of 3 or more failures, either failed narrate steps on one part (a done or
  *   running step ends the run) or PostToolUseFailure of one tool on one `file_path` or
  *   `command` (a PostToolUse of the same tool and target ends it). One flag per run, text
  *   updated as it grows, `pending` while the run is unbroken. An unbroken run sets its
  *   part's `failures` (narrate runs below 3 count too) and its task's `problem`.
  * - Risky: a PreToolUse Bash command `isRisky` matches; `pending` until its PostToolUse or
- *   PostToolUseFailure by `tool_use_id`.
+ *   PostToolUseFailure by `tool_use_id`, or the next Stop, SessionEnd or prompt (`followed`).
  * - Assumptions: narrate choices with `assumption: true`, first copy per key.
  */
 import type { MurmurEvent } from "../events.js";
@@ -26,6 +26,7 @@ const CLEARS = new Set([
   "UserPromptSubmit",
   "PreToolUse",
   "PostToolUse",
+  "PostToolUseFailure",
   "SessionEnd",
 ]);
 
@@ -72,9 +73,17 @@ export function assumptionKey(
   return `${requestId}:${part ?? "-"}:${fnv1a(choice)}`;
 }
 
-/** Splits on `;`, `&`, `|` and newlines, then on whitespace. */
+/**
+ * Splits on `;`, `&`, `|` and newlines, then on whitespace, and strips quoting so
+ * `bash -c "rm -rf x"`, `\rm` and `$(git push -f)` are seen as plain words.
+ */
 const segments = (cmd: string) =>
-  cmd.split(/[;&|\n]+/).map((s) => s.trim().split(/\s+/));
+  cmd.split(/[;&|\n]+/).map((s) =>
+    s
+      .trim()
+      .split(/\s+/)
+      .map((w) => w.replace(/^["'`$(\\]+/, "").replace(/["'`);]+$/, "")),
+  );
 
 const shortFlag = (t: string, c: RegExp) => /^-[a-zA-Z]+$/.test(t) && c.test(t);
 
@@ -116,12 +125,16 @@ export function applyFlags(
   req: RequestView,
   events: MurmurEvent[],
   { before, narrated }: Trace,
+  followed = false,
 ): void {
   const notes = new Map(narrated.map((x) => [x.i, x]));
   const runs = new Map<string, Run>();
   const risky = new Map<string, Flag>();
   const seen = new Set<string>();
 
+  const closeRisky = () => {
+    for (const flag of risky.values()) flag.pending = false;
+  };
   const fail = (key: string, e: MurmurEvent, at: Named, narrate: boolean) => {
     const run = runs.get(key) ?? { n: 0, ...NONE, narrate };
     runs.set(key, run);
@@ -184,6 +197,8 @@ export function applyFlags(
       risky.set(useId, flag);
       req.flags.push(flag);
     }
+    // A denied command never gets a Post event; the turn ending closes it.
+    if (e.hook === "Stop" || e.hook === "SessionEnd") closeRisky();
     if (e.hook === "PostToolUse" || e.hook === "PostToolUseFailure") {
       const flag = risky.get(useId);
       if (flag) flag.pending = false;
@@ -194,6 +209,8 @@ export function applyFlags(
       else fail(key, e, before[i] ?? NONE, false);
     }
   });
+
+  if (followed) closeRisky();
 
   const tasks = req.phases.flatMap((ph) => ph.tasks);
   for (const run of runs.values()) {

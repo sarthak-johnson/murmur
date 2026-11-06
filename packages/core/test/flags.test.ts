@@ -41,6 +41,16 @@ test("permission prompt sets needs-you and the next tool call clears it", () => 
   expect(reduce([...events, tool(5, "Write", {})]).needsYou).toBeNull();
 });
 
+test("approved tool that fails clears needs-you", () => {
+  const view = reduce([
+    prompt(1, "go"),
+    bash(2, "pnpm test", "PreToolUse"),
+    at(3, "PermissionRequest", { tool_name: "Bash" }),
+    bash(4, "pnpm test"),
+  ]);
+  expect(view.needsYou).toBeNull();
+});
+
 test.each([
   ["elicitation_dialog", "question"],
   ["idle_prompt", "idle"],
@@ -185,6 +195,26 @@ test("force push is risky and pending until it finishes", () => {
   expect(cut?.text).toBe(`About to run: ${long.slice(0, 120)}`);
 });
 
+const denied = [
+  prompt(1, "ship"),
+  bash(2, "git push --force", "PreToolUse"),
+  at(3, "PermissionRequest", { tool_name: "Bash" }),
+];
+
+test("denied risky command stops being pending at the next Stop", () => {
+  const [req] = reduce([...denied, at(4, "Stop")]).requests;
+  expect(req?.flags.map((f) => f.pending)).toEqual([false]);
+  const [ended] = reduce([...denied, at(4, "SessionEnd")]).requests;
+  expect(ended?.flags.map((f) => f.pending)).toEqual([false]);
+  const [live] = reduce(denied).requests;
+  expect(live?.flags.map((f) => f.pending)).toEqual([true]);
+});
+
+test("denied risky command stops being pending at the next prompt", () => {
+  const [req] = reduce([...denied, prompt(4, "never mind")]).requests;
+  expect(req?.flags.map((f) => f.pending)).toEqual([false]);
+});
+
 test.each([
   ["rm -rf build", true],
   ["rm -fr build", true],
@@ -205,6 +235,10 @@ test.each([
   ["kubectl apply -f production.yaml", true],
   ["cat products.json", false],
   ["pnpm test", false],
+  [`bash -c "rm -rf x"`, true],
+  ["ssh h 'rm -rf /tmp/x'", true],
+  ["\\rm -rf x", true],
+  [`echo $(git push -f)`, true],
 ])("isRisky(%j) is %s", (command, risky) => {
   expect(isRisky(command)).toBe(risky);
 });

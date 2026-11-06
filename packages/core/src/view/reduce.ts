@@ -9,12 +9,12 @@ import type { AgentView, SessionView } from "./types.js";
 export function reduce(events: MurmurEvent[]): SessionView {
   const sorted = sortEvents(events);
   const agents = new Map<string, AgentView>();
-  const requests = splitRequests(sorted).map(({ start, rest }) => {
+  const requests = splitRequests(sorted).map(({ start, rest }, i, all) => {
     const req = newRequest(start);
     const trace = applyPlan(req, rest);
     applyFiles(req, rest, trace);
     applyAgents(req, rest, trace, agents);
-    applyFlags(req, rest, trace);
+    applyFlags(req, rest, trace, i < all.length - 1);
     return req;
   });
   const first = sorted[0];
