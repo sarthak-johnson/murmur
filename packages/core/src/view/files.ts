@@ -88,15 +88,16 @@ const HOME = /^\/(?:Users|home)\/[^/]+\//;
 
 /**
  * A path as a person reads it: relative to the project (a worktree inside it
- * counts as the project), else with temp prefixes dropped, else `~/` for home,
- * keeping the last 3 segments of anything longer.
+ * counts as the project), else with temp prefixes dropped, else `~/` for the home
+ * `cwd` is in, keeping the last 3 segments of anything longer.
  */
 export function displayPath(path: string, cwd: string): string {
   const rel = relPath(path, cwd);
   if (!rel.startsWith("/")) return rel.replace(WORKTREE, "");
   const noise = NOISE.find((re) => re.test(rel));
   if (noise) return rel.replace(noise, "");
-  const home = HOME.exec(rel)?.[0];
+  const mine = HOME.exec(`${cwd}/`)?.[0];
+  const home = mine && rel.startsWith(mine) ? mine : undefined;
   const rest = rel.slice(home ? home.length : 1).split("/");
   const tail = rest.length > 3 ? `…/${rest.slice(-3).join("/")}` : null;
   return home ? `~/${tail ?? rest.join("/")}` : (tail ?? rel);

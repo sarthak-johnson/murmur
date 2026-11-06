@@ -261,7 +261,8 @@ function folderParts(
   for (const { touch, ts } of touches) {
     const folder = parent(displayPath(touch.path, cwd));
     // Claude's own memory and plans outside the project are not the work itself.
-    const own = OWN_FILES.test(touch.path) && !touch.path.startsWith(`${cwd}/`);
+    // `touch.path` is relative inside the project, so only an absolute (or `~`) path can be.
+    const own = /^[/~]/.test(touch.path) && OWN_FILES.test(touch.path);
     if (!folder || own) {
       addTouch(loose, touch);
       continue;

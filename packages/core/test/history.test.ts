@@ -204,6 +204,19 @@ describe("main-thread changes", () => {
     expect(r?.looseFiles).toHaveLength(2);
   });
 
+  test("files in a project worktree under .claude/worktrees are the work", () => {
+    const [r] = reduce([
+      prompt(0, "go"),
+      edit(1, ".claude/worktrees/x/web/src/a.tsx", ["+a"]),
+      edit(2, ".claude/worktrees/x/web/src/b.tsx", ["+a"]),
+      edit(3, "/Users/me/.claude/plans/plan.md", ["+a"]),
+    ]).requests;
+    expect(r?.parts.map((p) => p.title)).toEqual(["web/src"]);
+    expect(r?.looseFiles.map((f) => f.path)).toEqual([
+      "/Users/me/.claude/plans/plan.md",
+    ]);
+  });
+
   test("temp paths group by their readable folder", () => {
     const tmp =
       "/private/tmp/claude-501/-Users-me-app/27a000a1-7dbc-4dd1-ab83-961149fc03ae/scratchpad/style/a";
@@ -386,6 +399,8 @@ describe("displayPath", () => {
       "memory/MEMORY.md",
     ],
     ["/Users/me/notes/todo.md", "~/notes/todo.md"],
+    ["/Users/other/notes.md", "/Users/other/notes.md"],
+    ["/home/other/a/b/c.md", "…/a/b/c.md"],
     ["/Users/me/Projects/other/src/deep/file.ts", "~/…/src/deep/file.ts"],
     ["/etc/hosts", "/etc/hosts"],
     ["/opt/a/b/c/d.txt", "…/b/c/d.txt"],
