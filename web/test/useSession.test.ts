@@ -127,6 +127,31 @@ describe("useSession", () => {
     );
   });
 
+  it("a catch-up failure after the stream dropped does not retry twice", async () => {
+    events.mockResolvedValueOnce({ events: [A], hasMore: false });
+    const { result } = renderHook(() => useSession("s1"));
+    await flush();
+    let fail: (e: Error) => void = () => {};
+    events.mockImplementationOnce(
+      () =>
+        new Promise((_, rej) => {
+          fail = rej;
+        }),
+    );
+    await ready(0);
+    act(() => FakeES.all[0]?.onerror?.());
+    await act(async () => {
+      fail(new Error("net"));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    events.mockResolvedValue({ events: [], hasMore: false });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(20000)));
+    expect(FakeES.all).toHaveLength(2);
+    expect(result.current.status).toBe("reconnecting");
+    await ready(1);
+    expect(result.current.status).toBe("live");
+  });
+
   it("404 sets error", async () => {
     events.mockRejectedValueOnce(new ApiError(404, "not_found"));
     const { result } = renderHook(() => useSession("s1"));

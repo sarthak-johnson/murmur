@@ -68,6 +68,7 @@ export function useSession(sessionId: string): {
       const s = api.stream(sessionId);
       es = s;
       s.addEventListener("events", (m) => {
+        if (es !== s) return;
         merge(JSON.parse((m as MessageEvent<string>).data) as MurmurEvent[]);
       });
       // The server sends `ready` once it is subscribed; anything stored between
@@ -77,6 +78,7 @@ export function useSession(sessionId: string): {
         try {
           await fetchRest();
         } catch (e) {
+          if (dead || es !== s) return;
           return fail(e);
         }
         if (dead || es !== s) return;
