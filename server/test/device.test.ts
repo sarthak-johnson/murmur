@@ -294,14 +294,13 @@ test("twenty-first start from one IP is 429", async () => {
   expect((await rawStart({ "x-test-ip": "10.0.0.2" })).status).toBe(200);
 });
 
-test("default client IP uses X-Forwarded-For only when trustProxy", async () => {
+test("default client IP uses the last X-Forwarded-For entry only when trustProxy", async () => {
   t = await testApp({ config: { trustProxy: true } });
   for (let i = 0; i < 20; i++)
     await rawStart({ "X-Forwarded-For": "1.1.1.1, 9.9.9.9" });
-  expect(
-    (await rawStart({ "X-Forwarded-For": "1.1.1.1, 9.9.9.9" })).status,
-  ).toBe(429);
-  expect((await rawStart({ "X-Forwarded-For": "2.2.2.2" })).status).toBe(200);
+  // The key is 9.9.9.9, the entry the trusted proxy appended.
+  expect((await rawStart({ "X-Forwarded-For": " 9.9.9.9 " })).status).toBe(429);
+  expect((await rawStart({ "X-Forwarded-For": "1.1.1.1" })).status).toBe(200);
   await t.close();
 
   t = await testApp();
@@ -319,4 +318,14 @@ test("concurrent failed approves cannot overshoot the limit", async () => {
   const codes = res.map((r) => r.status).sort();
   expect(codes.filter((s) => s === 404)).toHaveLength(10);
   expect(codes.filter((s) => s === 429)).toHaveLength(5);
+});
+
+test("rotating a client-sent first X-Forwarded-For entry does not reset the start limit", async () => {
+  t = await testApp({ config: { trustProxy: true } });
+  for (let i = 0; i < 20; i++)
+    expect(
+      (await rawStart({ "X-Forwarded-For": `10.0.0.${i}, 9.9.9.9` })).status,
+    ).toBe(200);
+  const over = await rawStart({ "X-Forwarded-For": "10.0.1.1,9.9.9.9" });
+  expect(over.status).toBe(429);
 });

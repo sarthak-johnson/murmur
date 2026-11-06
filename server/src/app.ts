@@ -29,7 +29,7 @@ export interface Deps {
     githubClientSecret?: string;
     devLogin: boolean;
     cookieSecure: boolean;
-    /** Behind a reverse proxy: take the client IP from the first X-Forwarded-For entry. */
+    /** Behind one trusted reverse proxy: take the client IP from the last X-Forwarded-For entry (the one the proxy appended). */
     trustProxy?: boolean;
   };
   /** Defaults to arctic's GitHub provider when the client id and secret are set. */

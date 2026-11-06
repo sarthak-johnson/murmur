@@ -24,8 +24,9 @@ const rateLimited = (c: Context) => c.json({ error: "rate_limited" }, 429);
 function defaultClientIp(trustProxy: boolean) {
   return (c: Context): string | undefined => {
     if (trustProxy) {
-      const first = c.req.header("x-forwarded-for")?.split(",")[0]?.trim();
-      if (first) return first;
+      // The rightmost entry is the one the trusted proxy appended; earlier ones are client-sent.
+      const last = c.req.header("x-forwarded-for")?.split(",").at(-1)?.trim();
+      if (last) return last;
     }
     try {
       return getConnInfo(c).remote.address;
