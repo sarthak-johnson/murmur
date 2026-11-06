@@ -8,7 +8,11 @@ function mockFetch(routes: Record<string, { status?: number; body: unknown }>) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init: RequestInit = {}) => {
-      const r = routes[`${init.method ?? "GET"} ${url}`];
+      const all: typeof routes = {
+        "GET /auth/options": { body: { github: true, dev: false } },
+        ...routes,
+      };
+      const r = all[`${init.method ?? "GET"} ${url}`];
       if (!r) throw new Error(`unexpected ${url}`);
       const status = r.status ?? 200;
       return { ok: status < 400, status, json: async () => r.body } as Response;

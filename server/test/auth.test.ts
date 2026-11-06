@@ -116,9 +116,9 @@ test("logout needs same origin and JSON, then ends the session", async () => {
   expect(me.status).toBe(401);
 });
 
-test("github routes are 404 when GitHub is not configured", async () => {
+test("without GitHub configured there is no callback, and sign-in links lead home", async () => {
   t = await testApp();
-  expect((await t.app.request("/auth/github")).status).toBe(404);
+  expect((await t.app.request("/auth/github")).status).toBe(302);
   expect((await t.app.request("/auth/github/callback")).status).toBe(404);
 });
 
@@ -232,4 +232,27 @@ test("every response forbids framing and content sniffing", async () => {
     );
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   }
+});
+
+test("/auth/options says which sign-in methods this server offers", async () => {
+  t = await testApp();
+  expect(await (await t.app.request("/auth/options")).json()).toEqual({
+    github: false,
+    dev: true,
+  });
+  await t.close();
+  t = await testApp({
+    config: { devLogin: false, githubClientId: "id", githubClientSecret: "s" },
+  });
+  expect(await (await t.app.request("/auth/options")).json()).toEqual({
+    github: true,
+    dev: false,
+  });
+});
+
+test("/auth/github without GitHub configured goes back to the sign-in page", async () => {
+  t = await testApp();
+  const res = await t.app.request("/auth/github");
+  expect(res.status).toBe(302);
+  expect(res.headers.get("location")).toBe("/");
 });

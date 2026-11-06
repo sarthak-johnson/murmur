@@ -1264,3 +1264,17 @@ button.task:hover {
     order: -1;
   }
 }
+
+/* Local sign-in on a dev server: one row, same width as the GitHub button area. */
+.local-signin {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0 16px;
+}
+.local-signin label {
+  color: var(--muted);
+  margin: 0;
+}
