@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>session-map mockup 01</title>
+  <style>
+    /*
+     * BRAINSTORM COMPANION FRAME TEMPLATE
+     *
+     * This template provides a consistent frame with:
+     * - OS-aware light/dark theming
+     * - Header branding and connection status
+     * - Scrollable main content area
+     * - CSS helpers for common UI patterns
+     *
+     * Content is injected via placeholder comment in #frame-content.
+     */
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+
+    /* ===== THEME VARIABLES ===== */
+    :root {
+      --bg-primary: #f5f5f7;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #e5e5e7;
+      --border: #d1d1d6;
+      --text-primary: #1d1d1f;
+      --text-secondary: #86868b;
+      --text-tertiary: #aeaeb2;
+      --accent: #0071e3;
+      --accent-hover: #0077ed;
+      --success: #34c759;
+      --warning: #ff9f0a;
+      --error: #ff3b30;
+      --selected-bg: #e8f4fd;
+      --selected-border: #0071e3;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-primary: #1d1d1f;
+        --bg-secondary: #2d2d2f;
+        --bg-tertiary: #3d3d3f;
+        --border: #424245;
+        --text-primary: #f5f5f7;
+        --text-secondary: #86868b;
+        --text-tertiary: #636366;
+        --accent: #0a84ff;
+        --accent-hover: #409cff;
+        --selected-bg: rgba(10, 132, 255, 0.15);
+        --selected-border: #0a84ff;
+      }
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      display: flex;
+      flex-direction: column;
+      line-height: 1.5;
+    }
+
+    /* ===== FRAME STRUCTURE ===== */
+    .brand { display: flex; align-items: center; min-width: 0; overflow: hidden; color: var(--text-secondary); line-height: 1; }
+    .brand a { color: inherit; text-decoration: none; display: flex; align-items: center; gap: 0.5rem; min-width: 0; max-width: 100%; line-height: 1; }
+    .brand-copy { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1; transform: translateY(-1px); }
+    .brand-logo { display: block; height: 1em; width: auto; max-width: 180px; flex-shrink: 0; filter: invert(1); }
+    @media (prefers-color-scheme: dark) {
+      .brand-logo { filter: none; }
+    }
+    .status { font-size: 0.7rem; color: var(--status-color, var(--success)); display: flex; align-items: center; gap: 0.4rem; justify-self: end; white-space: nowrap; line-height: 1; }
+    .status::before { content: ''; width: 6px; height: 6px; background: var(--status-color, var(--success)); border-radius: 50%; }
+
+    .main { flex: 1; overflow-y: auto; }
+    #frame-content { padding: 2rem; min-height: 100%; }
+
+    .header {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 0.5rem 1.5rem;
+      flex-shrink: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 1rem;
+      min-height: 42px;
+    }
+    .header .brand { justify-self: start; width: 100%; font-size: 0.75rem; line-height: 1; }
+    .header .status { grid-column: 2; line-height: 1; }
+    .header span {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+    .header .selected-text {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* ===== TYPOGRAPHY ===== */
+    h2 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .subtitle { color: var(--text-secondary); margin-bottom: 1.5rem; }
+    .section { margin-bottom: 2rem; }
+    .label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+
+    /* ===== OPTIONS (for A/B/C choices) ===== */
+    .options { display: flex; flex-direction: column; gap: 0.75rem; }
+    .option {
+      background: var(--bg-secondary);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+    .option:hover { border-color: var(--accent); }
+    .option.selected { background: var(--selected-bg); border-color: var(--selected-border); }
+    .option .letter {
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      width: 1.75rem; height: 1.75rem;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 600; font-size: 0.85rem; flex-shrink: 0;
+    }
+    .option.selected .letter { background: var(--accent); color: white; }
+    .option .content { flex: 1; }
+    .option .content h3 { font-size: 0.95rem; margin-bottom: 0.15rem; }
+    .option .content p { color: var(--text-secondary); font-size: 0.85rem; margin: 0; }
+
+    /* ===== CARDS (for showing designs/mockups) ===== */
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .card.selected { border-color: var(--selected-border); border-width: 2px; }
+    .card-image { background: var(--bg-tertiary); aspect-ratio: 16/10; display: flex; align-items: center; justify-content: center; }
+    .card-body { padding: 1rem; }
+    .card-body h3 { margin-bottom: 0.25rem; }
+    .card-body p { color: var(--text-secondary); font-size: 0.85rem; }
+
+    /* ===== MOCKUP CONTAINER ===== */
+    .mockup {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+    .mockup-header {
+      background: var(--bg-tertiary);
+      padding: 0.5rem 1rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+    }
+    .mockup-body { padding: 1.5rem; }
+
+    /* ===== SPLIT VIEW (side-by-side comparison) ===== */
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 700px) { .split { grid-template-columns: 1fr; } }
+
+    /* ===== PROS/CONS ===== */
+    .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+    .pros, .cons { background: var(--bg-secondary); border-radius: 8px; padding: 1rem; }
+    .pros h4 { color: var(--success); font-size: 0.85rem; margin-bottom: 0.5rem; }
+    .cons h4 { color: var(--error); font-size: 0.85rem; margin-bottom: 0.5rem; }
+    .pros ul, .cons ul { margin-left: 1.25rem; font-size: 0.85rem; color: var(--text-secondary); }
+    .pros li, .cons li { margin-bottom: 0.25rem; }
+
+    /* ===== PLACEHOLDER (for mockup areas) ===== */
+    .placeholder {
+      background: var(--bg-tertiary);
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      color: var(--text-tertiary);
+    }
+
+    /* ===== INLINE MOCKUP ELEMENTS ===== */
+    .mock-nav { background: var(--accent); color: white; padding: 0.75rem 1rem; display: flex; gap: 1.5rem; font-size: 0.9rem; }
+    .mock-sidebar { background: var(--bg-tertiary); padding: 1rem; min-width: 180px; }
+    .mock-content { padding: 1.5rem; flex: 1; }
+    .mock-button { background: var(--accent); color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.85rem; }
+    .mock-input { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; width: 100%; }
+  </style>
+</head>
+<body>
+
+  <div class="main">
+    <div id="frame-content">
+      <style>
+  .mm { font-family: -apple-system, system-ui, sans-serif; font-size: 13px; line-height: 1.4; color: #1d1d1f; background: #fafaf8; border-radius: 10px; padding: 16px; }
+  .now { background: #fff; border: 1.5px solid #2f6fed; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+  .now .k { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #2f6fed; font-weight: 600; }
+  .now .t { font-size: 15px; font-weight: 600; margin: 2px 0; }
+  .now .w { color: #555; }
+  .done { color: #1a8a4a; } .cur { color: #2f6fed; font-weight: 600; } .todo { color: #999; }
+  .dot { position:relative; z-index:1; display:inline-block; width:10px; height:10px; border-radius:50%; vertical-align:middle; }
+  .d-done{background:#1a8a4a} .d-cur{background:#2f6fed; box-shadow:0 0 0 4px rgba(47,111,237,.2)} .d-todo{background:#ccc}
+  .agent { background:#fff4e5; border:1px solid #f0b45c; border-radius:8px; padding:6px 8px; font-size:12px; }
+  .agent b { color:#a8620a; }
+  .node { background:#fff; border:1px solid #ddd; border-radius:8px; padding:6px 9px; font-size:12px; }
+  .node.c { border:1.5px solid #2f6fed; }
+  .node.d { border-color:#9fd3b4; }
+  .muted { color:#888; font-size:11px; }
+</style>
+
+<h2>Three ways the map could look</h2>
+<p class="subtitle">Same session in all three: you asked Claude to add price alerts to the app, and it is halfway through, with two subagents running. Click the one that feels closest to the picture in your head.</p>
+
+<div class="cards">
+
+  <!-- A: route -->
+  <div class="card" data-choice="route" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="mm">
+      <div class="now"><div class="k">Now</div><div class="t">Building the server endpoint that saves an alert</div><div class="w">Why: the app screen needs somewhere to send the alert before it can be built</div></div>
+      <div style="position:relative; padding:6px 0 0 8px;">
+        <div style="position:absolute; left:12px; top:12px; bottom:12px; width:2px; background:#ddd"></div>
+        <div style="margin-bottom:10px"><span class="dot d-done"></span> <span class="done">Start: "add price alerts"</span></div>
+        <div style="margin-bottom:10px"><span class="dot d-done"></span> <span class="done">Read how watchlists work today</span></div>
+        <div style="margin-bottom:10px"><span class="dot d-done"></span> <span class="done">Added an alerts table to the database</span></div>
+        <div style="margin-bottom:6px"><span class="dot d-cur"></span> <span class="cur">Server endpoint to save an alert ← you are here</span></div>
+        <div style="margin:0 0 10px 26px; display:flex; gap:6px; flex-wrap:wrap">
+          <div class="agent"><b>Agent 1</b> writing tests for this endpoint</div>
+          <div class="agent"><b>Agent 2</b> reading how push notifications already work</div>
+        </div>
+        <div style="margin-bottom:10px"><span class="dot d-todo"></span> <span class="todo">Alert screen in the app</span></div>
+        <div><span class="dot d-todo"></span> <span class="todo">Finish: notify when the price crosses</span></div>
+      </div>
+    </div></div>
+    <div class="card-body"><h3>A. Route</h3><p>One line from start to finish with a "you are here" marker. Subagents branch off the step they're helping with. Easiest to read at a glance.</p></div>
+  </div>
+
+  <!-- B: mind map -->
+  <div class="card" data-choice="mindmap" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="mm">
+      <div class="now"><div class="k">Now</div><div class="t">Building the server endpoint that saves an alert</div><div class="w">Why: the app screen needs somewhere to send the alert</div></div>
+      <svg viewBox="0 0 360 236" width="100%" style="display:block">
+        <g stroke="#ccc" stroke-width="1.5">
+          <line x1="180" y1="115" x2="70" y2="40"/><line x1="180" y1="115" x2="290" y2="40"/>
+          <line x1="180" y1="115" x2="70" y2="190"/><line x1="180" y1="115" x2="290" y2="190"/>
+          <line x1="300" y1="58" x2="317" y2="102" stroke="#f0b45c" stroke-dasharray="4 3"/>
+          <line x1="250" y1="200" x2="246" y2="210" stroke="#f0b45c" stroke-dasharray="4 3"/>
+        </g>
+        <rect x="120" y="96" width="120" height="38" rx="9" fill="#1d1d1f"/>
+        <text x="180" y="119" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">Price alerts</text>
+        <rect x="18" y="24" width="104" height="32" rx="7" fill="#fff" stroke="#9fd3b4"/>
+        <text x="70" y="44" text-anchor="middle" font-size="11" fill="#1a8a4a">Alerts table ✓</text>
+        <rect x="232" y="22" width="116" height="36" rx="7" fill="#fff" stroke="#2f6fed" stroke-width="2"/>
+        <text x="290" y="44" text-anchor="middle" font-size="11" fill="#2f6fed" font-weight="600">Server endpoint ●</text>
+        <rect x="18" y="174" width="104" height="32" rx="7" fill="#fff" stroke="#ddd"/>
+        <text x="70" y="194" text-anchor="middle" font-size="11" fill="#999">Alert screen</text>
+        <rect x="238" y="174" width="104" height="32" rx="7" fill="#fff" stroke="#ddd"/>
+        <text x="290" y="194" text-anchor="middle" font-size="11" fill="#999">Push notification</text>
+        <rect x="276" y="102" width="82" height="24" rx="6" fill="#fff4e5" stroke="#f0b45c"/>
+        <text x="317" y="118" text-anchor="middle" font-size="10" fill="#a8620a">Agent 1: tests</text>
+        <rect x="150" y="204" width="96" height="24" rx="6" fill="#fff4e5" stroke="#f0b45c"/>
+        <text x="198" y="220" text-anchor="middle" font-size="10" fill="#a8620a">Agent 2: reading</text>
+      </svg>
+    </div></div>
+    <div class="card-body"><h3>B. Mind map</h3><p>The goal sits in the middle and the parts branch out from it. You see how the pieces tie together, and subagents hang off the part they're working on. Shows structure better, but shows order less clearly.</p></div>
+  </div>
+
+  <!-- C: story -->
+  <div class="card" data-choice="story" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="mm">
+      <div style="display:grid; grid-template-columns: 1.3fr 1fr; gap:10px">
+        <div>
+          <div class="now" style="margin-bottom:8px"><div class="k">Now</div><div class="t">Server endpoint to save an alert</div><div class="w">The app needs a place to send a new alert. This endpoint checks it and stores it in the table made earlier.</div></div>
+          <div class="node" style="margin-bottom:6px"><span class="muted">How it ties in</span><br>App screen → <b>this endpoint</b> → alerts table → price checker → push</div>
+          <div class="agent" style="margin-bottom:6px"><b>Agent 1</b> writing tests for this endpoint<br><span class="muted">so a bad alert can't be saved</span></div>
+          <div class="agent"><b>Agent 2</b> reading the push notification code<br><span class="muted">so step 5 reuses it instead of starting over</span></div>
+        </div>
+        <div>
+          <div class="muted" style="margin-bottom:4px">Plan · 3 of 5</div>
+          <div class="node d" style="margin-bottom:4px">✓ Read watchlist code</div>
+          <div class="node d" style="margin-bottom:4px">✓ Alerts table</div>
+          <div class="node c" style="margin-bottom:4px">● Server endpoint</div>
+          <div class="node" style="margin-bottom:4px; color:#999">Alert screen</div>
+          <div class="node" style="color:#999">Push notification</div>
+        </div>
+      </div>
+    </div></div>
+    <div class="card-body"><h3>C. Story + plan</h3><p>A big "now" card that explains in plain words, a one-line chain of how it ties in, and the plan on the side. More reading, more understanding.</p></div>
+  </div>
+
+</div>
+
+    </div>
+  </div>
+
+</body>
+</html>

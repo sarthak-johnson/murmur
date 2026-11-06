@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>session-map mockup 03</title>
+  <style>
+    /*
+     * BRAINSTORM COMPANION FRAME TEMPLATE
+     *
+     * This template provides a consistent frame with:
+     * - OS-aware light/dark theming
+     * - Header branding and connection status
+     * - Scrollable main content area
+     * - CSS helpers for common UI patterns
+     *
+     * Content is injected via placeholder comment in #frame-content.
+     */
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+
+    /* ===== THEME VARIABLES ===== */
+    :root {
+      --bg-primary: #f5f5f7;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #e5e5e7;
+      --border: #d1d1d6;
+      --text-primary: #1d1d1f;
+      --text-secondary: #86868b;
+      --text-tertiary: #aeaeb2;
+      --accent: #0071e3;
+      --accent-hover: #0077ed;
+      --success: #34c759;
+      --warning: #ff9f0a;
+      --error: #ff3b30;
+      --selected-bg: #e8f4fd;
+      --selected-border: #0071e3;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-primary: #1d1d1f;
+        --bg-secondary: #2d2d2f;
+        --bg-tertiary: #3d3d3f;
+        --border: #424245;
+        --text-primary: #f5f5f7;
+        --text-secondary: #86868b;
+        --text-tertiary: #636366;
+        --accent: #0a84ff;
+        --accent-hover: #409cff;
+        --selected-bg: rgba(10, 132, 255, 0.15);
+        --selected-border: #0a84ff;
+      }
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      display: flex;
+      flex-direction: column;
+      line-height: 1.5;
+    }
+
+    /* ===== FRAME STRUCTURE ===== */
+    .brand { display: flex; align-items: center; min-width: 0; overflow: hidden; color: var(--text-secondary); line-height: 1; }
+    .brand a { color: inherit; text-decoration: none; display: flex; align-items: center; gap: 0.5rem; min-width: 0; max-width: 100%; line-height: 1; }
+    .brand-copy { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1; transform: translateY(-1px); }
+    .brand-logo { display: block; height: 1em; width: auto; max-width: 180px; flex-shrink: 0; filter: invert(1); }
+    @media (prefers-color-scheme: dark) {
+      .brand-logo { filter: none; }
+    }
+    .status { font-size: 0.7rem; color: var(--status-color, var(--success)); display: flex; align-items: center; gap: 0.4rem; justify-self: end; white-space: nowrap; line-height: 1; }
+    .status::before { content: ''; width: 6px; height: 6px; background: var(--status-color, var(--success)); border-radius: 50%; }
+
+    .main { flex: 1; overflow-y: auto; }
+    #frame-content { padding: 2rem; min-height: 100%; }
+
+    .header {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 0.5rem 1.5rem;
+      flex-shrink: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 1rem;
+      min-height: 42px;
+    }
+    .header .brand { justify-self: start; width: 100%; font-size: 0.75rem; line-height: 1; }
+    .header .status { grid-column: 2; line-height: 1; }
+    .header span {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+    .header .selected-text {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* ===== TYPOGRAPHY ===== */
+    h2 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .subtitle { color: var(--text-secondary); margin-bottom: 1.5rem; }
+    .section { margin-bottom: 2rem; }
+    .label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+
+    /* ===== OPTIONS (for A/B/C choices) ===== */
+    .options { display: flex; flex-direction: column; gap: 0.75rem; }
+    .option {
+      background: var(--bg-secondary);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+    .option:hover { border-color: var(--accent); }
+    .option.selected { background: var(--selected-bg); border-color: var(--selected-border); }
+    .option .letter {
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      width: 1.75rem; height: 1.75rem;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 600; font-size: 0.85rem; flex-shrink: 0;
+    }
+    .option.selected .letter { background: var(--accent); color: white; }
+    .option .content { flex: 1; }
+    .option .content h3 { font-size: 0.95rem; margin-bottom: 0.15rem; }
+    .option .content p { color: var(--text-secondary); font-size: 0.85rem; margin: 0; }
+
+    /* ===== CARDS (for showing designs/mockups) ===== */
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .card.selected { border-color: var(--selected-border); border-width: 2px; }
+    .card-image { background: var(--bg-tertiary); aspect-ratio: 16/10; display: flex; align-items: center; justify-content: center; }
+    .card-body { padding: 1rem; }
+    .card-body h3 { margin-bottom: 0.25rem; }
+    .card-body p { color: var(--text-secondary); font-size: 0.85rem; }
+
+    /* ===== MOCKUP CONTAINER ===== */
+    .mockup {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+    .mockup-header {
+      background: var(--bg-tertiary);
+      padding: 0.5rem 1rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+    }
+    .mockup-body { padding: 1.5rem; }
+
+    /* ===== SPLIT VIEW (side-by-side comparison) ===== */
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 700px) { .split { grid-template-columns: 1fr; } }
+
+    /* ===== PROS/CONS ===== */
+    .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+    .pros, .cons { background: var(--bg-secondary); border-radius: 8px; padding: 1rem; }
+    .pros h4 { color: var(--success); font-size: 0.85rem; margin-bottom: 0.5rem; }
+    .cons h4 { color: var(--error); font-size: 0.85rem; margin-bottom: 0.5rem; }
+    .pros ul, .cons ul { margin-left: 1.25rem; font-size: 0.85rem; color: var(--text-secondary); }
+    .pros li, .cons li { margin-bottom: 0.25rem; }
+
+    /* ===== PLACEHOLDER (for mockup areas) ===== */
+    .placeholder {
+      background: var(--bg-tertiary);
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      color: var(--text-tertiary);
+    }
+
+    /* ===== INLINE MOCKUP ELEMENTS ===== */
+    .mock-nav { background: var(--accent); color: white; padding: 0.75rem 1rem; display: flex; gap: 1.5rem; font-size: 0.9rem; }
+    .mock-sidebar { background: var(--bg-tertiary); padding: 1rem; min-width: 180px; }
+    .mock-content { padding: 1.5rem; flex: 1; }
+    .mock-button { background: var(--accent); color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.85rem; }
+    .mock-input { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; width: 100%; }
+  </style>
+</head>
+<body>
+
+  <div class="main">
+    <div id="frame-content">
+      <style>
+  .sc { font-family: -apple-system, system-ui, sans-serif; font-size: 13px; line-height: 1.45; color: #1d1d1f; background: #fafaf8; border: 1px solid #e3e3e0; border-radius: 12px; overflow: hidden; }
+  .bar { display:flex; align-items:center; gap:12px; padding:10px 16px; border-bottom:1px solid #e3e3e0; background:#fff; }
+  .crumb { font-weight:600; } .crumb span { color:#888; font-weight:400; }
+  .pill { font-size:11px; padding:3px 8px; border-radius:20px; background:#eef3fe; color:#2f6fed; font-weight:600; }
+  .pill.w { background:#fdecec; color:#c23030; }
+  .body { display:grid; grid-template-columns: 240px 1fr 300px; }
+  .side { padding:14px; border-right:1px solid #e3e3e0; }
+  .main { padding:16px 18px; }
+  .right { padding:14px; border-left:1px solid #e3e3e0; background:#fff; }
+  .lbl { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:#888; font-weight:600; margin:0 0 6px; }
+  .sec { margin-bottom:16px; }
+  .h { font-size:18px; font-weight:650; margin:0 0 2px; }
+  .aim { background:#fff; border:1px solid #e3e3e0; border-radius:10px; padding:10px 12px; }
+  .io { display:flex; flex-direction:column; align-items:flex-start; gap:3px; font-size:12px; } .io .arr{color:#aaa; padding-left:10px}
+  .chip { background:#fff; border:1px solid #ddd; border-radius:6px; padding:3px 8px; }
+  .chip.c { border-color:#2f6fed; color:#2f6fed; font-weight:600; background:#eef3fe; }
+  .tl { border-left:2px solid #e3e3e0; margin-left:5px; padding-left:14px; }
+  .ev { position:relative; margin-bottom:10px; }
+  .ev:before { content:''; position:absolute; left:-20px; top:5px; width:10px; height:10px; border-radius:50%; background:#1a8a4a; }
+  .ev.c:before { background:#2f6fed; box-shadow:0 0 0 4px rgba(47,111,237,.2); }
+  .ev.x:before { background:#d9534f; }
+  .ev .m { color:#888; font-size:11px; }
+  .raw { font-size:11.5px; color:#2f6fed; cursor:pointer; }
+  .file { display:grid; grid-template-columns: 1fr auto; gap:2px 8px; padding:7px 0; border-bottom:1px solid #f0f0ee; }
+  .file code { font-family: ui-monospace, Menlo, monospace; font-size:12px; }
+  .file .r { color:#666; font-size:12px; grid-column: 1 / -1; }
+  .add { color:#1a8a4a; font-size:11px; font-family: ui-monospace, Menlo, monospace; } .del { color:#c23030; }
+  .tag { font-size:10px; padding:1px 6px; border-radius:4px; background:#e8f5ee; color:#1a8a4a; margin-left:6px; }
+  .tag.e { background:#f3f3f1; color:#666; }
+  .dec { background:#fff; border:1px solid #e3e3e0; border-radius:8px; padding:8px 10px; margin-bottom:6px; }
+  .dec .no { color:#999; font-size:12px; }
+  .chk { font-size:12.5px; margin-bottom:4px; }
+  .word { background:#f6f4ff; border:1px solid #d9d2fb; border-radius:8px; padding:7px 9px; margin-bottom:6px; font-size:12px; }
+  .word b { color:#5b45c9; }
+  .ask { border:1px solid #ccc; border-radius:8px; padding:8px 10px; color:#999; font-size:12.5px; background:#fff; }
+  .mini rect { rx:5; }
+  .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+</style>
+
+<h2>Click a part of the map, and it opens up</h2>
+<p class="subtitle">You clicked "Server endpoint". Plain words come first. Code and raw tool calls are always one click deeper, never the first thing you see.</p>
+
+<div class="sc">
+  <div class="bar">
+    <div class="crumb"><span>Price alerts ›</span> Server endpoint</div>
+    <div class="pill">● in progress · 6 min</div>
+    <div class="pill w">Tried a fix 3 times</div>
+    <div style="margin-left:auto; color:#888; font-size:12px">‹ back to whole map</div>
+  </div>
+  <div class="body">
+
+    <!-- left: mini map + where this sits -->
+    <div class="side">
+      <div class="lbl">Where this sits</div>
+      <svg viewBox="0 0 210 150" width="100%" class="mini" style="font-family:-apple-system,system-ui,sans-serif">
+        <g stroke="#e4e4e4"><line x1="105" y1="75" x2="40" y2="25"/><line x1="105" y1="75" x2="170" y2="25"/><line x1="105" y1="75" x2="40" y2="125"/><line x1="105" y1="75" x2="170" y2="125"/></g>
+        <rect x="70" y="63" width="70" height="24" rx="6" fill="#1d1d1f"/><text x="105" y="79" text-anchor="middle" fill="#fff" font-size="9">Price alerts</text>
+        <rect x="5" y="14" width="70" height="22" rx="5" fill="#fff" stroke="#ddd"/><text x="40" y="29" text-anchor="middle" font-size="8.5" fill="#999">Alert screen</text>
+        <rect x="132" y="12" width="76" height="26" rx="5" fill="#eef3fe" stroke="#2f6fed" stroke-width="1.5"/><text x="170" y="29" text-anchor="middle" font-size="8.5" fill="#2f6fed" font-weight="600">Server endpoint</text>
+        <rect x="135" y="114" width="70" height="22" rx="5" fill="#fff" stroke="#9fd3b4"/><text x="170" y="129" text-anchor="middle" font-size="8.5" fill="#1a8a4a">Alerts table</text>
+        <rect x="5" y="114" width="70" height="22" rx="5" fill="#fff" stroke="#ddd"/><text x="40" y="129" text-anchor="middle" font-size="8.5" fill="#999">Push</text>
+      </svg>
+      <div class="sec" style="margin-top:12px">
+        <div class="lbl">What goes in and out</div>
+        <div class="io"><span class="chip">from: Alert screen</span><span class="arr">↓</span><span class="chip c">this endpoint</span><span class="arr">↓</span><span class="chip">to: Alerts table</span></div>
+        <div style="color:#666; font-size:12px; margin-top:6px">Gets: stock, target price, above or below.<br>Gives back: the saved alert, or why it was refused.</div>
+      </div>
+      <div class="sec">
+        <div class="lbl">Who's on it</div>
+        <div style="font-size:12.5px">Main Claude, building it<br><span style="color:#a8620a">Agent 1</span>, writing its tests</div>
+        <div class="raw" style="margin-top:4px">see the brief Agent 1 was given ›</div>
+      </div>
+    </div>
+
+    <!-- middle: aim, story, files -->
+    <div class="main">
+      <div class="sec">
+        <div class="h">Server endpoint to save an alert</div>
+        <div class="aim"><b>Aim:</b> take an alert from the app, make sure it makes sense, and store it. <span style="color:#666">Done when a good alert saves, a bad one is refused with a clear reason, and the tests pass.</span></div>
+      </div>
+
+      <div class="grid2">
+        <div class="sec">
+          <div class="lbl">What it did, in order</div>
+          <div class="tl">
+            <div class="ev"><div>Looked at how the watchlist endpoint is built, to copy its style</div><div class="m">4 files read · <span class="raw">raw ›</span></div></div>
+            <div class="ev"><div>Wrote the endpoint and the checks: price must be above 0, stock must exist</div><div class="m">2 files changed · <span class="raw">diff ›</span></div></div>
+            <div class="ev x"><div>Test failed: the stock check rejected real stocks</div><div class="m">It was matching "TCS" against "TCS.NS" · <span class="raw">error ›</span></div></div>
+            <div class="ev x"><div>Second and third fix attempts also failed</div><div class="m"><span class="raw">what changed each time ›</span></div></div>
+            <div class="ev c"><div>Now trying to look stocks up by their exchange code</div><div class="m">running tests…</div></div>
+          </div>
+        </div>
+        <div class="sec">
+          <div class="lbl">Files touched · 4</div>
+          <div class="file"><code>server/routes/alerts.js</code><span class="add">+84 <span class="tag">new</span></span><div class="r">The endpoint itself</div></div>
+          <div class="file"><code>server/lib/validateAlert.js</code><span class="add">+31 <span class="tag">new</span></span><div class="r">The checks for a bad alert</div></div>
+          <div class="file"><code>server/routes/index.js</code><span class="add">+2 <span class="del">−0</span> <span class="tag e">edited</span></span><div class="r">Plugs the new endpoint in</div></div>
+          <div class="file"><code>server/tests/alerts.test.js</code><span class="add">+56 <span class="tag">new</span></span><div class="r">Agent 1's tests</div></div>
+          <div class="raw" style="margin-top:6px">click any file to see the change, with notes in plain words ›</div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="lbl">Choices it made</div>
+        <div class="dec"><b>Used the same setup as the watchlist endpoint</b> <span class="no">instead of a new pattern, so the code stays consistent</span></div>
+        <div class="dec"><b>Limit of 20 alerts per user</b> <span class="no">⚠ Claude's assumption. You never said this.</span></div>
+      </div>
+    </div>
+
+    <!-- right: checks, learn, ask -->
+    <div class="right">
+      <div class="sec">
+        <div class="lbl">Checked so far</div>
+        <div class="chk">✓ A good alert saves</div>
+        <div class="chk">✓ A negative price is refused</div>
+        <div class="chk" style="color:#c23030">✗ A real stock like TCS is accepted</div>
+        <div class="chk" style="color:#999">○ Not tried in the app yet</div>
+      </div>
+      <div class="sec">
+        <div class="lbl">Words used here</div>
+        <div class="word"><b>Endpoint</b>: a web address on the server the app sends data to. <span class="raw">save as card</span></div>
+        <div class="word"><b>Validation</b>: checking data is sensible before storing it. <span class="raw">save as card</span></div>
+      </div>
+      <div class="sec">
+        <div class="lbl">Ask about this part</div>
+        <div class="ask">Why does it need the exchange code?</div>
+        <div style="color:#888; font-size:11px; margin-top:4px">Answered on the side without interrupting the session</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 style="margin-top:34px">More ideas for the whole screen</h3>
+<p class="subtitle">Click the ones you'd want. Leave the rest.</p>
+<div class="options" data-multiselect>
+  <div class="option" data-choice="since" onclick="toggleSelect(this)"><div class="letter">1</div><div class="content"><h3>"Since you last looked"</h3><p>You glance back after five minutes and see what's new highlighted, plus a one-line catch-up: "Finished the table, started the endpoint, 1 test failing."</p></div></div>
+  <div class="option" data-choice="needs" onclick="toggleSelect(this)"><div class="letter">2</div><div class="content"><h3>"Needs you" and "stuck" flags</h3><p>A loud marker when Claude is waiting for your answer, keeps retrying the same fix, or is about to do something risky like deleting files or touching production.</p></div></div>
+  <div class="option" data-choice="assume" onclick="toggleSelect(this)"><div class="letter">3</div><div class="content"><h3>Assumptions list</h3><p>Every choice Claude made that you never asked for, gathered in one place so you can accept or reject each one.</p></div></div>
+  <div class="option" data-choice="replay" onclick="toggleSelect(this)"><div class="letter">4</div><div class="content"><h3>Replay slider</h3><p>Drag back through the session and watch the map grow step by step. Good for "how did we get here".</p></div></div>
+  <div class="option" data-choice="zoom" onclick="toggleSelect(this)"><div class="letter">5</div><div class="content"><h3>Zoom levels</h3><p>Feature → parts → files → functions. Zooming into a part shows its files as their own small map.</p></div></div>
+  <div class="option" data-choice="ask" onclick="toggleSelect(this)"><div class="letter">6</div><div class="content"><h3>Ask on the side</h3><p>Ask a question about any part and get a plain answer, without derailing the main session.</p></div></div>
+  <div class="option" data-choice="cards" onclick="toggleSelect(this)"><div class="letter">7</div><div class="content"><h3>Cards and a quick check</h3><p>When a part finishes, you get 2 or 3 cards on what was built and why. They feed a recap at the end of the session.</p></div></div>
+  <div class="option" data-choice="recap" onclick="toggleSelect(this)"><div class="letter">8</div><div class="content"><h3>Session recap</h3><p>When the session ends, the map freezes into a page you can come back to, or share with a teammate as "here's what we built today".</p></div></div>
+</div>
+
+    </div>
+  </div>
+
+</body>
+</html>
