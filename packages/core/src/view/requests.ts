@@ -2,9 +2,9 @@
  * Plan and part status rules, applied once after every event of a request:
  * - Task: narrate `taskStatus` running -> now, done -> done, failed -> failed.
  *   A task with no status yet is `now` only when the latest narrate names it, else `todo`.
- * - Part: `now` if any of its tasks is now or the latest narrate names it;
- *   `done` if it has tasks and all are done, or a step on it is done and no later step is running;
- *   otherwise `todo`.
+ * - Part: `now` if any of its tasks is now; else `done` if it has tasks and all are done,
+ *   or a step on it is done and no later step is running; else `now` if the latest narrate
+ *   names it; otherwise `todo`. (The latest narrate never overrides `done`.)
  * - Phase: `now` if any task in it is now or failed; `done` if it has tasks and all are done; else `todo`.
  * A narrate naming a task but no part lands on that task's part.
  * A repeated `map` takes the new order and titles, keeps the detail of ids seen before, and drops vanished ids.
@@ -172,11 +172,12 @@ function setStatuses(req: RequestView, last: Named): void {
     const done = p.steps.findLastIndex((s) => s.status === "done");
     const stepDone =
       done >= 0 && !p.steps.slice(done).some((s) => s.status === "running");
-    p.status =
-      p.id === last.part || own.some((t) => t.status === "now")
-        ? "now"
-        : allDone(own) || stepDone
-          ? "done"
+    p.status = own.some((t) => t.status === "now")
+      ? "now"
+      : allDone(own) || stepDone
+        ? "done"
+        : p.id === last.part
+          ? "now"
           : "todo";
   }
   for (const ph of req.phases) {

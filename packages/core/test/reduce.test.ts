@@ -197,10 +197,32 @@ test("a done step finishes a part unless a later step runs", () => {
       ...steps.map((s, i) =>
         narrateCall(3 + i, note({ part: "db", step: step(s) })),
       ),
-      narrateCall(9, note({ part: "api" })),
     ]).requests[0]?.parts[0]?.status;
   expect(parts("running", "done")).toBe("done");
-  expect(parts("done", "running")).toBe("todo");
+  expect(parts("done", "running")).toBe("now");
+});
+
+test("last narrate marking its part done leaves it done", () => {
+  const view = reduce([
+    prompt(1, "add alerts"),
+    mapCall(2, MAP),
+    narrateCall(3, note({ part: "db", task: "1.1", taskStatus: "done" })),
+    narrateCall(4, note({ part: "api", task: "2.1", taskStatus: "done" })),
+    narrateCall(
+      5,
+      note({
+        part: "api",
+        task: "2.2",
+        taskStatus: "done",
+        step: { text: "Listed alerts", status: "done" },
+      }),
+    ),
+    at(6, "SessionEnd"),
+  ]);
+  const req = view.requests[0];
+  expect(req?.phases[1]?.tasks.map((t) => t.status)).toEqual(["done", "done"]);
+  expect(req?.parts.map((p) => p.status)).toEqual(["done", "done"]);
+  expect(req?.phases.map((p) => p.status)).toEqual(["done", "done"]);
 });
 
 test("a failed task makes its phase now", () => {
