@@ -178,6 +178,24 @@ test("the title skips Murmur's own commands", async () => {
   expect(row?.title).toBe("fix the login");
 });
 
+test("the title skips a background task's notification", async () => {
+  t = await testApp();
+  const { token } = await linkMachine(t, "ada");
+  const at = (s: string) => `2026-11-06T10:00:${s}.000Z`;
+  await ingest(t, token, [
+    ev("s1", "UserPromptSubmit", {
+      ts: at("10"),
+      payload: { prompt: "<task-notification>\n<task-id>a1</task-id>" },
+    }),
+    ev("s1", "UserPromptSubmit", {
+      ts: at("20"),
+      payload: { prompt: "fix the login" },
+    }),
+  ]);
+  const [row] = await t.db.select().from(sessions);
+  expect(row?.title).toBe("fix the login");
+});
+
 test("long titles cut at a word boundary with an ellipsis, short ones stay", async () => {
   const { makeTitle } = await import("../src/ingest.js");
   expect(makeTitle("a".repeat(80))).toBe("a".repeat(80));

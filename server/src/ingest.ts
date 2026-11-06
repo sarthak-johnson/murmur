@@ -1,5 +1,5 @@
 import {
-  isOwnCommand,
+  isNotRequest,
   type MurmurEvent,
   MurmurEventSchema,
 } from "@murmur/core";
@@ -59,7 +59,7 @@ function sessionRow(
     (e) =>
       e.hook === "UserPromptSubmit" &&
       typeof e.payload.prompt === "string" &&
-      !isOwnCommand(e.payload.prompt),
+      !isNotRequest(e.payload.prompt),
   )?.payload.prompt as string | undefined;
   const title = prompt?.trim() ? makeTitle(prompt.trim()) : null;
   return {

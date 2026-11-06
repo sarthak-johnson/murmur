@@ -51,6 +51,19 @@ test("splits requests on each prompt", () => {
   expect(reduce([prompt(1, "x"), at(2, "SessionEnd")]).ended).toBe(true);
 });
 
+test("a background task's notification is not a request", () => {
+  const notice =
+    '<task-notification>\n<task-id>ab49</task-id>\n<status>completed</status>\n<summary>Agent "Build Task 17" finished</summary>\n</task-notification>';
+  const view = reduce([
+    prompt(1, "build the page"),
+    prompt(2, notice),
+    tool(3, "Bash", { command: "ls" }),
+    prompt(4, `  ${notice}`),
+  ]);
+  expect(view.requests.map((r) => r.prompt)).toEqual(["build the page"]);
+  expect(view.requests[0]?.now?.text).toBe("Running ls");
+});
+
 test("Murmur's own commands are not requests", () => {
   const view = reduce([
     prompt(1, "build the page"),

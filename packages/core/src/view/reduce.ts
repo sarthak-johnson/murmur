@@ -55,18 +55,23 @@ function sortEvents(events: MurmurEvent[]): MurmurEvent[] {
     .filter((e) => !seen.has(e.id) && seen.add(e.id));
 }
 
-/** /murmur:on and the like switch Murmur itself; they are not work. */
-export const isOwnCommand = (prompt: unknown): boolean =>
-  typeof prompt === "string" && /^\s*\/murmur:\w+(\s|$)/.test(prompt);
+/**
+ * Prompts that are not a person asking for work: /murmur:on and the like switch
+ * Murmur itself, and Claude Code submits a `<task-notification>` when a background
+ * helper finishes.
+ */
+export const isNotRequest = (prompt: unknown): boolean =>
+  typeof prompt === "string" &&
+  /^\s*(\/murmur:\w+(\s|$)|<task-notification>)/.test(prompt);
 
 /**
- * Each UserPromptSubmit starts a request, except Murmur's own commands, whose events
+ * Each UserPromptSubmit starts a request, except `isNotRequest` ones, whose events
  * stay with the request before; events before the first belong to none.
  */
 function splitRequests(events: MurmurEvent[]) {
   const out: { start: MurmurEvent; rest: MurmurEvent[] }[] = [];
   for (const e of events) {
-    if (e.hook === "UserPromptSubmit" && !isOwnCommand(e.payload.prompt))
+    if (e.hook === "UserPromptSubmit" && !isNotRequest(e.payload.prompt))
       out.push({ start: e, rest: [] });
     else out.at(-1)?.rest.push(e);
   }
