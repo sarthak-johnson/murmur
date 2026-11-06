@@ -6,9 +6,11 @@
  *   one part; runs with no id get a part each. The title is the first non-review run's
  *   description without its work verb. Each run is a step labelled by its verb.
  * - Run status: failed on a PostToolUseFailure of its call; done when its subagent
- *   stopped, its call returned (not launched in the background), or the request is
- *   finished and the subagent did nothing after it; else running. A part is `now` while
- *   a run runs, else `done`; its task is `failed` when its last run failed.
+ *   stopped, its call returned (not launched in the background), or its request is
+ *   finished and the subagent is over: a SessionEnd came after its last event, or it
+ *   was quiet for over 10 minutes before the session's latest event; else running.
+ *   Both only ever turn true as events arrive, so a run never flips back. A part is
+ *   `now` while a run runs, else `done`; its task is `failed` when its last run failed.
  * - Files: Edit and Write inside a run's subagent go to its part, even after the next
  *   prompt. Main-thread ones group by the folder of their display path; a one-file folder
  *   joins its nearest folder with a part; the 6 biggest folders become parts. Root files,
@@ -32,6 +34,7 @@ const MAX_FOLDERS = 6;
 const ID = /\b(?:tasks?\s+(\d+(?:\s*[-–]\s*\d+)?)|(?:bug\s+)?([a-z]\d+))\b/i;
 const VERB =
   /^(implement|build|draft|write|fix|add|research|investigate|re-?review|review)\b\s*/i;
+const QUIET_MS = 600_000; // 10 minutes
 const REVIEW = /^(re-?)?review\b/i;
 const LABEL: Record<string, string> = {
   implement: "Built",
@@ -79,13 +82,15 @@ export function inferHistory(
   started: Map<string, string>,
 ): void {
   const all = events.flat();
-  const lastSeen = new Map<string, number>();
-  events.forEach((list, i) => {
-    for (const e of list) {
-      const id = str(e.payload.agent_id);
-      if (id) lastSeen.set(id, i);
-    }
-  });
+  const lastAt = new Map<string, string>(); // agent id -> ts of its latest event
+  for (const e of all) {
+    const id = str(e.payload.agent_id);
+    if (id) lastAt.set(id, e.ts);
+  }
+  const latest = Date.parse(all.at(-1)?.ts ?? "");
+  const endAt = all.findLast((e) => e.hook === "SessionEnd")?.ts ?? "";
+  const over = (since: string) =>
+    endAt > since || latest - Date.parse(since) > QUIET_MS;
   const failed = new Set<string>();
   const returned = new Set<string>();
   for (const e of all) {
@@ -116,7 +121,7 @@ export function inferHistory(
         ? "failed"
         : agent?.status === "done" ||
             returned.has(use) ||
-            (req.finished && (lastSeen.get(agentId ?? "") ?? -1) <= i)
+            (req.finished && over(lastAt.get(agentId ?? "") ?? e.ts))
           ? "done"
           : "running";
       // A helper judged finished reads done everywhere (map chips, helper lists).

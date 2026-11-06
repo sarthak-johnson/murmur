@@ -23,7 +23,8 @@ export function reduce(events: MurmurEvent[]): SessionView {
     for (const [use, id] of applyAgents(req, rest, trace, agents))
       started.set(use, id);
     applyFlags(req, rest, trace, i < all.length - 1);
-    req.finished = i < all.length - 1 || ended;
+    // A resumed session goes on after its SessionEnd, so only a last one counts.
+    req.finished = i < all.length - 1 || rest.at(-1)?.hook === "SessionEnd";
     return req;
   });
   inferHistory(

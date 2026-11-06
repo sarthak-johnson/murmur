@@ -352,8 +352,8 @@ describe("finished requests", () => {
     tool(9, "Bash", { command: "ls" }, "PreToolUse"),
   ];
 
-  test("a later request finishes one; a helper that never stopped and went quiet counts as done", () => {
-    const view = reduce(events);
+  test("a later request finishes one; a helper that never stopped counts as done once quiet for over 10 minutes", () => {
+    const view = reduce([...events, at(9 + 601, "Notification")]);
     const [first, last] = view.requests;
     expect(first?.finished).toBe(true);
     expect(first?.parts.map((p) => p.status)).toEqual(["done", "done"]);
@@ -365,10 +365,54 @@ describe("finished requests", () => {
     expect(last?.tally).toEqual({ helpers: 1, files: 0, commands: 1 });
   });
 
+  test("a background helper quiet right after the next prompt stays running until there is evidence, and never flips back", () => {
+    const all = [
+      prompt(0, "go"),
+      ...run(1, "Build style A, lit plate", "a1"),
+      by(edit(3, "style/a/x.css", ["+a"]), "a1"),
+      prompt(4, "next"),
+      tool(5, "Bash", { command: "ls" }, "PreToolUse"),
+      tool(300, "Bash", { command: "ls" }, "PreToolUse"),
+      tool(3 + 601, "Bash", { command: "ls" }, "PreToolUse"),
+      tool(700, "Bash", { command: "ls" }, "PreToolUse"),
+    ];
+    const seen = all.slice(4).map((_, k) => {
+      const [first] = reduce(all.slice(0, 5 + k)).requests;
+      return `${first?.parts[0]?.status}/${first?.agents[0]?.status}`;
+    });
+    expect(seen).toEqual([
+      "now/running",
+      "now/running",
+      "now/running",
+      "done/done",
+      "done/done",
+    ]);
+  });
+
+  test("a session end after the helper's last event is evidence it is over", () => {
+    const view = reduce([
+      prompt(0, "go"),
+      ...run(1, "Build style A, lit plate", "a1"),
+      prompt(3, "next"),
+      at(4, "SessionEnd"),
+    ]);
+    expect(view.requests[0]?.parts[0]?.status).toBe("done");
+  });
+
   test("the session ending finishes the last request", () => {
     const view = reduce([...events, at(10, "SessionEnd")]);
     expect(view.requests.map((r) => r.finished)).toEqual([true, true]);
     expect(view.requests[1]?.parts[0]?.status).toBe("done");
+  });
+
+  test("a resumed session's last request is not finished by the earlier session end", () => {
+    const view = reduce([
+      ...events,
+      at(10, "SessionEnd"),
+      at(11, "SessionStart", { source: "resume" }),
+      tool(12, "Bash", { command: "ls" }, "PreToolUse"),
+    ]);
+    expect(view.requests.map((r) => r.finished)).toEqual([true, false]);
   });
 
   test("a helper still active after the next prompt keeps running", () => {
