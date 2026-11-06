@@ -266,7 +266,8 @@ function PartBody(props: {
               {agents.map(({ k, a }) => (
                 <div key={a.id} className="pd-agent">
                   <div>
-                    Agent {k} · {a.description}
+                    Agent {k}
+                    {a.description && ` · ${a.description}`}
                   </div>
                   <details>
                     <summary>See the brief</summary>
