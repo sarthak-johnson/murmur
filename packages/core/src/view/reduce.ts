@@ -29,7 +29,7 @@ export function reduce(events: MurmurEvent[]): SessionView {
   });
   inferHistory(
     requests,
-    split.map((s) => s.rest),
+    split.map((s) => [s.start, ...s.rest]),
     agents,
     started,
   );

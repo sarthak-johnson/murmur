@@ -2,9 +2,9 @@
  * A request with no valid map call (`planInferred`) still tells its story, from its events.
  * Runs after every request is reduced, so helpers that stop later are seen.
  * - Helpers: each Agent PreToolUse is a run. Runs whose description names the same task
- *   or item id (`Task 12`, `Tasks 13-14`, `B7`, `bug B1`; case and `bug` ignored) share
- *   one part; runs with no id get a part each. The title is the first non-review run's
- *   description without its work verb. Each run is a step labelled by its verb.
+ *   or bug id (`Task 12`, `Tasks 13-14`, `B7`, `bug B1`, `bug 1`; case and `bug` ignored)
+ *   share one part; runs with no id get a part each. The title is the first non-review
+ *   run's description without its work verb. Each run is a step labelled by its verb.
  * - Run status: failed on a PostToolUseFailure of its call; done when its subagent
  *   stopped, its call returned (not launched in the background), or its request is
  *   finished and the subagent is over: a SessionEnd came after its last event, or it
@@ -12,7 +12,8 @@
  *   Both only ever turn true as events arrive, so a run never flips back. A part is
  *   `now` while a run runs, else `done`; its task is `failed` when its last run failed.
  * - Files: Edit and Write inside a run's subagent go to its part, even after the next
- *   prompt. Main-thread ones group by the folder of their display path; a one-file folder
+ *   prompt. Main-thread ones group by the folder of their display path (from the cwd of
+ *   the request's prompt, the first event of its list); a one-file folder
  *   joins its nearest folder with a part; the 6 biggest folders become parts. Root files,
  *   the rest, and touches of subagents with no run stay in `looseFiles`.
  * - Parts are in start order; a part changing a file an earlier one changed links to it
@@ -31,9 +32,9 @@ import type {
 } from "./types.js";
 
 const MAX_FOLDERS = 6;
-const ID = /\b(?:tasks?\s+(\d+(?:\s*[-–]\s*\d+)?)|(?:bug\s+)?([a-z]\d+))\b/i;
+const ID = /\b(?:tasks?\s+(\d+(?:\s*[-–]\s*\d+)?)|(?:bug\s+b?|b)(\d+))\b/i;
 const VERB =
-  /^(implement|build|draft|write|fix|add|research|investigate|re-?review|review)\b\s*/i;
+  /^(implement|build|draft|write|fix|add|research|investigate|re-?review|review)\b[\s:]*/i;
 const QUIET_MS = 600_000; // 10 minutes
 const REVIEW = /^(re-?)?review\b/i;
 const LABEL: Record<string, string> = {
@@ -57,9 +58,7 @@ const describe = (e: MurmurEvent) =>
 function subject(description: string): string | undefined {
   const m = ID.exec(description);
   if (!m) return undefined;
-  return m[1]
-    ? `task:${m[1].replace(/\s*[-–]\s*/, "-")}`
-    : `item:${(m[2] as string).toUpperCase()}`;
+  return m[1] ? `task:${m[1].replace(/\s*[-–]\s*/, "-")}` : `item:B${m[2]}`;
 }
 
 function titleOf(description: string): string {
@@ -95,6 +94,7 @@ export function inferHistory(
   const returned = new Set<string>();
   for (const e of all) {
     const use = str(e.payload.tool_use_id);
+    if (!use) continue;
     if (isTool(e, "PostToolUseFailure", "Agent")) failed.add(use);
     const res = obj(e.payload.tool_response);
     if (
@@ -115,7 +115,7 @@ export function inferHistory(
       const use = str(e.payload.tool_use_id);
       const description = describe(e);
       const id = subject(description) ?? `run:${use || e.id}`;
-      const agentId = started.get(use);
+      const agentId = started.get(use || e.id);
       const agent = agentId ? agents.get(agentId) : undefined;
       const status: StepView["status"] = failed.has(use)
         ? "failed"

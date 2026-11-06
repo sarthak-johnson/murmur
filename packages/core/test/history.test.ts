@@ -93,6 +93,50 @@ describe("parts from helpers", () => {
     expect(new Set(r?.parts.map((p) => p.id)).size).toBe(2);
   });
 
+  test("version and other letter-digit words are not ids, and a verb with a colon leaves no colon", () => {
+    const [r] = reduce([
+      prompt(0, "go"),
+      ...run(1, "Build v2 screen", "a1"),
+      ...run(3, "Review v2 chart", "a2"),
+      ...run(5, "Upload S3 assets", "a3"),
+      ...run(7, "Check S3 policy", "a4"),
+      ...run(9, "Implement: Lit plate tokens", "a5"),
+    ]).requests;
+    expect(r?.parts.map((p) => p.title)).toEqual([
+      "V2 screen",
+      "V2 chart",
+      "Upload S3 assets",
+      "Check S3 policy",
+      "Lit plate tokens",
+    ]);
+  });
+
+  test("an empty tool_use_id is not a key: each run keeps its own helper", () => {
+    const blank = (n: number, description: string) => {
+      const e = call(n, description);
+      return { ...e, payload: { ...e.payload, tool_use_id: "" } };
+    };
+    const [r] = reduce([
+      prompt(0, "go"),
+      blank(1, "Implement Task 1: tokens"),
+      start(2, "a1"),
+      blank(3, "Implement Task 2: money"),
+      start(4, "a2"),
+      at(5, "PostToolUse", {
+        tool_name: "Agent",
+        tool_use_id: "",
+        tool_response: { status: "completed" },
+      }),
+    ]).requests;
+    expect(
+      r?.parts.map((p) => p.steps.map((s) => [s.agentId, s.status])),
+    ).toEqual([[["a1", "running"]], [["a2", "running"]]]);
+    expect(r?.agents.map((a) => a.description)).toEqual([
+      "Implement Task 1: tokens",
+      "Implement Task 2: money",
+    ]);
+  });
+
   test("status: now while a run runs, done when all finished, failed only if the last run failed", () => {
     const [r] = reduce([
       prompt(0, "go"),
@@ -215,6 +259,17 @@ describe("main-thread changes", () => {
     expect(r?.looseFiles.map((f) => f.path)).toEqual([
       "/Users/me/.claude/plans/plan.md",
     ]);
+  });
+
+  test("folders come from the prompt's cwd, not the first event's", () => {
+    const away = (e: MurmurEvent): MurmurEvent => ({ ...e, cwd: "/elsewhere" });
+    const [r] = reduce([
+      prompt(0, "go"),
+      away(tool(1, "Bash", { command: "ls" }, "PreToolUse")),
+      away(edit(2, "web/a.ts", ["+a"])),
+      away(edit(3, "web/b.ts", ["+a"])),
+    ]).requests;
+    expect(r?.parts.map((p) => p.title)).toEqual(["web"]);
   });
 
   test("temp paths group by their readable folder", () => {

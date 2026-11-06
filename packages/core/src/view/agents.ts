@@ -9,7 +9,8 @@
  * - A SubagentStop with no earlier start is ignored (Claude Code's prompt-suggestion
  *   generator fires one with an empty `agent_type` after every interactive Stop).
  * - `known` spans requests, so a background subagent stopping later still closes.
- * Returns each claimed Agent call's `tool_use_id` with the subagent it started.
+ * Returns each claimed Agent call's key (`tool_use_id`, else its event id) with the
+ * subagent it started.
  */
 import type { MurmurEvent } from "../events.js";
 import { addOnce, type Trace } from "./requests.js";
@@ -27,30 +28,31 @@ export function applyAgents(
 ): Map<string, string> {
   const isAgent = (e: MurmurEvent) => e.payload.tool_name === "Agent";
   const calls = events.filter((e) => e.hook === "PreToolUse" && isAgent(e));
+  // An empty tool_use_id names no call, so a call without one is keyed by its event.
+  const key = (c: MurmurEvent) => str(c.payload.tool_use_id) || c.id;
   const linked = new Map<string, string>(); // agentId -> tool_use_id
   for (const e of events)
     if (e.hook === "PostToolUse" && isAgent(e)) {
       const id = str(obj(e.payload.tool_response).agentId);
-      if (id) linked.set(id, str(e.payload.tool_use_id));
+      const use = str(e.payload.tool_use_id);
+      if (id && use) linked.set(id, use);
     }
   const claimed = new Set(linked.values());
-  const started = new Map<string, string>(); // tool_use_id -> agentId
+  const started = new Map<string, string>(); // call key -> agentId
   events.forEach((e, i) => {
     const id = str(e.payload.agent_id);
     if (e.hook === "SubagentStart" && id && !known.has(id)) {
       const type = str(e.payload.agent_type);
-      const free = calls.filter(
-        (c) => !claimed.has(str(c.payload.tool_use_id)),
-      );
+      const free = calls.filter((c) => !claimed.has(key(c)));
       const call =
-        calls.find((c) => str(c.payload.tool_use_id) === linked.get(id)) ??
+        calls.find((c) => key(c) === linked.get(id)) ??
         free.find(
           (c) => str(obj(c.payload.tool_input).subagent_type) === type,
         ) ??
         free[0];
       if (call) {
-        claimed.add(str(call.payload.tool_use_id));
-        started.set(str(call.payload.tool_use_id), id);
+        claimed.add(key(call));
+        started.set(key(call), id);
       }
       const input = obj(call?.payload.tool_input);
       const part =
