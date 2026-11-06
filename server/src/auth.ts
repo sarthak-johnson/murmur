@@ -206,7 +206,16 @@ export function authRoutes(app: Hono<AppEnv>, deps: Deps) {
       await startSession(c, deps, user.id);
       return c.redirect("/");
     });
+  } else {
+    // No GitHub app configured: the sign-in page never offers it, and an old
+    // link lands back there instead of on a bare 404.
+    app.get("/auth/github", (c) => c.redirect("/"));
   }
+
+  // Public, so the sign-in page shows only the methods this server has.
+  app.get("/auth/options", (c) =>
+    c.json({ github: Boolean(github), dev: config.devLogin }),
+  );
 
   if (config.devLogin) {
     app.get("/auth/dev", async (c) => {

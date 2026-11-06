@@ -202,13 +202,45 @@ describe("pages", () => {
     expect(screen.getByText("work-mac")).toBeTruthy();
   });
 
-  it("login page shows what Murmur sends once", () => {
+  it("login page shows what Murmur sends once and GitHub when the server offers it", async () => {
+    routes["GET /auth/options"] = () => ({
+      body: { github: true, dev: false },
+    });
     render(<Login />);
     expect(screen.getAllByText("What Murmur sends")).toHaveLength(1);
     expect(
-      screen
-        .getByRole("link", { name: "Sign in with GitHub" })
-        .getAttribute("href"),
+      (
+        await screen.findByRole("link", { name: "Sign in with GitHub" })
+      ).getAttribute("href"),
     ).toBe("/auth/github");
+    expect(
+      screen.queryByRole("button", { name: "Sign in locally" }),
+    ).toBeNull();
+  });
+
+  it("login page offers local sign-in, not GitHub, on a dev server", async () => {
+    routes["GET /auth/options"] = () => ({
+      body: { github: false, dev: true },
+    });
+    render(<Login />);
+    const name = await screen.findByLabelText("Your name");
+    expect(
+      screen.queryByRole("link", { name: "Sign in with GitHub" }),
+    ).toBeNull();
+    await userEvent.type(name, "sarthak");
+    const form = name.closest("form") as HTMLFormElement;
+    expect(form.getAttribute("action")).toBe("/auth/dev");
+    expect(form.getAttribute("method")).toBe("get");
+    expect(name.getAttribute("name")).toBe("login");
+  });
+
+  it("login page says when no sign-in is set up", async () => {
+    routes["GET /auth/options"] = () => ({
+      body: { github: false, dev: false },
+    });
+    render(<Login />);
+    expect(
+      await screen.findByText("Sign-in is not set up on this server yet."),
+    ).toBeTruthy();
   });
 });
