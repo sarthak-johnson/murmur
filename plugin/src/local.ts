@@ -182,8 +182,8 @@ export interface SessionState extends Narration {
   backfill?: "pending" | "running" | "done";
   /** Only transcript entries older than this go in the backfill. */
   cutoff?: string;
-  /** The hook whose event set the cutoff. */
-  trigger?: string;
+  /** The prompt, when a UserPromptSubmit set the cutoff. */
+  triggerPrompt?: string;
   transcriptPath?: string;
   cwd?: string;
   /** When the backfill last started, or was last handed to a new child. */

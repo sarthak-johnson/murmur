@@ -20288,7 +20288,7 @@ function readBackfill(b, {
   maxEvents = MAX_EVENTS2,
   maxBytes = MAX_BYTES2,
   tailBytes = TAIL_BYTES,
-  skipNewestPrompt = false
+  skipPrompt
 } = {}) {
   const cutoff = Date.parse(b.cutoff);
   const out = [];
@@ -20317,17 +20317,20 @@ function readBackfill(b, {
     return str(e.uuid) && ts < cutoff;
   });
   const ended = /* @__PURE__ */ new Set();
+  let newest;
   const mapEntries = (list2, agent) => {
     const uses = /* @__PURE__ */ new Map();
     for (const e of list2) {
       const content = obj(e.message)?.content;
       if (e.type === "user" && obj(e.origin)?.kind === "human" && !agent.agent_id) {
         const prompt = promptText(content);
-        if (prompt)
+        if (prompt) {
           emit(e, 0, "UserPromptSubmit", {
             prompt,
             ...str(e.promptId) ? { prompt_id: e.promptId } : {}
           });
+          newest = { at: out.length - 1, text: prompt };
+        }
       }
       if (!Array.isArray(content)) continue;
       content.forEach((raw, i) => {
@@ -20365,10 +20368,8 @@ function readBackfill(b, {
     }
   };
   mapEntries(usable(readLines(b.transcriptPath, tailBytes)), {});
-  if (skipNewestPrompt) {
-    const i = out.findLastIndex((e) => e.hook === "UserPromptSubmit");
-    if (i >= 0) out.splice(i, 1);
-  }
+  if (newest && skipPrompt !== void 0 && newest.text.trim() === skipPrompt.trim())
+    out.splice(newest.at, 1);
   const dir = import_node_path3.default.join(
     import_node_path3.default.dirname(b.transcriptPath),
     b.sessionId,
@@ -20426,7 +20427,7 @@ async function runBackfill(sessionId, opts = {}) {
         transcriptPath: s.transcriptPath,
         cutoff: s.cutoff
       },
-      { skipNewestPrompt: s.trigger === "UserPromptSubmit" }
+      { skipPrompt: s.triggerPrompt }
     );
   for (const e of events) enqueue(e);
   updateSession(sessionId, { backfill: "done" });
@@ -20504,7 +20505,7 @@ function handleHook(payload, env, now) {
         ...NO_NARRATION,
         backfill: "pending",
         cutoff: ts,
-        trigger: hook,
+        ...hook === "UserPromptSubmit" && typeof payload.prompt === "string" ? { triggerPrompt: payload.prompt } : {},
         transcriptPath,
         cwd
       });

@@ -148,18 +148,49 @@ describe("readBackfill", () => {
     expect(events.map(brief)).not.toContain("SubagentStop a1b2c3 ");
   });
 
-  it("prompts sharing a promptId stay apart, and the newest can be skipped", () => {
-    const prompts = (o = {}) =>
-      readBackfill(input(), o).filter((e) => e.hook === "UserPromptSubmit");
-    const all = prompts();
+  it("prompts sharing a promptId stay apart", () => {
+    const all = readBackfill(input()).filter(
+      (e) => e.hook === "UserPromptSubmit",
+    );
     expect(all.filter((e) => e.payload.prompt_id === "p-1")).toHaveLength(3);
     expect(new Set(all.map((e) => e.id)).size).toBe(4);
-    const skipped = prompts({ skipNewestPrompt: true });
-    expect(skipped.map((e) => e.id)).toEqual(all.slice(0, 3).map((e) => e.id));
-    // Only the main transcript's newest prompt goes, not other events.
-    expect(readBackfill(input(), { skipNewestPrompt: true })).toHaveLength(
-      readBackfill(input()).length - 1,
-    );
+  });
+
+  describe("the triggering prompt", () => {
+    const transcript = (...texts: string[]) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "murmur-transcript-"));
+      const file = path.join(dir, `${SID}.jsonl`);
+      const lines = texts.map((content, i) =>
+        JSON.stringify({
+          type: "user",
+          uuid: `x${i}`,
+          timestamp: t(i),
+          promptId: "same",
+          origin: { kind: "human" },
+          message: { role: "user", content },
+        }),
+      );
+      fs.writeFileSync(file, `${lines.join("\n")}\n`);
+      return file;
+    };
+    const prompts = (file: string, skipPrompt?: string) =>
+      readBackfill(input({ transcriptPath: file }), { skipPrompt }).map(
+        (e) => e.payload.prompt,
+      );
+
+    it("is skipped when the newest prompt is the same text", () => {
+      expect(prompts(transcript("a", "b"), "b")).toEqual(["a"]);
+      expect(prompts(transcript("a", "  b \n"), " b")).toEqual(["a"]);
+      const cmd =
+        "<command-message>murmur:on</command-message>\n<command-name>/murmur:on</command-name>\n<command-args>now</command-args>";
+      expect(prompts(transcript("a", cmd), "/murmur:on now")).toEqual(["a"]);
+    });
+
+    it("skips nothing when its entry is not written yet, or another prompt is newest", () => {
+      expect(prompts(transcript("a"), "b")).toEqual(["a"]);
+      expect(prompts(transcript("b", "a"), "b")).toEqual(["b", "a"]);
+      expect(prompts(transcript("a", "b"))).toEqual(["a", "b"]);
+    });
   });
 
   it("reads only the tail of a large transcript, from a whole line", () => {
@@ -344,11 +375,13 @@ describe("runBackfill", () => {
   it("a prompt trigger is not imported twice", async () => {
     writeCredentials({ server: "http://srv", token: "tok", machineId: "m1" });
     setProjectState("/work/demo", "on");
-    pendingAt({ trigger: "UserPromptSubmit" });
+    pendingAt({ triggerPrompt: "Now add a README" });
     const { sent, fetch } = sender();
     expect(await runBackfill(SID, { fetch })).toBe(20);
     expect(sent).toEqual(
-      readBackfill(input(), { skipNewestPrompt: true }).map((e) => e.id),
+      readBackfill(input(), { skipPrompt: "Now add a README" }).map(
+        (e) => e.id,
+      ),
     );
   });
 

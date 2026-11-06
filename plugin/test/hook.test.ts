@@ -356,19 +356,20 @@ describe("handleHook", () => {
         cutoff: NOW.toISOString(),
         transcriptPath: TP,
         cwd: repo,
-        trigger: "UserPromptSubmit",
+        triggerPrompt: "hi",
       });
       const tool = payload("PreToolUse", { transcript_path: TP });
       expect(handleHook(tool, ENV, NOW).backfill).toBeUndefined();
       expect(handleHook(prompt(), ENV, NOW).backfill).toBeUndefined();
       expect(readSession("s1").backfill).toBe("pending");
-      // Any first hook triggers it, here a resume.
+      // Any first hook triggers it, here a resume, which names no prompt.
       const resume = payload("SessionStart", {
         source: "resume",
         session_id: "s2",
         transcript_path: TP,
       });
       expect(handleHook(resume, ENV, NOW).backfill).toBe("s2");
+      expect(readSession("s2").triggerPrompt).toBeUndefined();
     });
 
     it("a startup SessionStart is a new session with nothing to import", () => {

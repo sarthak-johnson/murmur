@@ -124,7 +124,9 @@ export function handleHook(
         ...NO_NARRATION,
         backfill: "pending",
         cutoff: ts,
-        trigger: hook,
+        ...(hook === "UserPromptSubmit" && typeof payload.prompt === "string"
+          ? { triggerPrompt: payload.prompt }
+          : {}),
         transcriptPath,
         cwd,
       });

@@ -31,7 +31,7 @@ const TOOL_HOOKS = new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure"]);
  * Code writes a tool call to the transcript before its hook runs, so the event that starts
  * a backfill is also in the history; sharing the id lets the server keep one copy.
  * Prompts get none: many prompts share one prompt_id. The backfill skips the triggering
- * prompt instead.
+ * prompt by its text instead.
  */
 export function stableId(
   sessionId: string,
@@ -135,8 +135,11 @@ export interface ReadOptions {
   maxEvents?: number;
   maxBytes?: number;
   tailBytes?: number;
-  /** Leave out the newest prompt: it is the live event that set the cutoff. */
-  skipNewestPrompt?: boolean;
+  /**
+   * The live prompt that set the cutoff. The newest prompt in the transcript is left out
+   * only when it is this same text, so nothing is lost if its entry is not written yet.
+   */
+  skipPrompt?: string | undefined;
 }
 
 /**
@@ -149,7 +152,7 @@ export function readBackfill(
     maxEvents = MAX_EVENTS,
     maxBytes = MAX_BYTES,
     tailBytes = TAIL_BYTES,
-    skipNewestPrompt = false,
+    skipPrompt,
   }: ReadOptions = {},
 ): MurmurEvent[] {
   const cutoff = Date.parse(b.cutoff);
@@ -191,6 +194,7 @@ export function readBackfill(
 
   // Agent calls whose result says the helper finished (not just launched it).
   const ended = new Set<string>();
+  let newest: { at: number; text: string } | undefined;
   const mapEntries = (list: Entry[], agent: Record<string, unknown>) => {
     const uses = new Map<string, Block>();
     for (const e of list) {
@@ -201,11 +205,13 @@ export function readBackfill(
         !agent.agent_id
       ) {
         const prompt = promptText(content);
-        if (prompt)
+        if (prompt) {
           emit(e, 0, "UserPromptSubmit", {
             prompt,
             ...(str(e.promptId) ? { prompt_id: e.promptId } : {}),
           });
+          newest = { at: out.length - 1, text: prompt };
+        }
       }
       if (!Array.isArray(content)) continue;
       content.forEach((raw: unknown, i) => {
@@ -244,10 +250,13 @@ export function readBackfill(
   };
 
   mapEntries(usable(readLines(b.transcriptPath, tailBytes)), {});
-  if (skipNewestPrompt) {
-    const i = out.findLastIndex((e) => e.hook === "UserPromptSubmit");
-    if (i >= 0) out.splice(i, 1);
-  }
+  // Compared before scrubbing, the way the user typed both.
+  if (
+    newest &&
+    skipPrompt !== undefined &&
+    newest.text.trim() === skipPrompt.trim()
+  )
+    out.splice(newest.at, 1);
 
   const dir = path.join(
     path.dirname(b.transcriptPath),
@@ -317,7 +326,7 @@ export async function runBackfill(
         transcriptPath: s.transcriptPath,
         cutoff: s.cutoff,
       },
-      { skipNewestPrompt: s.trigger === "UserPromptSubmit" },
+      { skipPrompt: s.triggerPrompt },
     );
   for (const e of events) enqueue(e);
   updateSession(sessionId, { backfill: "done" });
