@@ -3,12 +3,14 @@ import { except } from "hono/combine";
 import {
   type AppEnv,
   authRoutes,
-  requireIngest,
   requireSameOrigin,
   requireUser,
 } from "./auth.js";
 import type { Db } from "./db/client.js";
 import { deviceRoutes } from "./device.js";
+import { ingestRoutes } from "./ingest.js";
+import { sessionRoutes } from "./sessions.js";
+import { streamRoutes } from "./stream.js";
 
 export interface GithubProvider {
   createAuthorizationURL(state: string): URL;
@@ -31,6 +33,8 @@ export interface Deps {
     cookieSecure: boolean;
     /** Behind one trusted reverse proxy: take the client IP from the last X-Forwarded-For entry (the one the proxy appended). */
     trustProxy?: boolean;
+    /** SSE keep-alive comment interval. Defaults to 20 s. */
+    ssePingMs?: number;
   };
   /** Defaults to arctic's GitHub provider when the client id and secret are set. */
   github?: GithubProvider;
@@ -49,8 +53,10 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     "/api/*",
     except(NOT_COOKIE, requireSameOrigin(deps), requireUser(deps)),
   );
-  app.use("/api/ingest", requireIngest(deps));
   authRoutes(app, deps);
   deviceRoutes(app, deps);
+  ingestRoutes(app, deps);
+  sessionRoutes(app, deps);
+  streamRoutes(app, deps);
   return app;
 }
