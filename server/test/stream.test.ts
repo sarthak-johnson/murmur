@@ -45,6 +45,9 @@ test("stream delivers events ingested after subscribe", async () => {
   expect(res.headers.get("content-type")).toBe("text/event-stream");
   const reader = (res.body as ReadableStream<Uint8Array>).getReader();
 
+  // The first message tells the client the subscription is in place.
+  expect(await readUntil(reader, "\n\n")).toBe("event: ready\ndata: {}\n\n");
+
   const e1 = ev("s1", "PreToolUse");
   const e2 = ev("s1", "PostToolUse");
   await ingest(t, token, [e1, e2, ev("other", "SessionStart")]);
@@ -74,7 +77,9 @@ test("stream sends a ping comment on the interval", async () => {
     headers: { Cookie: cookie },
   });
   const reader = (res.body as ReadableStream<Uint8Array>).getReader();
-  expect(await readUntil(reader, ": ping\n\n")).toBe(": ping\n\n");
+  expect(await readUntil(reader, ": ping\n\n")).toBe(
+    "event: ready\ndata: {}\n\n: ping\n\n",
+  );
   await reader.cancel();
 });
 

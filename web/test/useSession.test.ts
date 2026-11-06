@@ -18,6 +18,9 @@ class FakeES {
   close() {
     this.closed = true;
   }
+  ready() {
+    this.handlers.ready?.({ data: "{}" });
+  }
   push(evs: MurmurEvent[]) {
     this.handlers.events?.({ data: JSON.stringify(evs) });
   }
@@ -55,6 +58,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+const ready = (i: number) =>
+  act(async () => {
+    FakeES.all[i]?.ready();
+    await vi.advanceTimersByTimeAsync(0);
+  });
 const flush = () =>
   act(async () => void (await vi.advanceTimersByTimeAsync(0)));
 
@@ -65,6 +73,9 @@ describe("useSession", () => {
     expect(result.current.view).toBeNull();
     expect(result.current.status).toBe("loading");
     await flush();
+    expect(result.current.status).toBe("loading");
+    events.mockResolvedValueOnce({ events: [], hasMore: false });
+    await ready(0);
     expect(result.current.status).toBe("live");
     const before = result.current.view;
     expect(before).not.toBeNull();
@@ -98,7 +109,22 @@ describe("useSession", () => {
     await act(async () => void (await vi.advanceTimersByTimeAsync(2000)));
     expect(events).toHaveBeenCalledTimes(3);
     expect(FakeES.all).toHaveLength(2);
+    expect(result.current.status).toBe("reconnecting");
+    events.mockResolvedValueOnce({ events: [], hasMore: false });
+    await ready(1);
     expect(result.current.status).toBe("live");
+  });
+
+  it("ready runs a catch-up fetch that finds events missed before subscribe", async () => {
+    events.mockResolvedValueOnce({ events: [A], hasMore: false });
+    const { result } = renderHook(() => useSession("s1"));
+    await flush();
+    events.mockResolvedValueOnce({ events: [B], hasMore: false });
+    await ready(0);
+    expect(events).toHaveBeenLastCalledWith("s1", A.ts, "a");
+    expect(result.current.viewAt(B.ts)).not.toEqual(
+      result.current.viewAt(A.ts),
+    );
   });
 
   it("404 sets error", async () => {

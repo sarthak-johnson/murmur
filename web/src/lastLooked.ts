@@ -34,11 +34,9 @@ export function useLastLooked(sessionId: string): string | null {
       document.visibilityState === "hidden" ? leave() : back();
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("blur", leave);
-    window.addEventListener("focus", back);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("blur", leave);
-      window.removeEventListener("focus", back);
     };
   }, [sessionId]);
 

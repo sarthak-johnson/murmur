@@ -43,6 +43,8 @@ export function streamRoutes(app: Hono<AppEnv>, { db, config }: Deps) {
               data: JSON.stringify(events),
             });
           });
+          // Tells the client the subscription is live, so it can fetch what it missed.
+          void stream.writeSSE({ event: "ready", data: "{}" });
           const ping = setInterval(
             () => void stream.write(": ping\n\n"),
             pingMs,

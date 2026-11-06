@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 
@@ -32,7 +32,9 @@ describe("App", () => {
     expect(
       await screen.findByRole("link", { name: "Sign in with GitHub" }),
     ).toBeTruthy();
-    expect(sessionStorage.getItem("murmur:pendingDevice")).toBe("ABCD-1234");
+    await waitFor(() =>
+      expect(sessionStorage.getItem("murmur:pendingDevice")).toBe("ABCD-1234"),
+    );
   });
 
   it("signed in on / goes to the pending device page and clears the key", async () => {

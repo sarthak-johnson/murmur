@@ -38,7 +38,7 @@ describe("useLastLooked", () => {
     expect(result.current).toBe("2026-01-01T10:00:00.000Z");
   });
 
-  it("window blur also counts, and storage failures are swallowed", () => {
+  it("blur writes but focus does not change the value, and storage failures are swallowed", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("denied");
     });
@@ -47,6 +47,9 @@ describe("useLastLooked", () => {
       act(() => void window.dispatchEvent(new Event("blur"))),
     ).not.toThrow();
     act(() => void window.dispatchEvent(new Event("focus")));
+    expect(result.current).toBeNull();
+    act(() => setVisibility("hidden"));
+    act(() => setVisibility("visible"));
     expect(result.current).toBe("2026-01-01T10:00:00.000Z");
     vi.restoreAllMocks();
   });

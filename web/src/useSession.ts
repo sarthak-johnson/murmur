@@ -50,28 +50,42 @@ export function useSession(sessionId: string): {
       delay = Math.min(delay * 2, 15000);
     };
 
+    const fail = (e: unknown) => {
+      if (dead) return;
+      // 401 already signed the app out through api.call.
+      if (e instanceof ApiError && (e.status === 404 || e.status === 401))
+        setStatus("error");
+      else retry();
+    };
+
     async function sync() {
       try {
         await fetchRest();
       } catch (e) {
-        if (dead) return;
-        // 401 already signed the app out through api.call.
-        if (e instanceof ApiError && (e.status === 404 || e.status === 401))
-          setStatus("error");
-        else retry();
-        return;
+        return fail(e);
       }
       if (dead) return;
-      delay = 1000;
       const s = api.stream(sessionId);
       es = s;
       s.addEventListener("events", (m) => {
         merge(JSON.parse((m as MessageEvent<string>).data) as MurmurEvent[]);
       });
+      // The server sends `ready` once it is subscribed; anything stored between
+      // our last fetch and that point is picked up by one more fetch here.
+      s.addEventListener("ready", async () => {
+        if (es !== s) return;
+        try {
+          await fetchRest();
+        } catch (e) {
+          return fail(e);
+        }
+        if (dead || es !== s) return;
+        delay = 1000;
+        setStatus("live");
+      });
       s.onerror = () => {
         if (es === s) retry();
       };
-      setStatus("live");
     }
 
     sync();
