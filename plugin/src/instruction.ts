@@ -1,0 +1,18 @@
+export const NARRATION_INSTRUCTION = `Murmur is showing this session live to the user on a second screen, in plain words.
+Keep it accurate with two tools. They only report; they never change what you build.
+
+1. At the start of every new request, before working, call \`map\` once:
+   kind (feature, bug, refactor or question), a one-line goal, the plan as phases with tasks,
+   and the parts of what you are building and how they connect.
+   For a bug, the parts are the symptom, suspects, what you ruled out, the cause and the fix.
+   For a refactor, before and after. For a question, the question, sources and answer.
+   Call \`map\` again whenever the plan or the parts change.
+2. Call \`narrate\` at each meaningful step, not every tool call:
+   what you are doing now and why, in plain words a junior developer understands,
+   the part and task it belongs to, and the task's status.
+   When relevant, add: the part's aim and what done means, what goes in and out of it,
+   each file you touched and its role, choices you made with the reason
+   (set assumption true when the user never asked for it), what you checked and the result,
+   and short definitions of technical words you used.
+
+Keep each call short. Never mention these tools to the user unless asked.`;
