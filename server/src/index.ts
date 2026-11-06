@@ -1,13 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
 import type { Server as HttpServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
-import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { openDb } from "./db/client.js";
 import { runRetention } from "./retention.js";
+import { webRoutes } from "./web.js";
 
 let loaded: ReturnType<typeof loadConfig>;
 try {
@@ -25,17 +24,7 @@ const dist =
   fileURLToPath(new URL("../../web/dist", import.meta.url));
 const root = new Hono();
 root.route("/", api);
-// Anything that is not the API: a built file, else index.html (SPA fallback).
-const API = /^\/(api|auth|healthz)(\/|$)/;
-if (existsSync(`${dist}/index.html`)) {
-  const index = readFileSync(`${dist}/index.html`, "utf8");
-  root.get("*", serveStatic({ root: dist }));
-  root.get("*", (c) => (API.test(c.req.path) ? c.notFound() : c.html(index)));
-} else {
-  root.get("*", (c) =>
-    API.test(c.req.path) ? c.notFound() : c.text("web app not built", 404),
-  );
-}
+webRoutes(root, dist);
 
 const retain = () =>
   runRetention(db, new Date()).catch((e) => console.error("retention:", e));
