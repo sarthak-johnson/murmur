@@ -5,7 +5,12 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { type MurmurEvent, reduce, type SessionView } from "@murmur/core";
+import {
+  type MurmurEvent,
+  NARRATE_TOOL,
+  reduce,
+  type SessionView,
+} from "@murmur/core";
 import { chromium } from "playwright";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
@@ -222,6 +227,25 @@ it("shows a real Claude Code session", async () => {
   expect(req?.planInferred, "model called map").toBe(false);
   expect(req?.parts.length).toBeGreaterThan(0);
   expect(req?.now).toBeTruthy();
+  // Stop is synchronous now, so it reaches the server even in a headless run.
+  const stops = events.filter((e) => e.hook === "Stop");
+  expect(stops.length).toBeGreaterThan(0);
+  const narrates = events.filter(
+    (e) => e.hook === "PostToolUse" && e.payload.tool_name === NARRATE_TOOL,
+  );
+  console.log(
+    `narrate calls: ${narrates.length}, before the first Stop: ${narrates.filter((e) => e.ts < (stops[0]?.ts ?? "")).length}, Stop events: ${stops.length}, now: ${JSON.stringify(req?.now)}`,
+  );
+  expect(narrates.length, "narrate called at least once").toBeGreaterThan(0);
+  const named = new Set(
+    narrates.map((e) => (e.payload.tool_input as { task?: string }).task),
+  );
+  const tasks = req?.phases.flatMap((p) => p.tasks) ?? [];
+  const open = tasks.filter((t) => named.has(t.id) && t.status !== "done");
+  expect(
+    open.length === 0 || req?.now?.inferred === true,
+    `narrated tasks not done: ${JSON.stringify(open)}`,
+  ).toBe(true);
   const files = [
     ...(req?.parts.flatMap((p) => p.files) ?? []),
     ...(req?.looseFiles ?? []),
@@ -258,6 +282,10 @@ it("captures the live page and the first part's drill-down", async () => {
       await page.evaluate(() => document.fonts.ready);
       await page.waitForTimeout(800); // fade-ins are 200 ms
       await page.screenshot({ path: path.join(SCREENS, file), fullPage: true });
+      // The page itself never scrolls sideways.
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(viewport.width);
       await ctx.close();
     };
     const live = `/s/${view.sessionId}`;
