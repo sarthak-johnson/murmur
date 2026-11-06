@@ -246,6 +246,16 @@ describe("handleHook", () => {
       expect(JSON.parse(again?.stdout ?? "")).toEqual(BLOCK);
     });
 
+    it("a task notification prompt belongs to the request before: no reset", () => {
+      const note = payload("UserPromptSubmit", {
+        prompt:
+          "<task-notification>\n<task-id>x</task-id>\n</task-notification>",
+      });
+      // The map before the notification still counts for the Stop after it.
+      const [, , , r] = run(payload("UserPromptSubmit"), map(), note, stop());
+      expect(JSON.parse(r?.stdout ?? "")).toEqual(BLOCK);
+    });
+
     it("blocks when a narrated task is not narrated done", () => {
       const [, , , r] = run(
         payload("UserPromptSubmit"),
@@ -527,6 +537,18 @@ describe("handleHook", () => {
       expect(first.event?.hook).toBe("UserPromptSubmit");
       expect(handleHook(payload("UserPromptSubmit"), ENV, NOW).stdout).toBe("");
       expect(readSession("s1").instructed).toBe(true);
+    });
+
+    it("a task notification prompt is not the next prompt", () => {
+      login();
+      setProjectState(repo, "on");
+      const note = payload("UserPromptSubmit", {
+        prompt: "<task-notification>done</task-notification>",
+      });
+      expect(handleHook(note, ENV, NOW).stdout).toBe("");
+      expect(readSession("s1").instructed).not.toBe(true);
+      const next = handleHook(payload("UserPromptSubmit"), ENV, NOW);
+      expect(JSON.parse(next.stdout)).toEqual(UPS_INSTRUCTION);
     });
 
     it("never after SessionStart injected it, never for off projects", () => {

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   HOOK_NAMES,
   type HookName,
+  isNotRequest,
   MAP_TOOL,
   type MurmurEvent,
   NARRATE_TOOL,
@@ -148,14 +149,14 @@ export function handleHook(
     updateSession(sessionId, { backfill: "pending", runningSince: ts });
     backfill = sessionId;
   }
-  let stdout = trackNarration(sessionId, hook, payload);
+  // A prompt that is not a request (a task notification, /murmur:*) stays part of the
+  // request before, as core reads it: no narration reset, no instruction.
+  const prompt = hook === "UserPromptSubmit" && !isNotRequest(payload.prompt);
+  let stdout = trackNarration(sessionId, hook, payload, prompt);
   // SessionStart injects for every source, so the instruction survives compaction. A
   // session that started before Murmur was on gets it once, with its next prompt, and
   // maps the work already under way.
-  if (
-    start ||
-    (hook === "UserPromptSubmit" && !readSession(sessionId).instructed)
-  ) {
+  if (start || (prompt && !readSession(sessionId).instructed)) {
     updateSession(sessionId, { instructed: true });
     stdout = JSON.stringify({
       hookSpecificOutput: {
@@ -176,8 +177,9 @@ function trackNarration(
   sessionId: string,
   hook: string,
   p: Record<string, unknown>,
+  prompt: boolean,
 ): string {
-  if (hook === "UserPromptSubmit") updateSession(sessionId, NO_NARRATION);
+  if (prompt) updateSession(sessionId, NO_NARRATION);
   const tool = hook === "PostToolUse" ? p.tool_name : undefined;
   if (tool !== MAP_TOOL && tool !== NARRATE_TOOL && hook !== "Stop") return "";
   const n = readSession(sessionId);

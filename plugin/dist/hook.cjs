@@ -19942,6 +19942,9 @@ function scrubEvent(e) {
   return { ...e, payload };
 }
 
+// ../packages/core/src/view/reduce.ts
+var isNotRequest = (prompt) => typeof prompt === "string" && /^\s*(\/murmur:\w+(\s|$)|<task-notification>)/.test(prompt);
+
 // src/backfill.ts
 var import_node_crypto = require("node:crypto");
 var import_node_fs3 = __toESM(require("node:fs"), 1);
@@ -20626,8 +20629,9 @@ function handleHook(payload, env, now) {
     updateSession(sessionId, { backfill: "pending", runningSince: ts });
     backfill = sessionId;
   }
-  let stdout = trackNarration(sessionId, hook, payload);
-  if (start || hook === "UserPromptSubmit" && !readSession(sessionId).instructed) {
+  const prompt = hook === "UserPromptSubmit" && !isNotRequest(payload.prompt);
+  let stdout = trackNarration(sessionId, hook, payload, prompt);
+  if (start || prompt && !readSession(sessionId).instructed) {
     updateSession(sessionId, { instructed: true });
     stdout = JSON.stringify({
       hookSpecificOutput: {
@@ -20639,8 +20643,8 @@ ${NARRATION_INSTRUCTION}`
   }
   return backfill ? { stdout, event, backfill } : { stdout, event };
 }
-function trackNarration(sessionId, hook, p) {
-  if (hook === "UserPromptSubmit") updateSession(sessionId, NO_NARRATION);
+function trackNarration(sessionId, hook, p, prompt) {
+  if (prompt) updateSession(sessionId, NO_NARRATION);
   const tool = hook === "PostToolUse" ? p.tool_name : void 0;
   if (tool !== MAP_TOOL && tool !== NARRATE_TOOL && hook !== "Stop") return "";
   const n = readSession(sessionId);
