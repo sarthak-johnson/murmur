@@ -32,7 +32,7 @@ export function PhaseStrip(props: {
                 {i + 1} · {ph.title}
               </b>
               <span>
-                {done} of {total} tasks
+                {done} of {total} {total === 1 ? "task" : "tasks"}
               </span>
               <span className="bar">
                 <i style={{ width: `${total ? (done / total) * 100 : 0}%` }} />

@@ -122,8 +122,8 @@ describe("readBackfill", () => {
   it("the reduced view has the request and the edited file", () => {
     const view = reduce(readBackfill(input()));
     expect(view.requests.map((r) => r.prompt)).toEqual([
+      // The /murmur:on command is imported but is not a request.
       "Add a greet function with a test",
-      "/murmur:on now",
       "Here is how it looks\nmake it match",
       "Now add a README",
     ]);

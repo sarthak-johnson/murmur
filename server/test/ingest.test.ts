@@ -160,6 +160,24 @@ test("lone surrogates are stored as U+FFFD instead of failing the batch", async 
   expect(got[0]?.payload).toEqual({ "k�": "cut at a�" });
 });
 
+test("the title skips Murmur's own commands", async () => {
+  t = await testApp();
+  const { token } = await linkMachine(t, "ada");
+  const at = (s: string) => `2026-11-06T10:00:${s}.000Z`;
+  await ingest(t, token, [
+    ev("s1", "UserPromptSubmit", {
+      ts: at("10"),
+      payload: { prompt: "/murmur:on" },
+    }),
+    ev("s1", "UserPromptSubmit", {
+      ts: at("20"),
+      payload: { prompt: "fix the login" },
+    }),
+  ]);
+  const [row] = await t.db.select().from(sessions);
+  expect(row?.title).toBe("fix the login");
+});
+
 test("long titles cut at a word boundary with an ellipsis, short ones stay", async () => {
   const { makeTitle } = await import("../src/ingest.js");
   expect(makeTitle("a".repeat(80))).toBe("a".repeat(80));

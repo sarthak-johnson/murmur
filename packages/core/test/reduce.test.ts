@@ -51,6 +51,20 @@ test("splits requests on each prompt", () => {
   expect(reduce([prompt(1, "x"), at(2, "SessionEnd")]).ended).toBe(true);
 });
 
+test("Murmur's own commands are not requests", () => {
+  const view = reduce([
+    prompt(1, "build the page"),
+    prompt(2, "/murmur:on"),
+    tool(3, "Bash", { command: "murmur on" }),
+    prompt(4, " /murmur:status "),
+    prompt(5, "/murmurs are fine"),
+  ]);
+  expect(view.requests.map((r) => r.prompt)).toEqual([
+    "build the page",
+    "/murmurs are fine",
+  ]);
+});
+
 test("map builds phases and parts", () => {
   const [req] = reduce([prompt(1, "add alerts"), mapCall(2, MAP)]).requests;
   expect(req).toMatchObject({
