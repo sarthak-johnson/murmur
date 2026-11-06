@@ -94,6 +94,10 @@ function Step(props: {
   );
 }
 
+const described = (p: PartView) =>
+  !!(p.aim || p.io) ||
+  [p.steps, p.files, p.choices, p.checks, p.words].some((l) => l.length > 0);
+
 function FileRow(props: { file: FileTouch; byId: Map<string, MurmurEvent> }) {
   const { file, byId } = props;
   const [open, setOpen] = useState(false);
@@ -181,6 +185,9 @@ function PartBody(props: {
       <div className="pd-cols">
         <div className="pd-centre">
           <h1 className="pd-title">{part.title}</h1>
+          {!described(part) && (
+            <p className="muted">Claude has not described this part yet.</p>
+          )}
           {part.aim && (
             <div className="pd-aim">
               <div>

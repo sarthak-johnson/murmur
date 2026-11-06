@@ -252,10 +252,11 @@ label {
   transition: opacity 150ms;
 }
 .map .goal-box {
-  fill: var(--text);
+  fill: var(--panel-2);
+  stroke: var(--line);
 }
 .map .goal-label {
-  fill: var(--bg);
+  fill: var(--text);
   font-size: 14px;
   font-weight: 600;
   text-anchor: middle;
@@ -439,12 +440,8 @@ label {
   list-style: none;
   margin: 0;
   padding: 0 0 4px;
-  display: flex;
+  display: grid;
   gap: 8px;
-  overflow-x: auto;
-}
-.requests li {
-  flex: 0 0 220px;
 }
 .request {
   display: flex;
@@ -627,6 +624,28 @@ label {
 }
 .now-why b {
   color: var(--text);
+}
+.now-files ul {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+}
+.now-files li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  padding: 2px 0;
+  font-size: 12.5px;
+}
+/* Below 1200 the map keeps a readable size and scrolls inside its own box. */
+@media (max-width: 1199px) {
+  .map-panel .map-box {
+    overflow-x: auto;
+  }
+  .map-panel .map svg {
+    min-width: 720px;
+  }
 }
 .helpers {
   list-style: none;
@@ -843,13 +862,11 @@ button.task:hover {
   min-height: 160px;
 }
 .sk-requests {
-  display: flex;
+  display: grid;
   gap: 8px;
-  overflow: hidden;
   min-width: 0;
 }
 .sk-req {
-  flex: 0 0 220px;
   min-height: 52px;
 }
 .sk-title {
@@ -879,7 +896,6 @@ button.task:hover {
     grid-column: 2;
   }
   .sk-requests {
-    display: grid;
     align-content: start;
   }
   .requests ul {
@@ -905,6 +921,7 @@ button.task:hover {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas:
       "card helpers"
+      "files helpers"
       "started helpers";
     column-gap: 16px;
     align-items: start;
@@ -915,6 +932,9 @@ button.task:hover {
   }
   .has-helpers .helpers-block {
     grid-area: helpers;
+  }
+  .has-helpers .now-files {
+    grid-area: files;
   }
   .has-helpers .started {
     grid-area: started;

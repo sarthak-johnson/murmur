@@ -256,6 +256,18 @@ describe("PartDetail", () => {
     expect(screen.getByText("not started")).toBeTruthy();
   });
 
+  it("a part with no narrated detail says so under the title", () => {
+    show(part({ id: "bare", title: "Bare part" }));
+    expect(
+      screen.getByText("Claude has not described this part yet."),
+    ).toBeTruthy();
+    cleanup();
+    show(full);
+    expect(
+      screen.queryByText("Claude has not described this part yet."),
+    ).toBeNull();
+  });
+
   it("three failures read as stuck", () => {
     show({ ...full, failures: 3 });
     expect(screen.getByText("stuck")).toBeTruthy();

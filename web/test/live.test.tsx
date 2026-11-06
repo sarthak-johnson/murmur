@@ -395,6 +395,61 @@ describe("live screen", () => {
     ).toBeTruthy();
   });
 
+  it("NowCard tags an inferred now, hides an empty why, and lists loose files", () => {
+    const view = session();
+    view.requests[1] = request({
+      now: { text: "Editing math.js", why: "", ts: T0, inferred: true },
+      looseFiles: [
+        {
+          path: "math.js",
+          role: "the add function",
+          added: 3,
+          removed: 1,
+          isNew: false,
+          eventIds: [],
+        },
+        {
+          path: "math.test.js",
+          added: 5,
+          removed: 0,
+          isNew: true,
+          eventIds: [],
+        },
+      ],
+    });
+    show(view);
+    const now = screen.getByRole("region", { name: "Now" });
+    expect(within(now).getByText("Editing math.js")).toBeTruthy();
+    expect(within(now).getByText("inferred").className).toContain("inferred");
+    expect(within(now).queryByText(/Why now/)).toBeNull();
+    const files = within(now).getByRole("list", { name: "Files touched" });
+    expect(
+      within(files)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["math.js+3−1the add function", "math.test.js+5−0"]);
+  });
+
+  it("NowCard shows narrated now with its why and no inferred tag or files", () => {
+    show(session());
+    const now = screen.getByRole("region", { name: "Now" });
+    expect(within(now).getByText(/Why now/)).toBeTruthy();
+    expect(within(now).queryByText("inferred")).toBeNull();
+    expect(
+      within(now).queryByRole("list", { name: "Files touched" }),
+    ).toBeNull();
+  });
+
+  it("an ended session says ended, not live", () => {
+    show(session({ ended: true }));
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("ended");
+    expect(status.className).not.toContain("live-dot");
+    cleanup();
+    show(session());
+    expect(screen.getByRole("status").textContent).toBe("live");
+  });
+
   it("NowCard lists running helpers with their part and the starting prompt", () => {
     show(session());
     const now = screen.getByRole("region", { name: "Now" });

@@ -31,7 +31,14 @@ export function SessionPage(props: {
 
 const enc = encodeURIComponent;
 
-function StatusLine({ status }: { status: SessionStatus }) {
+function StatusLine(props: { status: SessionStatus; ended?: boolean }) {
+  const { status, ended } = props;
+  if (ended && status !== "error")
+    return (
+      <span className="status-line muted" role="status">
+        ended
+      </span>
+    );
   if (status === "live")
     return (
       <span className="status-line live-dot" role="status">
@@ -125,7 +132,7 @@ export function Live(props: {
           <h1 className="live-title">
             {req?.goal || req?.prompt || view.title}
           </h1>
-          <StatusLine status={status} />
+          <StatusLine status={status} ended={view.ended} />
         </div>
         {req ? (
           <RequestScreen

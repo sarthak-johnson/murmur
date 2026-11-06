@@ -1,13 +1,15 @@
 import type { RequestView } from "@murmur/core";
 import { ago } from "../format";
 
+const MINUS = "−";
+
 const cut = (s: string, n: number) => {
   const cp = [...s];
   return cp.length > n ? `${cp.slice(0, n).join("").trimEnd()}…` : s;
 };
 
 export function NowCard({ request }: { request: RequestView }) {
-  const { now, agents, parts } = request;
+  const { now, agents, parts, looseFiles } = request;
   const running = agents
     .map((a, i) => ({ a, k: i + 1 }))
     .filter(({ a }) => a.status === "running");
@@ -17,7 +19,10 @@ export function NowCard({ request }: { request: RequestView }) {
       aria-label="Now"
     >
       <div className="now-card">
-        <div className="lbl lbl-now">Now</div>
+        <div className="lbl lbl-now">
+          Now
+          {now?.inferred && <span className="inferred">inferred</span>}
+        </div>
         {now ? (
           <>
             <p className="now-text">{now.text}</p>
@@ -33,6 +38,26 @@ export function NowCard({ request }: { request: RequestView }) {
           </p>
         )}
       </div>
+      {looseFiles.length > 0 && (
+        <div className="now-files">
+          <div className="lbl">Files touched</div>
+          <ul aria-label="Files touched">
+            {looseFiles.map((f) => (
+              <li key={f.path}>
+                <span className="pd-path">{f.path}</span>
+                <span className={f.added ? "pd-add" : "pd-add zero"}>
+                  +{f.added}
+                </span>
+                <span className={f.removed ? "pd-del" : "pd-del zero"}>
+                  {MINUS}
+                  {f.removed}
+                </span>
+                {f.role && <span className="muted">{f.role}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {running.length > 0 && (
         <div className="helpers-block">
           <div className="lbl">Helpers running</div>
