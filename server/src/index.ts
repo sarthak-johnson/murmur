@@ -16,7 +16,7 @@ try {
   console.error((e as Error).message);
   process.exit(1);
 }
-const { config, port, databaseUrl } = loaded;
+const { config, port, host, databaseUrl } = loaded;
 const { db, close } = await openDb(databaseUrl);
 const api = createApp({ db, now: () => new Date(), config });
 
@@ -42,8 +42,10 @@ const retain = () =>
 await retain();
 const timer = setInterval(retain, 60 * 60 * 1000);
 
-const server = serve({ fetch: root.fetch, port }, (i) =>
-  console.log(`murmur listening on :${i.port}`),
+const server = serve(
+  { fetch: root.fetch, port, ...(host ? { hostname: host } : {}) },
+  (i) =>
+    console.log(`murmur listening on ${host ?? "all interfaces"}:${i.port}`),
 );
 
 let stopping = false;
