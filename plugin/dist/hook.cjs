@@ -20149,12 +20149,18 @@ function applyFiles(req, events, { before, narrated }) {
       const path4 = relPath(f.path, x.e.cwd);
       naming.set(path4, [...naming.get(path4) ?? [], x]);
     }
+  const helpers = /* @__PURE__ */ new Map();
+  for (const x of narrated) {
+    const id = x.e.payload.agent_id;
+    if (typeof id === "string" && id && x.part)
+      helpers.set(id, [...helpers.get(id) ?? [], x]);
+  }
+  const near = (list2, i) => list2.findLast((x) => x.i < i) ?? list2.find((x) => x.i > i);
   events.forEach((e, i) => {
-    for (const t of touchesOf(e)) addAt(t, i);
+    for (const t of touchesOf(e)) addAt(t, i, String(e.payload.agent_id ?? ""));
   });
-  function addAt(t, i) {
-    const named = naming.get(t.path) ?? [];
-    const by = named.findLast((x) => x.i < i) ?? named.find((x) => x.i > i);
+  function addAt(t, i, agentId) {
+    const by = near(helpers.get(agentId) ?? [], i) ?? near(naming.get(t.path) ?? [], i);
     const partId = by?.part ?? before[i]?.part;
     const part = req.parts.find((p) => p.id === partId);
     addTouch(part ? part.files : req.looseFiles, t);

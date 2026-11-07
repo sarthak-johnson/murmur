@@ -5,8 +5,11 @@
  *   `type: "create"` and an empty patch counts its content lines as added. A Bash diff
  *   counts each file's hunk lines the same way; a file whose only hunk starts at line 0
  *   of 0 lines is new.
- * - A touch goes to the part of the latest narrate before it naming the path in `files`,
- *   else the first such narrate after it, else the latest narrate before it, else `looseFiles`.
+ * - A helper's touch goes to the part that helper narrated latest before it, else first
+ *   after it (the recap narrates for each helper it puts on a part).
+ * - Any other touch goes to the part of the latest narrate before it naming the path in
+ *   `files`, else the first such narrate after it, else the latest narrate before it, else
+ *   `looseFiles`.
  * - One entry per path per part: counts add up, `isNew` if any touch created the file.
  * - Narrate's role-only entries take a touch's counts, and are dropped if none arrives.
  */
@@ -27,12 +30,20 @@ export function applyFiles(
       const path = relPath(f.path, x.e.cwd);
       naming.set(path, [...(naming.get(path) ?? []), x]);
     }
+  const helpers = new Map<string, Trace["narrated"]>();
+  for (const x of narrated) {
+    const id = x.e.payload.agent_id;
+    if (typeof id === "string" && id && x.part)
+      helpers.set(id, [...(helpers.get(id) ?? []), x]);
+  }
+  const near = (list: Trace["narrated"], i: number) =>
+    list.findLast((x) => x.i < i) ?? list.find((x) => x.i > i);
   events.forEach((e, i) => {
-    for (const t of touchesOf(e)) addAt(t, i);
+    for (const t of touchesOf(e)) addAt(t, i, String(e.payload.agent_id ?? ""));
   });
-  function addAt(t: Touch, i: number) {
-    const named = naming.get(t.path) ?? [];
-    const by = named.findLast((x) => x.i < i) ?? named.find((x) => x.i > i);
+  function addAt(t: Touch, i: number, agentId: string) {
+    const by =
+      near(helpers.get(agentId) ?? [], i) ?? near(naming.get(t.path) ?? [], i);
     const partId = by?.part ?? before[i]?.part;
     const part = req.parts.find((p) => p.id === partId);
     addTouch(part ? part.files : req.looseFiles, t);

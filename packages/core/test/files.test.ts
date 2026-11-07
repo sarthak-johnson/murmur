@@ -258,3 +258,28 @@ test("Task 1's helper changed files only through Bash in a worktree: they are it
   ]);
   expect(req?.looseFiles).toEqual([]);
 });
+
+test("a helper's change goes to the part it narrated, even when another part names the file", () => {
+  const as = (e: ReturnType<typeof tool>, id: string) => ({
+    ...e,
+    payload: { ...e.payload, agent_id: id, agent_type: "general-purpose" },
+  });
+  const [req] = reduce([
+    prompt(1, "add alerts"),
+    mapCall(2, MAP),
+    // The recap says which part each helper worked on, as if the helper said it.
+    as(narrateCall(3, note({ part: "db" })), "a1"),
+    as(narrateCall(4, note({ part: "api" })), "a2"),
+    narrateCall(
+      5,
+      note({ part: "api", files: [{ path: "shared.ts", role: "both" }] }),
+    ),
+    as(edit(6, "shared.ts", ["+db"]), "a1"),
+    as(edit(7, "shared.ts", ["+api", "+api"]), "a2"),
+    edit(8, "shared.ts", ["+main"]),
+  ]).requests;
+  const files = (id: string) =>
+    req?.parts.find((p) => p.id === id)?.files.map((f) => [f.path, f.added]);
+  expect(files("db")).toEqual([["shared.ts", 1]]);
+  expect(files("api")).toEqual([["shared.ts", 3]]);
+});
