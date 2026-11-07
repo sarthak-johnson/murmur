@@ -32,13 +32,16 @@ function sourceOf(request: RequestView, events: MurmurEvent[]) {
     : undefined;
 }
 
-/** A command's own description reads better than its first 60 characters. */
+/** A command reads as its own description, else in full (the card clamps it), never cut mid-word. */
 function nowText(text: string, src: MurmurEvent | undefined) {
-  const input = src?.payload.tool_input as
-    | { description?: unknown }
+  if (src?.payload.tool_name !== "Bash") return text;
+  const input = src.payload.tool_input as
+    | { description?: unknown; command?: unknown }
     | undefined;
-  const d = src?.payload.tool_name === "Bash" ? input?.description : undefined;
-  return typeof d === "string" && d.trim() ? d.trim() : text;
+  const said = (v: unknown) =>
+    typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "";
+  const command = said(input?.command);
+  return said(input?.description) || (command ? `Running ${command}` : text);
 }
 
 /** An inferred now opens as the tool call it was read from. */
@@ -82,8 +85,11 @@ export function NowCard(props: {
   const { request, cwd = "", events = [] } = props;
   const { now, agents, parts, looseFiles } = request;
   const src = sourceOf(request, events);
-  // A request Claude never mapped, once over, says what it did instead of a stale now.
-  const done = request.planInferred && request.finished;
+  // A request that is over says what it did instead of a stale now: one Claude never
+  // mapped, one its recap mapped, or one whose now was only read from a tool call.
+  const done =
+    request.finished &&
+    (request.planInferred || !!request.recap || !!now?.inferred);
   const live = agents
     .map((a, i) => ({ a, k: i + 1 }))
     .filter(({ a }) => a.status === "running");
@@ -101,8 +107,12 @@ export function NowCard(props: {
       <div className={done ? "now-card done" : "now-card"}>
         <div className={done ? "lbl lbl-done" : "lbl lbl-now"}>
           {done ? doneLbl : "Now"}
-          {(done || now?.inferred) && (
-            <span className="inferred">inferred</span>
+          {request.recap && done ? (
+            <span className="inferred">Recap by Claude</span>
+          ) : (
+            (done || now?.inferred) && (
+              <span className="inferred">inferred</span>
+            )
           )}
         </div>
         {done ? (

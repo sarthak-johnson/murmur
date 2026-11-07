@@ -586,6 +586,53 @@ describe("request page, story first", () => {
     expect(now.textContent).toContain("3 passed");
   });
 
+  it("a finished request never shows a stale inferred now", () => {
+    show(
+      session(
+        request({
+          planInferred: false,
+          messages: [],
+          now: {
+            text: "Running tail -3 /tmp/x",
+            why: "",
+            ts: at(20),
+            inferred: true,
+          },
+        }),
+      ),
+    );
+    const now = screen.getByRole("region", { name: "Now" });
+    expect(within(now).queryByText(/Running tail/)).toBeNull();
+    expect(now.textContent).toContain("4 helpers");
+  });
+
+  it("a command with no description reads in full, not cut at 60 characters", () => {
+    const long = `tail -3 /private/tmp/claude-501/${"x".repeat(80)}/pw.out`;
+    show(
+      session(
+        request({
+          finished: false,
+          messages: [],
+          now: {
+            text: `Running ${long.slice(0, 60)}`,
+            why: "",
+            ts: at(20),
+            inferred: true,
+          },
+        }),
+      ),
+      [
+        {
+          ...ev(20),
+          id: "b1",
+          hook: "PreToolUse",
+          payload: { tool_name: "Bash", tool_input: { command: long } },
+        },
+      ],
+    );
+    expect(screen.getByText(`Running ${long}`)).toBeTruthy();
+  });
+
   it("a recapped request is labelled Recap by Claude", () => {
     show(
       session(
