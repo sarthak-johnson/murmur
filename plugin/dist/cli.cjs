@@ -35,6 +35,7 @@ __export(cli_exports, {
 });
 module.exports = __toCommonJS(cli_exports);
 var import_node_child_process = require("node:child_process");
+var import_node_fs2 = __toESM(require("node:fs"), 1);
 var import_node_os2 = __toESM(require("node:os"), 1);
 
 // src/local.ts
@@ -319,7 +320,7 @@ function status(cwd, session) {
 }
 async function run(args, env, startPoller = spawnPoller) {
   const [cmd, arg] = args;
-  const cwd = arg || process.cwd();
+  const cwd = realpath2(arg || process.cwd());
   const session = env.CLAUDE_CODE_SESSION_ID || void 0;
   const scope = session ? "session" : "folder";
   if (session && (cmd === "login" || cmd === "on" || cmd === "resume"))
@@ -371,6 +372,13 @@ async function main() {
   }
 }
 if (/[\\/]cli\.(c?js|ts)$/.test(process.argv[1] ?? "")) void main();
+function realpath2(p) {
+  try {
+    return import_node_fs2.default.realpathSync(p);
+  } catch {
+    return p;
+  }
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   poll,

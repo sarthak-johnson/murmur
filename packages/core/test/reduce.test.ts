@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { MAP_TOOL, type MapInput, reduce } from "../src/index.js";
+import { MAP_TOOL, type MapInput, NarrateInput, reduce } from "../src/index.js";
 import {
   at,
   edit,
@@ -236,6 +236,28 @@ test("a failed task makes its phase now", () => {
   ]).requests;
   expect(req?.phases[0]?.tasks[0]?.status).toBe("failed");
   expect(req?.phases.map((p) => p.status)).toEqual(["now", "todo"]);
+});
+
+test("a blocked task is accepted and shows why it is stuck", () => {
+  expect(
+    NarrateInput.safeParse({
+      now: "Waiting",
+      why: "needs you",
+      taskStatus: "blocked",
+    }).success,
+  ).toBe(true);
+  const [req] = reduce([
+    prompt(1, "add alerts"),
+    mapCall(2, MAP),
+    narrateCall(
+      3,
+      note({ task: "1.1", taskStatus: "blocked", now: "Writes were refused" }),
+    ),
+  ]).requests;
+  expect(req?.phases[0]?.tasks[0]).toMatchObject({
+    status: "failed",
+    problem: "Writes were refused",
+  });
 });
 
 test("narrate merges part detail", () => {

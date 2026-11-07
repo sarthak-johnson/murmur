@@ -19826,7 +19826,8 @@ var NarrateInput = external_exports.object({
   why: external_exports.string().max(200),
   part: text.optional(),
   task: text.optional(),
-  taskStatus: status.optional(),
+  // Claude says "blocked" on its own when it waits on the user; read it as failed.
+  taskStatus: external_exports.union([status, external_exports.literal("blocked")]).optional(),
   step: external_exports.object({ text, status }).optional(),
   aim: external_exports.object({ aim: text, doneWhen: text }).optional(),
   io: external_exports.object({ gets: text, gives: text }).optional(),
@@ -19981,7 +19982,12 @@ function scrubEvent(e) {
 
 // ../packages/core/src/view/requests.ts
 var cut = (s, n) => s.slice(0, n);
-var TASK_STATUS = { running: "now", done: "done", failed: "failed" };
+var TASK_STATUS = {
+  running: "now",
+  done: "done",
+  failed: "failed",
+  blocked: "failed"
+};
 var relPath = (path4, cwd) => path4.startsWith(`${cwd}/`) ? path4.slice(cwd.length + 1) : path4.replace(/^\.\//, "");
 var str = (v) => typeof v === "string" ? v : void 0;
 function newRequest(start) {
@@ -20085,6 +20091,7 @@ function applyNarrate(req, e, n) {
   req.now = { text: n.now, why: n.why, ts: e.ts };
   if (part) req.now.part = part.id;
   if (task && n.taskStatus) task.status = TASK_STATUS[n.taskStatus];
+  if (task && n.taskStatus === "blocked") task.problem = n.now;
   if (task && agentId) addOnce(task.agents, agentId);
   if (part) {
     if (n.step)

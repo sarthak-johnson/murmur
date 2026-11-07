@@ -36732,7 +36732,8 @@ var NarrateInput = external_exports.object({
   why: external_exports.string().max(200),
   part: text.optional(),
   task: text.optional(),
-  taskStatus: status.optional(),
+  // Claude says "blocked" on its own when it waits on the user; read it as failed.
+  taskStatus: external_exports.union([status, external_exports.literal("blocked")]).optional(),
   step: external_exports.object({ text, status }).optional(),
   aim: external_exports.object({ aim: text, doneWhen: text }).optional(),
   io: external_exports.object({ gets: text, gives: text }).optional(),
