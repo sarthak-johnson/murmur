@@ -22,22 +22,46 @@ export const MOMENT: Record<Moment, { label: string; tone: Tone }> = {
   plan: { label: "Plan changed", tone: "plain" },
 };
 
-// In order: the first rule that matches names the moment. Words match from their start.
+// Decided from the first sentence only, and conservatively: the first rule that
+// matches names the moment, and most messages match none.
+const SUBJECT = String.raw`\b(?:tasks?|phase)\b[^.;:!?]*?`;
 const RULES: [Moment, RegExp][] = [
-  ["problem", /review found|\bproblem|\bfailed\b|\bbroke/i],
-  ["fixing", /\bfix|\bsent back\b/i],
-  ["done", /\bdone\b|\bpassed\b|\bverified\b/i],
+  // A review or test that found a problem, or something that failed.
+  [
+    "problem",
+    /\breview(?:er)? found\b|\bfound (?:a|an|one|two|three|\d+|some|real)\b[^.;:]*\bproblems?\b|(?<!\b(?:none|nothing|no|zero|0)\s(?:\w+\s)?)\bfailed\b/i,
+  ],
+  // Something sent back.
+  [
+    "fixing",
+    /\bsen(?:d|ding|t) (?:it |them |this |that )?back\b|\bback to the (?:same )?builder\b/i,
+  ],
+  // A task or phase that is done or passed.
+  [
+    "done",
+    new RegExp(
+      `${SUBJECT}\\b(?:is|are|was|were)\\s+(?:now\\s+)?(?:done|finished|complete)\\b|\\b(?:tasks?|phase)\\s+[\\w-]+(?:\\s+and\\s+[\\w-]+)?\\s+passed\\b`,
+      "i",
+    ),
+  ],
+  // An explicit change of plan, or a choice with its reason ("X, not Y: because").
   [
     "decision",
-    /\binstead of\b|\bnot\s|\bchanged\b|\bdecided\b|\brather than\b/i,
+    /\b(?:I|I'm|I'll|I've|we|we'll|we're)\b[^.;]*\b(?:instead of|rather than)\b|\bI(?:'ve| have)? decided\b|\bchanged? (?:the |my |our )?plan\b|,\s*not\s+\w+(?:\s+\w+)?\s*[:;]/i,
   ],
-  ["plan", /\badded a task\b|\badded an\b/i],
+  ["plan", /\badded an? (?:\w+ )?task\b/i],
 ];
+
+/** A text's first sentence, without its Markdown marks. */
+export function firstSentence(text: string): string {
+  const plain = plainText(text);
+  return /^.*?[.!?](?=\s|$)/.exec(plain)?.[0] ?? plain;
+}
 
 /** The kind of moment a message is, or undefined when it is none of them. */
 export function moment(text: string): Moment | undefined {
-  const plain = plainText(text);
-  return RULES.find(([, re]) => re.test(plain))?.[0];
+  const first = firstSentence(text);
+  return RULES.find(([, re]) => re.test(first))?.[0];
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -156,6 +180,29 @@ export function verdictOf(
   if (report.status === "failed") return { label: "Failed", tone: "bad" };
   if (report.status === "killed") return { label: "Stopped", tone: "bad" };
   return undefined;
+}
+
+/**
+ * A brief that says what the work is, or undefined for one that only tells the helper
+ * how to act ("You are re-reviewing one task's fix round…"): that is the prompt talking.
+ */
+export function aboutWork(brief: string | undefined): string | undefined {
+  const b = brief?.trim();
+  if (!b || /^(you are|you're|your (job|task|role)|you will|act as)\b/i.test(b))
+    return undefined;
+  return b;
+}
+
+/** A report in a line: its lead paragraph, else its summary unless that only says it finished. */
+export function reportLine(report: AgentReport | undefined): string {
+  if (!report) return "";
+  const lead = reportLead(report.text);
+  if (lead) return lead;
+  return /^Agent ".*" (finished|completed|failed|was stopped)\.?$/i.test(
+    report.summary,
+  )
+    ? ""
+    : report.summary;
 }
 
 /** The helpers on a part, in start order. */

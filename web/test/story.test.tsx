@@ -101,12 +101,9 @@ const messages: MessageView[] = [
     { task: "task:1", agent: "a2" },
   ),
   msg("m3", 14, "I also added an eleventh task to Phase 0."),
-  msg(
-    "m4",
-    15,
-    "The recheck passed. I'll confirm the values myself before marking Task 1 done.",
-    { task: "task:1" },
-  ),
+  msg("m4", 15, "Task 1 is done and verified. I confirmed the values myself.", {
+    task: "task:1",
+  }),
 ];
 
 function request(r: Partial<RequestView> = {}): RequestView {
@@ -237,22 +234,52 @@ const storyTexts = () =>
     .map((li) => li.querySelector(".story-text")?.textContent ?? "");
 
 describe("moment badges", () => {
-  it("follow the plain, conservative rules", () => {
-    expect(moment("The review found one real problem")).toBe("problem");
-    expect(moment("The build failed twice")).toBe("problem");
-    expect(moment("That change broke the chart")).toBe("problem");
-    expect(moment("Sent back to the same builder")).toBe("fixing");
-    expect(moment("I'm fixing the comment now")).toBe("fixing");
-    expect(moment("Task 1 is done")).toBe("done");
-    expect(moment("The recheck passed")).toBe("done");
-    expect(moment("Values verified")).toBe("done");
-    expect(moment("One builder at a time, not two")).toBe("decision");
-    expect(moment("I used tokens rather than raw colours")).toBe("decision");
-    expect(moment("I decided to keep it")).toBe("decision");
-    expect(moment("I also added an eleventh task")).toBe("plan");
-    expect(moment("Reading the prototype next")).toBeUndefined();
-    // Words that only contain a rule's word do not count.
-    expect(moment("The prefix is undone notably")).toBeUndefined();
+  it("are decided from the first sentence only, and conservatively", () => {
+    // Problem found: a review or test that found a problem, or something failed.
+    expect(moment("The review found one real problem: the colours.")).toBe(
+      "problem",
+    );
+    expect(moment("The reviewer found a small layout problem.")).toBe(
+      "problem",
+    );
+    expect(moment("The build failed twice.")).toBe("problem");
+    // Fixing: something is sent back.
+    expect(moment("Sent back to the same builder.")).toBe("fixing");
+    expect(moment("I'm sending it back to fix the comment.")).toBe("fixing");
+    expect(moment("Task 2 goes back to the builder with two notes.")).toBe(
+      "fixing",
+    );
+    // Done: a task or phase is done or passed.
+    expect(moment("Task 1 is done, with a few concerns noted.")).toBe("done");
+    expect(moment("Task 21, the plate at the top, is done.")).toBe("done");
+    expect(moment("Phase 0 is finished: all 11 tasks are built.")).toBe("done");
+    expect(moment("Task 3 passed its re-review.")).toBe("done");
+    // Decision: an explicit change of plan, or a choice with its reason.
+    expect(
+      moment("One builder at a time, not two: they edit the same files."),
+    ).toBe("decision");
+    expect(moment("I used tokens rather than raw colours.")).toBe("decision");
+    expect(
+      moment(
+        "To keep things lean, I'm saving the instructions once instead of pasting them.",
+      ),
+    ).toBe("decision");
+    expect(moment("I decided to keep the old chart.")).toBe("decision");
+    expect(moment("I also added an eleventh task to Phase 0.")).toBe("plan");
+    // Otherwise no badge.
+    for (const t of [
+      "The build has started. The colours task is running on Sonnet now.",
+      "Still waiting: Task 20's second fix round is running its full suite.",
+      "Applying the re-review's small fixes and the bolder hero weight myself:",
+      "A commit I fixed: my first commit carried a co-author line.",
+      "The recheck passed, but the reviewer only skimmed part of the diff.",
+      "Task 1 is now in review. Once it passes, I'll start Task 2.",
+      "Reading the prototype next. The review found a problem earlier.",
+      "Tests pass and nothing is done yet.",
+      "Task 20's full test suite passed (3,351 tests, none failed).",
+      "The money fix works: it now takes 0.6 seconds instead of about 20.",
+    ])
+      expect(moment(t), t).toBeUndefined();
   });
 });
 
@@ -365,7 +392,7 @@ describe("story helpers", () => {
     if (!t1 || !t2 || !t3) throw new Error("fixture");
     // The last linked message wins over a verdict.
     expect(outcome(req, t1)).toBe(
-      "The recheck passed. I'll confirm the values myself before marking Task 1 done.",
+      "Task 1 is done and verified. I confirmed the values myself.",
     );
     // No message: the last helper's verdict.
     expect(outcome(req, t2)).toBe("Done, with concerns");
@@ -441,14 +468,14 @@ describe("request page, story first", () => {
       "One builder ",
       "The review f",
       "I also added",
-      "The recheck ",
+      "Task 1 is do",
     ]);
   });
 
   it("the timeline runs newest first while the request runs", () => {
     show(session(request({ finished: false })));
     expect(storyTexts().map((t) => t.slice(0, 12))).toEqual([
-      "The recheck ",
+      "Task 1 is do",
       "I also added",
       "The review f",
       "One builder ",
@@ -474,6 +501,108 @@ describe("request page, story first", () => {
     expect(within(decision as HTMLElement).queryByRole("button")).toBeNull();
     await userEvent.click(chip);
     expect(location.pathname).toBe("/s/s1/r/r1/p/task%3A1");
+  });
+
+  it("groups consecutive messages about one task into a block with its outcome", async () => {
+    const run = [
+      msg("m0", 6, "Starting."),
+      msg("m1", 8, "Task 1 is being built on Sonnet.", { task: "task:1" }),
+      msg("m2", 9, "Task 1 is in review.", { task: "task:1" }),
+      msg("m3", 10, "The review found one real problem.", { task: "task:1" }),
+      msg("m4", 11, "Task 1 is done and verified.", { task: "task:1" }),
+      msg("m5", 12, "Waiting on the tracker."),
+      msg("m6", 13, "Task 2 is built.", { task: "task:2" }),
+    ];
+    const base = request();
+    show(
+      session(
+        request({
+          messages: run,
+          recap: true,
+          planInferred: false,
+          parts: base.parts.map((p) =>
+            p.id === "task:1"
+              ? {
+                  ...p,
+                  steps: [step("Done after 1 fix: the colours were weak")],
+                }
+              : p,
+          ),
+        }),
+      ),
+    );
+    const items = within(story()).getAllByRole("listitem");
+    expect(items).toHaveLength(3);
+    const [block, alone, single] = items as HTMLElement[];
+    const b = within(block as HTMLElement);
+    expect(
+      b.getByRole("button", { name: "Task 1: Lit plate tokens" }),
+    ).toBeTruthy();
+    // The block's outcome line is the task's.
+    expect(block?.querySelector(".group-out")?.textContent).toBe(
+      "Done after 1 fix: the colours were weak",
+    );
+    // First and last visible, the middle behind "2 more".
+    const texts = () =>
+      [...(block as HTMLElement).querySelectorAll(".story-text")].map(
+        (e) => e.textContent,
+      );
+    expect(texts()).toEqual([
+      "Task 1 is being built on Sonnet.",
+      "Task 1 is done and verified.",
+    ]);
+    await userEvent.click(b.getByRole("button", { name: "2 more" }));
+    expect(texts()).toEqual([
+      "Task 1 is being built on Sonnet.",
+      "Task 1 is in review.",
+      "The review found one real problem.",
+      "Task 1 is done and verified.",
+    ]);
+    expect(b.getByText("Problem found")).toBeTruthy();
+    // A message linked to no task stands alone; a one-message task is a plain moment.
+    expect(alone?.querySelector(".task-chip")).toBeNull();
+    expect(single?.textContent).toContain("Task 2 is built.");
+    expect(single?.querySelector(".group-out")).toBeNull();
+  });
+
+  it("a message linked only to a helper belongs to that helper's task", () => {
+    const run = [
+      msg("m0", 6, "Starting."),
+      msg("m1", 8, "Task 1 is in review.", { task: "task:1" }),
+      // a2 reviewed Task 1 (its part lists a2): this report message joins the block.
+      msg("m2", 9, "The review found one real problem.", { agent: "a2" }),
+      msg("m3", 10, "Task 1 is done.", { task: "task:1" }),
+      // a4 is Task 2's helper; a lone message still shows its task chip.
+      msg("m4", 11, "Built it with one note.", { agent: "a4" }),
+    ];
+    show(session(request({ messages: run })));
+    const items = within(story()).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]?.textContent).toContain("3 messages");
+    expect(
+      within(items[1] as HTMLElement).getByRole("button", {
+        name: "Task 2: HeroMoney",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("a block runs newest first while the request runs", () => {
+    const run = [
+      msg("m0", 6, "Starting."),
+      msg("m1", 8, "Task 1 is being built.", { task: "task:1" }),
+      msg("m2", 9, "Task 1 is in review.", { task: "task:1" }),
+      msg("m3", 10, "Task 1 is done.", { task: "task:1" }),
+      msg("m4", 11, "Waiting."),
+    ];
+    show(session(request({ finished: false, messages: run })));
+    const items = within(story()).getAllByRole("listitem");
+    expect(items[0]?.textContent).toContain("Waiting.");
+    const texts = [
+      ...(items[1] as HTMLElement).querySelectorAll(".story-text"),
+    ].map((e) => e.textContent);
+    expect(texts).toEqual(["Task 1 is done.", "Task 1 is being built."]);
+    // The outcome line would only repeat the newest message shown, so it is left out.
+    expect(items[1]?.querySelector(".group-out")).toBeNull();
   });
 
   it("renders Markdown in messages as formatted text", () => {
@@ -506,7 +635,7 @@ describe("request page, story first", () => {
     show(session(request()));
     const plan = screen.getByRole("region", { name: "Plan" });
     expect(
-      within(plan).getByText(/The recheck passed\. I'll confirm/),
+      within(plan).getByText(/Task 1 is done and verified\. I confirmed/),
     ).toBeTruthy();
     expect(within(plan).getByText("Done, with concerns")).toBeTruthy();
   });
