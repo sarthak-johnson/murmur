@@ -99,3 +99,77 @@ The story and report parts with data: the same session's events plus Claude's re
 - The recap leaves tasks of finished requests in progress ("Get approval" in "I love it", "Phase 1: My Agents" in "Yes please go ahead"), so a Done band sits over a running phase; the recap or the reducer should close a finished request's open tasks.
 - `inferNow` cuts a command at 60 characters mid-word with no ellipsis; the web now shows the description or the full command itself, but core could prefer `tool_input.description` too.
 - The moment badges follow the brief's rules exactly; on real messages "fix" fires often ("A commit I fixed", "small fixes") and wins over "not two" decisions because Problem and Fixing come first. If that reads as noise to the author, the next step is word lists tuned on his 190 messages rather than more rules.
+
+## Round 2: fixes on real data
+
+Done on `fix/backfill-whole-transcript` (core fills messages, reports, briefs and recap), checked on the author's re-imported session at http://localhost:8787 at 1440 × 900.
+
+### What I fixed
+
+1. **Overlapping side column on the running request.**
+   The classic grid's named `grid-area` rules for the Now card, helpers, files and start line still applied inside the story's side column, where those areas do not exist, so all four landed in one cell.
+   They now apply to `.live-grid` children only; beside the story the column stacks Now, then running helpers, then files, with the file counts in their own columns.
+   Checked with two helpers running and with a long Now line (clamped to three lines with an ellipsis).
+   CSS only, so no unit test; checked in the browser.
+2. **Badges are decided from the first sentence only, and conservatively** (`web/src/story.ts`).
+   - Problem found: "review found", "found a/one/two … problem", "failed" (but not "none failed").
+   - Fixing: "send/sending/sent (it) back", "back to the (same) builder".
+   - Done: a task or phase that "is/are/was done/finished/complete", or "Task N passed".
+   - Decision: "I/we … instead of / rather than", "decided", "changed the plan", or a choice with its reason ("X, not Y: …").
+   - Plan changed: "added a/an … task".
+   - Otherwise no badge.
+     Over all 201 real messages (opening lines excluded): **no badge 165, Done 23, Problem found 12, Decision 1, Fixing 0, Plan changed 0**.
+     Fixing is 0 because "I'm sending it back" always comes after a first sentence that already says the review found a problem.
+3. **The timeline groups runs of messages about one task** (`web/src/live/Story.tsx`).
+   A block shows the task title, its outcome line (left out when it only repeats a message shown in full), the first and last message, and "N more" for the middle.
+   A message counts as about a task when core linked it to the task, or linked it to a helper whose part belongs to exactly one task: core sets that `agent` link when a report arrives, so this guesses nothing.
+   Messages about no task stand alone; order stays newest first while running, oldest first when done.
+   "Yes please go ahead": 83 messages now read as 53 items, 15 of them blocks.
+4. **A folded finished phase reads "10 tasks, all done"** (or "N of M tasks done") with the expand toggle, instead of a run-on list of titles.
+5. **Helper cards never show the prompt.**
+   A card reads Claude's first message after that helper's report, else the report's lead paragraph (or its summary when that says more than "Agent X finished"), else the helper's brief when it is about the work, else nothing.
+   A brief that only addresses the helper ("You are re-reviewing one task's fix round…", "Your job…") counts as prompt and is never shown, here or under What it was for.
+   The card also takes Claude's first message after the report, not a later aside ("Logged on the tracker…").
+6. **Report entities.**
+   Core already decodes the notification's `<result>` once (`unentity` in `packages/core/src/view/words.ts`), and the real Task 1 report reads `useStoredChoice > survives…` on the page, with no entity left anywhere.
+   I widened the core test to all five entities and to "decoded once, so `&amp;lt;` stays `&lt;`".
+   No core code changed, so `plugin/dist` did not change.
+7. **"Done when" has its own label style**, a small muted label before the condition, on its own line under the aim.
+
+### Tests
+
+New or changed, each seen failing first:
+- badge rules with real false positives as cases ("The build has started…", "Still waiting: Task 20's second fix round…", "Applying the re-review's small fixes…", "…none failed", "…instead of about 20");
+- task blocks (first, last, "N more", outcome line, standalone messages, a one-message task, newest first while running, an outcome that would repeat a shown message);
+- a helper-linked message joining its task's block;
+- the folded phase count;
+- helper card text (message, report lead, a brief that addresses the helper hidden, a brief about the work shown, first message after the report);
+- the Done when label;
+- the core entities test.
+
+### Checks
+
+| Check | Exit code |
+| --- | --- |
+| `pnpm -s lint` | 0 |
+| `pnpm -s typecheck` | 0 |
+| `pnpm -s test` | 0 (core 241, plugin 140, server 92, web 180) |
+| `pnpm -s build:plugin` | 0 (no change to `plugin/dist`) |
+| `pnpm --filter @murmur/web -s build` | 0 |
+
+### Screenshots
+
+In `/Users/sarprasa/.claude/jobs/0a6793ec/tmp/`, 1440 × 900:
+- `round2-newest.png`: the running request: story newest first, Now, two helpers running, files, no overlap.
+- `round2-newest-long-now.png`: the side column with a long Now line.
+- `round2-goahead.png`, `round2-goahead-groups.png`: "Yes please go ahead", the folded Phase 0 ("10 tasks, all done") and a Task 1 block.
+- `round2-love.png`: "I love it, let's build it".
+- `round2-task1.png`: the Task 1 page ("Lit plate tokens", Recap by Claude, Done when label, recap steps without made-up times, helper cards, 6 files).
+- `round2-report.png`: the reviewer's full report open.
+
+### Still open, for core
+
+- Core links a message to a task only when the whole message names one subject, so "Task 1 is now in review. Once it passes, I'll start Task 2" stays unlinked and splits Task 1's block.
+  Linking by the one subject named in the first sentence would shorten "Yes please go ahead" further; that belongs in core's linker, not in the web.
+- Core's brief for reviewers is the prompt's role paragraph ("You are reviewing one task's implementation…"); the web now hides it, but `briefOf` should skip paragraphs that address the helper.
+- On the newest request all helpers sit on the one mapped task "Dispatch the first builder and review its work", so their messages group under that title although they are about Tasks 20 to 26; a finer plan from narration would fix that.
