@@ -129,3 +129,68 @@ Fixed while comparing: tick labels running past the box at 1280, the recap tag t
 - Short task names drop the plan number ("Task 12"), as in the mock, while Claude's messages still say "Task 12"; the full title is the row's tooltip.
 - The map lost the phase strip's phase highlight; hovering a task in the plan still highlights its part.
 - The now line clamps to two lines, and the switcher's titles to three, with an ellipsis at the end.
+
+## Review fixes
+
+An Opus review of the build found five must-fix problems and thirteen smaller ones, all fixed in `45e5aac`.
+Each logic fix has a test in `web/test/redesign.test.tsx` ("review fixes" blocks) or `web/test/map.test.tsx`, run red before the change: 21 of the new tests failed for the reason they name.
+The running-helper and overlapping-runs timeline tests passed before the change and stay as cover.
+
+### Must fix
+
+1. False "needs you".
+   `questionsIn` (`web/src/session.ts`) now reads only the end of Claude's last message: its last paragraph or a trailing list.
+   It skips code spans, code blocks and links, treats headings and list items as sentence ends, keeps "v1.2" whole, and reads "Should I…? Or…?" as one question.
+   It counts only questions put to the user ("Should I", "Do you", "May we", or any with "you").
+   A question Claude answers in the next sentence does not count.
+   The reviewer's link-and-code fixture now reads Done with no chip, and the heading fixture reads "1 question for you" with the whole either-or.
+2. The catch-up on reconnect.
+   It is built the first time the stream is live, kept in state, and rebuilt only when the last look changes (`web/src/pages/Session.tsx`).
+   The past view is reduced once there, not on every batch.
+3. The plan jumping.
+   Every task of the live phase is now a card on one line, busy or not, so a helper starting or ending changes words, not boxes (`web/src/live/PlanColumn.tsx`).
+   A second helper on a task reads "+1", and times under a minute read "<1 m".
+   On the reviewer's running fixture, the plan's rows sat at the same heights (120, 173, 199, 243, 298, 370) before a helper started, while it ran and after it stopped.
+4. Sideways scroll at 375 px.
+   The 900 px query now uses `.bar > .cell.now-cell`; every page and fixture measured no wider than the window at 375 and 1440.
+5. Keyboard order.
+   "Skip to the content" is the bar's first stop, aimed at `<main id="main">`; the story's "Skip to the plan" is gone.
+
+### Minor
+
+6. A finished request never says helpers are still running.
+7. The story gets the computed `done`, so a request Claude stopped on reads oldest first.
+8. The Story or Map choice lives above the request and in local storage, so it stays when you switch requests; the facts row keeps the toggle's height.
+9. Timeline bars sit at their true width (at least a 4 px sliver); a label that does not fit sits beside the bar, before it near the end of the axis.
+10. A helper's first bar is named in the plan's words when they fit ("Builder added the tokens, Tailwind…"), else by its short name; ticks name the day when the axis crosses midnight.
+11. At 375 px lane names put the role under the name.
+12. A long file name wraps its counts under it; no file card overflows at 1280.
+13. "2 sent back for fixes"; names with an "and" of their own are joined with semicolons; a text with no spaces is cut at its length; the catch-up's "questions waiting" part is worked out live, so it drops once they are answered.
+14. An open `AskUserQuestion` reads "Asking you 2 questions"; the now details close on Escape or a click outside, like the request switcher.
+15. "Answer in the terminal" is a note, not a button.
+16. Map labels end at a word (only a single long word is cut inside), and the width estimate is set for Geist, so labels fit their boxes.
+17. Covered by 2.
+18. Timeline tests: a running helper, ten seconds and five hours, past midnight, overlapping helpers, a label wider than its bar, and a bar named by the plan.
+
+### Checks after the fixes
+
+| Check | Exit code |
+|---|---|
+| `pnpm -s lint` | 0 |
+| `pnpm -s typecheck` | 0 |
+| `pnpm -s test` | 0 (core 243, plugin 162, server 92, web 258 tests) |
+| `pnpm -s build:plugin` | 0, `plugin/dist` unchanged |
+| `pnpm --filter @murmur/web -s build` | 0 |
+
+### Screenshots
+
+In `/Users/sarprasa/.claude/jobs/0a6793ec/tmp/`, at 1440 × 900 and 375 × 812:
+
+- Real pages: `redesign2-request-*.png`, `redesign2-task-*.png`, `redesign2-short-*.png`, plus `redesign2-task-timeline-1280.png` and `redesign2-task-timeline-375.png`.
+- The reviewer's fixtures from `/tmp/mrv/fx.js`: `redesign2-fx-url-*.png` (no false amber), `redesign2-fx-msg-*.png` (one whole question), `redesign2-fx-ask-*.png` (the waiting state, "Asking you 2 questions", no sideways scroll at 375), `redesign2-fx-run-*.png`, `redesign2-fx-inf-*.png`.
+- `redesign2-helper-start-1440.png`: a helper started on the running fixture, the plan unmoved.
+
+### Still open
+
+- A helper on no task still adds a card at the end of the live phase; that is rare, and only the rows below it move.
+- Bar label widths are estimated from character counts against the measured track, so a label can sit beside a bar it would just fit.
