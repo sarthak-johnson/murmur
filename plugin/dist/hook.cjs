@@ -21495,7 +21495,7 @@ function parse3(stdout) {
     ...cost === void 0 ? {} : { cost }
   };
 }
-function recapEvents(req, recap, helperIds, base) {
+function recapEvents(req, recap, helperIds, base, paths = /* @__PURE__ */ new Map()) {
   const out = [];
   const at = Date.parse(req.startedAt);
   const add = (tool, input3, extra = {}) => {
@@ -21526,8 +21526,20 @@ function recapEvents(req, recap, helperIds, base) {
   const tasks = recap.map.phases.flatMap((ph) => ph.tasks);
   for (const p of recap.parts) {
     const title = recap.map.parts.find((x) => x.id === p.id)?.title ?? p.id;
-    const { id, steps, helpers, ...detail } = p;
-    add(NARRATE_TOOL, { now: cut2(title), why: "", part: id, ...detail });
+    const { id, steps, helpers, files, ...detail } = p;
+    add(NARRATE_TOOL, {
+      now: cut2(title),
+      why: "",
+      part: id,
+      ...detail,
+      // Named by the path it was changed at, so it matches whatever cwd reads it.
+      ...files ? {
+        files: files.map((f) => ({
+          ...f,
+          path: paths.get(f.path) ?? f.path
+        }))
+      } : {}
+    });
     for (const step of steps ?? [])
       add(NARRATE_TOOL, { now: cut2(step.text), why: "", part: id, step });
     for (const h of helpers ?? []) {
@@ -21569,6 +21581,7 @@ async function runRecap(sessionId, events, {
   updateSession(sessionId, { recapped: [...done, ...todo.map((r) => r.id)] });
   const byId = new Map(events.map((e) => [e.id, e]));
   const calls = callsByRequest(events, new Set(view.requests.map((r) => r.id)));
+  const paths = changedPaths(events);
   let ok = 0;
   const queue = [...todo];
   const worker = async () => {
@@ -21592,7 +21605,8 @@ async function runRecap(sessionId, events, {
         req,
         r.recap,
         helperIds,
-        byId.get(req.id)
+        byId.get(req.id),
+        paths
       ))
         enqueue(e);
       ok++;
@@ -21615,6 +21629,21 @@ function callsByRequest(events, ids) {
       out.set(e.id, current);
     } else if (current && e.hook === "PreToolUse" && e.payload.tool_name === "Agent" && !e.payload.agent_id)
       current.push(e);
+  }
+  return out;
+}
+function changedPaths(events) {
+  const out = /* @__PURE__ */ new Map();
+  const add = (abs, cwd) => {
+    if (typeof abs === "string") out.set(relPath(abs, cwd), abs);
+  };
+  for (const e of events) {
+    if (e.hook !== "PostToolUse") continue;
+    const res = e.payload.tool_response ?? {};
+    add(res.filePath, e.cwd);
+    const diff = res.bashEditDiff;
+    for (const f of Array.isArray(diff?.files) ? diff.files : [])
+      add(f?.filePath, e.cwd);
   }
   return out;
 }

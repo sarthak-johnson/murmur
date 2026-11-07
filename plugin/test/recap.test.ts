@@ -360,3 +360,46 @@ describe("recap", () => {
     expect(text).toContain("Build the lit plate tokens");
   });
 });
+
+it("a file a helper changed in a worktree lands on its part as the server reads it", async () => {
+  // A helper's events carry the worktree as cwd; the server gives every event the session's.
+  const wt = `${cwd}/.claude/worktrees/lit`;
+  const sub: MurmurEvent = {
+    ...(events.find((e) => e.hook === "PostToolUse") as MurmurEvent),
+    id: "sub-edit",
+    cwd: wt,
+    ts: t(3.5),
+    payload: {
+      hook_event_name: "PostToolUse",
+      tool_name: "Bash",
+      tool_use_id: "toolu_sub",
+      agent_id: "a1",
+      cwd: wt,
+      tool_response: {
+        bashEditDiff: {
+          files: [
+            { filePath: `${wt}/frontend/x.css`, hunks: [{ lines: ["+a"] }] },
+          ],
+        },
+      },
+    },
+  };
+  const all = [...events, sub];
+  fake(
+    answer({
+      ...RECAP,
+      parts: [
+        {
+          ...RECAP.parts[0],
+          files: [{ path: "frontend/x.css", role: "styles" }],
+        },
+      ],
+    }),
+  );
+  await runRecap(SID, all, { env: env() });
+  const onServer = [...all, ...queued()].map((e) => ({ ...e, cwd }));
+  const [req] = reduce(onServer).requests;
+  expect(req?.parts[0]?.files.map((f) => [f.path, f.role])).toEqual([
+    [".claude/worktrees/lit/frontend/x.css", "styles"],
+  ]);
+});

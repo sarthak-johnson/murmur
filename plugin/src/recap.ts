@@ -20,6 +20,7 @@ import {
   RecapInput,
   type RequestView,
   reduce,
+  relPath,
 } from "@murmur/core";
 import { stableId } from "./backfill.js";
 import {
@@ -236,6 +237,7 @@ export function recapEvents(
   recap: Recap,
   helperIds: (string | undefined)[],
   base: MurmurEvent,
+  paths: Map<string, string> = new Map(),
 ): MurmurEvent[] {
   const out: MurmurEvent[] = [];
   const at = Date.parse(req.startedAt);
@@ -271,8 +273,22 @@ export function recapEvents(
   const tasks = recap.map.phases.flatMap((ph) => ph.tasks);
   for (const p of recap.parts) {
     const title = recap.map.parts.find((x) => x.id === p.id)?.title ?? p.id;
-    const { id, steps, helpers, ...detail } = p;
-    add(NARRATE_TOOL, { now: cut(title), why: "", part: id, ...detail });
+    const { id, steps, helpers, files, ...detail } = p;
+    add(NARRATE_TOOL, {
+      now: cut(title),
+      why: "",
+      part: id,
+      ...detail,
+      // Named by the path it was changed at, so it matches whatever cwd reads it.
+      ...(files
+        ? {
+            files: files.map((f) => ({
+              ...f,
+              path: paths.get(f.path) ?? f.path,
+            })),
+          }
+        : {}),
+    });
     for (const step of steps ?? [])
       add(NARRATE_TOOL, { now: cut(step.text), why: "", part: id, step });
     for (const h of helpers ?? []) {
@@ -320,6 +336,7 @@ export async function runRecap(
   updateSession(sessionId, { recapped: [...done, ...todo.map((r) => r.id)] });
   const byId = new Map(events.map((e) => [e.id, e]));
   const calls = callsByRequest(events, new Set(view.requests.map((r) => r.id)));
+  const paths = changedPaths(events);
   let ok = 0;
   const queue = [...todo];
   const worker = async () => {
@@ -345,6 +362,7 @@ export async function runRecap(
         r.recap,
         helperIds,
         byId.get(req.id) as MurmurEvent,
+        paths,
       ))
         enqueue(e);
       ok++;
@@ -376,6 +394,29 @@ function callsByRequest(events: MurmurEvent[], ids: Set<string>) {
       !e.payload.agent_id
     )
       current.push(e);
+  }
+  return out;
+}
+
+/**
+ * Each changed file's path as the view shows it here, to the path it was changed at. A
+ * helper in a worktree has the worktree as its cwd here, but the server gives every
+ * event the session's cwd, so only the full path names the file the same way in both.
+ */
+// ponytail: one relative path changed both in a worktree and in the main tree maps to the
+// last full path seen; key by (helper, path) if recaps ever name the wrong copy.
+function changedPaths(events: MurmurEvent[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const add = (abs: unknown, cwd: string) => {
+    if (typeof abs === "string") out.set(relPath(abs, cwd), abs);
+  };
+  for (const e of events) {
+    if (e.hook !== "PostToolUse") continue;
+    const res = (e.payload.tool_response ?? {}) as Record<string, unknown>;
+    add(res.filePath, e.cwd);
+    const diff = res.bashEditDiff as { files?: unknown } | undefined;
+    for (const f of Array.isArray(diff?.files) ? diff.files : [])
+      add((f as Record<string, unknown> | null)?.filePath, e.cwd);
   }
   return out;
 }
