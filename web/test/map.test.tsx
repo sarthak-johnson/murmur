@@ -541,6 +541,10 @@ describe("MapView", () => {
             part({ id: "a", title: "Style B, departure board and more" }),
             part({ id: "b", title: "scratchpad/style/shared/deeper" }),
             part({ id: "c", title: ".superpowers/sdd/2026-11-06-lit-plate-x" }),
+            part({
+              id: "d",
+              title: "Ab supercalifragilisticexpialidociousness",
+            }),
           ],
         })}
         onOpenPart={() => {}}
@@ -549,9 +553,11 @@ describe("MapView", () => {
     const label = (name: RegExp) =>
       screen.getByRole("button", { name }).querySelector(".label")?.textContent;
     expect(label(/^Style B/)).toBe("Style B, departure…");
-    expect(label(/^scratchpad/)).toBe("…/style/shared/deeper");
+    expect(label(/^scratchpad/)).toBe("…/shared/deeper");
     // A last folder too long for the box ends at a dash, not mid-word.
-    expect(label(/^\.superpowers/)).toBe("…/2026-11-06-lit-plate…");
+    expect(label(/^\.superpowers/)).toBe("…/2026-11-06-lit…");
+    // A word that cannot fit is dropped whole, never cut inside.
+    expect(label(/^Ab /)).toBe("Ab…");
   });
 
   it("a growing canvas never moves existing chips", () => {

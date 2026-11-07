@@ -206,6 +206,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   vi.unstubAllGlobals();
 });
 
@@ -688,7 +689,7 @@ describe("live screen", () => {
     expect(within(now).queryByText(/Editing/)).toBeNull();
   });
 
-  it("a done request says when helpers are still running", () => {
+  it("a finished request never claims helpers are still running", () => {
     const view = session();
     const running = (id: string) => agent(id, "Build style A", "endpoint");
     view.requests[1] = request({
@@ -700,20 +701,8 @@ describe("live screen", () => {
     show(view);
     expect(within(screen.getByRole("banner")).getByText("Done")).toBeTruthy();
     const now = screen.getByRole("region", { name: "Now" });
-    expect(
-      within(now).getByText("Nothing changed, 1 helper still running"),
-    ).toBeTruthy();
-    cleanup();
-    view.requests[1] = request({
-      planInferred: true,
-      finished: true,
-      tally: { helpers: 0, files: 0, commands: 0 },
-      agents: [running("a1"), running("a2")],
-    });
-    show(view);
-    expect(
-      screen.getByText("Nothing changed, 2 helpers still running"),
-    ).toBeTruthy();
+    expect(within(now).getByText("Nothing changed")).toBeTruthy();
+    expect(now.textContent).not.toContain("still running");
   });
 
   it("the done line counts in plain words and skips zeros", () => {
@@ -745,7 +734,7 @@ describe("live screen", () => {
     expect(
       screen.getByText("Building the server endpoint that saves an alert"),
     ).toBeTruthy();
-    expect(screen.queryByText("Done")).toBeNull();
+    expect(within(screen.getByRole("banner")).queryByText("Done")).toBeNull();
     cleanup();
     view.requests[1] = request({ finished: true });
     show(view);

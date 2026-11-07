@@ -1,5 +1,5 @@
 import type { Flag } from "@murmur/core";
-import type { Brief as BriefData, Mark } from "../catchup";
+import { type Brief as BriefData, briefLead, type Mark } from "../catchup";
 import { ago } from "../format";
 import type { Waiting } from "../session";
 import { clock, duration } from "../story";
@@ -28,14 +28,18 @@ function ItemMark({ mark }: { mark: Mark }) {
   return <Glyph status={mark === "plain" ? "todo" : mark} />;
 }
 
-function CatchUp(props: { brief: BriefData; since: string }) {
-  const { brief, since } = props;
+function CatchUp(props: {
+  brief: BriefData;
+  since: string;
+  waiting: Waiting | null;
+}) {
+  const { brief, since, waiting } = props;
   return (
     <section className="brief-l" aria-label="Since you last looked">
       <div className="since">
         <b>Since you last looked</b> at {clock(since)}, {ago(since)}
       </div>
-      <p className="lead">{brief.lead}</p>
+      <p className="lead">{briefLead(brief, waiting, since)}</p>
       {brief.items.length > 0 && (
         <ul className="items">
           {brief.items.map((i) => (
@@ -80,7 +84,7 @@ function NeedsCall(props: { waiting: Waiting; risky: Flag[] }) {
         </div>
       ))}
       <div className="ans">
-        <span className="btn">Answer in the terminal</span>
+        <span className="where">Answer in the terminal</span>
         <span className="num">Asked {clock(waiting.since)}</span>
       </div>
     </section>
@@ -100,7 +104,7 @@ export function BriefBlock(props: {
   if (!catchUp && !waiting) return null;
   return (
     <div className={catchUp && waiting ? "brief two" : "brief"}>
-      {catchUp && <CatchUp brief={brief} since={since} />}
+      {catchUp && <CatchUp brief={brief} since={since} waiting={waiting} />}
       {waiting && <NeedsCall waiting={waiting} risky={risky} />}
     </div>
   );

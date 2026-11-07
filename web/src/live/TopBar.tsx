@@ -50,6 +50,32 @@ export function NeedIcon() {
   );
 }
 
+/** Closes an open popover on Escape (focus back on its button) or a click outside it. */
+function useDismiss(
+  open: boolean,
+  close: () => void,
+  box: React.RefObject<HTMLElement | null>,
+  btn: React.RefObject<HTMLElement | null>,
+) {
+  useEffect(() => {
+    if (!open) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      close();
+      btn.current?.focus();
+    };
+    const click = (e: MouseEvent) => {
+      if (!box.current?.contains(e.target as Node)) close();
+    };
+    document.addEventListener("keydown", key);
+    document.addEventListener("mousedown", click);
+    return () => {
+      document.removeEventListener("keydown", key);
+      document.removeEventListener("mousedown", click);
+    };
+  }, [open, close, box, btn]);
+}
+
 function RequestSwitcher(props: {
   requests: RequestView[];
   selectedId: string;
@@ -59,23 +85,7 @@ function RequestSwitcher(props: {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const key = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      setOpen(false);
-      btn.current?.focus();
-    };
-    const click = (e: MouseEvent) => {
-      if (!box.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("keydown", key);
-    document.addEventListener("mousedown", click);
-    return () => {
-      document.removeEventListener("keydown", key);
-      document.removeEventListener("mousedown", click);
-    };
-  }, [open]);
+  useDismiss(open, () => setOpen(false), box, btn);
   const k = requests.findIndex((r) => r.id === selectedId);
   return (
     <div className="switch" ref={box}>
@@ -142,16 +152,20 @@ function NowCell(props: {
 }) {
   const { request, done, events, cwd } = props;
   const [open, setOpen] = useState(false);
+  const box = useRef<HTMLElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  useDismiss(open, () => setOpen(false), box, btn);
   const line = nowLine(request, events, done);
   const more = !!(line.src || line.why);
   return (
-    <section className="cell grow now-cell" aria-label="Now">
+    <section className="cell grow now-cell" aria-label="Now" ref={box}>
       <span className="k">{line.label}</span>
       <span className="v" title={line.text}>
         {line.text}
       </span>
       {more && (
         <button
+          ref={btn}
           type="button"
           className="link now-more"
           aria-expanded={open}
@@ -202,6 +216,9 @@ export function TopBar(props: {
   const base = request ? `/s/${enc(sessionId)}/r/${enc(request.id)}` : "";
   return (
     <header className="bar">
+      <a className="skip" href="#main">
+        Skip to the content
+      </a>
       <div className="bar-brand">
         <a
           className="brand"

@@ -13,7 +13,8 @@ export interface BriefItem {
   text: string;
 }
 export interface Brief {
-  lead: string;
+  /** The sentence as it stood at the look; `briefLead` adds open questions live. */
+  sentences: string[];
   items: BriefItem[];
 }
 
@@ -22,23 +23,28 @@ const word = (n: number) => NUM[n] ?? String(n);
 const n_ = (n: number, one: string, many = `${one}s`) =>
   `${n} ${n === 1 ? one : many}`;
 
-/** "a", "a and b", "a, b and c". */
+/** Names that hold an "and" of their own are kept apart with semicolons. */
+const sep = (xs: string[]) => (xs.some((x) => /\band\b/.test(x)) ? "; " : ", ");
+
+/** "a", "a and b", "a, b and c"; "a and b; c" when a name holds an "and". */
 export function list(xs: string[]): string {
   if (xs.length < 2) return xs.join("");
+  if (sep(xs) === "; ") return xs.join("; ");
   return `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`;
 }
 
 /** Up to three names, then how many more: a bullet stays a line or two. */
 const few = (xs: string[]) =>
   xs.length > 3
-    ? `${xs.slice(0, 3).join(", ")} and ${xs.length - 3} more`
+    ? `${xs.slice(0, 3).join(sep(xs.slice(0, 3)))} and ${xs.length - 3} more`
     : list(xs);
 
-/** A text cut at a word, at most n characters. */
+/** A text cut at a word, at most n characters; one long word is cut at n. */
 export function cutWords(s: string, n: number): string {
   if (s.length <= n) return s;
   const head = s.slice(0, n);
-  return `${head.slice(0, Math.max(head.lastIndexOf(" "), 1)).replace(/[,;:]$/, "")}…`;
+  const space = head.lastIndexOf(" ");
+  return `${(space > n / 3 ? head.slice(0, space) : head).replace(/[,;:]$/, "")}…`;
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -48,7 +54,6 @@ export function catchUpBrief(
   after: SessionView,
   requestId: string,
   lastLooked: string | null,
-  waiting: Waiting | null,
 ): Brief | null {
   const a = after.requests.find((r) => r.id === requestId);
   if (!a || !before || !lastLooked) return null;
@@ -67,7 +72,6 @@ export function catchUpBrief(
   const started = a.phases.filter(
     (p) => p.status === "now" && (wasPhase.get(p.id) ?? "todo") === "todo",
   );
-  const asked = waiting && waiting.since > lastLooked ? waiting : null;
 
   const items: BriefItem[] = [];
   const says: string[] = [];
@@ -94,14 +98,14 @@ export function catchUpBrief(
     says.push(
       kind === "problem"
         ? `${n_(ms.length, "problem")} ${ms.length === 1 ? "was" : "were"} found`
-        : `${ms.length} ${ms.length === 1 ? "was" : "were"} sent back to fix`,
+        : `${ms.length} sent back for fixes`,
     );
     items.push({
       mark,
       lead:
         kind === "problem"
           ? `${n_(ms.length, "problem")} found:`
-          : `${ms.length} sent back to fix:`,
+          : `${ms.length} sent back for fixes:`,
       text: cutWords(firstSentence(latest.text), 140),
     });
   }
@@ -133,28 +137,33 @@ export function catchUpBrief(
     sentences.push(
       `${list(finished.map((p) => p.title))} ${finished.length === 1 ? "is" : "are"} finished.`,
     );
-  const clauses = [
-    ...started.map((p) => {
-      const from = phaseSpan(a, p).from;
-      return from
-        ? `${p.title} started at ${clock(from)}`
-        : `${p.title} started`;
-    }),
-    ...(asked?.questions.length
-      ? [
-          asked.questions.length === 1
-            ? "a question is waiting for you"
-            : `${word(asked.questions.length)} questions are waiting for you`,
-        ]
-      : asked
-        ? ["Claude is waiting for you"]
-        : []),
-  ];
-  if (clauses.length)
-    sentences.push(
-      `${cap(clauses.length > 1 ? `${clauses.slice(0, -1).join(", ")}, and ${clauses.at(-1)}` : (clauses[0] as string))}.`,
-    );
+  const begun = started.map((p) => {
+    const from = phaseSpan(a, p).from;
+    return from ? `${p.title} started at ${clock(from)}` : `${p.title} started`;
+  });
+  if (begun.length) sentences.push(`${cap(list(begun))}.`);
   if (!sentences.length && !items.length) return null;
   if (!sentences.length) sentences.push(`${cap(list(says))}.`);
-  return { lead: sentences.join(" "), items: items.slice(0, 5) };
+  return { sentences, items: items.slice(0, 5) };
+}
+
+/** The brief's sentence, with the questions asked since the look that are still open. */
+export function briefLead(
+  brief: Brief,
+  waiting: Waiting | null,
+  lastLooked: string,
+): string {
+  const n =
+    waiting && waiting.since > lastLooked ? waiting.questions.length : -1;
+  const ask =
+    n < 0
+      ? ""
+      : n === 0
+        ? "Claude is waiting for you"
+        : n === 1
+          ? "a question is waiting for you"
+          : `${word(n)} questions are waiting for you`;
+  const out = [...brief.sentences];
+  if (ask) out.push(`${out.pop()?.replace(/\.$/, "")}, and ${ask}.`);
+  return out.join(" ");
 }

@@ -398,6 +398,13 @@ function PartBody(props: {
   );
   const groups = fileGroups(part.files);
   const timeline = helpers.length > 0;
+  // The plan's words for each helper's work name its bar on the timeline.
+  const named = new Map<string, string>();
+  if (request.recap)
+    for (const { step, helper } of recapRounds(part.steps, others))
+      if (step && helper) named.set(helper.id, step.text);
+  for (const st of part.steps)
+    if (st.agentId && !named.has(st.agentId)) named.set(st.agentId, st.text);
   const recapped =
     request.recap && (part.steps.length > 0 || others.length > 0);
   const how = recapped || part.steps.length > 0;
@@ -487,6 +494,7 @@ function PartBody(props: {
             part={part}
             helpers={helpers}
             events={events}
+            named={named}
           />
         </div>
       )}

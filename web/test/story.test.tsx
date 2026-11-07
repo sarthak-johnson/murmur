@@ -24,7 +24,11 @@ import {
   verdictOf,
 } from "../src/story";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // The Story or Map choice is kept per viewer; each test starts fresh.
+  localStorage.clear();
+});
 beforeEach(() => {
   vi.stubGlobal(
     "fetch",
@@ -884,15 +888,16 @@ describe("round 3", () => {
     expect(story().querySelectorAll(".story-text")).toHaveLength(3);
   });
 
-  it("the story has a skip link to the plan", () => {
+  it("the page's first stop skips past the plan to the content", () => {
     show(session(request()));
-    const skip = within(story()).getByRole("link", {
-      name: "Skip to the plan",
+    const skip = within(screen.getByRole("banner")).getByRole("link", {
+      name: "Skip to the content",
     });
-    expect(skip.getAttribute("href")).toBe("#plan");
+    expect(skip.getAttribute("href")).toBe("#main");
     expect(document.getElementById("plan")?.getAttribute("aria-label")).toBe(
       "Plan",
     );
+    expect(within(story()).queryByRole("link", { name: /Skip/ })).toBeNull();
   });
 
   it("a deep link to a request not loaded yet shows the skeleton, not the newest", () => {

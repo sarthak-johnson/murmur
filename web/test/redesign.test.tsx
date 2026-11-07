@@ -11,12 +11,15 @@ import type {
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cutWords, list } from "../src/catchup";
 import { Live } from "../src/pages/Session";
 import { PartDetail } from "../src/part/PartDetail";
+import { questionsIn } from "../src/session";
 import { clock } from "../src/story";
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   vi.useRealTimers();
 });
 beforeEach(() => {
@@ -671,7 +674,7 @@ describe("needs your call", () => {
         msg(
           "m9",
           45,
-          "Phase 2 is built. Should snooze default to ten minutes? And may I drop the old list view?",
+          "Phase 2 is built. Should I default snooze to ten minutes? And may I drop the old list view?",
         ),
       ],
     });
@@ -680,7 +683,7 @@ describe("needs your call", () => {
     expect(
       [...call.querySelectorAll(".qq b")].map((q) => q.textContent),
     ).toEqual([
-      "Should snooze default to ten minutes?",
+      "Should I default snooze to ten minutes?",
       "And may I drop the old list view?",
     ]);
     expect(within(bar()).getByText("Waiting")).toBeTruthy();
@@ -905,7 +908,8 @@ describe("task page", () => {
       ["Fixed", "run plain"],
     ]);
     expect(bars(1)).toEqual([["Sent back", "run bad"]]);
-    expect(bars(2)).toEqual([["Passed", "run good"]]);
+    // A one-minute recheck is too short for its word: it sits beside the bar.
+    expect(bars(2)).toEqual([["Passed", "run good out flip"]]);
     // Bars sit on the axis by time: the axis runs 09:10 to 09:24 in 2 minute ticks.
     const review = within(timeline())
       .getAllByRole("listitem")[1]
@@ -962,5 +966,481 @@ describe("task page", () => {
     t.p.agents = [];
     showTask(t);
     expect(screen.queryByRole("list", { name: "Timeline" })).toBeNull();
+  });
+});
+
+describe("review fixes: questions", () => {
+  it("a question mark inside code or a link is no question", () => {
+    expect(
+      questionsIn(
+        "Done, all 9 tests pass. I used `opts?.locale` for the optional locale, and the docs are at https://example.com/docs?page=slugify.",
+      ),
+    ).toEqual([]);
+    expect(
+      questionsIn("Here it is:\n\n```js\nconst a = b?.c;\n```\n\nAll done."),
+    ).toEqual([]);
+    expect(questionsIn("See [the docs](https://x.dev/?q=1) for more.")).toEqual(
+      [],
+    );
+  });
+
+  it("a heading ends a sentence, a version number does not, and an either-or is one question", () => {
+    expect(
+      questionsIn(
+        "All 9 tests pass.\n\n## What I need from you\nShould I bump the version to v1.2? Or keep 1.1 until the docs land?",
+      ),
+    ).toEqual([
+      "Should I bump the version to v1.2? Or keep 1.1 until the docs land?",
+    ]);
+  });
+
+  it("a question Claude answers itself, or asks of no one, is not for you", () => {
+    expect(
+      questionsIn("Why did it fail? The cache was stale, so I cleared it."),
+    ).toEqual([]);
+    expect(questionsIn("Is the cache stale? Does the build pass?")).toEqual([]);
+  });
+
+  it("only the last paragraph or a trailing list counts", () => {
+    expect(
+      questionsIn("Should I keep going?\n\nI kept going and it all passes."),
+    ).toEqual([]);
+    expect(
+      questionsIn(
+        "Two things for you:\n\n- Should I drop the old view?\n- Do you want snooze at ten minutes?",
+      ),
+    ).toEqual([
+      "Should I drop the old view?",
+      "Do you want snooze at ten minutes?",
+    ]);
+  });
+
+  it("a message with a URL and code raises no amber on the page", () => {
+    const req = request({
+      agents: request().agents.map((a) => ({ ...a, status: "done" as const })),
+      messages: [
+        ...(request().messages ?? []),
+        msg(
+          "m9",
+          45,
+          "Done. I used `opts?.locale`, and the docs are at https://example.com/docs?page=a.",
+        ),
+      ],
+    });
+    show(session(req), { events: [ev("s", 45, "Stop")] });
+    expect(within(bar()).getByText("Done")).toBeTruthy();
+    expect(within(bar()).queryByText(/for you/)).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "Needs your call" }),
+    ).toBeNull();
+  });
+});
+
+describe("review fixes: words", () => {
+  it("a text with no spaces is cut at its length, not to one letter", () => {
+    expect(cutWords("x".repeat(30), 10)).toBe(`${"x".repeat(10)}…`);
+    expect(cutWords("Read the prototypes today", 15)).toBe("Read the…");
+  });
+
+  it("names that hold an 'and' are listed with semicolons", () => {
+    expect(list(["Read the prototypes and the page", "Build it"])).toBe(
+      "Read the prototypes and the page; Build it",
+    );
+    expect(list(["A", "B", "C"])).toBe("A, B and C");
+  });
+
+  it("work sent back reads as sent back for fixes", () => {
+    vi.useFakeTimers({ now: new Date(at(50)), toFake: ["Date"] });
+    show(
+      session(
+        request({
+          messages: [
+            ...(request().messages ?? []),
+            msg("m5", 33, "Sending it back to the builder with two fixes."),
+            msg("m6", 34, "Sent it back to the same builder."),
+          ],
+        }),
+      ),
+      { lastLooked: at(31), before: session(request()) },
+    );
+    const brief = screen.getByRole("region", { name: "Since you last looked" });
+    expect(brief.textContent).toContain("2 sent back for fixes:");
+    expect(brief.querySelector(".lead")?.textContent).toBe(
+      "2 sent back for fixes.",
+    );
+  });
+
+  it("a finished request never says helpers are still running", () => {
+    show(
+      session(
+        request({
+          finished: true,
+          planInferred: true,
+          now: { text: "Editing a.ts", why: "", ts: at(40), inferred: true },
+        }),
+      ),
+    );
+    const now = within(bar()).getByRole("region", { name: "Now" });
+    expect(now.textContent).not.toContain("still running");
+  });
+
+  it("an open AskUserQuestion reads as asking you, not as a tool name", () => {
+    const ask = ev("q1", 40, "PreToolUse", {
+      tool_name: "AskUserQuestion",
+      tool_use_id: "toolu_q",
+      tool_input: { questions: [{ question: "A?" }, { question: "B?" }] },
+    });
+    show(
+      session(
+        request({
+          now: {
+            text: "Using AskUserQuestion",
+            why: "",
+            ts: at(40),
+            inferred: true,
+          },
+        }),
+      ),
+      { events: [ask] },
+    );
+    const now = within(bar()).getByRole("region", { name: "Now" });
+    expect(now.textContent).toContain("Asking you 2 questions");
+    expect(now.textContent).not.toContain("AskUserQuestion");
+  });
+
+  it("the now details close on Escape and on a click outside", async () => {
+    show(
+      session(
+        request({
+          now: {
+            text: "Two builders are running their checks",
+            why: "it is next",
+            ts: at(40),
+          },
+        }),
+      ),
+    );
+    const now = within(bar()).getByRole("region", { name: "Now" });
+    const details = within(now).getByRole("button", { name: "Details" });
+    await userEvent.click(details);
+    expect(within(now).getByText(/Why now/)).toBeTruthy();
+    await userEvent.keyboard("{Escape}");
+    expect(within(now).queryByText(/Why now/)).toBeNull();
+    await userEvent.click(details);
+    await userEvent.click(screen.getByRole("heading", { level: 1 }));
+    expect(within(now).queryByText(/Why now/)).toBeNull();
+  });
+
+  it("where to answer is a plain note, not a button that does nothing", () => {
+    const ask = ev("q1", 40, "PreToolUse", {
+      tool_name: "AskUserQuestion",
+      tool_use_id: "toolu_q",
+      tool_input: { questions: [{ question: "Morning or evening?" }] },
+    });
+    show(session(request()), { events: [ask] });
+    const call = screen.getByRole("region", { name: "Needs your call" });
+    expect(within(call).queryByRole("button")).toBeNull();
+    expect(call.querySelector(".where")?.textContent).toBe(
+      "Answer in the terminal",
+    );
+  });
+});
+
+describe("review fixes: stillness and order", () => {
+  const before = () =>
+    session(
+      request({
+        phases: request().phases.map((ph) =>
+          ph.id === "p1"
+            ? {
+                ...ph,
+                tasks: ph.tasks.map((t) =>
+                  t.id === "t2" ? { ...t, status: "now" as const } : t,
+                ),
+              }
+            : ph,
+        ),
+      }),
+    );
+  const live = (
+    r: RequestView,
+    status: "live" | "reconnecting",
+    events: MurmurEvent[] = [],
+  ) => (
+    <Live
+      sessionId="s1"
+      view={session(r)}
+      viewAt={() => before()}
+      events={events}
+      status={status}
+      lastLooked={at(10)}
+    />
+  );
+  const briefText = () =>
+    screen.queryByRole("region", { name: "Since you last looked" })
+      ?.textContent;
+
+  it("the catch-up survives a reconnect unchanged", () => {
+    const { rerender } = render(live(request(), "live"));
+    const first = briefText();
+    expect(first).toContain("1 task done");
+    rerender(live(request(), "reconnecting"));
+    expect(briefText()).toBe(first);
+    rerender(
+      live(
+        request({
+          agents: [
+            ...request().agents,
+            helper("a5", { status: "running", startedAt: at(45) }),
+          ],
+        }),
+        "live",
+      ),
+    );
+    expect(briefText()).toBe(first);
+  });
+
+  it("the catch-up stops saying a question waits once it is answered", () => {
+    const ask = ev("q1", 40, "PreToolUse", {
+      tool_name: "AskUserQuestion",
+      tool_use_id: "toolu_q",
+      tool_input: { questions: [{ question: "Morning or evening?" }] },
+    });
+    const answer = ev("q2", 41, "PostToolUse", {
+      tool_name: "AskUserQuestion",
+      tool_use_id: "toolu_q",
+    });
+    const { rerender } = render(live(request(), "live", [ask]));
+    const lead = () =>
+      screen
+        .getByRole("region", { name: "Since you last looked" })
+        .querySelector(".lead")?.textContent;
+    expect(lead()).toContain("a question is waiting for you");
+    rerender(live(request(), "live", [ask, answer]));
+    expect(lead()).not.toContain("waiting for you");
+    expect(lead()).toContain("1 task is done");
+  });
+
+  it("a helper starting or ending never changes the plan's boxes", () => {
+    const boxes = () =>
+      [...(document.querySelector(".ph.now .tl")?.children ?? [])].map(
+        (li) => li.className,
+      );
+    const agents = (running: boolean) =>
+      request().agents.map((a) =>
+        a.id === "a3" ? { ...a, status: running ? "running" : "done" } : a,
+      ) as AgentView[];
+    const { rerender } = render(
+      live(request({ agents: agents(true) }), "live"),
+    );
+    const busy = boxes();
+    rerender(live(request({ agents: agents(false) }), "live"));
+    expect(boxes()).toEqual(busy);
+    expect(busy.every((c) => c.split(" ").includes("lt"))).toBe(true);
+  });
+
+  it("a second helper on a task keeps its card to one short line", () => {
+    vi.useFakeTimers({ now: new Date(at(30)), toFake: ["Date"] });
+    const agents = [
+      ...request().agents,
+      helper("a5", { status: "running", startedAt: at(30), part: "list" }),
+    ];
+    const r = request({ agents });
+    r.parts = r.parts.map((p) =>
+      p.id === "list" ? { ...p, agents: [...p.agents, "a5"] } : p,
+    );
+    render(live(r, "live"));
+    const card = screen.getByRole("listitem", { name: "Agent 3" });
+    expect(card.textContent).toBe("Reminder listAgent 3 +1<1 m");
+  });
+
+  it("the first stop on the page skips to the content", () => {
+    show(session(request({ messages: [msg("m1", 1, "Starting.")] })));
+    const skip = within(bar()).getAllByRole("link")[0] as HTMLElement;
+    expect(skip.textContent).toBe("Skip to the content");
+    expect(skip.getAttribute("href")).toBe("#main");
+    expect(document.getElementById("main")?.tagName).toBe("MAIN");
+    expect(screen.queryByRole("link", { name: "Skip to the plan" })).toBeNull();
+  });
+
+  it("a request Claude stopped on reads oldest first, though not finished", () => {
+    const req = request({
+      agents: request().agents.map((a) => ({ ...a, status: "done" as const })),
+    });
+    show(session(req), { events: [ev("s", 45, "Stop")] });
+    const story = screen.getByRole("region", { name: "What happened" });
+    expect(story.textContent).not.toContain("newest first");
+  });
+
+  it("the Story or Map choice stays when you switch requests", async () => {
+    const two = session(request(), {
+      requests: [request({ id: "r1", goal: "Fix the login form" }), request()],
+    });
+    const { rerender } = show(two);
+    await userEvent.click(screen.getByRole("button", { name: "Map" }));
+    rerender(
+      <Live
+        sessionId="s1"
+        requestId="r1"
+        view={two}
+        viewAt={() => null}
+        events={[]}
+        status="live"
+        lastLooked={null}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Map" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+});
+
+describe("review fixes: timeline", () => {
+  const lanesOf = () =>
+    within(screen.getByRole("list", { name: "Timeline" })).getAllByRole(
+      "listitem",
+    );
+  const runs = (k: number) =>
+    [
+      ...(lanesOf()[k] as HTMLElement).querySelectorAll(".run"),
+    ] as HTMLElement[];
+  const showWith = (
+    agents: AgentView[],
+    status: PartView["status"] = "done",
+  ) => {
+    const t = task3();
+    t.p.status = status;
+    t.p.agents = agents.map((a) => a.id);
+    t.r.agents = agents;
+    render(
+      <PartDetail
+        sessionId="s1"
+        request={t.r}
+        part={t.p}
+        events={[]}
+        onBack={() => {}}
+      />,
+    );
+  };
+
+  it("bars sit at their true width; a label too wide for its bar goes beside it", () => {
+    showWith([
+      helper("b1", {
+        description: "Implement it",
+        startedAt: at(0),
+        endedAt: at(59),
+      }),
+      helper("b2", {
+        description: "Review it",
+        startedAt: at(59),
+        endedAt: new Date(Date.parse(at(59)) + 20_000).toISOString(),
+      }),
+    ]);
+    const [built] = runs(0);
+    const [review] = runs(1);
+    expect(built?.style.width).toBe(built?.style.width);
+    expect(Number.parseFloat(built?.style.width ?? "0")).toBeGreaterThan(90);
+    expect(built?.className).not.toContain("out");
+    expect(Number.parseFloat(review?.style.width ?? "0")).toBeLessThan(1);
+    expect(review?.className).toContain("out");
+  });
+
+  it("a running helper's bar runs to now", () => {
+    vi.useFakeTimers({ now: new Date(at(30)), toFake: ["Date"] });
+    showWith(
+      [
+        helper("b1", {
+          description: "Build it",
+          status: "running",
+          startedAt: at(10),
+        }),
+      ],
+      "now",
+    );
+    const [bar1] = runs(0);
+    expect(bar1?.className).toContain("now");
+    expect(bar1?.textContent).toBe("Building");
+  });
+
+  it("a span of ten seconds and one of five hours both get a readable axis", () => {
+    const ticks = () =>
+      [...document.querySelectorAll(".ticks span")].map((s) => s.textContent);
+    showWith([
+      helper("b1", {
+        description: "Build it",
+        startedAt: at(0),
+        endedAt: new Date(Date.parse(at(0)) + 10_000).toISOString(),
+      }),
+    ]);
+    expect(ticks().length).toBeGreaterThanOrEqual(2);
+    cleanup();
+    showWith([
+      helper("b1", {
+        description: "Build it",
+        startedAt: at(0),
+        endedAt: at(300),
+      }),
+    ]);
+    expect(ticks().length).toBeLessThanOrEqual(8);
+  });
+
+  it("an axis that crosses midnight names the day", () => {
+    const night = (h: number) =>
+      new Date(Date.UTC(2026, 10, 6, h)).toISOString();
+    showWith([
+      helper("b1", {
+        description: "Build it",
+        startedAt: night(10),
+        endedAt: night(40),
+      }),
+    ]);
+    const ticks = [...document.querySelectorAll(".ticks span")].map(
+      (s) => s.textContent ?? "",
+    );
+    expect(
+      ticks.filter((t) => /\d+ [A-Z][a-z]{2} /.test(t)).length,
+    ).toBeGreaterThan(1);
+  });
+
+  it("overlapping helpers keep their own lanes and places", () => {
+    showWith([
+      helper("b1", {
+        description: "Build A",
+        startedAt: at(0),
+        endedAt: at(20),
+      }),
+      helper("b2", {
+        description: "Build B",
+        startedAt: at(5),
+        endedAt: at(25),
+      }),
+    ]);
+    const [a] = runs(0);
+    const [b] = runs(1);
+    expect(a?.style.left).toBe("0%");
+    expect(b?.style.left).toBe("20%");
+  });
+
+  it("a recapped step names the bar when it fits", () => {
+    const t = task3();
+    t.r.recap = true;
+    t.p.steps = [
+      {
+        ts: at(1),
+        text: "Builder added the list and its test",
+        status: "done",
+        eventIds: [],
+      },
+    ];
+    render(
+      <PartDetail
+        sessionId="s1"
+        request={t.r}
+        part={t.p}
+        events={t.events}
+        onBack={() => {}}
+      />,
+    );
+    expect(runs(0)[0]?.textContent).toMatch(/^Builder added the list/);
   });
 });

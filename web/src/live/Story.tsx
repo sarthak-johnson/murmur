@@ -219,14 +219,14 @@ function Moments(props: {
 }
 
 /** The phases the story has a part for, in the order the story shows them. */
-export function storyPhases(request: RequestView) {
+export function storyPhases(request: RequestView, done: boolean) {
   const ms = request.messages ?? [];
   const of = phaseOfMessages(request, ms);
   const groups = request.phases
     .map((phase) => ({ phase, ms: ms.filter((_, i) => of[i] === phase) }))
     .filter((g) => g.ms.length > 0);
   // While it runs the newest work leads; once over the story reads in plan order.
-  return request.finished ? groups : groups.reverse();
+  return done ? groups : groups.reverse();
 }
 
 /**
@@ -237,28 +237,27 @@ export function Story(props: {
   request: RequestView;
   /** The phase where the work is now, if the request is still going. */
   live: PhaseView | undefined;
+  /** Over or stopped: the story reads oldest first. */
+  done: boolean;
   onOpenPart(partId: string): void;
 }) {
-  const { request, live, onOpenPart } = props;
+  const { request, live, done, onOpenPart } = props;
   const ms = request.messages ?? [];
-  const groups = storyPhases(request);
+  const groups = storyPhases(request, done);
   // The phase the work is in: the live one, else the latest one talked about.
-  const current = request.finished ? undefined : (live ?? groups[0]?.phase);
+  const current = done ? undefined : (live ?? groups[0]?.phase);
   return (
     <section className="story" aria-label="What happened">
-      <a className="skip" href="#plan">
-        Skip to the plan
-      </a>
       {groups.length === 0 ? (
         <>
           <div className="sect">
             <h2>What happened</h2>
-            <span>{request.finished ? "oldest first" : "newest first"}</span>
+            <span>{done ? "oldest first" : "newest first"}</span>
           </div>
           <Moments
             request={request}
             ms={ms}
-            newestFirst={!request.finished}
+            newestFirst={!done}
             onOpenPart={onOpenPart}
           />
         </>

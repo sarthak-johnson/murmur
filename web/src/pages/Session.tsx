@@ -1,7 +1,7 @@
 import type { MurmurEvent, RequestView, SessionView } from "@murmur/core";
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { ApiError, api, type Me } from "../api";
-import { catchUpBrief } from "../catchup";
+import { type Brief, catchUpBrief } from "../catchup";
 import { FileList, PathText } from "../files";
 import { useLastLooked } from "../lastLooked";
 import { Assumptions } from "../live/Assumptions";
@@ -227,6 +227,7 @@ export function Live(props: {
     return () => clearInterval(t);
   }, []);
   const [hoverPart, setHoverPart] = useState<string>();
+  const [mode, setMode] = useViewMode();
 
   if (!view) return <LiveSkeleton status={status} />;
   const wanted = view.requests.find((r) => r.id === props.requestId);
@@ -249,7 +250,7 @@ export function Live(props: {
   const live = req ? livePhase(req, done) : undefined;
   const storied =
     req && !partId
-      ? new Set(storyPhases(req).map((g) => g.phase.id))
+      ? new Set(storyPhases(req, done).map((g) => g.phase.id))
       : undefined;
   const footer = (
     <Footer
@@ -289,7 +290,7 @@ export function Live(props: {
           {footer}
         </aside>
       )}
-      <main className="main">
+      <main className="main" id="main" tabIndex={-1}>
         {!req ? (
           <p className="muted">Waiting for the first prompt in this session.</p>
         ) : partId ? (
@@ -323,9 +324,12 @@ export function Live(props: {
             events={events}
             lastLooked={lastLooked}
             status={status}
+            mode={mode}
+            setMode={setMode}
             request={req}
             waiting={waiting}
             live={live}
+            done={done}
             hoverPart={hoverPart}
             onOpenPart={open}
           />
@@ -333,6 +337,26 @@ export function Live(props: {
       </main>
     </div>
   );
+}
+
+type ViewMode = "story" | "map";
+const VIEW = "murmur:view";
+/** The viewer's Story or Map choice, kept across requests and visits. */
+function useViewMode(): [ViewMode, (m: ViewMode) => void] {
+  const [mode, set] = useState<ViewMode>(() => {
+    try {
+      return localStorage.getItem(VIEW) === "map" ? "map" : "story";
+    } catch {
+      return "story";
+    }
+  });
+  const choose = (m: ViewMode) => {
+    set(m);
+    try {
+      localStorage.setItem(VIEW, m);
+    } catch {}
+  };
+  return [mode, choose];
 }
 
 const n_ = (n: number, one: string, many = `${one}s`) =>
@@ -347,25 +371,33 @@ function RequestMain(props: {
   request: RequestView;
   waiting: Waiting | null;
   live: ReturnType<typeof livePhase>;
+  done: boolean;
   hoverPart: string | undefined;
   status: SessionStatus;
+  mode: ViewMode;
+  setMode(mode: ViewMode): void;
   onOpenPart(partId: string): void;
 }) {
   const { sessionId, view, viewAt, events, lastLooked, request: req } = props;
-  const { status } = props;
-  const { waiting, live, hoverPart, onOpenPart } = props;
+  const { status, mode, setMode } = props;
+  const { waiting, live, done, hoverPart, onOpenPart } = props;
   const hasStory = (req.messages?.length ?? 0) > 0;
-  const [mode, setMode] = useState<"story" | "map">("story");
-  const before = lastLooked ? viewAt(lastLooked) : null;
-  // Read once the stream is live and kept still after, so new work never moves the
-  // story under the reader; it is read again when they come back (a new last look).
-  const ready = status === "live";
-  // biome-ignore lint/correctness/useExhaustiveDependencies: frozen on purpose, see above
-  const brief = useMemo(
-    () =>
-      ready ? catchUpBrief(before, view, req.id, lastLooked, waiting) : null,
-    [ready, lastLooked],
-  );
+  // Built the first time the stream is live and kept still after, through reconnects,
+  // so new work never moves the story under the reader; built again only when they
+  // come back (a new last look). The past is reduced once, here, not on every batch.
+  const [frozen, setFrozen] = useState<{
+    looked: string | null;
+    brief: Brief | null;
+  }>();
+  useEffect(() => {
+    if (status !== "live" || (frozen && frozen.looked === lastLooked)) return;
+    const before = lastLooked ? viewAt(lastLooked) : null;
+    setFrozen({
+      looked: lastLooked,
+      brief: catchUpBrief(before, view, req.id, lastLooked),
+    });
+  }, [status, lastLooked, frozen, view, viewAt, req.id]);
+  const brief = frozen?.looked === lastLooked ? frozen.brief : null;
   const tasks = req.phases.flatMap((p) => p.tasks).length;
   const back = sentBack(req);
   const facts = [
@@ -431,7 +463,7 @@ function RequestMain(props: {
           </div>
         </section>
       ) : (
-        <Story request={req} live={live} onOpenPart={onOpenPart} />
+        <Story request={req} live={live} done={done} onOpenPart={onOpenPart} />
       )}
       {req.looseFiles.length > 0 && (
         <section className="loose" aria-label="Files touched">

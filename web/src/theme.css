@@ -1373,8 +1373,20 @@ a.brand:focus-visible {
   background: var(--s2);
   box-shadow: inset -1px 0 0 var(--s6);
 }
-.spine:focus {
+.spine:focus,
+.main:focus {
   outline: none;
+}
+/* The bar's first stop: hidden until a keyboard reaches it. */
+.bar .skip:focus {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  z-index: 40;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--s5);
 }
 .spine-h {
   display: flex;
@@ -1536,10 +1548,10 @@ button.lt-in:hover {
   left: 0;
   width: 2px;
   border-radius: 0 2px 2px 0;
-  background: var(--hue);
+  background: var(--hue, transparent);
 }
 /* A running helper's rail shimmers: the only looping motion on the page. */
-.lt-in::after {
+.lt-in.busy::after {
   content: "";
   position: absolute;
   top: 12px;
@@ -1564,10 +1576,12 @@ button.lt-in:hover {
   font-weight: 500;
   line-height: 20px;
 }
+/* One line, always: a helper starting or ending changes the words, never the height. */
 .lt-in > span:not(.task-problem) {
   display: flex;
   justify-content: space-between;
   gap: 8px;
+  white-space: nowrap;
   margin-top: 2px;
   color: var(--t3);
   font-size: 13px;
@@ -1640,6 +1654,7 @@ button.lt-in:hover {
   text-wrap: pretty;
 }
 .asked-row {
+  min-height: 30px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1794,15 +1809,10 @@ button.lt-in:hover {
   margin-top: auto;
   padding-top: 18px;
 }
-.ans .btn {
-  display: inline-flex;
-  align-items: center;
-  height: 32px;
-  padding: 0 14px;
-  border-radius: 8px;
-  background: var(--need);
-  color: #1d1607;
-  font: 600 13px var(--font-ui);
+.ans .where {
+  color: var(--need);
+  font-size: 13px;
+  font-weight: 600;
 }
 .ans .num {
   color: #cdb487;
@@ -2199,18 +2209,33 @@ button.task-chip:hover {
 .lane:last-child .tr {
   box-shadow: none;
 }
+/* A bar at its true width, at least a sliver; a label that does not fit sits beside it. */
 .run {
   position: absolute;
   top: 11px;
   display: flex;
   align-items: center;
-  width: max-content;
+  min-width: 4px;
   height: 20px;
   padding: 0 8px;
   border-radius: 5px;
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
+}
+.run.out {
+  padding: 0;
+}
+.run.out .run-label {
+  position: absolute;
+  left: calc(100% + 6px);
+}
+.run.out.flip .run-label {
+  right: calc(100% + 6px);
+  left: auto;
+}
+.run.out.plain .run-label {
+  color: var(--t2);
 }
 .run.plain {
   background: var(--s4);
@@ -2457,6 +2482,7 @@ button.task-chip:hover {
   border: 0;
 }
 .pd-file {
+  flex-wrap: wrap;
   gap: 2px 8px;
   padding: 4px 0;
   border-radius: 4px;
@@ -2522,7 +2548,7 @@ button.task-chip:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lt-in::after {
+  .lt-in.busy::after {
     display: none;
   }
 }
@@ -2601,7 +2627,7 @@ button.task-chip:hover {
     height: 48px;
     padding: 0 16px;
   }
-  .now-cell {
+  .bar > .cell.now-cell {
     order: 5;
     flex: 1 0 100%;
     height: auto;
@@ -2657,7 +2683,19 @@ button.task-chip:hover {
   }
   .axis,
   .lane {
-    grid-template-columns: 130px minmax(0, 1fr);
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+  .lane {
+    height: auto;
+    min-height: 42px;
+  }
+  .lane-name {
+    white-space: normal;
+    line-height: 18px;
+  }
+  .lane-name span {
+    display: block;
+    margin-left: 0;
   }
 }
 .pd-title .inferred {

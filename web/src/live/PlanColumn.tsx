@@ -60,8 +60,22 @@ export function Glyph({ status }: { status: Shown }) {
   );
 }
 
+const WORD: Record<Shown, string> = {
+  done: "Done",
+  now: "In progress",
+  todo: "Not started",
+  failed: "Failed",
+  open: "Left open",
+};
+
 /** Helpers get identity hues as a 2px rail, never status colours. */
 const HUES = ["#a29de8", "#d995be", "#c3a0dc", "#9fb0d8"];
+
+/** "21 m", "<1 m", "2 h 05 m": short enough that a card's line never wraps. */
+const minutes = (from: string, to: string) => {
+  const d = duration(from, to);
+  return d === "under a minute" ? "<1 m" : d;
+};
 
 const n_ = (n: number, one: string, many = `${one}s`) =>
   `${n} ${n === 1 ? one : many}`;
@@ -113,45 +127,60 @@ export function PlanColumn(props: {
   const running = request.agents.filter((a) => a.status === "running");
   const placed = new Set<string>();
 
+  /**
+   * A live-phase task, or a helper on no task, as a card. Every task of the live phase
+   * is a card, busy or not, so a helper starting or ending changes words, not boxes.
+   */
   const card = (
-    a: AgentView,
+    key: string,
     title: string,
+    helpers: AgentView[],
+    status: string,
     part?: string,
     problem?: string,
   ) => {
-    placed.add(a.id);
-    const model = modelOf(a, events);
+    for (const h of helpers) placed.add(h.id);
+    const a = helpers[0];
+    const model = a ? modelOf(a, events) : "";
     const body = (
       <>
         <b>{title}</b>
         <span>
           <span>
-            Agent {k(a)}
-            {model && `, ${model}`}
+            {a
+              ? `Agent ${k(a)}${model ? `, ${model}` : ""}${helpers.length > 1 ? ` +${helpers.length - 1}` : ""}`
+              : status}
           </span>
-          <span className="num">{duration(a.startedAt, now)}</span>
+          {a && <span className="num">{minutes(a.startedAt, now)}</span>}
         </span>
         {problem && <span className="task-problem">{problem}</span>}
       </>
     );
+    const inner = a ? "lt-in busy" : "lt-in";
     return (
       <li
-        key={a.id}
+        key={key}
         className="lt fade-in"
-        aria-label={`Agent ${k(a)}`}
-        style={{ "--hue": HUES[(k(a) - 1) % HUES.length] } as never}
+        aria-label={a ? `Agent ${k(a)}` : undefined}
+        style={
+          a ? ({ "--hue": HUES[(k(a) - 1) % HUES.length] } as never) : undefined
+        }
       >
         {part ? (
           <button
             type="button"
-            className="lt-in"
+            className={inner}
             aria-current={partId === part ? "page" : undefined}
+            onMouseEnter={() => onHover(part)}
+            onMouseLeave={() => onHover(undefined)}
+            onFocus={() => onHover(part)}
+            onBlur={() => onHover(undefined)}
             onClick={() => onOpen(part)}
           >
             {body}
           </button>
         ) : (
-          <div className="lt-in">{body}</div>
+          <div className={inner}>{body}</div>
         )}
       </li>
     );
@@ -223,20 +252,24 @@ export function PlanColumn(props: {
                 : here
                   ? "now"
                   : ph.status;
-          const rows = ph.tasks.map((t) => {
-            const helpers = here
-              ? taskAgents(request, t).filter((a) => a.status === "running")
-              : [];
-            return helpers.length
-              ? helpers.map((a) =>
-                  card(a, shortTitle(t.title), t.part, t.problem),
+          const rows = ph.tasks.map((t) =>
+            here
+              ? card(
+                  t.id,
+                  shortTitle(t.title),
+                  taskAgents(request, t).filter((a) => a.status === "running"),
+                  WORD[shownOf(t.status)],
+                  t.part,
+                  t.problem,
                 )
-              : row(t);
-          });
+              : row(t),
+          );
           const loose = here
             ? running
                 .filter((a) => !placed.has(a.id))
-                .map((a) => card(a, a.description || `Agent ${k(a)}`))
+                .map((a) =>
+                  card(a.id, a.description || `Agent ${k(a)}`, [a], ""),
+                )
             : [];
           return (
             <li key={ph.id} className={`ph ${shown}`} aria-label={ph.title}>

@@ -80,12 +80,61 @@ function askQuestions(ask: MurmurEvent): Question[] {
   });
 }
 
-/** The question sentences of a message, in order. */
+/** Asked of the user: "Should I…", "Do you…", "May we…", or anything with "you". */
+const ASKS =
+  /^(?:(?:and|but|so|also|then|or)\s+)?(?:(?:should|shall|may|can|could|would|will|do|does|did|is|are|want)\s+(?:i|we|me|you)\b|want me\b)|\byou(?:rs?)?\b/i;
+
+/**
+ * The questions Claude's message leaves for you, in order. Only questions that end its
+ * last paragraph or a trailing list count, and only ones put to you: code, links and
+ * a question Claude answers itself never do. When unsure, none: a false "needs you"
+ * is worse than a missed one.
+ */
 export function questionsIn(text: string): string[] {
-  const plain = plainText(text).replace(/\s+/g, " ");
-  return (plain.match(/[^.!?]*\?/g) ?? [])
-    .map((s) => s.trim())
-    .filter((s) => s.length > 3);
+  const src = text
+    .replace(/```[\s\S]*?(?:```|$)/g, "\n\n")
+    .replace(/`[^`\n]*`/g, "code")
+    .replace(/\]\([^)\s]*\)/g, "]")
+    .replace(/\b(?:https?:\/\/|www\.)\S+/g, "link");
+  const block =
+    src
+      .split(/\n\s*\n/)
+      .filter((b) => b.trim())
+      .at(-1) ?? "";
+  // A heading or a list item is a unit of its own; other lines run together.
+  type Unit = { text: string; kind: "heading" | "item" | "para" };
+  const units: Unit[] = [];
+  for (const line of block.split("\n")) {
+    const l = line.trim();
+    const item = /^(?:[-*+]|\d+[.)])\s+(.*)$/.exec(l)?.[1];
+    const last = units.at(-1);
+    if (/^#{1,6}\s/.test(l)) units.push({ text: l, kind: "heading" });
+    else if (item !== undefined) units.push({ text: item, kind: "item" });
+    else if (last?.kind === "para") last.text += ` ${l}`;
+    else units.push({ text: l, kind: "para" });
+  }
+  const tail =
+    units.at(-1)?.kind === "item"
+      ? units.slice(units.findLastIndex((u) => u.kind !== "item") + 1)
+      : units.slice(-1);
+  return tail.flatMap((u) => {
+    if (u.kind === "heading") return [];
+    // A sentence ends at . ! ? before a space, so "v1.2" stays whole.
+    const said = plainText(u.text).replace(/\s+/g, " ").trim();
+    const sentences = said.split(/(?<=[.!?])\s+/);
+    const asked: string[] = [];
+    for (const q of sentences.reverse()) {
+      if (!q.endsWith("?")) break;
+      asked.unshift(q);
+    }
+    // "Should I…? Or…?" is one choice.
+    const merged: string[] = [];
+    for (const q of asked)
+      if (/^or\b/i.test(q) && merged.length)
+        merged[merged.length - 1] += ` ${q}`;
+      else merged.push(q);
+    return merged.filter((q) => ASKS.test(q) && q.length > 3);
+  });
 }
 
 /** The request's last event, and whether Claude ended its turn with no helper at work. */
@@ -195,16 +244,9 @@ export function nowLine(
   done: boolean,
 ): { label: string; text: string; src?: MurmurEvent; why?: string } {
   const now = req.now;
-  const live = req.agents.filter((a) => a.status === "running").length;
   const over =
     done && (req.planInferred || !!req.recap || !now || !!now.inferred);
-  if (over) {
-    const still = count(live, "helper still running", "helpers still running");
-    return {
-      label: "In all",
-      text: [doneLine(req.tally), ...still].join(", "),
-    };
-  }
+  if (over) return { label: "In all", text: doneLine(req.tally) };
   if (!now)
     return {
       label: "Now",
@@ -215,6 +257,15 @@ export function nowLine(
   if (now.inferred) {
     const input = obj(src?.payload.tool_input);
     const desc = str(input.description).replace(/\s+/g, " ").trim();
+    if (
+      src?.payload.tool_name === "AskUserQuestion" ||
+      /\bAskUserQuestion\b/.test(now.text)
+    ) {
+      const n = askQuestions(src ?? ({ payload: {} } as MurmurEvent)).length;
+      const text =
+        n > 1 ? `Asking you ${n} questions` : "Asking you a question";
+      return { label, text, ...(src ? { src } : {}) };
+    }
     const command =
       src?.payload.tool_name === "Bash" || /^Running\b/.test(now.text);
     const text = command ? desc || "Running a command" : tool(now.text);

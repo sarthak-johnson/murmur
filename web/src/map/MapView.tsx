@@ -18,13 +18,13 @@ const MORE_W = 64;
 const EMPTY = "The map appears when Claude describes the parts of this work.";
 
 // ponytail: text width is estimated per character class (no layout engine in
-// tests); measure with canvas measureText if truncation looks off in real fonts.
+// tests), set a little wide for Geist; measure with canvas measureText if it drifts.
 const charW = (c: string) =>
   /[A-Z MWmw@%]/.test(c) && c !== " "
-    ? 0.68
+    ? 0.72
     : /[ il.,:;'|!()[\]]/.test(c)
-      ? 0.3
-      : 0.52;
+      ? 0.32
+      : 0.58;
 export const textWidth = (text: string, font: number) =>
   [...text].reduce((w, c) => w + charW(c) * font, 0);
 
@@ -47,9 +47,10 @@ function cutAtWord(text: string, px: number, font: number): string {
   if (textWidth(text, font) <= px) return text;
   let out = text;
   while (out && textWidth(`${out}…`, font) > px) out = out.slice(0, -1);
+  // Ends at a word or a dash; only one long word is cut inside.
   const whole = /[\s-]/.test(text.charAt(out.length));
   const word = Math.max(out.lastIndexOf(" "), out.lastIndexOf("-"));
-  if (!whole && word > out.length / 2) out = out.slice(0, word);
+  if (!whole && word > 0) out = out.slice(0, word);
   return `${out.trimEnd().replace(/[,;:-]$/, "")}…`;
 }
 

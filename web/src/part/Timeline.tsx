@@ -4,6 +4,7 @@ import type {
   PartView,
   RequestView,
 } from "@murmur/core";
+import { useLayoutEffect, useRef, useState } from "react";
 import { cutWords } from "../catchup";
 import { Glyph } from "../live/PlanColumn";
 import { plainText } from "../markdown";
@@ -23,7 +24,12 @@ const ROLE: Record<HelperKind, string> = {
   recheck: "recheck",
 };
 const MIN = 60_000;
-const STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 240, 480];
+const STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 240, 480, 720, 1440, 2880];
+const MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
+/** A bar's label in px, estimated: 12 px semibold, 8 px padding a side. */
+const labelPx = (text: string) => 16 + text.length * 7;
+/** The track's width before it is measured (and in tests, which have no layout). */
+const TRACK = 640;
 const pct = (x: number) => `${+(x * 100).toFixed(4)}%`;
 
 /** Claude's own closing step on a task: the recap's last line, else its last word about it. */
@@ -108,8 +114,22 @@ export function Timeline(props: {
   part: PartView;
   helpers: AgentView[];
   events: MurmurEvent[];
+  /** What each helper's work was, in the plan's words, by helper id: names its first bar. */
+  named?: Map<string, string>;
 }) {
-  const { request, part, helpers, events } = props;
+  const { request, part, helpers, events, named } = props;
+  const lanesRef = useRef<HTMLUListElement>(null);
+  const [track, setTrack] = useState(TRACK);
+  useLayoutEffect(() => {
+    const el = lanesRef.current?.querySelector(".tr");
+    if (!el) return;
+    const read = () => setTrack(el.clientWidth || TRACK);
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const lanes = helperLanes(part, helpers, events);
   if (!lanes.length) return null;
   const all = lanes.flatMap((l) => l.runs);
@@ -125,6 +145,9 @@ export function Timeline(props: {
   const start = Math.floor(from / step) * step;
   const stop = Math.max(Math.ceil(to / step) * step, start + step);
   const pos = (m: number) => (m - start) / (stop - start);
+  const multiDay =
+    new Date(start * MIN).toDateString() !==
+    new Date(stop * MIN).toDateString();
   const ticks = Array.from(
     { length: Math.round((stop - start) / step) + 1 },
     (_, i) => start + i * step,
@@ -135,14 +158,29 @@ export function Timeline(props: {
       <div className="axis" aria-hidden="true">
         <div />
         <div className="ticks">
-          {ticks.map((m) => (
-            <span key={m} className="num" style={{ left: pct(pos(m)) }}>
-              {clock(new Date(m * MIN).toISOString())}
-            </span>
-          ))}
+          {ticks.map((m, i) => {
+            const d = new Date(m * MIN);
+            // Past midnight the day is named, on the first tick and where it turns.
+            const prev = new Date((ticks[i - 1] ?? m) * MIN);
+            const day =
+              multiDay && (i === 0 || prev.getDate() !== d.getDate())
+                ? `${d.getDate()} ${MONTHS[d.getMonth()]} `
+                : "";
+            return (
+              <span key={m} className="num" style={{ left: pct(pos(m)) }}>
+                {day}
+                {clock(d.toISOString())}
+              </span>
+            );
+          })}
         </div>
       </div>
-      <ul className="lanes" aria-label="Timeline">
+      <ul
+        className="lanes"
+        aria-label="Timeline"
+        ref={lanesRef}
+        style={{ "--step": pct(step / (stop - start)) } as never}
+      >
         {lanes.map((lane) => {
           const k = request.agents.indexOf(lane.a) + 1;
           const model = modelOf(lane.a, events);
@@ -156,23 +194,29 @@ export function Timeline(props: {
                 {role && <span>{role}</span>}
               </span>
               <span className="tr">
-                {lane.runs.map((run) => {
-                  const { label, tone } = run;
+                {lane.runs.map((run, i) => {
+                  const { tone } = run;
                   const l = pos(t(run.from));
                   const r = pos(t(run.to));
-                  // Late bars hang from their end so their label stays on the axis.
-                  const place =
-                    l > 0.6
-                      ? { right: pct(1 - r), minWidth: pct(r - l) }
-                      : { left: pct(l), minWidth: pct(r - l) };
+                  // At its true width; the plan's words name it when they fit, else its
+                  // short name, else the short name goes beside the bar.
+                  const room = (r - l) * track;
+                  const said = i === 0 ? named?.get(lane.a.id) : undefined;
+                  const fit = Math.floor((room - 16) / 7);
+                  const label =
+                    said && fit >= 14 && labelPx(said) > labelPx(run.label)
+                      ? cutWords(said, fit)
+                      : run.label;
+                  const out = labelPx(label) > room;
+                  const flip = out && r > 0.8;
                   return (
                     <span
                       key={run.from}
-                      className={`run ${tone}`}
-                      style={place}
-                      title={`${lane.a.description}, ${clock(run.from)} to ${clock(run.to)}`}
+                      className={`run ${tone}${out ? " out" : ""}${flip ? " flip" : ""}`}
+                      style={{ left: pct(l), width: pct(r - l) }}
+                      title={`${said ?? lane.a.description}, ${clock(run.from)} to ${clock(run.to)}`}
                     >
-                      {label}
+                      <span className="run-label">{label}</span>
                     </span>
                   );
                 })}
