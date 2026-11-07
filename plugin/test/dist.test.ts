@@ -361,6 +361,8 @@ for (const name of ["openSync", "readFileSync", "createReadStream", "open", "rea
       JSON.stringify({
         backfill: "pending",
         cutoff: "2026-11-07T09:00:15.000Z",
+        // A prompt started the import, so its last request is over.
+        triggerHook: "UserPromptSubmit",
         transcriptPath: fixture,
         cwd: "/work/demo",
       }),
@@ -383,8 +385,9 @@ for (const name of ["openSync", "readFileSync", "createReadStream", "open", "rea
       ],
       tasks: [{ id: "t1", status: "done", ended: "Written, tests missing." }],
     };
-    // A fake claude that, like the real one in -p mode, runs the plugin's hooks as a
-    // headless session in an "on" project, with the env it was given.
+    // A fake claude that runs the plugin's hooks in an "on" project with the env it was
+    // given. The real one in -p rewrites only an inherited `cli` entry point to
+    // `sdk-cli`; from an IDE it keeps `claude-vscode` and an attended session.
     const bin = path.join(home, "bin");
     fs.mkdirSync(bin);
     const answer = JSON.stringify([
@@ -396,7 +399,7 @@ for (const name of ["openSync", "readFileSync", "createReadStream", "open", "rea
 echo "$@" > "${home}/claude-args"
 env > "${home}/claude-env"
 cat > /dev/null
-echo '{"hook_event_name":"UserPromptSubmit","session_id":"recap-run","cwd":"${repo}","prompt":"recap"}' | CLAUDE_CODE_ENTRYPOINT=sdk-cli CLAUDE_CODE_SESSION_ATTENDED=0 "${process.execPath}" "${root}/dist/hook.cjs" > /dev/null
+echo '{"hook_event_name":"UserPromptSubmit","session_id":"recap-run","cwd":"${repo}","prompt":"recap"}' | "${process.execPath}" "${root}/dist/hook.cjs" > /dev/null
 cat <<'JSON'
 ${answer}
 JSON
@@ -412,6 +415,8 @@ JSON
           env: {
             ...rest,
             PATH: `${bin}:${env.PATH}`,
+            CLAUDE_CODE_ENTRYPOINT: "claude-vscode",
+            CLAUDE_CODE_SESSION_ATTENDED: "1",
             MURMUR_ALLOW_HEADLESS: "1",
           },
         },

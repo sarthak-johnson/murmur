@@ -168,6 +168,8 @@ export function handleHook(
       updateSession(sessionId, {
         backfill: "pending",
         cutoff: ts,
+        // Whether the last imported request is over: see lastRequestOpen.
+        triggerHook: start ? `SessionStart:${String(payload.source)}` : hook,
         ...(hook === "UserPromptSubmit" && typeof payload.prompt === "string"
           ? { triggerPrompt: payload.prompt }
           : {}),

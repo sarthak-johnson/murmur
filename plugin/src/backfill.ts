@@ -14,7 +14,7 @@ import {
   updateSession,
   writeSession,
 } from "./local.js";
-import { runRecap } from "./recap.js";
+import { lastRequestOpen, runRecap } from "./recap.js";
 import { enqueue, type FlushOptions, flush } from "./upload.js";
 
 // With unshown tool results cut to their start, MAX_BYTES is the real bound; a 5-day
@@ -429,6 +429,8 @@ export async function runBackfill(
   sessionId: string,
   opts: FlushOptions = {},
 ): Promise<number> {
+  // A little under the child's 4-minute exit timer (hook.ts).
+  const deadline = Date.now() + 230_000;
   const creds = readCredentials();
   const s = readSession(sessionId);
   if (!creds || !(s.backfill === "pending" || backfillStale(s, Date.now())))
@@ -468,8 +470,15 @@ export async function runBackfill(
   const same = () => readCredentials()?.token === creds.token;
   if (same()) await flush(creds, { budgetMs: 50_000, ...opts });
   // What the history alone cannot say, the user's own Claude says, then that goes too.
-  if ((await runRecap(sessionId, events)).ok && same())
-    await flush(creds, { budgetMs: 50_000, ...opts });
+  // All of it inside the child's 4 minutes: no ask starts unless it can end (60 s) with
+  // time left to send.
+  const left = () => deadline - Date.now();
+  const recap = await runRecap(sessionId, events, {
+    lastOpen: lastRequestOpen(s.triggerHook),
+    budgetMs: Math.min(150_000, left() - 70_000),
+  });
+  if (recap.ok && same())
+    await flush(creds, { budgetMs: Math.max(1000, left()), ...opts });
   return events.length;
 }
 

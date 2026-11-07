@@ -19859,7 +19859,10 @@ var RecapInput = external_exports.object({
   const ids = new Set(map2.parts.map((p) => p.id));
   const tasks = map2.phases.flatMap((ph) => ph.tasks);
   return tasks.every((t) => t.part === void 0 || ids.has(t.part)) && parts.every((p) => ids.has(p.id));
-}, "every part a task or detail names is in the map");
+}, "every part a task or detail names is in the map").refine(({ map: map2, parts, tasks }) => {
+  const once = (ids) => new Set(ids).size === ids.length;
+  return once(map2.parts.map((p) => p.id)) && once(map2.phases.flatMap((ph) => ph.tasks.map((t) => t.id))) && once(parts.map((p) => p.id)) && once(tasks.map((t) => t.id));
+}, "part and task ids are unique");
 
 // ../packages/core/src/scrub.ts
 var MAX_STRING = 262144;
@@ -21229,7 +21232,7 @@ var import_node_fs2 = __toESM(require("node:fs"), 1);
 var import_node_path2 = __toESM(require("node:path"), 1);
 var MAX_EVENTS = 200;
 var MAX_AGE_MS = 7 * 24 * 3600 * 1e3;
-var MAX_QUEUE_BYTES = 5e7;
+var MAX_QUEUE_BYTES = 1e8;
 var MAX_BYTES = 5e6;
 var QUEUED = /^\d{15}-[^/\\]+\.json$/;
 var WRAPPER = '{"events":[]}'.length;
@@ -21357,6 +21360,17 @@ var MAX_INPUT = 6e4;
 var TIMEOUT_MS = 6e4;
 var PARALLEL = 3;
 var MESSAGE_MAX = 3e3;
+var MAX_REQUESTS = 5;
+var BUDGET_MS = 15e4;
+var TEXT_MAX = 300;
+function lastRequestOpen(trigger) {
+  return !(trigger === "UserPromptSubmit" || trigger?.startsWith("SessionStart:") && trigger !== "SessionStart:compact");
+}
+var live = /* @__PURE__ */ new Set();
+function killRecaps() {
+  for (const c of live) c.kill("SIGKILL");
+}
+process.once("exit", killRecaps);
 var ARGS = [
   "-p",
   "--model",
@@ -21464,21 +21478,34 @@ function ask(input3, env, timeoutMs) {
     };
     const child = (0, import_node_child_process.spawn)("claude", ARGS, {
       cwd: import_node_os2.default.tmpdir(),
-      env: { ...rest, MURMUR_RECAP: "0" },
+      env: {
+        ...rest,
+        CLAUDE_CODE_ENTRYPOINT: "sdk-cli",
+        CLAUDE_CODE_SESSION_ATTENDED: "0",
+        MURMUR_RECAP_RUN: "1"
+      },
       stdio: ["pipe", "pipe", "ignore"]
     });
+    live.add(child);
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       finish(done({ ok: false, why: `timed out after ${timeoutMs} ms` }));
     }, timeoutMs);
-    child.on("error", (e) => finish(done({ ok: false, why: e.message })));
+    child.on("error", (e) => {
+      live.delete(child);
+      finish(done({ ok: false, why: e.message }));
+    });
     child.stdout.on("data", (c) => {
       out += c;
     });
     child.stdin.on("error", () => {
     });
     child.stdin.end(input3);
+    child.on("exit", (_code, signal) => {
+      if (signal) finish(done({ ok: false, why: `killed (${signal})` }));
+    });
     child.on("close", (code) => {
+      live.delete(child);
       if (code !== 0)
         return finish(done({ ok: false, why: `exit code ${code}` }));
       finish(done(parse3(out)));
@@ -21533,16 +21560,18 @@ function recapEvents(req, recap, helperIds, base, paths = /* @__PURE__ */ new Ma
       recap: true,
       ...extra
     };
-    out.push({
-      id: stableId(base.sessionId, "PostToolUse", payload),
-      sessionId: base.sessionId,
-      machineId: base.machineId,
-      cwd: base.cwd,
-      // A millisecond apart just after the prompt, in order, before what Claude did.
-      ts: new Date(at + k).toISOString(),
-      hook: "PostToolUse",
-      payload
-    });
+    out.push(
+      scrubEvent({
+        id: stableId(base.sessionId, "PostToolUse", payload),
+        sessionId: base.sessionId,
+        machineId: base.machineId,
+        cwd: base.cwd,
+        // A millisecond apart just after the prompt, in order, before what Claude did.
+        ts: new Date(at + k).toISOString(),
+        hook: "PostToolUse",
+        payload
+      })
+    );
   };
   const cut2 = (s) => s.slice(0, 200);
   add(MAP_TOOL, recap.map);
@@ -21557,10 +21586,13 @@ function recapEvents(req, recap, helperIds, base, paths = /* @__PURE__ */ new Ma
       ...detail,
       // Named by the path it was changed at, so it matches whatever cwd reads it.
       ...files ? {
-        files: files.map((f) => ({
-          ...f,
-          path: paths.get(f.path) ?? f.path
-        }))
+        files: files.map((f) => {
+          const full = paths.get(f.path);
+          return {
+            ...f,
+            path: full && full.length <= TEXT_MAX ? full : f.path
+          };
+        })
       } : {}
     });
     for (const step of steps ?? [])
@@ -21592,23 +21624,34 @@ function recapEvents(req, recap, helperIds, base, paths = /* @__PURE__ */ new Ma
 async function runRecap(sessionId, events, {
   env = process.env,
   timeoutMs = TIMEOUT_MS,
+  budgetMs = BUDGET_MS,
+  lastOpen = false,
   log = (l) => process.stderr.write(`${l}
 `)
 } = {}) {
-  if (env.MURMUR_RECAP === "0" || isHeadless(env)) return { ran: 0, ok: 0 };
-  if (!readCredentials() || isRevoked()) return { ran: 0, ok: 0 };
+  if (env.MURMUR_RECAP === "0" || env.MURMUR_RECAP_RUN === "1" || isHeadless(env))
+    return { ran: 0, ok: 0 };
+  const t0 = Date.now();
   const view = reduce(events);
   const done = new Set(readSession(sessionId).recapped ?? []);
-  const todo = view.requests.filter((r) => r.planInferred && !done.has(r.id));
-  if (!todo.length) return { ran: 0, ok: 0 };
-  updateSession(sessionId, { recapped: [...done, ...todo.map((r) => r.id)] });
+  const last = view.requests.at(-1);
+  const queue = view.requests.filter((r) => r.planInferred && !(lastOpen && r === last)).reverse().slice(0, MAX_REQUESTS).filter((r) => !done.has(r.id));
+  const sending = () => {
+    const s = readSession(sessionId);
+    const cwd = s.cwd ?? view.cwd;
+    return readCredentials() !== null && !isRevoked() && sessionProjectState(cwd, sessionId) === "on" && !isPaused(cwd, sessionId) && !(s.project !== void 0 && isPaused(s.project));
+  };
   const byId = new Map(events.map((e) => [e.id, e]));
   const calls = callsByRequest(events, new Set(view.requests.map((r) => r.id)));
   const paths = changedPaths(events);
   let ok = 0;
-  const queue = [...todo];
+  let ran = 0;
   const worker = async () => {
     for (let req = queue.shift(); req; req = queue.shift()) {
+      if (Date.now() - t0 > budgetMs || !sending()) return;
+      const s = readSession(sessionId);
+      updateSession(sessionId, { recapped: [...s.recapped ?? [], req.id] });
+      ran++;
       const mine = calls.get(req.id) ?? [];
       const r = await ask(recapInput(req, view.cwd, mine), env, timeoutMs);
       const secs = (r.ms / 1e3).toFixed(1);
@@ -21639,7 +21682,7 @@ async function runRecap(sessionId, events, {
     }
   };
   await Promise.all(Array.from({ length: PARALLEL }, worker));
-  return { ran: todo.length, ok };
+  return { ran, ok };
 }
 function callsByRequest(events, ids) {
   const out = /* @__PURE__ */ new Map();
@@ -21925,6 +21968,7 @@ function readBackfill(b, {
   return out.slice(from);
 }
 async function runBackfill(sessionId, opts = {}) {
+  const deadline = Date.now() + 23e4;
   const creds = readCredentials();
   const s = readSession(sessionId);
   if (!creds || !(s.backfill === "pending" || backfillStale(s, Date.now())))
@@ -21960,8 +22004,13 @@ async function runBackfill(sessionId, opts = {}) {
   });
   const same = () => readCredentials()?.token === creds.token;
   if (same()) await flush(creds, { budgetMs: 5e4, ...opts });
-  if ((await runRecap(sessionId, events)).ok && same())
-    await flush(creds, { budgetMs: 5e4, ...opts });
+  const left = () => deadline - Date.now();
+  const recap = await runRecap(sessionId, events, {
+    lastOpen: lastRequestOpen(s.triggerHook),
+    budgetMs: Math.min(15e4, left() - 7e4)
+  });
+  if (recap.ok && same())
+    await flush(creds, { budgetMs: Math.max(1e3, left()), ...opts });
   return events.length;
 }
 function catchUpText(sessionId, env = process.env) {
@@ -22074,6 +22123,8 @@ function handleHook(payload, env, now) {
       updateSession(sessionId, {
         backfill: "pending",
         cutoff: ts,
+        // Whether the last imported request is over: see lastRequestOpen.
+        triggerHook: start ? `SessionStart:${String(payload.source)}` : hook,
         ...hook === "UserPromptSubmit" && typeof payload.prompt === "string" ? { triggerPrompt: payload.prompt } : {},
         transcriptPath,
         cwd

@@ -36765,7 +36765,10 @@ var RecapInput = external_exports.object({
   const ids = new Set(map2.parts.map((p) => p.id));
   const tasks = map2.phases.flatMap((ph) => ph.tasks);
   return tasks.every((t) => t.part === void 0 || ids.has(t.part)) && parts.every((p) => ids.has(p.id));
-}, "every part a task or detail names is in the map");
+}, "every part a task or detail names is in the map").refine(({ map: map2, parts, tasks }) => {
+  const once = (ids) => new Set(ids).size === ids.length;
+  return once(map2.parts.map((p) => p.id)) && once(map2.phases.flatMap((ph) => ph.tasks.map((t) => t.id))) && once(parts.map((p) => p.id)) && once(tasks.map((t) => t.id));
+}, "part and task ids are unique");
 
 // ../packages/core/src/scrub.ts
 var MAX_STRING = 262144;

@@ -65,7 +65,8 @@ export type NarrateInput = z.infer<typeof NarrateInput>;
  * What the recap asks the user's own Claude for, about one imported request it never
  * mapped: the `map` input, each part's detail as `narrate` carries it (plus its steps,
  * the paths it changed and the helpers, by their `H<n>` label, that worked on it), and
- * one line per task on how it ended. Every part a task or a detail names is in the map.
+ * one line per task on how it ended. Every part a task or a detail names is in the map,
+ * and part and task ids are unique.
  * The plugin turns it into `map` and `narrate` calls.
  */
 export const RecapInput = z
@@ -96,5 +97,15 @@ export const RecapInput = z
       tasks.every((t) => t.part === undefined || ids.has(t.part)) &&
       parts.every((p) => ids.has(p.id))
     );
-  }, "every part a task or detail names is in the map");
+  }, "every part a task or detail names is in the map")
+  // Two parts or tasks with one id would merge into one, or one would vanish.
+  .refine(({ map, parts, tasks }) => {
+    const once = (ids: string[]) => new Set(ids).size === ids.length;
+    return (
+      once(map.parts.map((p) => p.id)) &&
+      once(map.phases.flatMap((ph) => ph.tasks.map((t) => t.id))) &&
+      once(parts.map((p) => p.id)) &&
+      once(tasks.map((t) => t.id))
+    );
+  }, "part and task ids are unique");
 export type RecapInput = z.infer<typeof RecapInput>;

@@ -4,13 +4,21 @@ import path from "node:path";
 import { MAP_TOOL, type MurmurEvent, reduce } from "@murmur/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { readBackfill } from "../src/backfill.js";
+import { handleHook } from "../src/hook.js";
 import {
   queueDir,
   readSession,
+  setPaused,
+  setProjectState,
   updateSession,
   writeCredentials,
 } from "../src/local.js";
-import { recapInput, runRecap } from "../src/recap.js";
+import {
+  killRecaps,
+  lastRequestOpen,
+  recapInput,
+  runRecap,
+} from "../src/recap.js";
 
 const SID = "33333333-2222-4333-8444-555555555555";
 const t = (s: number) =>
@@ -27,7 +35,8 @@ beforeEach(() => {
   fs.mkdirSync(bin);
   cwd = path.join(dir, "repo");
   writeCredentials({ server: "http://x", token: "t", machineId: "m1" });
-  updateSession(SID, { backfill: "done", cwd });
+  setProjectState(cwd, "on");
+  updateSession(SID, { backfill: "done", cwd, project: cwd });
   const line = (o: Record<string, unknown>) => JSON.stringify({ cwd, ...o });
   const file = path.join(dir, `${SID}.jsonl`);
   fs.writeFileSync(
@@ -287,6 +296,29 @@ describe("recap", () => {
       answer({ ...RECAP, parts: [{ ...RECAP.parts[0], id: "other" }] }),
     ],
     [
+      "two parts with one id",
+      answer({
+        ...RECAP,
+        map: {
+          ...RECAP.map,
+          parts: [
+            RECAP.map.parts[0],
+            { ...RECAP.map.parts[0], title: "Again" },
+          ],
+        },
+      }),
+    ],
+    [
+      "two tasks with one id",
+      answer({
+        ...RECAP,
+        map: {
+          ...RECAP.map,
+          phases: [RECAP.map.phases[0], { ...RECAP.map.phases[0], id: "p2" }],
+        },
+      }),
+    ],
+    [
       "an error result",
       'echo \'{"type":"result","is_error":true,"result":"no"}\'',
     ],
@@ -410,4 +442,166 @@ it("a file a helper changed in a worktree lands on its part as the server reads 
   expect(req?.parts[0]?.files.map((f) => [f.path, f.role])).toEqual([
     [".claude/worktrees/lit/frontend/x.css", "styles"],
   ]);
+});
+
+/** `n` more requests after the fixture's, each with a message, one second apart. */
+const more = (n: number): MurmurEvent[] =>
+  Array.from({ length: n }, (_, i) => {
+    const base = events[0] as MurmurEvent;
+    return [
+      {
+        ...base,
+        id: `p${i}`,
+        ts: t(10 + i),
+        payload: { ...base.payload, prompt: `Request ${i}` },
+      },
+      {
+        ...base,
+        id: `m${i}`,
+        ts: t(10.5 + i),
+        hook: "AssistantText" as const,
+        payload: { text: `Done ${i}.` },
+      },
+    ];
+  }).flat();
+
+describe("recap limits", () => {
+  it("asks about the 5 newest requests only, newest first", async () => {
+    fake(answer(RECAP));
+    const all = [...events, ...more(6)];
+    const r = await runRecap(SID, all, { env: env() });
+    expect(r.ran).toBe(5);
+    expect(readSession(SID).recapped).toEqual(["p5", "p4", "p3", "p2", "p1"]);
+  });
+
+  it("starts no new ask after its budget, and marks only what it asked", async () => {
+    fake(`sleep 0.6\n${answer(RECAP)}`);
+    const all = [...events, ...more(6)];
+    const r = await runRecap(SID, all, { env: env(), budgetMs: 300 });
+    expect(r.ran).toBe(3);
+    expect(readSession(SID).recapped).toEqual(["p5", "p4", "p3"]);
+    // The rest are asked by a later run.
+    fake(answer(RECAP));
+    expect((await runRecap(SID, all, { env: env() })).ran).toBe(2);
+  });
+
+  it("kills its claude children when the process exits", async () => {
+    fake(`echo $$ > "${dir}/pid"\nsleep 30`);
+    const running = runRecap(SID, events, { env: env() });
+    for (let i = 0; i < 100 && !fs.existsSync(`${dir}/pid`); i++)
+      await new Promise((ok) => setTimeout(ok, 20));
+    const pid = Number(fs.readFileSync(`${dir}/pid`, "utf8"));
+    killRecaps();
+    expect(await running).toEqual({ ran: 1, ok: 0 });
+    expect(() => process.kill(pid, 0)).toThrow();
+  });
+
+  it("asks nothing once the project is off or the session paused", async () => {
+    fake(answer(RECAP));
+    setProjectState(cwd, "off");
+    expect((await runRecap(SID, events, { env: env() })).ran).toBe(0);
+    setProjectState(cwd, "on");
+    setPaused(cwd, true, SID);
+    expect((await runRecap(SID, events, { env: env() })).ran).toBe(0);
+    expect(calls()).toEqual([]);
+    expect(readSession(SID).recapped ?? []).toEqual([]);
+  });
+
+  it("leaves the last request alone when the import started mid-request", async () => {
+    fake(answer(RECAP));
+    const all = [...events, ...more(1)];
+    await runRecap(SID, all, { env: env(), lastOpen: true });
+    expect(readSession(SID).recapped).toEqual([events[0]?.id]);
+    expect(lastRequestOpen("PreToolUse")).toBe(true);
+    expect(lastRequestOpen("SessionStart:compact")).toBe(true);
+    expect(lastRequestOpen(undefined)).toBe(true);
+    expect(lastRequestOpen("UserPromptSubmit")).toBe(false);
+    expect(lastRequestOpen("SessionStart:resume")).toBe(false);
+  });
+
+  it("the hook records what started the import", () => {
+    const transcript = path.join(dir, "t.jsonl");
+    fs.writeFileSync(transcript, "");
+    handleHook(
+      {
+        hook_event_name: "PreToolUse",
+        session_id: "fresh-1",
+        cwd,
+        transcript_path: transcript,
+      },
+      { CLAUDE_CODE_ENTRYPOINT: "cli", CLAUDE_CODE_SESSION_ATTENDED: "1" },
+      new Date(),
+    );
+    expect(readSession("fresh-1")).toMatchObject({
+      backfill: "pending",
+      triggerHook: "PreToolUse",
+    });
+  });
+
+  it("the claude run is headless and marked, whatever entry point Murmur had", async () => {
+    fake(`env > "${dir}/env.txt"\n${answer(RECAP)}`);
+    await runRecap(SID, events, {
+      env: env({
+        CLAUDE_CODE_ENTRYPOINT: "claude-vscode",
+        CLAUDE_CODE_SESSION_ATTENDED: "1",
+        MURMUR_ALLOW_HEADLESS: "1",
+      }),
+    });
+    const seen = fs.readFileSync(`${dir}/env.txt`, "utf8").split("\n");
+    expect(seen).toContain("CLAUDE_CODE_ENTRYPOINT=sdk-cli");
+    expect(seen).toContain("CLAUDE_CODE_SESSION_ATTENDED=0");
+    expect(seen).toContain("MURMUR_RECAP_RUN=1");
+    expect(seen.some((l) => l.startsWith("MURMUR_ALLOW_HEADLESS="))).toBe(
+      false,
+    );
+  });
+
+  it("its events are scrubbed like every other", async () => {
+    fake(
+      answer({
+        ...RECAP,
+        parts: [
+          {
+            ...RECAP.parts[0],
+            aim: { aim: "Set token=abc123secretvalue", doneWhen: "done" },
+          },
+        ],
+      }),
+    );
+    await runRecap(SID, events, { env: env() });
+    const text = JSON.stringify(queued());
+    expect(text).not.toContain("abc123secretvalue");
+    expect(text).toContain("token=[redacted]");
+  });
+
+  it("a full path too long for a part's detail falls back to the shown one", async () => {
+    const deep = `${cwd}/${"d".repeat(290)}`;
+    const long: MurmurEvent = {
+      ...(events.find((e) => e.hook === "PostToolUse") as MurmurEvent),
+      id: "long-edit",
+      ts: t(3.5),
+      cwd: deep,
+      payload: {
+        hook_event_name: "PostToolUse",
+        tool_name: "Edit",
+        tool_use_id: "toolu_long",
+        cwd: deep,
+        tool_response: {
+          filePath: `${deep}/x.css`,
+          structuredPatch: [{ lines: ["+a"] }],
+        },
+      },
+    };
+    fake(
+      answer({
+        ...RECAP,
+        parts: [
+          { ...RECAP.parts[0], files: [{ path: "x.css", role: "styles" }] },
+        ],
+      }),
+    );
+    await runRecap(SID, [...events, long], { env: env() });
+    const [req] = reduce([...events, long, ...queued()]).requests;
+    expect(req?.parts[0]?.aim).toBeDefined();
+  });
 });

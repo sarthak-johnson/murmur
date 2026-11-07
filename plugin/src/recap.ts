@@ -5,11 +5,15 @@
  * no saved session, prompt on stdin) for a `RecapInput`, validates it with core's zod
  * schema, and queues it as `map` and `narrate` PostToolUse events marked `recap: true`,
  * with ids from the request id and times just after its prompt, so core draws it on the
- * narrated path. Any failure keeps the inferred view and logs one line. A request is
- * marked in the session file before it is asked, so it is never asked twice.
- * `MURMUR_RECAP=0` turns it off; a headless run never recaps.
+ * narrated path. Any failure keeps the inferred view and logs one line. At most the 5
+ * newest such requests, newest first, and no new ask after about 150 s; a request is
+ * marked in the session file just before it is asked, so it is never asked twice, and
+ * one not asked is asked by a later run. Before each ask it checks the project is still
+ * on and the session not paused. The last request is left alone when the import started
+ * inside it (`lastOpen`), since live narration may still come. `MURMUR_RECAP=0` turns it
+ * off; a headless run, or the recap's own run (`MURMUR_RECAP_RUN=1`), never recaps.
  */
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import os from "node:os";
 import {
   briefOf,
@@ -21,13 +25,16 @@ import {
   type RequestView,
   reduce,
   relPath,
+  scrubEvent,
 } from "@murmur/core";
 import { stableId } from "./backfill.js";
 import {
   isHeadless,
+  isPaused,
   isRevoked,
   readCredentials,
   readSession,
+  sessionProjectState,
   updateSession,
 } from "./local.js";
 import { enqueue } from "./upload.js";
@@ -36,12 +43,39 @@ const MAX_INPUT = 60_000;
 const TIMEOUT_MS = 60_000;
 const PARALLEL = 3;
 const MESSAGE_MAX = 3000;
+const MAX_REQUESTS = 5;
+// Under the backfill child's 4 minutes: its uploads, then asks that may take 60 s each.
+const BUDGET_MS = 150_000;
+const TEXT_MAX = 300;
 
 export interface RecapOptions {
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
+  /** No new ask starts this long after the run began. */
+  budgetMs?: number;
+  /** The import started inside the last request: leave it to live narration. */
+  lastOpen?: boolean;
   log?: (line: string) => void;
 }
+
+/**
+ * Whether the last imported request may still be going on, from the hook that started
+ * the import: only a new prompt, or a session resumed or started, closes it.
+ */
+export function lastRequestOpen(trigger: string | undefined): boolean {
+  return !(
+    trigger === "UserPromptSubmit" ||
+    (trigger?.startsWith("SessionStart:") && trigger !== "SessionStart:compact")
+  );
+}
+
+// The `claude` runs going now, killed when this process exits so none outlives it.
+const live = new Set<ChildProcess>();
+/** Kills every recap run still going. */
+export function killRecaps(): void {
+  for (const c of live) c.kill("SIGKILL");
+}
+process.once("exit", killRecaps);
 
 const ARGS = [
   "-p",
@@ -153,7 +187,9 @@ function ask(
 ): Promise<Ask> {
   const t0 = Date.now();
   const done = (r: Answer): Ask => ({ ...r, ms: Date.now() - t0 });
-  // Its own hooks must never upload: no MURMUR_ALLOW_HEADLESS, and no recap of its own.
+  // Its own hooks must never upload. `-p` rewrites only an inherited `cli` entry point to
+  // `sdk-cli` (an IDE's stays, attended), so it is made headless here and marked as the
+  // recap's run, which the hook refuses outright; and no MURMUR_ALLOW_HEADLESS.
   const { MURMUR_ALLOW_HEADLESS: _, ...rest } = env;
   return new Promise((resolve) => {
     let out = "";
@@ -166,20 +202,35 @@ function ask(
     };
     const child = spawn("claude", ARGS, {
       cwd: os.tmpdir(),
-      env: { ...rest, MURMUR_RECAP: "0" },
+      env: {
+        ...rest,
+        CLAUDE_CODE_ENTRYPOINT: "sdk-cli",
+        CLAUDE_CODE_SESSION_ATTENDED: "0",
+        MURMUR_RECAP_RUN: "1",
+      },
       stdio: ["pipe", "pipe", "ignore"],
     });
+    live.add(child);
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       finish(done({ ok: false, why: `timed out after ${timeoutMs} ms` }));
     }, timeoutMs);
-    child.on("error", (e) => finish(done({ ok: false, why: e.message })));
+    child.on("error", (e) => {
+      live.delete(child);
+      finish(done({ ok: false, why: e.message }));
+    });
     child.stdout.on("data", (c) => {
       out += c;
     });
     child.stdin.on("error", () => {});
     child.stdin.end(input);
+    // Killed (timeout, or this process exiting): done now, not when its own children
+    // let go of the pipe.
+    child.on("exit", (_code, signal) => {
+      if (signal) finish(done({ ok: false, why: `killed (${signal})` }));
+    });
     child.on("close", (code) => {
+      live.delete(child);
       if (code !== 0)
         return finish(done({ ok: false, why: `exit code ${code}` }));
       finish(done(parse(out)));
@@ -257,16 +308,18 @@ export function recapEvents(
       recap: true,
       ...extra,
     };
-    out.push({
-      id: stableId(base.sessionId, "PostToolUse", payload) as string,
-      sessionId: base.sessionId,
-      machineId: base.machineId,
-      cwd: base.cwd,
-      // A millisecond apart just after the prompt, in order, before what Claude did.
-      ts: new Date(at + k).toISOString(),
-      hook: "PostToolUse",
-      payload,
-    });
+    out.push(
+      scrubEvent({
+        id: stableId(base.sessionId, "PostToolUse", payload) as string,
+        sessionId: base.sessionId,
+        machineId: base.machineId,
+        cwd: base.cwd,
+        // A millisecond apart just after the prompt, in order, before what Claude did.
+        ts: new Date(at + k).toISOString(),
+        hook: "PostToolUse",
+        payload,
+      }),
+    );
   };
   const cut = (s: string) => s.slice(0, 200);
   add(MAP_TOOL, recap.map);
@@ -282,10 +335,14 @@ export function recapEvents(
       // Named by the path it was changed at, so it matches whatever cwd reads it.
       ...(files
         ? {
-            files: files.map((f) => ({
-              ...f,
-              path: paths.get(f.path) ?? f.path,
-            })),
+            files: files.map((f) => {
+              // Too long for narrate's 300: the shown path, so the detail still holds.
+              const full = paths.get(f.path);
+              return {
+                ...f,
+                path: full && full.length <= TEXT_MAX ? full : f.path,
+              };
+            }),
           }
         : {}),
     });
@@ -323,24 +380,51 @@ export async function runRecap(
   {
     env = process.env,
     timeoutMs = TIMEOUT_MS,
+    budgetMs = BUDGET_MS,
+    lastOpen = false,
     log = (l) => process.stderr.write(`${l}\n`),
   }: RecapOptions = {},
 ): Promise<{ ran: number; ok: number }> {
-  if (env.MURMUR_RECAP === "0" || isHeadless(env)) return { ran: 0, ok: 0 };
-  if (!readCredentials() || isRevoked()) return { ran: 0, ok: 0 };
+  if (
+    env.MURMUR_RECAP === "0" ||
+    env.MURMUR_RECAP_RUN === "1" ||
+    isHeadless(env)
+  )
+    return { ran: 0, ok: 0 };
+  const t0 = Date.now();
   const view = reduce(events);
   const done = new Set(readSession(sessionId).recapped ?? []);
-  const todo = view.requests.filter((r) => r.planInferred && !done.has(r.id));
-  if (!todo.length) return { ran: 0, ok: 0 };
-  // Marked first: a run that dies half way is not asked again.
-  updateSession(sessionId, { recapped: [...done, ...todo.map((r) => r.id)] });
+  const last = view.requests.at(-1);
+  // The 5 newest unmapped requests at most, newest first; older ones never.
+  const queue = view.requests
+    .filter((r) => r.planInferred && !(lastOpen && r === last))
+    .reverse()
+    .slice(0, MAX_REQUESTS)
+    .filter((r) => !done.has(r.id));
+  // Asked only while Murmur would send: logged in, on, not paused.
+  const sending = () => {
+    const s = readSession(sessionId);
+    const cwd = s.cwd ?? view.cwd;
+    return (
+      readCredentials() !== null &&
+      !isRevoked() &&
+      sessionProjectState(cwd, sessionId) === "on" &&
+      !isPaused(cwd, sessionId) &&
+      !(s.project !== undefined && isPaused(s.project))
+    );
+  };
   const byId = new Map(events.map((e) => [e.id, e]));
   const calls = callsByRequest(events, new Set(view.requests.map((r) => r.id)));
   const paths = changedPaths(events);
   let ok = 0;
-  const queue = [...todo];
+  let ran = 0;
   const worker = async () => {
     for (let req = queue.shift(); req; req = queue.shift()) {
+      if (Date.now() - t0 > budgetMs || !sending()) return;
+      // Marked just before it is asked: a run that dies here never asks it again.
+      const s = readSession(sessionId);
+      updateSession(sessionId, { recapped: [...(s.recapped ?? []), req.id] });
+      ran++;
       const mine = calls.get(req.id) ?? [];
       const r = await ask(recapInput(req, view.cwd, mine), env, timeoutMs);
       const secs = (r.ms / 1000).toFixed(1);
@@ -372,7 +456,7 @@ export async function runRecap(
     }
   };
   await Promise.all(Array.from({ length: PARALLEL }, worker));
-  return { ran: todo.length, ok };
+  return { ran, ok };
 }
 
 /** Each request's Agent calls, by request id (its prompt event's id). */
