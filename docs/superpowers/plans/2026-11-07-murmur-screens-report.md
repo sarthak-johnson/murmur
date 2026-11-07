@@ -173,3 +173,85 @@ In `/Users/sarprasa/.claude/jobs/0a6793ec/tmp/`, 1440 × 900:
   Linking by the one subject named in the first sentence would shorten "Yes please go ahead" further; that belongs in core's linker, not in the web.
 - Core's brief for reviewers is the prompt's role paragraph ("You are reviewing one task's implementation…"); the web now hides it, but `briefOf` should skip paragraphs that address the helper.
 - On the newest request all helpers sit on the one mapped task "Dispatch the first builder and review its work", so their messages group under that title although they are about Tasks 20 to 26; a finer plan from narration would fix that.
+
+## Round 3: fixes from the Opus review
+
+Web only (`web/src`, `web/test`), on `fix/backfill-whole-transcript`, checked on the real session at 1440 × 900 and 1280 × 800.
+
+### Critical
+
+1. **Deep nesting no longer crashes the page** (`web/src/markdown.tsx`).
+   - Quotes and lists nest at most 20 levels; past that the rest is one plain paragraph, with no more parsing.
+   - Indentation deeper than 20 levels can use is clamped once, at the top, instead of being re-sliced at every level.
+   - `MdBoundary` wraps every Markdown render and falls back to the plain text if rendering ever throws.
+   - 10,000 nested `>` now render in about 2 ms and 1,000 nested list levels in about 30 ms; both used to take seconds (45 s for the lists in jsdom).
+
+### Important
+
+2. **Fix rounds and "sent back after review" count on recapped requests.**
+   They are counted from the part's helpers: one per helper described as a fix round or re-review, or one per review after the first, whichever is more.
+   Task 1 shows 1 fix round; "Yes please go ahead" shows 10 sent back after review.
+3. **A recapped task's "How it went" is one list.**
+   Each recap step that names a kind of round (built, reviewed, rechecked) leads the card of the first matching helper, in order.
+   Helpers that no step names keep their start order.
+   The recap's closing line ("Done after one fix round…") stands last as a plain step, without Details and without a made-up time.
+   No second "Who's on it" list on a recapped task.
+4. **A deep link waits** for its request while the first pages load (skeleton), instead of showing the newest request for a moment; the task page does the same.
+5. **Contrast:** `--faint` is `#858d9b`, at least 4.89:1 on every panel (5.69:1 on the page).
+6. **Focus inside folds:** a fold opens on `focusin`, so a link below "Show more" is never focused while hidden. The story starts with a "Skip to the plan" link (visible on focus).
+7. **Opened blocks stay open while running:** each block is keyed by its oldest message.
+8. **Badges on guesses and negations:**
+   - "failed" after "means", "might", "may", "could", "if", "or" and the like, or after a negation ("None of the tests failed"), is no badge.
+   - "The review found no problems" is no badge.
+   - "e.g.", "i.e.", "vs." and "etc." do not end the first sentence.
+9. **The side column is sticky** at 1200 px and wider (`top: 16px`, `max-height: calc(100vh - 32px)`, scrolls on its own), so the plan stays beside a long story.
+10. **A finished request shows no work in progress.**
+    - In the plan and the phase strip, unfinished tasks and phases of a finished request read as left open: an amber diamond, and "Left open: …" before the outcome line.
+    - The summary pill follows the real state: Done once Claude's turn ended (last event a Stop) and no helper is still running, even before a next prompt.
+11. **No text cut mid-word:**
+    - Plan chips wrap to two lines between words instead of ending in "integrati…".
+    - Paths break only after a slash: each segment between `<wbr>`s is one flex item that never wraps inside itself.
+
+### Minor
+
+- A divider ("Edit 2 · 15:44") before each later edit in a file's diff.
+- A pending Edit shows its proposed text with no line numbers; a MultiEdit with no patch shows each of its `edits`, divided.
+- Non-text entries in a patch are dropped.
+- Links can have brackets in their text and parentheses in their address.
+- A closing code fence must be bare and at least as long as the opening one, so a ```` ```js ```` line inside a code block stays code.
+- "N more" is one button that stays put: it keeps focus, sets `aria-expanded`, and reads "Show fewer" to fold back.
+- The selected phase in the strip reads as a pressed tab (raised, underlined); the running phase uses a border, not an outline, so neither looks like the focus ring.
+- The terminal block opened from the Now line says "Command" instead of repeating the Now line.
+- A helper call's view never shows a brief that only addresses the helper; the full brief stays one toggle away.
+- Choice and concern rows have unique keys.
+- A finished one-task phase shows its task instead of "1 task, all done" under "1 / 1".
+- "Who's on it" reads "Who worked on it" once the task is done.
+
+### Tests
+
+Each logic item has a test that failed first:
+- **Markdown:** 10,000 quotes and 1,000 list levels under 100 ms, the error boundary, bracketed links, info-string fences, a fold opening on focus.
+- **Story:** badge guesses and negations, sentence ends after "e.g.", recap fix rounds and sent back, a block staying open as messages arrive, "N more" focus and fold back, the skip link, the deep-link skeleton, the pill after a Stop, left-open tasks and phases, a finished one-task phase.
+- **Task page:** the merged recap list, a helper that no step names, "Who worked on it".
+- **Diffs and views:** edit dividers, non-text lines, a pending Edit with no line numbers, MultiEdit edits, the quiet command title, helper briefs.
+
+The sticky column, contrast, chips and path breaks are CSS and were checked in the browser.
+
+### Checks
+
+| Check | Exit code |
+| --- | --- |
+| `pnpm -s lint` | 0 |
+| `pnpm -s typecheck` | 0 |
+| `pnpm -s test` | 0 (core 241, plugin 161, server 92, web 202) |
+| `pnpm --filter @murmur/web -s build` | 0 |
+
+### Screenshots
+
+In `/Users/sarprasa/.claude/jobs/0a6793ec/tmp/`, each at 1440 × 900 (`-1440`) and 1280 × 800 (`-1280`):
+- `round3-newest-*.png`: the running request.
+- `round3-goahead-top-*.png`, `round3-goahead-mid-*.png`: "Yes please go ahead" at the top and halfway down, with the sticky plan beside the story and Phase 1 left open.
+- `round3-task1-*.png`: the Task 1 page with one How it went list and 1 fix round.
+- `round3-diff-*.png`: ThemeContext.jsx's two edits with the "Edit 2 · 15:44" divider.
+
+No page scrolls sideways (scroll width 1429 at 1440 and 1269 at 1280, the rest is the scrollbar).
