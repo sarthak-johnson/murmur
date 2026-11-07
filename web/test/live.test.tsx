@@ -243,11 +243,9 @@ describe("live screen", () => {
     show(session());
     const plan = screen.getByRole("region", { name: /Plan/ });
     expect(within(plan).getByText("Plan · step 5 of 7")).toBeTruthy();
-    expect(
-      within(plan).getByText(
-        "Read how watchlists work · Agreed the plan with you",
-      ),
-    ).toBeTruthy();
+    // A folded finished phase says how many tasks it holds, not a run-on list of them.
+    expect(within(plan).getByText("2 tasks, all done")).toBeTruthy();
+    expect(within(plan).queryByText(/Read how watchlists work ·/)).toBeNull();
     expect(within(plan).queryByText("Read how watchlists work")).toBeNull();
     await userEvent.click(
       within(plan).getByRole("button", { name: /Show phase 1/ }),

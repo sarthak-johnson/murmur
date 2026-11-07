@@ -1019,17 +1019,17 @@ button.task:hover {
     column-gap: 16px;
     align-items: start;
   }
-  .has-helpers .now-card {
+  .live-grid > .has-helpers .now-card {
     grid-area: card;
     margin-bottom: 0;
   }
-  .has-helpers .helpers-block {
+  .live-grid > .has-helpers .helpers-block {
     grid-area: helpers;
   }
-  .has-helpers .now-files {
+  .live-grid > .has-helpers .now-files {
     grid-area: files;
   }
-  .has-helpers .started {
+  .live-grid > .has-helpers .started {
     grid-area: started;
   }
   .live-grid > .map-panel {
@@ -1067,10 +1067,10 @@ button.task:hover {
       "now map plan"
       "now map assume";
   }
-  .now-col.has-helpers {
+  .live-grid > .now-col.has-helpers {
     display: block;
   }
-  .has-helpers .now-card {
+  .live-grid > .has-helpers .now-card {
     margin-bottom: 14px;
   }
   .sk-grid {
@@ -1359,6 +1359,13 @@ button.link.more {
   display: grid;
   gap: 12px;
 }
+/* Beside the story: what runs now, then who runs it, then the files. */
+.story-side .helpers-block {
+  order: 1;
+}
+.story-side .now-files {
+  order: 2;
+}
 .story-side .now-card {
   margin-bottom: 0;
 }
@@ -1415,6 +1422,50 @@ button.task-chip:hover {
 .story-text {
   font: 16px / 1.6 var(--font-read);
   color: var(--text-2);
+}
+.group-n {
+  font-size: 12.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.group-out {
+  max-width: 76ch;
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.group-msgs {
+  display: grid;
+  gap: 16px;
+  padding-left: 16px;
+  border-left: 2px solid var(--line);
+}
+.group-msg .moment-hd {
+  margin-bottom: 4px;
+}
+.msg-t {
+  font-size: 12px;
+  line-height: 22px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+button.link.group-more {
+  justify-self: start;
+  font-size: 12.5px;
+}
+.done-when {
+  max-width: 68ch;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.lbl-inline {
+  margin-right: 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
 }
 .task-out {
   grid-column: 2 / -1;
@@ -1986,4 +2037,14 @@ code.nw {
   text-decoration: underline;
   text-decoration-color: var(--faint);
   text-underline-offset: 3px;
+}
+/* In the narrow side column, counts line up in their own columns. */
+.story-side .now-files li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0 10px;
+  align-items: baseline;
+}
+.story-side .now-files li > .muted {
+  grid-column: 1 / -1;
 }

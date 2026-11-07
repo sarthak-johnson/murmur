@@ -288,7 +288,7 @@ describe("PartDetail", () => {
     ).toBeTruthy();
     const why = section("What it was for");
     expect(within(why).getByText("Accept alert requests")).toBeTruthy();
-    expect(within(why).getByText(/Done when the test passes/)).toBeTruthy();
+    expect(why.textContent).toContain("Done when the test passes");
     expect(within(why).getByText("From Claude's narration")).toBeTruthy();
     expect(screen.getByText("Tests keep failing")).toBeTruthy();
   });
@@ -733,6 +733,77 @@ describe("task page", () => {
       within(first).getByRole("button", { name: "Helper's full report" }),
     );
     expect(first.querySelector(".report-panel .md")).toBeTruthy();
+  });
+
+  it("a helper card never shows the prompt: message, then report, then a brief about the work", () => {
+    const t = task1();
+    t.r.recap = true;
+    t.p.steps = [];
+    const [a1, a2, a3] = t.r.agents as AgentView[];
+    // a1: no message linked, a report: its lead paragraph.
+    // a3: no message, no report, a brief that only addresses the helper: nothing.
+    delete (a3 as AgentView).report;
+    (a3 as AgentView).brief =
+      "You are re-reviewing one task's fix round. A previous review produced findings.";
+    (a3 as AgentView).prompt =
+      "You are re-reviewing one task's fix round. A previous review produced findings.";
+    // a2 keeps the message linked to it.
+    void a1;
+    void a2;
+    showTask1(t);
+    const who = section("Who's on it");
+    const card = (n: number) =>
+      within(who).getByRole("listitem", { name: `helper ${n}` });
+    expect(card(1).querySelector(".step-text")?.textContent).toBe(
+      "The new token tests pass.",
+    );
+    expect(card(2).querySelector(".step-text")?.textContent).toContain(
+      "The review found one real problem",
+    );
+    expect(card(3).querySelector(".step-text")).toBeNull();
+    expect(who.textContent).not.toContain("You are re-reviewing");
+  });
+
+  it("a helper with no message or report shows its brief when it is about the work", () => {
+    const t = task1();
+    t.p.steps = [];
+    const a1 = t.r.agents[0] as AgentView;
+    delete a1.report;
+    showTask1(t);
+    const who = section("Who's on it");
+    expect(
+      within(who)
+        .getByRole("listitem", { name: "helper 1" })
+        .querySelector(".step-text")?.textContent,
+    ).toContain("This is the first task");
+  });
+
+  it("a helper card shows Claude's first word after the report, not a later aside", () => {
+    const t = task1();
+    t.r.messages = [
+      ...(t.r.messages ?? []),
+      {
+        id: "m2",
+        ts: at(14),
+        text: "Logged on the tracker. Waiting for the fix.",
+        agent: "a2",
+      },
+    ];
+    showTask1(t);
+    const reviewed = within(section("How it went")).getAllByRole("listitem", {
+      name: /step/,
+    })[1] as HTMLElement;
+    expect(reviewed.querySelector(".step-text")?.textContent).toContain(
+      "The review found one real problem",
+    );
+  });
+
+  it("done-when has its own label", () => {
+    show(full);
+    const why = section("What it was for");
+    const label = within(why).getByText("Done when");
+    expect(label.className).toContain("lbl-inline");
+    expect(label.parentElement?.textContent).toBe("Done when the test passes");
   });
 
   it("a helper shown as a step card is not listed again under who's on it", () => {

@@ -14,12 +14,13 @@ import { Pill } from "../Pill";
 import { LiveSkeleton } from "../pages/Session";
 import { navigate } from "../router";
 import {
+  aboutWork,
   clock,
   commitsIn,
   concernsIn,
   fixRounds,
   partAgents,
-  reportLead,
+  reportLine,
   type Tone,
   verdictOf,
 } from "../story";
@@ -105,9 +106,10 @@ function StepCard(props: {
         ? { label: "Running", tone: "now" as const }
         : undefined;
   const said = agent
-    ? request.messages?.findLast((m) => m.agent === agent.id)?.text
+    ? request.messages?.find((m) => m.agent === agent.id)?.text
     : undefined;
-  const text = said ?? (report ? reportLead(report.text) : (fallback ?? ""));
+  // Never the prompt: Claude's word, else the report's, else a brief about the work.
+  const text = said || reportLine(report) || aboutWork(fallback) || "";
   const who = [model(call), timed && valid(step.ts) ? clock(step.ts) : ""]
     .filter(Boolean)
     .join(", ");
@@ -280,7 +282,7 @@ function PartBody(props: {
   ];
 
   // What it was for: the recap's or narration's aim, else the first helper's brief.
-  const briefed = helpers.find((a) => a.brief);
+  const briefed = helpers.find((a) => aboutWork(a.brief));
   const purpose = part.aim
     ? {
         text: part.aim.aim,
@@ -351,7 +353,10 @@ function PartBody(props: {
                 <span className="source">{purpose.source}</span>
               </p>
               {purpose.doneWhen && (
-                <p className="muted">Done when {purpose.doneWhen}</p>
+                <p className="done-when">
+                  <span className="lbl-inline">Done when</span>{" "}
+                  {purpose.doneWhen}
+                </p>
               )}
             </Section>
           )}

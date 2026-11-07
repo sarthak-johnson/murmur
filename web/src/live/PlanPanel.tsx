@@ -93,7 +93,9 @@ function PhaseCard(props: {
       </div>
       {folded ? (
         <p className="phase-summary">
-          {phase.tasks.map((t) => t.title).join(" · ")}
+          {done === phase.tasks.length
+            ? `${done} ${done === 1 ? "task" : "tasks"}, all done`
+            : `${done} of ${phase.tasks.length} tasks done`}
         </p>
       ) : (
         <ul className="tasks">
