@@ -43,13 +43,15 @@ describe("helper reports", () => {
       call(1, "Implement Task 1: tokens"),
       start(2, "a1"),
       notice(9, 1, {
-        result: "Status: DONE\n\nRun `node shoot.mjs &lt;page&gt;` &amp; look.",
+        result:
+          "Status: DONE\n\nRun `node shoot.mjs &lt;page&gt;` &amp; look at &quot;it&quot;, it&#39;s fine. Keep `&amp;lt;` as written.",
       }),
     ]);
     expect(a?.report).toEqual({
       status: "completed",
       summary: 'Agent "x" finished',
-      text: "Status: DONE\n\nRun `node shoot.mjs <page>` & look.",
+      // Decoded once, so an escaped entity in the report stays as the helper wrote it.
+      text: 'Status: DONE\n\nRun `node shoot.mjs <page>` & look at "it", it\'s fine. Keep `&lt;` as written.',
       verdict: "DONE",
       ts: "2026-11-06T00:00:09.000Z",
       interim: false,
