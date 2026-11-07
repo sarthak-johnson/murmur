@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import {
   clearCredentials,
@@ -145,7 +146,9 @@ export async function run(
   startPoller: StartPoller = spawnPoller,
 ): Promise<string> {
   const [cmd, arg] = args;
-  const cwd = arg || process.cwd();
+  // The real path: Claude Code reports it, so a folder named through a symlink (macOS
+  // /tmp, a linked ~/code) must be stored the same way.
+  const cwd = realpath(arg || process.cwd());
   const session = env.CLAUDE_CODE_SESSION_ID || undefined;
   const scope = session ? "session" : "folder";
   // Sending starts again from now: what Claude wrote before is never sent.
@@ -203,3 +206,11 @@ async function main(): Promise<void> {
 }
 
 if (/[\\/]cli\.(c?js|ts)$/.test(process.argv[1] ?? "")) void main();
+
+function realpath(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+}

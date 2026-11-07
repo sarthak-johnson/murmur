@@ -46,7 +46,8 @@ export const NarrateInput = z.object({
   why: z.string().max(200),
   part: text.optional(),
   task: text.optional(),
-  taskStatus: status.optional(),
+  // Claude says "blocked" on its own when it waits on the user; read it as failed.
+  taskStatus: z.union([status, z.literal("blocked")]).optional(),
   step: z.object({ text, status }).optional(),
   aim: z.object({ aim: text, doneWhen: text }).optional(),
   io: z.object({ gets: text, gives: text }).optional(),

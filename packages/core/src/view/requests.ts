@@ -20,7 +20,12 @@ import type { PartView, RequestView, TaskView } from "./types.js";
 
 export const cut = (s: string, n: number) => s.slice(0, n);
 
-const TASK_STATUS = { running: "now", done: "done", failed: "failed" } as const;
+const TASK_STATUS = {
+  running: "now",
+  done: "done",
+  failed: "failed",
+  blocked: "failed",
+} as const;
 
 /** The part and task the latest narrate resolved to. */
 export interface Named {
@@ -167,6 +172,7 @@ function applyNarrate(
   req.now = { text: n.now, why: n.why, ts: e.ts };
   if (part) req.now.part = part.id;
   if (task && n.taskStatus) task.status = TASK_STATUS[n.taskStatus];
+  if (task && n.taskStatus === "blocked") task.problem = n.now;
   if (task && agentId) addOnce(task.agents, agentId);
   if (part) {
     if (n.step)

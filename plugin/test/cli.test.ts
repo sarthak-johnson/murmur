@@ -8,6 +8,7 @@ import { poll, run } from "../src/cli.js";
 import {
   isNewSession,
   NO_NARRATION,
+  projectState,
   queueDir,
   readCredentials,
   readSession,
@@ -99,6 +100,13 @@ describe("cli", () => {
     expect(isNewSession("s1")).toBe(true);
     await run(["on", repo], {});
     expect(isNewSession("")).toBe(true);
+  });
+
+  it("on through a symlink turns on the real folder Claude Code reports", async () => {
+    const link = `${repo}-link`;
+    fs.symlinkSync(repo, link);
+    await run(["on", link], {});
+    expect(projectState(fs.realpathSync(repo))).toBe("on");
   });
 
   it("on for another folder by hand does not bind the session", async () => {
@@ -195,13 +203,15 @@ describe("cli", () => {
   it("on and off name the folder, and off deletes that project's unsent events", async () => {
     const other = fs.mkdtempSync(path.join(os.tmpdir(), "murmur-other-"));
     fs.mkdirSync(path.join(repo, "src"));
+    // Named by its real path, the one Claude Code reports.
+    const real = fs.realpathSync(repo);
     expect(await run(["on", path.join(repo, "src")], {})).toBe(
-      `Murmur is on for ${repo}. Run /murmur:login to connect.`,
+      `Murmur is on for ${real}. Run /murmur:login to connect.`,
     );
     queued(path.join(repo, "src"), "a");
     queued(other, "b");
     expect(await run(["off", repo], {})).toBe(
-      `Murmur is off for ${repo}. Its unsent events were deleted, and nothing more from it is sent.`,
+      `Murmur is off for ${real}. Its unsent events were deleted, and nothing more from it is sent.`,
     );
     expect(queue()).toEqual(["b.json"]);
   });
