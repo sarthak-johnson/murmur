@@ -1,5 +1,6 @@
 import type { FileTouch, MurmurEvent } from "@murmur/core";
 import { useState } from "react";
+import { clock } from "../story";
 
 export interface Hunk {
   oldStart: number;
@@ -7,13 +8,24 @@ export interface Hunk {
   newStart: number;
   newLines: number;
   lines: string[];
+  /** A divider drawn before this hunk, such as "Edit 2 · 15:43". */
+  label?: string;
+  /** Proposed text with no known place in the file: no line numbers. */
+  bare?: boolean;
 }
 
 const obj = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 const hunkList = (v: unknown): Hunk[] =>
   Array.isArray(v)
-    ? v.filter((h): h is Hunk => Array.isArray(obj(h).lines))
+    ? v
+        .filter((h): h is Hunk => Array.isArray(obj(h).lines))
+        .map((h) => ({
+          ...h,
+          lines: (h.lines as unknown[]).filter(
+            (l): l is string => typeof l === "string",
+          ),
+        }))
     : [];
 
 /** A whole text as one hunk of added lines. */
@@ -52,12 +64,28 @@ export function hunksOfEvent(
   return [];
 }
 
+/** A file's hunks across its events; each later edit starts with a divider. */
 export function hunksOf(file: FileTouch, byId: Map<string, MurmurEvent>) {
-  return file.eventIds.flatMap((id) => hunksOfEvent(byId.get(id), file.path));
+  const out: Hunk[] = [];
+  let edits = 0;
+  for (const id of file.eventIds) {
+    const e = byId.get(id);
+    const hunks = hunksOfEvent(e, file.path);
+    if (!hunks.length) continue;
+    edits++;
+    const [first, ...rest] = hunks as [Hunk, ...Hunk[]];
+    out.push(
+      edits > 1 && e
+        ? { ...first, label: `Edit ${edits} · ${clock(e.ts)}` }
+        : first,
+      ...rest,
+    );
+  }
+  return out;
 }
 
 interface Row {
-  kind: "add" | "del" | "ctx" | "hunk";
+  kind: "add" | "del" | "ctx" | "hunk" | "edit";
   text: string;
   old?: number;
   new?: number;
@@ -66,23 +94,35 @@ interface Row {
 function rowsOf(hunks: Hunk[]): Row[] {
   const out: Row[] = [];
   for (const h of hunks) {
+    if (h.label) out.push({ kind: "edit", text: h.label });
     const last = h.newStart + Math.max(0, h.newLines - 1);
-    out.push({
-      kind: "hunk",
-      text:
-        h.newLines > 1
-          ? `Lines ${h.newStart} to ${last}`
-          : `Line ${h.newStart}`,
-    });
+    if (!h.bare)
+      out.push({
+        kind: "hunk",
+        text:
+          h.newLines > 1
+            ? `Lines ${h.newStart} to ${last}`
+            : `Line ${h.newStart}`,
+      });
     let o = h.oldStart;
     let n = h.newStart;
     for (const l of h.lines) {
       if (l.startsWith("\\")) continue; // "\ No newline at end of file"
-      if (l.startsWith("+"))
-        out.push({ kind: "add", text: l.slice(1), new: n++ });
-      else if (l.startsWith("-"))
-        out.push({ kind: "del", text: l.slice(1), old: o++ });
-      else out.push({ kind: "ctx", text: l.slice(1), old: o++, new: n++ });
+      const kind = l.startsWith("+")
+        ? "add"
+        : l.startsWith("-")
+          ? "del"
+          : "ctx";
+      const row: Row = { kind, text: l.slice(1) };
+      if (kind !== "add") {
+        if (!h.bare) row.old = o;
+        o++;
+      }
+      if (kind !== "del") {
+        if (!h.bare) row.new = n;
+        n++;
+      }
+      out.push(row);
     }
   }
   return out;
@@ -90,13 +130,15 @@ function rowsOf(hunks: Hunk[]): Row[] {
 
 const SHOWN = 60;
 const FOLD_OVER = 80;
-const SIGN = { add: "+", del: "−", ctx: "", hunk: "" } as const;
+const SIGN = { add: "+", del: "−", ctx: "" } as const;
+const isLine = (r: Row): r is Row & { kind: keyof typeof SIGN } =>
+  r.kind === "add" || r.kind === "del" || r.kind === "ctx";
 
 /** A diff with line numbers, tinted added and removed lines, and a gap between hunks. */
 export function DiffView({ hunks }: { hunks: Hunk[] }) {
   const [all, setAll] = useState(false);
   const rows = rowsOf(hunks);
-  const lines = rows.filter((r) => r.kind !== "hunk").length;
+  const lines = rows.filter(isLine).length;
   if (!lines)
     return <p className="muted small">No line changes were recorded.</p>;
   const folded = !all && rows.length > FOLD_OVER;
@@ -108,7 +150,7 @@ export function DiffView({ hunks }: { hunks: Hunk[] }) {
           {shown.map((r, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: a fixed diff
             <div key={i} className={`dl ${r.kind}`}>
-              {r.kind === "hunk" ? (
+              {!isLine(r) ? (
                 <span className="hunk-label">{r.text}</span>
               ) : (
                 <>

@@ -14,7 +14,7 @@ import { type ReactNode, useState } from "react";
 import { PathText } from "../files";
 import { Markdown } from "../markdown";
 import { Pill } from "../Pill";
-import { verdictOf } from "../story";
+import { aboutWork, verdictOf } from "../story";
 import { created, DiffView, type Hunk, hunksOfEvent } from "./Diff";
 
 const obj = (v: unknown): Record<string, unknown> =>
@@ -70,7 +70,7 @@ function Output({ text, className }: { text: string; className?: string }) {
   );
 }
 
-function Command({ call }: { call: Call }) {
+function Command({ call, quiet }: { call: Call; quiet?: boolean | undefined }) {
   const { input, post, fail } = call;
   const res = obj(post?.payload.tool_response);
   const failText = str(fail?.payload.tool_response) || str(fail?.payload.error);
@@ -91,7 +91,7 @@ function Command({ call }: { call: Call }) {
     <div className="term">
       <div className="term-hd">
         <span className="term-title">
-          {str(input.description) || "Command"}
+          {(!quiet && str(input.description)) || "Command"}
         </span>
         <Pill tone={status.tone}>{status.label}</Pill>
       </div>
@@ -113,25 +113,34 @@ function FileChange({ call, cwd }: { call: Call; cwd: string }) {
   let hunks: Hunk[] = hunksOfEvent(post);
   if (!hunks.length && tool === "Write" && str(input.content))
     hunks = [created(str(input.content))];
-  if (!hunks.length && tool === "Edit") {
-    const del = str(input.old_string)
-      .split("\n")
-      .map((l) => `-${l}`);
-    const add = str(input.new_string)
-      .split("\n")
-      .map((l) => `+${l}`);
-    hunks = [
-      {
-        oldStart: 1,
+  // No result yet: the proposed text, with no line numbers it does not have.
+  if (!hunks.length && (tool === "Edit" || tool === "MultiEdit")) {
+    const edits =
+      tool === "Edit" ? [input] : list(input.edits).map((e) => obj(e));
+    hunks = edits.map((e, k) => {
+      const del = str(e.old_string)
+        .split("\n")
+        .map((l) => `-${l}`);
+      const add = str(e.new_string)
+        .split("\n")
+        .map((l) => `+${l}`);
+      return {
+        oldStart: 0,
         oldLines: del.length,
-        newStart: 1,
+        newStart: 0,
         newLines: add.length,
         lines: [...del, ...add],
-      },
-    ];
+        bare: true,
+        ...(k > 0 ? { label: `Edit ${k + 1}` } : {}),
+      };
+    });
   }
   const verb =
-    tool === "Edit" ? "Edited" : res.type === "create" ? "Created" : "Wrote";
+    tool === "Edit" || tool === "MultiEdit"
+      ? "Edited"
+      : res.type === "create"
+        ? "Created"
+        : "Wrote";
   return (
     <div className="ev-file">
       <p className="ev-line">
@@ -173,18 +182,16 @@ export function HelperCall(props: {
   const prompt = str(call.input.prompt) || agent?.prompt || "";
   const model = str(call.input.model);
   const verdict = verdictOf(agent?.report);
+  const about = aboutWork(agent?.brief);
   return (
     <div className="ev-helper">
       <p className="ev-line">
         <b>{str(call.input.description) || agent?.description || "A helper"}</b>
         {model && <span className="muted"> {MODEL(model)}</span>}
       </p>
-      {agent?.brief ? (
-        <p className="ev-brief">{agent.brief}</p>
-      ) : (
-        prompt && <Markdown text={prompt} className="reading" />
-      )}
-      {agent?.brief && prompt && (
+      {/* The brief when it is about the work; the prompt itself only on request. */}
+      {about && <p className="ev-brief">{about}</p>}
+      {prompt && (
         <>
           <button
             type="button"
@@ -317,10 +324,15 @@ function OtherTool({ call }: { call: Call }) {
   );
 }
 
-function Body(props: { call: Call; cwd: string; agents: AgentView[] }) {
+function Body(props: {
+  call: Call;
+  cwd: string;
+  agents: AgentView[];
+  quietTitle?: boolean | undefined;
+}) {
   const { call, cwd, agents } = props;
   const { tool, input } = call;
-  if (tool === "Bash") return <Command call={call} />;
+  if (tool === "Bash") return <Command call={call} quiet={props.quietTitle} />;
   if (tool === "Edit" || tool === "Write" || tool === "MultiEdit")
     return <FileChange call={call} cwd={cwd} />;
   if (tool === "Read") return <ReadFile call={call} cwd={cwd} />;
@@ -367,13 +379,15 @@ export function EventView(props: {
   events: MurmurEvent[];
   cwd?: string;
   agents?: AgentView[];
+  /** The line above already says what the command was for. */
+  quietTitle?: boolean;
 }) {
-  const { eventId, events, cwd = "", agents = [] } = props;
+  const { eventId, events, cwd = "", agents = [], quietTitle } = props;
   const call = callOf(eventId, events);
   if (!call) return <p className="muted small">This event is not loaded.</p>;
   return (
     <div className="ev">
-      <Body call={call} cwd={cwd} agents={agents} />
+      <Body call={call} cwd={cwd} agents={agents} quietTitle={quietTitle} />
       <EventData events={call.all.length ? call.all : [call.event]} />
     </div>
   );

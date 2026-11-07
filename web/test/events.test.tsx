@@ -2,8 +2,9 @@ import type { AgentView, MurmurEvent } from "@murmur/core";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
-import { DiffView } from "../src/part/Diff";
+import { DiffView, hunksOf, hunksOfEvent } from "../src/part/Diff";
 import { EventView } from "../src/part/EventView";
+import { clock } from "../src/story";
 
 afterEach(cleanup);
 
@@ -323,5 +324,122 @@ describe("DiffView", () => {
       screen.getByRole("button", { name: "Show all 200 lines" }),
     );
     expect(screen.getByText("l199")).toBeTruthy();
+  });
+});
+
+describe("round 3 diffs and views", () => {
+  const patch = (lines: unknown[], start = 3) => ({
+    oldStart: start,
+    oldLines: 1,
+    newStart: start,
+    newLines: 1,
+    lines,
+  });
+
+  it("a file changed by several edits has a divider before each later edit", () => {
+    const e1 = ev("PostToolUse", {
+      tool_name: "Edit",
+      tool_response: {
+        filePath: "/x/app/a.ts",
+        structuredPatch: [patch(["-a", "+b"])],
+      },
+    });
+    const e2 = {
+      ...ev("PostToolUse", {
+        tool_name: "Edit",
+        tool_response: {
+          filePath: "/x/app/a.ts",
+          structuredPatch: [patch(["-c", "+d"], 9)],
+        },
+      }),
+      ts: "2026-11-06T10:13:00Z",
+    };
+    const file = {
+      path: "a.ts",
+      added: 2,
+      removed: 2,
+      isNew: false,
+      eventIds: [e1.id, e2.id],
+    };
+    const byId = new Map([e1, e2].map((e) => [e.id, e]));
+    const { container } = render(<DiffView hunks={hunksOf(file, byId)} />);
+    const dividers = [...container.querySelectorAll(".dl.edit")].map(
+      (d) => d.textContent,
+    );
+    expect(dividers).toEqual([`Edit 2 · ${clock("2026-11-06T10:13:00Z")}`]);
+  });
+
+  it("drops lines that are not text", () => {
+    const e = ev("PostToolUse", {
+      tool_name: "Edit",
+      tool_response: {
+        filePath: "/x/app/a.ts",
+        structuredPatch: [patch([" keep", 42, null, "+new"])],
+      },
+    });
+    const { container } = render(<DiffView hunks={hunksOfEvent(e)} />);
+    expect(
+      [...container.querySelectorAll(".dl-text")].map((t) => t.textContent),
+    ).toEqual(["keep", "new"]);
+  });
+
+  it("a pending Edit shows no made-up line numbers", () => {
+    const { pre, events } = pair("Edit", {
+      file_path: "/x/app/src/a.ts",
+      old_string: "a",
+      new_string: "c",
+    });
+    const { container } = view(pre.id, events);
+    expect(
+      [...container.querySelectorAll(".ln")].every((l) => l.textContent === ""),
+    ).toBe(true);
+    expect(container.textContent).not.toMatch(/Lines? 1/);
+  });
+
+  it("a MultiEdit with no patch shows each of its edits", () => {
+    const { pre, events } = pair("MultiEdit", {
+      file_path: "/x/app/src/a.ts",
+      edits: [
+        { old_string: "one", new_string: "uno" },
+        { old_string: "two", new_string: "dos" },
+      ],
+    });
+    view(pre.id, events);
+    for (const t of ["one", "uno", "two", "dos"])
+      expect(screen.getByText(t)).toBeTruthy();
+    expect(screen.getByText("Edit 2")).toBeTruthy();
+  });
+
+  it("a command can leave its title to the line above it", () => {
+    const { pre, events } = pair(
+      "Bash",
+      { command: "pnpm test", description: "Run the tests" },
+      { stdout: "ok", stderr: "" },
+    );
+    render(
+      <EventView eventId={pre.id} events={events} cwd="/x/app" quietTitle />,
+    );
+    expect(screen.queryByText("Run the tests")).toBeNull();
+    expect(screen.getByText("Command")).toBeTruthy();
+  });
+
+  it("a helper call never shows a brief that only addresses the helper", () => {
+    const prompt = "You are reviewing one task. Read the diff.";
+    const { pre, events } = pair("Agent", {
+      description: "Review Task 1",
+      prompt,
+    });
+    const agent: AgentView = {
+      id: "a1",
+      type: "general-purpose",
+      description: "Review Task 1",
+      prompt,
+      status: "done",
+      startedAt: "2026-11-06T10:00:01Z",
+      brief: "You are reviewing one task.",
+    };
+    const { container } = view(pre.id, events, [agent]);
+    expect(container.querySelector(".ev-brief")).toBeNull();
+    expect(container.textContent).not.toContain("Read the diff");
   });
 });

@@ -20,6 +20,7 @@ import {
   concernsIn,
   fixRounds,
   partAgents,
+  recapRounds,
   reportLine,
   type Tone,
   verdictOf,
@@ -91,9 +92,14 @@ function StepCard(props: {
   label?: string;
   /** Text to show when Claude said nothing and no report came. */
   fallback?: string | undefined;
+  /** The recap's line for this round, shown above Claude's word. */
+  lead?: string | undefined;
+  /** A recap step's Details would only repeat its own title. */
+  details?: boolean;
 }) {
   const { n, step, request, agent, events, byId, cwd } = props;
-  const { timed = true, fallback, label = `step ${n}` } = props;
+  const { timed = true, fallback, label = `step ${n}`, lead } = props;
+  const { details = true } = props;
   const [open, setOpen] = useState<"report" | "brief" | "details" | null>(null);
   const call = step.eventIds.map((id) => byId.get(id)).find(Boolean);
   const helper = !!agent || call?.payload.tool_name === "Agent";
@@ -138,11 +144,15 @@ function StepCard(props: {
         {who && <span className="step-who">{who}</span>}
         {verdict && <Pill tone={verdict.tone}>{verdict.label}</Pill>}
       </div>
+      {lead && <p className="step-lead">{lead}</p>}
       {text && <Fold text={text} className="step-text" />}
       <div className="step-acts">
         {report && toggle("report", "Helper's full report")}
         {helper && prompt && toggle("brief", "Brief")}
-        {!helper && step.eventIds.length > 0 && toggle("details", "Details")}
+        {!helper &&
+          details &&
+          step.eventIds.length > 0 &&
+          toggle("details", "Details")}
       </div>
       {open === "report" && report && (
         <div className="report-panel">
@@ -243,7 +253,7 @@ function PartBody(props: {
         ? clock(from)
         : `${clock(from)} to ${clock(to)}`
       : "";
-  const rounds = fixRounds(part);
+  const rounds = fixRounds(part, helpers);
   const commits = commitsIn(reports.map((r) => r.text));
   const facts: ReactNode[] = [
     ...(span
@@ -307,6 +317,43 @@ function PartBody(props: {
       (l) => l.length > 0,
     );
 
+  /** A helper as a card: its name, model and start, verdict, word, report and brief. */
+  const helperCard = (
+    a: AgentView,
+    n: number,
+    label: string,
+    lead?: string,
+  ) => {
+    const call = events.find(
+      (e) =>
+        e.hook === "PreToolUse" &&
+        e.payload.tool_name === "Agent" &&
+        (e.payload.tool_input as { prompt?: unknown } | undefined)?.prompt ===
+          a.prompt,
+    );
+    return (
+      <StepCard
+        key={a.id}
+        n={n}
+        step={{
+          ts: a.startedAt,
+          text: `Agent ${number(a)}${a.description ? ` · ${a.description}` : ""}`,
+          status: a.status === "running" ? "running" : "done",
+          agentId: a.id,
+          eventIds: call ? [call.id] : [],
+        }}
+        request={request}
+        agent={a}
+        events={events}
+        byId={byId}
+        cwd={cwd}
+        fallback={a.brief}
+        label={label}
+        lead={lead}
+      />
+    );
+  };
+
   return (
     <main className="pd">
       <div className="pd-bar">
@@ -360,60 +407,64 @@ function PartBody(props: {
               )}
             </Section>
           )}
-          {part.steps.length > 0 && (
+          {request.recap && (part.steps.length > 0 || others.length > 0) ? (
             <Section name="How it went">
               <ol className="steps">
-                {part.steps.map((s, i) => (
-                  <StepCard
-                    // biome-ignore lint/suspicious/noArrayIndexKey: steps are append-only
-                    key={i}
-                    n={i + 1}
-                    step={s}
-                    request={request}
-                    agent={helpers.find((a) => a.id === s.agentId)}
-                    events={events}
-                    byId={byId}
-                    cwd={cwd}
-                    timed={!request.recap || !!s.agentId}
-                  />
-                ))}
-              </ol>
-            </Section>
-          )}
-          {others.length > 0 && (
-            <Section name="Who's on it">
-              <ol className="steps">
-                {others.map((a) => {
-                  const call = events.find(
-                    (e) =>
-                      e.hook === "PreToolUse" &&
-                      e.payload.tool_name === "Agent" &&
-                      (e.payload.tool_input as { prompt?: unknown } | undefined)
-                        ?.prompt === a.prompt,
-                  );
-                  return (
+                {recapRounds(part.steps, others).map(({ step, helper }, i) =>
+                  helper ? (
+                    helperCard(helper, i + 1, `step ${i + 1}`, step?.text)
+                  ) : step ? (
                     <StepCard
-                      key={a.id}
-                      n={number(a)}
-                      step={{
-                        ts: a.startedAt,
-                        text: `Agent ${number(a)}${a.description ? ` · ${a.description}` : ""}`,
-                        status: a.status === "running" ? "running" : "done",
-                        agentId: a.id,
-                        eventIds: call ? [call.id] : [],
-                      }}
+                      // biome-ignore lint/suspicious/noArrayIndexKey: steps are append-only
+                      key={`s${i}`}
+                      n={i + 1}
+                      step={step}
                       request={request}
-                      agent={a}
                       events={events}
                       byId={byId}
                       cwd={cwd}
-                      fallback={a.brief}
-                      label={`helper ${number(a)}`}
+                      timed={false}
+                      details={false}
                     />
-                  );
-                })}
+                  ) : null,
+                )}
               </ol>
             </Section>
+          ) : (
+            <>
+              {part.steps.length > 0 && (
+                <Section name="How it went">
+                  <ol className="steps">
+                    {part.steps.map((s, i) => (
+                      <StepCard
+                        // biome-ignore lint/suspicious/noArrayIndexKey: steps are append-only
+                        key={i}
+                        n={i + 1}
+                        step={s}
+                        request={request}
+                        agent={helpers.find((a) => a.id === s.agentId)}
+                        events={events}
+                        byId={byId}
+                        cwd={cwd}
+                      />
+                    ))}
+                  </ol>
+                </Section>
+              )}
+              {others.length > 0 && (
+                <Section
+                  name={
+                    part.status === "done" ? "Who worked on it" : "Who's on it"
+                  }
+                >
+                  <ol className="steps">
+                    {others.map((a) =>
+                      helperCard(a, number(a), `helper ${number(a)}`),
+                    )}
+                  </ol>
+                </Section>
+              )}
+            </>
           )}
           {part.files.length > 0 && (
             <Section name="Files changed" count={part.files.length}>
@@ -430,8 +481,9 @@ function PartBody(props: {
           {chosen.length > 0 && (
             <Section name="Choices it made">
               <ul className="pd-list">
-                {chosen.map((c) => (
-                  <li key={c.choice}>
+                {chosen.map((c, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: Claude may repeat a choice
+                  <li key={i}>
                     <b>{c.choice}</b> <span className="muted">{c.reason}</span>
                   </li>
                 ))}
@@ -444,10 +496,11 @@ function PartBody(props: {
             <Section name="Left open">
               <ul className="open-list">
                 {concerns.map((c) => (
-                  <li key={c}>{inline(c)}</li>
+                  <li key={`c:${c}`}>{inline(c)}</li>
                 ))}
-                {assumed.map((c) => (
-                  <li key={c.choice}>
+                {assumed.map((c, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: Claude may repeat a choice
+                  <li key={`a:${i}`}>
                     <b>{c.choice}</b> <span className="muted">{c.reason}</span>
                     <div className="pd-assume">
                       Claude's assumption. You never said this.
@@ -540,6 +593,11 @@ export function PartPage(props: {
   const { sessionId, requestId, partId } = props;
   const { view, events, status } = useSession(sessionId);
   if (!view) return <LiveSkeleton status={status} />;
+  const found = view.requests
+    .find((r) => r.id === requestId)
+    ?.parts.some((p) => p.id === partId);
+  // The first pages may not reach this part yet: wait instead of saying it is missing.
+  if (!found && status === "loading") return <LiveSkeleton status={status} />;
   const back = () => navigate(`/s/${enc(sessionId)}/r/${enc(requestId)}`);
   const request = view.requests.find((r) => r.id === requestId);
   const part = request?.parts.find((p) => p.id === partId);

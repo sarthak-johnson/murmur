@@ -687,8 +687,10 @@ describe("task page", () => {
         {},
       ],
     });
+    // Built and reviewed once, with no re-review helper: no fix round.
     t.p.steps = t.p.steps.slice(0, 2);
-    t.r.agents = t.r.agents.map((a) => ({
+    t.p.agents = ["a1", "a2"];
+    t.r.agents = t.r.agents.slice(0, 2).map((a) => ({
       ...a,
       ...(a.report ? { report: { ...a.report, text: "Built." } } : {}),
     }));
@@ -699,17 +701,62 @@ describe("task page", () => {
     expect(band.textContent).not.toContain("commit");
   });
 
-  it("a recapped part hides its made-up step times and shows its helpers with their reports", async () => {
+  it("a recapped task reads as one list: helper cards led by the recap's steps", async () => {
     const t = task1();
     t.r.recap = true;
     t.r.planInferred = false;
+    const recap = (text: string) => ({
+      ts: at(5),
+      text,
+      status: "done" as const,
+      eventIds: ["n1"],
+    });
     t.p.steps = [
-      {
-        ts: at(5),
-        text: "Builder added the tokens",
-        status: "done",
-        eventIds: [],
-      },
+      recap("Builder added the tokens"),
+      recap("Review found the weak values; fixed"),
+      recap("Recheck passed; I confirmed the values"),
+      recap("Done after one fix round."),
+    ];
+    showTask1(t);
+    const how = section("How it went");
+    const items = within(how).getAllByRole("listitem", { name: /step/ });
+    expect(items).toHaveLength(4);
+    const lead = (k: number) =>
+      items[k]?.querySelector(".step-lead")?.textContent;
+    expect(lead(0)).toBe("Builder added the tokens");
+    expect(items[0]?.textContent).toContain("Agent 1 · Build Task 1: tokens");
+    expect(items[0]?.textContent).toContain(`Sonnet, ${clock(at(10))}`);
+    expect(lead(1)).toBe("Review found the weak values; fixed");
+    expect(items[1]?.textContent).toContain("Agent 2 · Review Task 1");
+    expect(lead(2)).toBe("Recheck passed; I confirmed the values");
+    expect(items[2]?.textContent).toContain("Agent 3 · Re-review Task 1");
+    // The recap's closing line stands as a plain step, with no made-up time.
+    expect(items[3]?.querySelector(".step-title")?.textContent).toBe(
+      "Done after one fix round.",
+    );
+    expect(items[3]?.querySelector(".step-who")).toBeNull();
+    // No Details that would only repeat a recap step, and no second helper list.
+    expect(within(how).queryByRole("button", { name: "Details" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Who's on it" })).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "Who worked on it" }),
+    ).toBeNull();
+    // The band counts the fix round from the helpers, and leaves out made-up times.
+    const band = screen.getByRole("group", { name: "Summary" });
+    expect(band.textContent).toContain("1 fix round");
+    expect(band.textContent).toContain(`${clock(at(10))} to ${clock(at(15))}`);
+    await userEvent.click(
+      within(items[0] as HTMLElement).getByRole("button", {
+        name: "Helper's full report",
+      }),
+    );
+    expect(items[0]?.querySelector(".report-panel .md")).toBeTruthy();
+  });
+
+  it("a helper the recap's steps do not name still gets its card, in time order", () => {
+    const t = task1();
+    t.r.recap = true;
+    t.p.steps = [
       {
         ts: at(5),
         text: "Done after one fix round.",
@@ -718,21 +765,26 @@ describe("task page", () => {
       },
     ];
     showTask1(t);
-    const steps = within(section("How it went")).getAllByRole("listitem", {
+    const items = within(section("How it went")).getAllByRole("listitem", {
       name: /step/,
     });
-    expect(steps[0]?.querySelector(".step-who")).toBeNull();
-    const band = screen.getByRole("group", { name: "Summary" });
-    expect(band.textContent).toContain(`${clock(at(10))} to ${clock(at(15))}`);
-    const who = section("Who's on it");
-    const first = within(who).getByRole("listitem", { name: "helper 1" });
-    expect(first.textContent).toContain("Agent 1 · Build Task 1: tokens");
-    expect(first.textContent).toContain(`Sonnet, ${clock(at(10))}`);
-    expect(within(first).getByText("Done, with concerns")).toBeTruthy();
-    await userEvent.click(
-      within(first).getByRole("button", { name: "Helper's full report" }),
-    );
-    expect(first.querySelector(".report-panel .md")).toBeTruthy();
+    // The recap's closing line goes last, after every helper.
+    expect(
+      items.map((li) => li.querySelector(".step-title")?.textContent),
+    ).toEqual([
+      "Agent 1 · Build Task 1: tokens",
+      "Agent 2 · Review Task 1",
+      "Agent 3 · Re-review Task 1",
+      "Done after one fix round.",
+    ]);
+  });
+
+  it("who's on it reads who worked on it once the task is done", () => {
+    show({ ...full, status: "done" });
+    expect(
+      screen.getByRole("region", { name: "Who worked on it" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Who's on it" })).toBeNull();
   });
 
   it("a helper card never shows the prompt: message, then report, then a brief about the work", () => {
@@ -751,9 +803,12 @@ describe("task page", () => {
     void a1;
     void a2;
     showTask1(t);
-    const who = section("Who's on it");
+    // On a recapped task the helper cards are How it went.
+    const who = section("How it went");
     const card = (n: number) =>
-      within(who).getByRole("listitem", { name: `helper ${n}` });
+      within(who).getAllByRole("listitem", { name: /step/ })[
+        n - 1
+      ] as HTMLElement;
     expect(card(1).querySelector(".step-text")?.textContent).toBe(
       "The new token tests pass.",
     );
@@ -770,7 +825,7 @@ describe("task page", () => {
     const a1 = t.r.agents[0] as AgentView;
     delete a1.report;
     showTask1(t);
-    const who = section("Who's on it");
+    const who = section("Who worked on it");
     expect(
       within(who)
         .getByRole("listitem", { name: "helper 1" })
