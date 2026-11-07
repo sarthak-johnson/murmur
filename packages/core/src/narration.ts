@@ -5,7 +5,25 @@ export const NARRATE_TOOL = "mcp__plugin_murmur_murmur__narrate";
 
 const text = z.string().max(300);
 const list = <T extends z.ZodType>(item: T) => z.array(item).max(20);
-const status = z.enum(["running", "done", "failed"]);
+// Claude often says these in its own words ("in_progress", "completed"); a refused
+// narrate makes it retry, so the common ones map onto the three Murmur knows.
+const STATUS_WORDS: Record<string, string> = {
+  in_progress: "running",
+  "in-progress": "running",
+  started: "running",
+  working: "running",
+  complete: "done",
+  completed: "done",
+  finished: "done",
+  passed: "done",
+  error: "failed",
+  errored: "failed",
+};
+const said = (v: unknown) =>
+  typeof v === "string"
+    ? (STATUS_WORDS[v.toLowerCase()] ?? v.toLowerCase())
+    : v;
+const status = z.preprocess(said, z.enum(["running", "done", "failed"]));
 
 export const MapInput = z.object({
   kind: z.enum(["feature", "bug", "refactor", "question"]),
@@ -47,7 +65,12 @@ export const NarrateInput = z.object({
   part: text.optional(),
   task: text.optional(),
   // Claude says "blocked" on its own when it waits on the user; read it as failed.
-  taskStatus: z.union([status, z.literal("blocked")]).optional(),
+  taskStatus: z
+    .preprocess(
+      (v) => (v === "waiting" || v === "on_hold" ? "blocked" : said(v)),
+      z.enum(["running", "done", "failed", "blocked"]),
+    )
+    .optional(),
   step: z.object({ text, status }).optional(),
   aim: z.object({ aim: text, doneWhen: text }).optional(),
   io: z.object({ gets: text, gives: text }).optional(),

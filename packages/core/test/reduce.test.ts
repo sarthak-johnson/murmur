@@ -238,6 +238,27 @@ test("a failed task makes its phase now", () => {
   expect(req?.phases.map((p) => p.status)).toEqual(["now", "todo"]);
 });
 
+test("narrate accepts the status words Claude uses on its own", () => {
+  for (const [word, as] of [
+    ["in_progress", "running"],
+    ["Completed", "done"],
+    ["error", "failed"],
+    ["waiting", "blocked"],
+  ] as const) {
+    const r = NarrateInput.safeParse({ now: "x", why: "y", taskStatus: word });
+    expect(r.success && r.data.taskStatus).toBe(as);
+  }
+  const step = NarrateInput.safeParse({
+    now: "x",
+    why: "y",
+    step: { text: "s", status: "in_progress" },
+  });
+  expect(step.success && step.data.step?.status).toBe("running");
+  expect(
+    NarrateInput.safeParse({ now: "x", why: "y", taskStatus: "maybe" }).success,
+  ).toBe(false);
+});
+
 test("a blocked task is accepted and shows why it is stuck", () => {
   expect(
     NarrateInput.safeParse({
