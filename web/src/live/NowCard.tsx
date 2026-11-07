@@ -70,6 +70,7 @@ function NowSource(props: {
             events={events}
             cwd={cwd}
             agents={request.agents}
+            quietTitle
           />
         </div>
       )}

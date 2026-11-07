@@ -2,12 +2,18 @@ import type { PhaseView, RequestView, TaskView } from "@murmur/core";
 import { useState } from "react";
 import { outcome } from "../story";
 
-const GLYPH: Record<TaskView["status"], string> = {
+type Shown = TaskView["status"] | "open";
+const GLYPH: Record<Shown, string> = {
   done: "✓",
   now: "●",
   todo: "○",
   failed: "✕",
+  open: "◆",
 };
+
+/** In a request that is over, a task never finished was left open, not running. */
+const shownStatus = (request: RequestView, s: TaskView["status"]): Shown =>
+  request.finished && (s === "now" || s === "todo") ? "open" : s;
 
 /** Where the plan came from, when Claude did not lay it out live. */
 export function PlanSource({ request }: { request: RequestView }) {
@@ -28,7 +34,7 @@ export function PlanPanel(props: {
   const first = tasks.findIndex((t) => t.status !== "done");
   const step = first < 0 ? tasks.length : first + 1;
   return (
-    <section className="plan" aria-label="Plan">
+    <section className="plan" id="plan" aria-label="Plan" tabIndex={-1}>
       <div className="lbl">
         {tasks.length ? `Plan · step ${step} of ${tasks.length}` : "Plan"}
         <PlanSource request={request} />
@@ -63,16 +69,20 @@ function PhaseCard(props: {
 }) {
   const { n, phase, only, request, hoverPart, onHover, onOpen } = props;
   const [open, setOpen] = useState(false);
-  const foldable = phase.status === "done" && !only;
+  // A one-task phase shows its task: "1 task, all done" would only repeat "1 / 1".
+  const foldable = phase.status === "done" && !only && phase.tasks.length > 1;
+  const phaseShown =
+    request.finished && phase.status !== "done" ? "open" : phase.status;
   const folded = foldable && !open;
   const done = phase.tasks.filter((t) => t.status === "done").length;
   const partTitle = (id?: string) =>
     request.parts.find((p) => p.id === id)?.title;
   return (
-    <div className={`phase-card ${phase.status}`}>
+    <div className={`phase-card ${phaseShown}`}>
       <div className="phase-hd">
         {phase.status === "done" && <span aria-hidden="true">✓</span>}
-        {phase.status === "now" && <span aria-hidden="true">●</span>}
+        {phaseShown === "now" && <span aria-hidden="true">●</span>}
+        {phaseShown === "open" && <span aria-hidden="true">◆</span>}
         <span>
           {n} · {phase.title}
         </span>
@@ -102,12 +112,22 @@ function PhaseCard(props: {
           {phase.tasks.map((t) => {
             // A chip that only repeats the task's own name says nothing.
             const named = partTitle(t.part);
-            const ended = t.status === "todo" ? undefined : outcome(request, t);
+            const status = shownStatus(request, t.status);
+            const said =
+              t.status === "todo" && status !== "open"
+                ? undefined
+                : outcome(request, t);
+            const ended =
+              status === "open"
+                ? said
+                  ? `Left open: ${said}`
+                  : "Left open"
+                : said;
             const chip = named === t.title ? undefined : named;
             const body = (
               <>
-                <span className={`glyph ${t.status}`} aria-hidden="true">
-                  {GLYPH[t.status]}
+                <span className={`glyph ${status}`} aria-hidden="true">
+                  {GLYPH[status]}
                 </span>
                 <span className="task-title">{t.title}</span>
                 {chip && (
@@ -137,7 +157,7 @@ function PhaseCard(props: {
                 {part ? (
                   <button
                     type="button"
-                    className={`task ${t.status}`}
+                    className={`task ${status}`}
                     onMouseEnter={() => onHover(part)}
                     onMouseLeave={() => onHover(undefined)}
                     onFocus={() => onHover(part)}
@@ -147,7 +167,7 @@ function PhaseCard(props: {
                     {body}
                   </button>
                 ) : (
-                  <div className={`task ${t.status}`}>{body}</div>
+                  <div className={`task ${status}`}>{body}</div>
                 )}
               </li>
             );

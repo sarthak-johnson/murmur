@@ -169,18 +169,18 @@ function Group(props: {
         {ended && <p className="group-out">{ended}</p>}
         <div className="group-msgs">
           <GroupMessage m={first} />
-          {open ? (
-            middle.map((m) => <GroupMessage key={m.id} m={m} />)
-          ) : middle.length > 0 ? (
+          {middle.length > 0 && (
+            // One button that stays put, so focus stays on it as it opens and closes.
             <button
               type="button"
               className="link group-more"
-              aria-expanded={false}
-              onClick={() => setOpen(true)}
+              aria-expanded={open}
+              onClick={() => setOpen(!open)}
             >
-              {middle.length} more
+              {open ? "Show fewer" : `${middle.length} more`}
             </button>
-          ) : null}
+          )}
+          {open && middle.map((m) => <GroupMessage key={m.id} m={m} />)}
           <GroupMessage m={last} />
         </div>
       </div>
@@ -239,6 +239,9 @@ export function Story(props: {
     m ? taskOfMessage(request, m) : undefined;
   return (
     <section className="story" aria-label="What happened">
+      <a className="skip" href="#plan">
+        Skip to the plan
+      </a>
       <h2 className="lbl">
         What happened
         <span className="lbl-note">
@@ -249,9 +252,11 @@ export function Story(props: {
         {runs(ordered, taskOf).map((run) => {
           const task = taskOf(run[0]);
           const head = run[0] as MessageView;
+          // Keyed by its oldest message, so a block stays open as newer ones arrive.
+          const oldest = (request.finished ? head : run.at(-1)) as MessageView;
           return task && run.length > 1 ? (
             <Group
-              key={head.id}
+              key={oldest.id}
               ms={run}
               task={task}
               request={request}

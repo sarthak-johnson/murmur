@@ -29,7 +29,9 @@ const RULES: [Moment, RegExp][] = [
   // A review or test that found a problem, or something that failed.
   [
     "problem",
-    /\breview(?:er)? found\b|\bfound (?:a|an|one|two|three|\d+|some|real)\b[^.;:]*\bproblems?\b|(?<!\b(?:none|nothing|no|zero|0)\s(?:\w+\s)?)\bfailed\b/i,
+    // Not a guess ("means one failed", "might have failed", "if it failed") or a
+    // negation ("none of the tests failed", "the review found no problems").
+    /\breview(?:er)? found\b(?!\s+(?:no|nothing|none|zero)\b)|\bfound (?:a|an|one|two|three|\d+|some|real)\b[^.;:]*\bproblems?\b|(?<!\b(?:none|nothing|no|zero|0|never|not|means|meaning|might|may|maybe|could|would|if|or|whether)\b(?:\s[\w'-]+){0,3}\s)\bfailed\b/i,
   ],
   // Something sent back.
   [
@@ -55,7 +57,13 @@ const RULES: [Moment, RegExp][] = [
 /** A text's first sentence, without its Markdown marks. */
 export function firstSentence(text: string): string {
   const plain = plainText(text);
-  return /^.*?[.!?](?=\s|$)/.exec(plain)?.[0] ?? plain;
+  for (const m of plain.matchAll(/[.!?](?=\s|$)/g)) {
+    // "e.g." and its kind do not end a sentence.
+    if (/\b(?:e\.g|i\.e|vs|cf|approx|incl|etc)$/i.test(plain.slice(0, m.index)))
+      continue;
+    return plain.slice(0, m.index + 1);
+  }
+  return plain;
 }
 
 /** The kind of moment a message is, or undefined when it is none of them. */
@@ -79,18 +87,27 @@ export function duration(from: string, to: string): string {
   return `${Math.floor(m / 60)} h ${pad(m % 60)} m`;
 }
 
-const AGAIN = /^(fixed|re-?reviewed)\b/i;
-
 /** Tasks that went back for another round after a review. */
 export function sentBack(req: RequestView): number {
-  return req.parts.filter((p) => p.steps.some((s) => AGAIN.test(s.text)))
-    .length;
+  return req.parts.filter((p) => fixRounds(p, partAgents(req, p)) > 0).length;
 }
 
-/** Rounds of fixing: each fix or re-review is one; a fix and its re-review count once. */
-export function fixRounds(part: PartView): number {
-  const n = (re: RegExp) => part.steps.filter((s) => re.test(s.text)).length;
-  return Math.max(n(/^fixed\b/i), n(/^re-?reviewed\b/i));
+/**
+ * Rounds of fixing, from the part's steps (a fix or re-review step is one; a fix and its
+ * re-review count once) or, when its steps are a recap's, from its helpers: each one
+ * described as a fix round or re-review, or each review after the first.
+ */
+export function fixRounds(part: PartView, helpers: AgentView[] = []): number {
+  const steps = (re: RegExp) =>
+    part.steps.filter((s) => re.test(s.text)).length;
+  const help = (re: RegExp) =>
+    helpers.filter((a) => re.test(a.description)).length;
+  return Math.max(
+    steps(/^fixed\b/i),
+    steps(/^re-?reviewed\b/i),
+    help(/fix round|re-?review/i),
+    help(/\b(?:re-?)?review/i) - 1,
+  );
 }
 
 const COMMIT = /^[\s>*_-]*commits?\b[*_]*\s*:?[*_]*\s*(.*)$/im;
@@ -203,6 +220,73 @@ export function reportLine(report: AgentReport | undefined): string {
   )
     ? ""
     : report.summary;
+}
+
+type Kind = "build" | "review" | "rereview";
+const stepKind = (t: string): Kind | undefined =>
+  /\bre-?check|\bre-?review/i.test(t)
+    ? "rereview"
+    : /\breview/i.test(t)
+      ? "review"
+      : /\b(?:built|builder|build|implemented|implement|added|wrote|created)\b/i.test(
+            t,
+          )
+        ? "build"
+        : undefined;
+const helperKind = (d: string): Kind | undefined =>
+  /^re-?review/i.test(d)
+    ? "rereview"
+    : /^review/i.test(d)
+      ? "review"
+      : /^(?:implement|build|write|add|draft|create|fix)\b/i.test(d)
+        ? "build"
+        : undefined;
+
+/**
+ * A recapped part's steps and its helpers as one list. A step that names a kind of round
+ * (built, reviewed, rechecked) leads the first unused helper of that kind; helpers no
+ * step names keep their start order; a step that leads no helper stays where it is, and
+ * one after the last matched step goes to the end.
+ */
+export function recapRounds<S extends { text: string }>(
+  steps: S[],
+  helpers: AgentView[],
+): { step?: S; helper?: AgentView }[] {
+  const used = new Set<string>();
+  const matched = steps.map((s) => {
+    const kind = stepKind(s.text);
+    const h = kind
+      ? helpers.find(
+          (a) => !used.has(a.id) && helperKind(a.description) === kind,
+        )
+      : undefined;
+    if (h) used.add(h.id);
+    return h;
+  });
+  const lastMatched = matched.findLastIndex(Boolean);
+  const END = "\uffff";
+  let key = "";
+  const entries: { key: string; seq: number; step?: S; helper?: AgentView }[] =
+    steps.map((step, i) => {
+      const helper = matched[i];
+      if (helper) key = helper.startedAt;
+      return {
+        key: helper ? helper.startedAt : i > lastMatched ? END : key,
+        seq: i,
+        step,
+        ...(helper ? { helper } : {}),
+      };
+    });
+  helpers.forEach((helper, i) => {
+    if (!used.has(helper.id))
+      entries.push({ key: helper.startedAt, seq: steps.length + i, helper });
+  });
+  return entries
+    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : a.seq - b.seq))
+    .map(({ step, helper }) => ({
+      ...(step ? { step } : {}),
+      ...(helper ? { helper } : {}),
+    }));
 }
 
 /** The helpers on a part, in start order. */

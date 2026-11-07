@@ -3,10 +3,12 @@ import type { PhaseView } from "@murmur/core";
 export function PhaseStrip(props: {
   phases: PhaseView[];
   inferred: boolean;
+  /** The request is over: a phase still in progress was left open. */
+  finished?: boolean;
   selected?: string | undefined;
   onSelect(phaseId: string | undefined): void;
 }) {
-  const { phases, inferred, selected, onSelect } = props;
+  const { phases, inferred, selected, onSelect, finished } = props;
   // One phase says nothing the plan panel does not.
   if (phases.length < 2) return null;
   return (
@@ -25,7 +27,7 @@ export function PhaseStrip(props: {
             <button
               key={ph.id}
               type="button"
-              className={`phase-seg ${ph.status}`}
+              className={`phase-seg ${finished && ph.status !== "done" ? "open" : ph.status}`}
               aria-pressed={selected === ph.id}
               onClick={() => onSelect(selected === ph.id ? undefined : ph.id)}
             >

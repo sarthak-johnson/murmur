@@ -162,8 +162,11 @@ export function Live(props: {
 
   if (!view) return <LiveSkeleton status={status} />;
 
-  const req =
-    view.requests.find((r) => r.id === props.requestId) ?? view.requests.at(-1);
+  const wanted = view.requests.find((r) => r.id === props.requestId);
+  // A deep link to a request the first pages have not reached yet waits for it.
+  if (props.requestId && !wanted && status === "loading")
+    return <LiveSkeleton status={status} />;
+  const req = wanted ?? view.requests.at(-1);
   return (
     <main className="live-page">
       {req && (
@@ -222,13 +225,14 @@ function RequestScreen(props: {
   const k = view.requests.indexOf(req);
   const next = view.requests[k + 1];
   // The request's last activity: its last event before the next prompt.
-  const end =
-    events.findLast(
-      (e) => e.ts >= req.startedAt && (!next || e.ts < next.startedAt),
-    )?.ts ??
-    next?.startedAt ??
-    view.lastEventAt;
-  const done = req.finished || view.ended;
+  const last = events.findLast(
+    (e) => e.ts >= req.startedAt && (!next || e.ts < next.startedAt),
+  );
+  const end = last?.ts ?? next?.startedAt ?? view.lastEventAt;
+  // Claude ended its turn and no helper is still at work: done, until a new prompt.
+  const stopped =
+    last?.hook === "Stop" && !req.agents.some((a) => a.status === "running");
+  const done = req.finished || view.ended || stopped;
   const state: RequestStatus = done
     ? "done"
     : view.needsYou && !next
@@ -275,6 +279,7 @@ function RequestScreen(props: {
         />
       </RequestHead>
       <PhaseStrip
+        finished={req.finished}
         phases={req.phases}
         inferred={req.planInferred}
         selected={phaseId}

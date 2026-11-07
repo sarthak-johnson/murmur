@@ -15,6 +15,7 @@ import {
   commitsIn,
   concernsIn,
   duration,
+  firstSentence,
   fixRounds,
   moment,
   outcome,
@@ -770,5 +771,220 @@ describe("request page, story first", () => {
     );
     expect(screen.getAllByText("Recap by Claude").length).toBeGreaterThan(0);
     expect(screen.queryByText("inferred")).toBeNull();
+  });
+});
+
+describe("round 3", () => {
+  it("badges skip guesses and negations, and e.g. does not end a sentence", () => {
+    for (const t of [
+      "The suite stopped early, which usually means one failed or flaked.",
+      "It might have failed on the cache.",
+      "If the build failed, rerun it.",
+      "None of the tests failed.",
+      "The review found no problems.",
+      "The reviewer found nothing to fix.",
+    ])
+      expect(moment(t), t).toBeUndefined();
+    expect(
+      firstSentence("Small parts, e.g. the chips, moved. Then more."),
+    ).toBe("Small parts, e.g. the chips, moved.");
+    expect(
+      moment("Parts, e.g. chips and pills, are done. Task 1 is done."),
+    ).toBeUndefined();
+  });
+
+  it("fix rounds and sent back come from a recapped part's helpers", () => {
+    const recapped = part({
+      id: "tokens",
+      title: "Lit plate tokens",
+      agents: ["h1", "h2", "h3"],
+      steps: [
+        step("Builder added the tokens"),
+        step("Done after one fix round."),
+      ],
+    });
+    const helpers = [
+      agent("h1", { description: "Implement Task 1: Lit plate tokens" }),
+      agent("h2", { description: "Review Task 1 (spec + quality)" }),
+      agent("h3", { description: "Re-review Task 1 fix round 1" }),
+    ];
+    expect(fixRounds(recapped, helpers)).toBe(1);
+    expect(
+      fixRounds(recapped, [
+        agent("x1", { description: "Build Task 3" }),
+        agent("x2", { description: "Review Task 3" }),
+        agent("x3", { description: "Review Task 3 follow-ups" }),
+      ]),
+    ).toBe(1);
+    expect(fixRounds(recapped, helpers.slice(0, 2))).toBe(0);
+    const req = request({
+      recap: true,
+      planInferred: false,
+      parts: [recapped],
+      agents: helpers,
+    });
+    expect(sentBack(req)).toBe(1);
+  });
+
+  it("an opened block stays open while new messages arrive", async () => {
+    const run = (n: number) => [
+      msg("m0", 6, "Starting."),
+      ...Array.from({ length: n }, (_, i) =>
+        msg(`t${i}`, 8 + i, `Task 1 step ${i}.`, { task: "task:1" }),
+      ),
+    ];
+    const live = (n: number) => (
+      <Live
+        sessionId="s1"
+        view={session(request({ finished: false, messages: run(n) }))}
+        viewAt={() => null}
+        events={[]}
+        status="live"
+        lastLooked={null}
+      />
+    );
+    const { rerender } = render(live(4));
+    await userEvent.click(
+      within(story()).getByRole("button", { name: "2 more" }),
+    );
+    rerender(live(5));
+    expect(
+      within(story()).getByRole("button", { name: "Show fewer" }),
+    ).toBeTruthy();
+    expect(story().querySelectorAll(".story-text")).toHaveLength(5);
+  });
+
+  it("N more keeps focus, says it is expanded, and folds back", async () => {
+    const run = [
+      msg("m0", 6, "Starting."),
+      ...[0, 1, 2, 3].map((i) =>
+        msg(`t${i}`, 8 + i, `Task 1 step ${i}.`, { task: "task:1" }),
+      ),
+    ];
+    show(session(request({ messages: run })));
+    const btn = within(story()).getByRole("button", { name: "2 more" });
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
+    await userEvent.click(btn);
+    expect(document.activeElement).toBe(btn);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    expect(btn.textContent).toBe("Show fewer");
+    expect(story().querySelectorAll(".story-text")).toHaveLength(4);
+    await userEvent.click(btn);
+    expect(story().querySelectorAll(".story-text")).toHaveLength(2);
+  });
+
+  it("the story has a skip link to the plan", () => {
+    show(session(request()));
+    const skip = within(story()).getByRole("link", {
+      name: "Skip to the plan",
+    });
+    expect(skip.getAttribute("href")).toBe("#plan");
+    expect(document.getElementById("plan")?.getAttribute("aria-label")).toBe(
+      "Plan",
+    );
+  });
+
+  it("a deep link to a request not loaded yet shows the skeleton, not the newest", () => {
+    const view = session(request());
+    const { container, rerender } = render(
+      <Live
+        sessionId="s1"
+        requestId="r-later"
+        view={view}
+        viewAt={() => null}
+        events={[]}
+        status="loading"
+        lastLooked={null}
+      />,
+    );
+    expect(container.querySelector(".skeleton")).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+    // Once loaded, an unknown id falls back to the newest request.
+    rerender(
+      <Live
+        sessionId="s1"
+        requestId="r-later"
+        view={view}
+        viewAt={() => null}
+        events={[]}
+        status="live"
+        lastLooked={null}
+      />,
+    );
+    expect(screen.getByRole("heading", { level: 1 })).toBeTruthy();
+  });
+
+  it("the pill follows the request: done once Claude stopped and no helper runs", () => {
+    const stop = { ...ev(20), id: "stop" };
+    const open = request({
+      finished: false,
+      agents: [agent("a1")],
+      now: {
+        text: "Finished this request",
+        why: "",
+        ts: at(20),
+        inferred: true,
+      },
+    });
+    show(session(open), [ev(5), stop]);
+    let band = screen.getByRole("group", { name: "Summary" });
+    expect(within(band).getByText("Done")).toBeTruthy();
+    cleanup();
+    show(
+      session(
+        request({ ...open, agents: [agent("a1", { status: "running" })] }),
+      ),
+      [ev(5), stop],
+    );
+    band = screen.getByRole("group", { name: "Summary" });
+    expect(within(band).getByText("Running")).toBeTruthy();
+  });
+
+  it("in a finished request, unfinished tasks read as left open, not running", () => {
+    const req = request({
+      phases: [
+        {
+          id: "p1",
+          title: "Phase 0",
+          status: "done",
+          tasks: [
+            {
+              id: "task:1",
+              title: "Task 1: Lit plate tokens",
+              part: "task:1",
+              status: "done",
+              agents: [],
+            },
+          ],
+        },
+        {
+          id: "p2",
+          title: "Phase 1",
+          status: "now",
+          tasks: [
+            {
+              id: "task:2",
+              title: "Task 2: HeroMoney",
+              part: "task:2",
+              status: "now",
+              agents: [],
+            },
+          ],
+        },
+      ],
+    });
+    show(session(req));
+    const plan = screen.getByRole("region", { name: "Plan" });
+    const row = within(plan)
+      .getByText("Task 2: HeroMoney")
+      .closest(".task") as HTMLElement;
+    expect(row.className).toContain("open");
+    expect(row.className).not.toContain("now");
+    expect(row.querySelector(".task-out")?.textContent).toMatch(/^Left open/);
+    expect(document.querySelector(".phase-seg.now")).toBeNull();
+    expect(document.querySelector(".phase-seg.open")).toBeTruthy();
+    // A one-task finished phase shows its task, not "1 task, all done" under "1 / 1".
+    expect(within(plan).queryByText("1 task, all done")).toBeNull();
+    expect(within(plan).getByText("Task 1: Lit plate tokens")).toBeTruthy();
   });
 });
