@@ -279,6 +279,14 @@ describe("recap", () => {
     ["bad JSON", answer("Here is your recap: {not json")],
     ["JSON that is not a recap", answer({ map: { kind: "epic" } })],
     [
+      "a map whose tasks name parts it does not have",
+      answer({ ...RECAP, map: { ...RECAP.map, parts: [] } }),
+    ],
+    [
+      "part detail for a part the map does not have",
+      answer({ ...RECAP, parts: [{ ...RECAP.parts[0], id: "other" }] }),
+    ],
+    [
       "an error result",
       'echo \'{"type":"result","is_error":true,"result":"no"}\'',
     ],

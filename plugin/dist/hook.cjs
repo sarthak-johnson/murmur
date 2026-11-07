@@ -19855,7 +19855,11 @@ var RecapInput = external_exports.object({
     })
   ),
   tasks: external_exports.array(external_exports.object({ id: text, status, ended: external_exports.string().max(200) })).max(100)
-});
+}).refine(({ map: map2, parts }) => {
+  const ids = new Set(map2.parts.map((p) => p.id));
+  const tasks = map2.phases.flatMap((ph) => ph.tasks);
+  return tasks.every((t) => t.part === void 0 || ids.has(t.part)) && parts.every((p) => ids.has(p.id));
+}, "every part a task or detail names is in the map");
 
 // ../packages/core/src/scrub.ts
 var MAX_STRING = 262144;
@@ -21374,7 +21378,7 @@ Answer with one JSON object and nothing else, in exactly this shape:
   }],
   "tasks": [{ "id": "t1", "status": "done" | "failed" | "running", "ended": "one line on how it ended" }]
 }
-Rules: a part is one piece of the work (a task, a fix, a screen), not a folder. Every task in "map" has one entry in "tasks". Keep the person's own names for things ("Task 1: ..."). Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
+Rules: a part is one piece of the work (a task, a fix, a screen), not a folder. "map.parts" lists every part, and every task's "part" and every entry of "parts" uses one of those ids. Every task in "map" has one entry in "tasks". Keep the person's own names for things ("Task 1: ..."). Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
 var time3 = (ts) => ts.slice(11, 16);
 function recapInput(req, cwd, calls = []) {
   const used = /* @__PURE__ */ new Set();

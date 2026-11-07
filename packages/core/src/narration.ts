@@ -65,25 +65,36 @@ export type NarrateInput = z.infer<typeof NarrateInput>;
  * What the recap asks the user's own Claude for, about one imported request it never
  * mapped: the `map` input, each part's detail as `narrate` carries it (plus its steps,
  * the paths it changed and the helpers, by their `H<n>` label, that worked on it), and
- * one line per task on how it ended. The plugin turns it into `map` and `narrate` calls.
+ * one line per task on how it ended. Every part a task or a detail names is in the map.
+ * The plugin turns it into `map` and `narrate` calls.
  */
-export const RecapInput = z.object({
-  map: MapInput,
-  parts: list(
-    NarrateInput.pick({
-      aim: true,
-      choices: true,
-      checks: true,
-      words: true,
-      files: true,
-    }).extend({
-      id: text,
-      steps: list(z.object({ text, status })).optional(),
-      helpers: z.array(text).max(40).optional(),
-    }),
-  ),
-  tasks: z
-    .array(z.object({ id: text, status, ended: z.string().max(200) }))
-    .max(100),
-});
+export const RecapInput = z
+  .object({
+    map: MapInput,
+    parts: list(
+      NarrateInput.pick({
+        aim: true,
+        choices: true,
+        checks: true,
+        words: true,
+        files: true,
+      }).extend({
+        id: text,
+        steps: list(z.object({ text, status })).optional(),
+        helpers: z.array(text).max(40).optional(),
+      }),
+    ),
+    tasks: z
+      .array(z.object({ id: text, status, ended: z.string().max(200) }))
+      .max(100),
+  })
+  // A recap that names a part its map lacks would draw tasks and detail on nothing.
+  .refine(({ map, parts }) => {
+    const ids = new Set(map.parts.map((p) => p.id));
+    const tasks = map.phases.flatMap((ph) => ph.tasks);
+    return (
+      tasks.every((t) => t.part === undefined || ids.has(t.part)) &&
+      parts.every((p) => ids.has(p.id))
+    );
+  }, "every part a task or detail names is in the map");
 export type RecapInput = z.infer<typeof RecapInput>;

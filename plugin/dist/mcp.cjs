@@ -36761,7 +36761,11 @@ var RecapInput = external_exports.object({
     })
   ),
   tasks: external_exports.array(external_exports.object({ id: text, status, ended: external_exports.string().max(200) })).max(100)
-});
+}).refine(({ map: map2, parts }) => {
+  const ids = new Set(map2.parts.map((p) => p.id));
+  const tasks = map2.phases.flatMap((ph) => ph.tasks);
+  return tasks.every((t) => t.part === void 0 || ids.has(t.part)) && parts.every((p) => ids.has(p.id));
+}, "every part a task or detail names is in the map");
 
 // ../packages/core/src/scrub.ts
 var MAX_STRING = 262144;
