@@ -2199,12 +2199,47 @@ button.task-chip:hover {
   font-size: 13px;
   font-weight: 400;
 }
+.ticks span.from {
+  transform: none;
+}
+/* A long idle stretch cut out of the axis: a slashed mark above, a hatched band below. */
+.ticks .break {
+  height: 18px;
+  transform: none;
+}
+.ticks .break::before {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 5px;
+  height: 11px;
+  border-right: 1.5px solid var(--t4);
+  border-left: 1.5px solid var(--t4);
+  content: "";
+  transform: translateX(-50%) skewX(-24deg);
+}
 .tr {
   position: relative;
   height: 42px;
-  background-image: linear-gradient(90deg, var(--s4) 1px, transparent 1px);
-  background-size: var(--step, 100%) 100%;
   box-shadow: inset 0 -1px 0 var(--s4);
+}
+.tr .gl {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--s4);
+}
+.tr .gap {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    -60deg,
+    transparent 0 5px,
+    var(--s4) 5px 6px
+  );
+  opacity: 0.7;
 }
 .lane:last-child .tr {
   box-shadow: none;

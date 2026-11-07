@@ -409,7 +409,10 @@ export function helperRuns(
     const end = ends.find((t) => t >= from && (!next || t <= next));
     const last = i === starts.length - 1;
     const running = last && a.status === "running" && !end;
-    return { from, to: end ?? (running ? now : (a.endedAt ?? from)), running };
+    // A run resumed after the helper's last stop, with no stop of its own seen, ends
+    // where it starts rather than before.
+    const stopped = a.endedAt && a.endedAt > from ? a.endedAt : from;
+    return { from, to: end ?? (running ? now : stopped), running };
   });
 }
 
