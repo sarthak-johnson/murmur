@@ -8,6 +8,7 @@ import {
   murmurDir,
   NO_NARRATION,
   setProjectState,
+  setRevoked,
   writeCredentials,
   writeSession,
 } from "../src/local.js";
@@ -337,4 +338,21 @@ describe("queue", () => {
     });
     expect(Date.now() - t).toBeLessThan(1000);
   });
+});
+
+it("the queue holds two 40 MB history imports at once", async () => {
+  const dir = path.join(murmurDir(), "queue");
+  fs.mkdirSync(dir, { recursive: true });
+  // Three 30 MB files (sparse, so instant); only their size matters to the cap.
+  for (let i = 0; i < 3; i++) {
+    const file = path.join(
+      dir,
+      `${String(T0 + i).padStart(15, "0")}-big${i}.json`,
+    );
+    fs.writeFileSync(file, "");
+    fs.truncateSync(file, 30_000_000);
+  }
+  setRevoked(true);
+  const r = await flush(CREDS, { budgetMs: NO_DEADLINE });
+  expect(r.kept).toBe(3);
 });
