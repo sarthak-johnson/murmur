@@ -1,7 +1,7 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
-import { Fold, Markdown } from "../src/markdown";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Fold, Markdown, MdBoundary } from "../src/markdown";
 
 afterEach(cleanup);
 
@@ -108,5 +108,69 @@ describe("Fold", () => {
   it("leaves a short text alone", () => {
     render(<Fold text="Task 1 is done." />);
     expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+function Boom(): never {
+  throw new Error("boom");
+}
+
+describe("Markdown, hostile input", () => {
+  it("10,000 nested quotes render fast, the rest as a plain paragraph", () => {
+    const t0 = performance.now();
+    const { container } = render(
+      <Markdown text={`${">".repeat(10_000)} deep`} />,
+    );
+    expect(performance.now() - t0).toBeLessThan(100);
+    expect(container.querySelectorAll("blockquote").length).toBeLessThanOrEqual(
+      20,
+    );
+    expect(container.textContent).toContain("deep");
+  });
+
+  it("1,000 nested list levels render fast", () => {
+    const text = Array.from(
+      { length: 1000 },
+      (_, i) => `${"  ".repeat(i)}- level ${i}`,
+    ).join("\n");
+    const t0 = performance.now();
+    const { container } = render(<Markdown text={text} />);
+    expect(performance.now() - t0).toBeLessThan(100);
+    expect(container.querySelectorAll("ul").length).toBeLessThanOrEqual(20);
+    expect(container.textContent).toContain("level 999");
+  });
+
+  it("an error while rendering falls back to the plain text", () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <MdBoundary text="**plain** words">
+        <Boom />
+      </MdBoundary>,
+    );
+    quiet.mockRestore();
+    expect(screen.getByText("**plain** words")).toBeTruthy();
+  });
+
+  it("a link with brackets in its text and parentheses in its address", () => {
+    const c = md("See [Task [1] notes](https://x.dev/a_(b)) now.");
+    const a = c.querySelector("a") as HTMLAnchorElement;
+    expect(a.textContent).toBe("Task [1] notes");
+    expect(a.getAttribute("href")).toBe("https://x.dev/a_(b)");
+  });
+
+  it("a fence with an info string does not close a code block", () => {
+    const c = md("````md\n```js\nx = 1\n```\n````\n\nAfter");
+    expect(c.querySelector("pre code")?.textContent).toBe("```js\nx = 1\n```");
+    const d = md("```\n```js\ny\n```\n\nAfter");
+    expect(d.querySelector("pre code")?.textContent).toBe("```js\ny");
+    expect(d.textContent).toContain("After");
+  });
+
+  it("a fold opens when focus moves inside it", () => {
+    const long = `${Array.from({ length: 8 }, (_, i) => `Line ${i}.`).join("\n\n")}\n\n[a link](https://x.dev)`;
+    const { container } = render(<Fold text={long} />);
+    expect(container.querySelector(".fold-body.folded")).toBeTruthy();
+    fireEvent.focusIn(screen.getByRole("link", { name: "a link" }));
+    expect(container.querySelector(".fold-body.folded")).toBeNull();
   });
 });

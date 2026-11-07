@@ -6,16 +6,24 @@
  * https and mailto only, opening in a new tab) and bare web addresses.
  */
 import {
+  Component,
   type CSSProperties,
   type ReactNode,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
 
+/** Quotes and lists nest at most this deep; anything deeper reads as a plain paragraph. */
+const MAX_DEPTH = 20;
+const CLAMP = " ".repeat(MAX_DEPTH * 8);
+const DEEP = new RegExp(`^[ \\t]{${MAX_DEPTH * 8},}`);
+
 type Block =
   | { t: "h"; level: number; text: string }
   | { t: "p"; text: string }
+  | { t: "plain"; text: string }
   | { t: "code"; text: string }
   | { t: "quote"; blocks: Block[] }
   | { t: "list"; ordered: boolean; start: number; items: Item[] }
@@ -26,7 +34,12 @@ interface Item {
   blocks: Block[];
 }
 
-const FENCE = /^\s*(```+|~~~+)/;
+const FENCE = /^\s*(`{3,}|~{3,})/;
+/** A closing fence: the same character, at least as long, and no info string. */
+const closes = (line: string, open: string) => {
+  const m = /^\s*(`{3,}|~{3,})\s*$/.exec(line);
+  return !!m && m[1]?.[0] === open[0] && (m[1] as string).length >= open.length;
+};
 const HEADING = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
 const RULE = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
 const QUOTE = /^\s{0,3}>\s?/;
@@ -60,8 +73,16 @@ function dedent(lines: string[]): string[] {
   return lines.map((l) => l.slice(Number.isFinite(n) ? n : 0));
 }
 
-function parse(src: string): Block[] {
-  const lines = src.replace(/\r\n?/g, "\n").split("\n");
+function parse(src: string, depth = 0): Block[] {
+  if (depth >= MAX_DEPTH) {
+    // Past the cap, the rest is one plain paragraph: no more parsing, no more nesting.
+    const text = src.replace(/\s+/g, " ").trim();
+    return text ? [{ t: "plain", text }] : [];
+  }
+  let lines = src.replace(/\r\n?/g, "\n").split("\n");
+  // Indent past what MAX_DEPTH levels can use (8 per level) only feeds the plain tail,
+  // so clamp it once instead of re-slicing it at every level.
+  if (depth === 0) lines = lines.map((l) => l.replace(DEEP, CLAMP));
   const out: Block[] = [];
   let i = 0;
   while (i < lines.length) {
@@ -77,7 +98,7 @@ function parse(src: string): Block[] {
       i++;
       while (
         i < lines.length &&
-        !(lines[i] as string).trim().startsWith(fence[1] as string)
+        !closes(lines[i] as string, fence[1] as string)
       )
         body.push((lines[i++] as string).slice(pad));
       i++;
@@ -103,7 +124,7 @@ function parse(src: string): Block[] {
       const body: string[] = [];
       while (i < lines.length && QUOTE.test(lines[i] as string))
         body.push((lines[i++] as string).replace(QUOTE, ""));
-      out.push({ t: "quote", blocks: parse(body.join("\n")) });
+      out.push({ t: "quote", blocks: parse(body.join("\n"), depth + 1) });
       continue;
     }
     if (isTable(lines, i)) {
@@ -160,7 +181,7 @@ function parse(src: string): Block[] {
             lead.push((rest.shift() as string).trim());
           return {
             text: [it.text, ...lead].join(" "),
-            blocks: parse(rest.join("\n")),
+            blocks: parse(rest.join("\n"), depth + 1),
           };
         }),
       });
@@ -179,7 +200,7 @@ function parse(src: string): Block[] {
 }
 
 const INLINE =
-  /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)|\[([^\]\n]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)|\*\*(?=\S)([\s\S]+?)\*\*|__(?=\S)([\s\S]+?)__|\*(?=[^\s*])([^*\n]+?)\*|(?<![\w])_(?=[^\s_])([^_\n]+?)_(?![\w])|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"*_`])/g;
+  /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)|\[((?:[^[\]\n]|\[[^[\]\n]*\])+)\]\(((?:[^()\s]|\([^()\s]*\))+)(?:\s+"[^"]*")?\)|\*\*(?=\S)([\s\S]+?)\*\*|__(?=\S)([\s\S]+?)__|\*(?=[^\s*])([^*\n]+?)\*|(?<![\w])_(?=[^\s_])([^_\n]+?)_(?![\w])|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"*_`])/g;
 const SAFE = /^(https?:|mailto:)/i;
 
 function link(href: string, children: ReactNode, key: number) {
@@ -254,6 +275,9 @@ function render(blocks: Block[]): ReactNode[] {
       case "p":
         out.push(<p key={k}>{inline(b.text)}</p>);
         break;
+      case "plain":
+        out.push(<p key={k}>{b.text}</p>);
+        break;
       case "code":
         out.push(
           <pre key={k} className="md-code">
@@ -318,10 +342,34 @@ function render(blocks: Block[]): ReactNode[] {
   return out;
 }
 
+/** If rendering a text ever fails, show it as plain text instead of blanking the page. */
+export class MdBoundary extends Component<
+  { text: string; children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? (
+      <p className="md-plain">{this.props.text}</p>
+    ) : (
+      this.props.children
+    );
+  }
+}
+
+function Blocks({ text }: { text: string }) {
+  return <>{render(parse(text))}</>;
+}
+
 export function Markdown(props: { text: string; className?: string }) {
   return (
     <div className={props.className ? `md ${props.className}` : "md"}>
-      {render(parse(props.text))}
+      <MdBoundary text={props.text}>
+        <Blocks text={props.text} />
+      </MdBoundary>
     </div>
   );
 }
@@ -354,6 +402,14 @@ export function Fold(props: {
     setLong(over);
   }, [open]);
   const folded = long && !open;
+  // A link or button inside the fold that takes focus opens it, so focus is never hidden.
+  useEffect(() => {
+    const el = body.current;
+    if (!el || !folded) return;
+    const unfold = () => setOpen(true);
+    el.addEventListener("focusin", unfold);
+    return () => el.removeEventListener("focusin", unfold);
+  }, [folded]);
   return (
     <div className={className}>
       <div
