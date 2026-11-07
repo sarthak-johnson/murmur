@@ -2096,8 +2096,9 @@ button.task-chip:hover {
   color: var(--t2);
   font: 400 18px / 28px var(--font-ui);
 }
+/* No margin of its own: the space before it is the gap, and it vanishes when the tag
+   wraps to a line of its own, so the tag then lines up with the text above. */
 .deck .source {
-  margin-left: 4px;
   color: var(--t4);
   font: 500 12px var(--font-ui);
   white-space: nowrap;
