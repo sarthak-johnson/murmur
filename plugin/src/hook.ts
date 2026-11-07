@@ -32,6 +32,7 @@ import {
   readSession,
   sessionProjectState,
   setProjectState,
+  skipText,
   updateSession,
   writeSession,
 } from "./local.js";
@@ -66,12 +67,6 @@ function textStart(transcriptPath: unknown): { textOffset: number } | object {
   }
 }
 
-/** Text Claude wrote while a seen session was off or paused is never sent: skip past it. */
-function skipText(sessionId: string, hook: string, transcriptPath: unknown) {
-  if (hook === "Stop" && !isNewSession(sessionId))
-    updateSession(sessionId, textStart(transcriptPath));
-}
-
 export function handleHook(
   payload: Record<string, unknown>,
   env: NodeJS.ProcessEnv,
@@ -79,17 +74,29 @@ export function handleHook(
 ): Result {
   const hook = payload.hook_event_name;
   const cwd = payload.cwd;
+  // AssistantText is Murmur's own, read from the transcript; no hook sends it.
   if (
     typeof hook !== "string" ||
+    hook === "AssistantText" ||
     !(HOOK_NAMES as readonly string[]).includes(hook)
   )
     return NONE;
-  if (isHeadless(env) && env.MURMUR_ALLOW_HEADLESS !== "1") return NONE;
-  if (typeof cwd !== "string" || !cwd) return NONE;
   const sessionId =
     typeof payload.session_id === "string" && payload.session_id
       ? payload.session_id
       : env.CLAUDE_CODE_SESSION_ID;
+  // Whatever Claude wrote while Murmur sends nothing is never sent later either.
+  const quiet = (r: Result): Result => {
+    if (sessionId) skipText(sessionId, payload.transcript_path);
+    return r;
+  };
+  // The recap's own `claude -p` run never uploads, whatever entry point it inherited.
+  if (
+    env.MURMUR_RECAP_RUN === "1" ||
+    (isHeadless(env) && env.MURMUR_ALLOW_HEADLESS !== "1")
+  )
+    return quiet(NONE);
+  if (typeof cwd !== "string" || !cwd) return NONE;
   const start = hook === "SessionStart";
 
   if (start && payload.source === "startup") {
@@ -98,21 +105,20 @@ export function handleHook(
   }
   const state = sessionProjectState(cwd, sessionId);
   if (state === undefined) {
-    if (!start) return NONE;
+    if (!start) return quiet(NONE);
     setProjectState(cwd, "asked");
-    return show(askLine(cwd));
+    return quiet(show(askLine(cwd)));
   }
   if (state === "off") {
     // A session seen while its project is off is never imported after /murmur:on.
     if (sessionId && isNewSession(sessionId))
       updateSession(sessionId, { backfill: "done" });
-    else if (sessionId) skipText(sessionId, hook, payload.transcript_path);
-    return NONE;
+    return quiet(NONE);
   }
-  if (state !== "on") return NONE;
+  if (state !== "on") return quiet(NONE);
   const creds = readCredentials();
-  if (!creds) return start ? show(LOGIN_LINE) : NONE;
-  if (isRevoked()) return start ? show(REVOKED_LINE) : NONE;
+  if (!creds) return quiet(start ? show(LOGIN_LINE) : NONE);
+  if (isRevoked()) return quiet(start ? show(REVOKED_LINE) : NONE);
   if (!sessionId) return NONE;
   const fresh = isNewSession(sessionId);
   // First seen while its project is on: from now on the session follows that project,
@@ -139,8 +145,7 @@ export function handleHook(
   if (isPaused(cwd, sessionId) || isPaused(project)) {
     // What happens while paused is never shown, not even by a later backfill.
     if (fresh) updateSession(sessionId, { backfill: "done" });
-    else skipText(sessionId, hook, transcript);
-    return NONE;
+    return quiet(NONE);
   }
 
   const ts = now.toISOString();

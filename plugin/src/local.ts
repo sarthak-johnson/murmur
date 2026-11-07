@@ -329,6 +329,31 @@ export function pruneSessions(now: Date): void {
     } catch {}
   }
 }
+/**
+ * Moves a session's live text start (`textOffset`) to its transcript's current size, so
+ * what Claude wrote up to now is never sent. Called wherever Murmur sends nothing (headless,
+ * logged out, disconnected, off, paused) and when that ends (/murmur:on, resume, login).
+ * Only for a session on record; a stat, never a read.
+ */
+export function skipText(sessionId: string, transcriptPath?: unknown): void {
+  if (isNewSession(sessionId)) return;
+  const s = readSession(sessionId);
+  // The transcript the live read uses, else the one this hook names.
+  const file =
+    s.transcriptPath ??
+    (typeof transcriptPath === "string" && transcriptPath
+      ? transcriptPath
+      : undefined);
+  if (!file) return;
+  let size: number;
+  try {
+    size = fs.statSync(file).size;
+  } catch {
+    return;
+  }
+  if (s.textOffset !== size) updateSession(sessionId, { textOffset: size });
+}
+
 export function updateSession(
   sessionId: string,
   patch: Partial<SessionState>,

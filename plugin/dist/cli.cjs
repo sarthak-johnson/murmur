@@ -209,6 +209,15 @@ var NO_NARRATION = {
   done: [],
   blocked: false
 };
+function isNewSession(sessionId) {
+  if (!import_node_fs.default.existsSync(import_node_path.default.join(murmurDir(), sessionFile(sessionId))))
+    return true;
+  const s = readJson(
+    sessionFile(sessionId),
+    null
+  );
+  return s !== null && s.backfill === void 0;
+}
 function readSession(sessionId) {
   return {
     ...NO_NARRATION,
@@ -217,6 +226,19 @@ function readSession(sessionId) {
 }
 function writeSession(sessionId, s) {
   writeJson(sessionFile(sessionId), s);
+}
+function skipText(sessionId, transcriptPath) {
+  if (isNewSession(sessionId)) return;
+  const s = readSession(sessionId);
+  const file = s.transcriptPath ?? (typeof transcriptPath === "string" && transcriptPath ? transcriptPath : void 0);
+  if (!file) return;
+  let size;
+  try {
+    size = import_node_fs.default.statSync(file).size;
+  } catch {
+    return;
+  }
+  if (s.textOffset !== size) updateSession(sessionId, { textOffset: size });
 }
 function updateSession(sessionId, patch) {
   writeSession(sessionId, { ...readSession(sessionId), ...patch });
@@ -227,7 +249,11 @@ var USAGE = "Usage: murmur <login [server] | logout | on | off | pause | resume 
 var spawnPoller = (...args) => {
   (0, import_node_child_process.spawn)(
     process.execPath,
-    [process.argv[1], "--poll", ...args.map(String)],
+    [
+      process.argv[1],
+      "--poll",
+      ...args.flatMap((a) => a === void 0 ? [] : [String(a)])
+    ],
     { detached: true, stdio: "ignore", windowsHide: true }
   ).unref();
 };
@@ -238,7 +264,7 @@ var post = (url, body) => fetch(url, {
   signal: AbortSignal.timeout(1e4)
 });
 var positive = (n) => typeof n === "number" && Number.isFinite(n) && n > 0;
-async function login(server, startPoller) {
+async function login(server, startPoller, session) {
   let res;
   try {
     res = await post(`${server}/api/device/start`, {
@@ -252,10 +278,16 @@ async function login(server, startPoller) {
   const s = await res.json().catch(() => null);
   if (!res.ok || typeof s?.deviceCode !== "string" || typeof s.userCode !== "string" || typeof s.verifyUrl !== "string" || !positive(s.interval) || !positive(s.expiresIn))
     throw new Error(`${server} did not start a login (HTTP ${res.status}).`);
-  startPoller(s.deviceCode, server, s.interval, s.expiresIn);
+  startPoller(
+    s.deviceCode,
+    server,
+    s.interval,
+    s.expiresIn,
+    ...session ? [session] : []
+  );
   return `Open ${s.verifyUrl} and enter ${s.userCode}. Murmur connects when you approve.`;
 }
-async function poll(deviceCode, server, interval, expiresIn) {
+async function poll(deviceCode, server, interval, expiresIn, session) {
   const end = Date.now() + expiresIn * 1e3;
   while (Date.now() < end) {
     await new Promise((r) => setTimeout(r, interval * 1e3));
@@ -265,6 +297,7 @@ async function poll(deviceCode, server, interval, expiresIn) {
       if (res.status !== 200) continue;
       const b = await res.json();
       if (typeof b.token === "string" && typeof b.machineId === "string") {
+        if (session) skipText(session);
         writeCredentials({ server, token: b.token, machineId: b.machineId });
         return;
       }
@@ -289,9 +322,15 @@ async function run(args, env, startPoller = spawnPoller) {
   const cwd = arg || process.cwd();
   const session = env.CLAUDE_CODE_SESSION_ID || void 0;
   const scope = session ? "session" : "folder";
+  if (session && (cmd === "login" || cmd === "on" || cmd === "resume"))
+    skipText(session);
   switch (cmd) {
     case "login":
-      return login((arg || DEFAULT_SERVER).replace(/\/+$/, ""), startPoller);
+      return login(
+        (arg || DEFAULT_SERVER).replace(/\/+$/, ""),
+        startPoller,
+        session
+      );
     case "logout":
       clearCredentials();
       clearQueue();
@@ -320,8 +359,8 @@ async function run(args, env, startPoller = spawnPoller) {
 async function main() {
   const args = process.argv.slice(2);
   if (args[0] === "--poll") {
-    const [, code = "", server = "", interval, expiresIn] = args;
-    await poll(code, server, Number(interval), Number(expiresIn));
+    const [, code = "", server = "", interval, expiresIn, session] = args;
+    await poll(code, server, Number(interval), Number(expiresIn), session);
     return;
   }
   try {

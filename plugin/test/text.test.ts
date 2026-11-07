@@ -1,9 +1,12 @@
 import fs from "node:fs";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { type MurmurEvent, reduce } from "@murmur/core";
 import { beforeEach, describe, expect, it } from "vitest";
-import { catchUpText, readBackfill } from "../src/backfill.js";
+import { catchUpText, readBackfill, runBackfill } from "../src/backfill.js";
+import { poll, run } from "../src/cli.js";
 import { handleHook } from "../src/hook.js";
 import {
   queueDir,
@@ -213,16 +216,20 @@ describe("live catch-up", () => {
     expect(queued().map((e) => e.id)).toEqual(back.map((e) => e.id));
   });
 
-  it("after a backfill, starts from its cutoff", () => {
+  it("a session imported before Claude's text was read starts at the transcript's end", () => {
     on();
     const { textOffset: _, ...rest } = readSession(SID);
     writeSession(SID, { ...rest, cutoff: t(3) });
     fs.writeFileSync(
       file,
-      said(2, "Imported already.") + said(4, "After the cutoff."),
+      said(2, "Imported already.") +
+        said(4, "Said long ago, after the old cutoff."),
     );
+    expect(catchUpText(SID, ENV)).toBe(0);
+    expect(readSession(SID).textOffset).toBe(fs.statSync(file).size);
+    fs.appendFileSync(file, said(5, "New."));
     expect(catchUpText(SID, ENV)).toBe(1);
-    expect(texts(queued())).toEqual(["After the cutoff."]);
+    expect(texts(queued())).toEqual(["New."]);
   });
 
   it("off, paused, logged out, revoked and headless send nothing", () => {
@@ -310,5 +317,196 @@ describe("the hook marks where live text starts, without reading the transcript"
     fs.appendFileSync(file, said(4, "While paused."));
     hook("Stop");
     expect(readSession(SID).textOffset).toBe(fs.statSync(file).size);
+  });
+});
+
+describe("text from times nothing is sent is never sent later", () => {
+  const HEADLESS = {
+    CLAUDE_CODE_ENTRYPOINT: "sdk-cli",
+    CLAUDE_CODE_SESSION_ATTENDED: "0",
+  };
+  const NOW = new Date("2026-11-07T10:00:00.000Z");
+  const hook = (
+    name: string,
+    env: NodeJS.ProcessEnv = ENV,
+    extra: Record<string, unknown> = {},
+  ) =>
+    handleHook(
+      {
+        hook_event_name: name,
+        session_id: SID,
+        cwd,
+        transcript_path: file,
+        ...extra,
+      },
+      env,
+      NOW,
+    );
+  const queued = () => {
+    let names: string[] = [];
+    try {
+      names = fs.readdirSync(queueDir()).sort();
+    } catch {}
+    return names.map(
+      (n) =>
+        JSON.parse(
+          fs.readFileSync(path.join(queueDir(), n), "utf8"),
+        ) as MurmurEvent,
+    );
+  };
+  /** A live interactive session, seen and on, its first text sent. */
+  const live = () => {
+    writeCredentials({ server: "http://x", token: "t", machineId: "m1" });
+    setProjectState(cwd, "on");
+    fs.writeFileSync(file, said(1, "First."));
+    hook("SessionStart", ENV, { source: "startup" });
+    fs.appendFileSync(file, said(2, "Second."));
+    hook("Stop");
+    catchUpText(SID, ENV);
+  };
+  /** What the next interactive Stop's flush child sends. */
+  const stop = () => {
+    hook("Stop");
+    catchUpText(SID, ENV);
+    return texts(queued());
+  };
+
+  it("a headless claude -p --resume of the session", () => {
+    live();
+    fs.appendFileSync(file, said(3, "Headless."));
+    expect(
+      hook("UserPromptSubmit", HEADLESS, { prompt: "x" }).event,
+    ).toBeNull();
+    fs.appendFileSync(file, said(4, "Headless at the end."));
+    hook("Stop", HEADLESS);
+    // Its own flush child would be headless too.
+    catchUpText(SID, HEADLESS);
+    fs.appendFileSync(file, said(5, "Back."));
+    expect(stop()).toEqual(["Second.", "Back."]);
+  });
+
+  it("while logged out, or disconnected", () => {
+    live();
+    fs.rmSync(path.join(process.env.MURMUR_HOME as string, "credentials.json"));
+    fs.appendFileSync(file, said(3, "Logged out."));
+    hook("PreToolUse");
+    catchUpText(SID, ENV);
+    writeCredentials({ server: "http://x", token: "t", machineId: "m1" });
+    setRevoked(true);
+    fs.appendFileSync(file, said(4, "Disconnected."));
+    hook("PreToolUse");
+    setRevoked(false);
+    fs.appendFileSync(file, said(5, "Connected."));
+    expect(stop()).toEqual(["Second.", "Connected."]);
+  });
+
+  it("a paused turn stopped with Esc, then /murmur:resume", async () => {
+    live();
+    setPaused(cwd, true, SID);
+    fs.appendFileSync(file, said(3, "Paused."));
+    hook("PreToolUse");
+    // Esc: no Stop; the last words of the turn come after the last hook.
+    fs.appendFileSync(file, said(4, "Paused, after the last hook."));
+    await run(["resume"], { CLAUDE_CODE_SESSION_ID: SID });
+    fs.appendFileSync(file, said(5, "Resumed."));
+    expect(stop()).toEqual(["Second.", "Resumed."]);
+  });
+
+  it("/murmur:on and a login move the start too", async () => {
+    live();
+    setProjectState(cwd, "off");
+    fs.appendFileSync(file, said(3, "Off."));
+    await run(["on", cwd], { CLAUDE_CODE_SESSION_ID: SID });
+    expect(readSession(SID).textOffset).toBe(fs.statSync(file).size);
+    fs.appendFileSync(file, said(4, "Before the login."));
+    await run(["login", "http://127.0.0.1:9"], {
+      CLAUDE_CODE_SESSION_ID: SID,
+    }).catch(() => "");
+    expect(readSession(SID).textOffset).toBe(fs.statSync(file).size);
+  });
+
+  it("the login poller moves the start when the login is approved", async () => {
+    live();
+    fs.rmSync(path.join(process.env.MURMUR_HOME as string, "credentials.json"));
+    fs.appendFileSync(file, said(3, "While the login waited."));
+    const server = http.createServer((req, res) => {
+      req.resume();
+      req.on("end", () => res.end('{"token":"tok","machineId":"m1"}'));
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    await poll("d1", url, 0.01, 5, SID);
+    server.close();
+    expect(readSession(SID).textOffset).toBe(fs.statSync(file).size);
+  });
+
+  it("an AssistantText on stdin is not a hook", () => {
+    live();
+    expect(hook("AssistantText", ENV, { text: "forged" })).toEqual({
+      stdout: "",
+      event: null,
+    });
+  });
+
+  it("the recap's own run never uploads, whatever its entry point", () => {
+    live();
+    expect(
+      hook(
+        "UserPromptSubmit",
+        { ...ENV, MURMUR_RECAP_RUN: "1", MURMUR_ALLOW_HEADLESS: "1" },
+        {
+          prompt: "x",
+        },
+      ).event,
+    ).toBeNull();
+  });
+
+  it("a backfill sets the start itself, with its text after the cutoff read once", async () => {
+    writeCredentials({ server: "http://x", token: "t", machineId: "m1" });
+    setProjectState(cwd, "on");
+    fs.writeFileSync(
+      file,
+      human(1, "go") + said(2, "Before.") + said(4, "After the cutoff."),
+    );
+    updateSession(SID, {
+      backfill: "pending",
+      cutoff: t(3),
+      transcriptPath: file,
+      cwd,
+      project: cwd,
+    });
+    const size = fs.statSync(file).size;
+    const fetch = (async () =>
+      new Response("{}", {
+        status: 500,
+      })) as unknown as typeof globalThis.fetch;
+    await runBackfill(SID, { fetch });
+    expect(texts(queued())).toEqual(["Before.", "After the cutoff."]);
+    expect(readSession(SID).textOffset).toBe(size);
+  });
+
+  it("a line half written when the backfill read stops is read live once it is whole", async () => {
+    writeCredentials({ server: "http://x", token: "t", machineId: "m1" });
+    setProjectState(cwd, "on");
+    const half = said(4, "Being written.");
+    fs.writeFileSync(
+      file,
+      human(1, "go") + said(2, "Before.") + half.slice(0, 30),
+    );
+    updateSession(SID, {
+      backfill: "pending",
+      cutoff: t(3),
+      transcriptPath: file,
+      cwd,
+      project: cwd,
+    });
+    const fetch = (async () =>
+      new Response("{}", {
+        status: 500,
+      })) as unknown as typeof globalThis.fetch;
+    await runBackfill(SID, { fetch });
+    fs.appendFileSync(file, half.slice(30));
+    catchUpText(SID, ENV);
+    expect(texts(queued())).toEqual(["Before.", "Being written."]);
   });
 });

@@ -21203,6 +21203,19 @@ function pruneSessions(now) {
     }
   }
 }
+function skipText(sessionId, transcriptPath) {
+  if (isNewSession(sessionId)) return;
+  const s = readSession(sessionId);
+  const file2 = s.transcriptPath ?? (typeof transcriptPath === "string" && transcriptPath ? transcriptPath : void 0);
+  if (!file2) return;
+  let size;
+  try {
+    size = import_node_fs.default.statSync(file2).size;
+  } catch {
+    return;
+  }
+  if (s.textOffset !== size) updateSession(sessionId, { textOffset: size });
+}
 function updateSession(sessionId, patch) {
   writeSession(sessionId, { ...readSession(sessionId), ...patch });
 }
@@ -21676,7 +21689,7 @@ function stableId(sessionId, hook, p) {
 }
 var obj7 = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : void 0;
 var str6 = (v) => typeof v === "string" && v ? v : void 0;
-function* readLines(file2, tailBytes, at) {
+function* readLines(file2, tailBytes, at, upTo) {
   let fd;
   try {
     fd = import_node_fs3.default.openSync(file2, "r");
@@ -21684,9 +21697,10 @@ function* readLines(file2, tailBytes, at) {
     return;
   }
   try {
-    const size = import_node_fs3.default.fstatSync(fd).size;
+    const size = Math.min(import_node_fs3.default.fstatSync(fd).size, upTo?.from ?? Infinity);
     let pos = at ? at.from <= size ? at.from : 0 : Math.max(0, size - tailBytes);
     let end = pos;
+    if (upTo) upTo.end = pos;
     const buf = Buffer.alloc(CHUNK);
     let skip = false;
     if (pos > 0 && !at) {
@@ -21711,6 +21725,7 @@ function* readLines(file2, tailBytes, at) {
         data = data.subarray(nl + 1);
         end += nl + 1;
         if (at) at.end = end;
+        if (upTo) upTo.end = end;
         if (skip) skip = false;
         else {
           const e = parse4(line);
@@ -21719,7 +21734,7 @@ function* readLines(file2, tailBytes, at) {
       }
       rest = Buffer.from(data);
     }
-    if (!at && !skip && rest.length) {
+    if (!at && !upTo && !skip && rest.length) {
       const e = parse4(rest);
       if (e) yield e;
     }
@@ -21787,7 +21802,8 @@ function readBackfill(b, {
   maxEvents = MAX_EVENTS2,
   maxBytes = MAX_BYTES2,
   tailBytes = TAIL_BYTES,
-  skipPrompt
+  skipPrompt,
+  textUntil
 } = {}) {
   const cutoff = Date.parse(b.cutoff);
   const out = [];
@@ -21805,6 +21821,12 @@ function readBackfill(b, {
     let first;
     let last;
     for (const e of list2) {
+      if (textUntil !== void 0 && !agent.agent_id && !usable(e)) {
+        if (str6(e.uuid) && Date.parse(e.timestamp) >= cutoff)
+          for (const { i, text: text3 } of textBlocks(e))
+            emit(e, i, "AssistantText", { text: text3 });
+        continue;
+      }
       if (!usable(e)) continue;
       first ??= e;
       last = e;
@@ -21859,7 +21881,7 @@ function readBackfill(b, {
     }
     return { first, last };
   };
-  mapEntries(readLines(b.transcriptPath, tailBytes), {});
+  mapEntries(readLines(b.transcriptPath, tailBytes, void 0, textUntil), {});
   if (newest && skipPrompt !== void 0 && newest.text.trim() === skipPrompt.trim())
     out.splice(newest.at, 1);
   const dir = import_node_path3.default.join(
@@ -21912,6 +21934,12 @@ async function runBackfill(sessionId, opts = {}) {
     runningSince: (/* @__PURE__ */ new Date()).toISOString()
   });
   let events = [];
+  let upTo;
+  try {
+    const size = s.transcriptPath ? import_node_fs3.default.statSync(s.transcriptPath).size : NaN;
+    if (size >= 0) upTo = { from: size, end: 0 };
+  } catch {
+  }
   if (s.cutoff && s.transcriptPath && s.cwd)
     events = readBackfill(
       {
@@ -21921,12 +21949,15 @@ async function runBackfill(sessionId, opts = {}) {
         transcriptPath: s.transcriptPath,
         cutoff: s.cutoff
       },
-      { skipPrompt: s.triggerPrompt }
+      { skipPrompt: s.triggerPrompt, textUntil: upTo }
     );
   for (const e of events) enqueue(e);
   const { triggerPrompt: _prompt, ...rest } = readSession(sessionId);
-  writeSession(sessionId, { ...rest, backfill: "done" });
-  catchUpText(sessionId);
+  writeSession(sessionId, {
+    ...rest,
+    backfill: "done",
+    ...upTo ? { textOffset: upTo.end } : {}
+  });
   const same = () => readCredentials()?.token === creds.token;
   if (same()) await flush(creds, { budgetMs: 5e4, ...opts });
   if ((await runRecap(sessionId, events)).ok && same())
@@ -21934,20 +21965,18 @@ async function runBackfill(sessionId, opts = {}) {
   return events.length;
 }
 function catchUpText(sessionId, env = process.env) {
-  if (isHeadless(env) && env.MURMUR_ALLOW_HEADLESS !== "1") return 0;
-  const creds = readCredentials();
-  if (!creds || isRevoked()) return 0;
   const s = readSession(sessionId);
   if (s.backfill !== "done" || !s.transcriptPath || !s.cwd) return 0;
-  const from = s.textOffset ?? 0;
-  const floor = s.textOffset === void 0 && s.cutoff ? Date.parse(s.cutoff) : -Infinity;
-  const quiet = sessionProjectState(s.cwd, sessionId) !== "on" || isPaused(s.cwd, sessionId) || s.project !== void 0 && isPaused(s.project);
-  const at = { from, end: from };
+  const creds = readCredentials();
+  if (s.textOffset === void 0 || env.MURMUR_RECAP_RUN === "1" || isHeadless(env) && env.MURMUR_ALLOW_HEADLESS !== "1" || !creds || isRevoked() || sessionProjectState(s.cwd, sessionId) !== "on" || isPaused(s.cwd, sessionId) || s.project !== void 0 && isPaused(s.project)) {
+    skipText(sessionId);
+    return 0;
+  }
+  const at = { from: s.textOffset, end: s.textOffset };
   const b = { sessionId, machineId: creds.machineId, cwd: s.cwd };
   let n = 0;
   for (const e of readLines(s.transcriptPath, 0, at)) {
-    if (quiet || !str6(e.uuid) || !(Date.parse(e.timestamp) >= floor))
-      continue;
+    if (!str6(e.uuid)) continue;
     for (const { i, text: text3 } of textBlocks(e)) {
       enqueue(entryEvent(b, e, i, "AssistantText", { text: text3 }));
       n++;
@@ -21978,18 +22007,19 @@ function textStart(transcriptPath) {
     return { textOffset: 0 };
   }
 }
-function skipText(sessionId, hook, transcriptPath) {
-  if (hook === "Stop" && !isNewSession(sessionId))
-    updateSession(sessionId, textStart(transcriptPath));
-}
 function handleHook(payload, env, now) {
   const hook = payload.hook_event_name;
   const cwd = payload.cwd;
-  if (typeof hook !== "string" || !HOOK_NAMES.includes(hook))
+  if (typeof hook !== "string" || hook === "AssistantText" || !HOOK_NAMES.includes(hook))
     return NONE3;
-  if (isHeadless(env) && env.MURMUR_ALLOW_HEADLESS !== "1") return NONE3;
-  if (typeof cwd !== "string" || !cwd) return NONE3;
   const sessionId = typeof payload.session_id === "string" && payload.session_id ? payload.session_id : env.CLAUDE_CODE_SESSION_ID;
+  const quiet = (r) => {
+    if (sessionId) skipText(sessionId, payload.transcript_path);
+    return r;
+  };
+  if (env.MURMUR_RECAP_RUN === "1" || isHeadless(env) && env.MURMUR_ALLOW_HEADLESS !== "1")
+    return quiet(NONE3);
+  if (typeof cwd !== "string" || !cwd) return NONE3;
   const start = hook === "SessionStart";
   if (start && payload.source === "startup") {
     clearProjectPause(cwd);
@@ -21997,20 +22027,19 @@ function handleHook(payload, env, now) {
   }
   const state = sessionProjectState(cwd, sessionId);
   if (state === void 0) {
-    if (!start) return NONE3;
+    if (!start) return quiet(NONE3);
     setProjectState(cwd, "asked");
-    return show(askLine(cwd));
+    return quiet(show(askLine(cwd)));
   }
   if (state === "off") {
     if (sessionId && isNewSession(sessionId))
       updateSession(sessionId, { backfill: "done" });
-    else if (sessionId) skipText(sessionId, hook, payload.transcript_path);
-    return NONE3;
+    return quiet(NONE3);
   }
-  if (state !== "on") return NONE3;
+  if (state !== "on") return quiet(NONE3);
   const creds = readCredentials();
-  if (!creds) return start ? show(LOGIN_LINE) : NONE3;
-  if (isRevoked()) return start ? show(REVOKED_LINE) : NONE3;
+  if (!creds) return quiet(start ? show(LOGIN_LINE) : NONE3);
+  if (isRevoked()) return quiet(start ? show(REVOKED_LINE) : NONE3);
   if (!sessionId) return NONE3;
   const fresh = isNewSession(sessionId);
   const seen = readSession(sessionId);
@@ -22025,8 +22054,7 @@ function handleHook(payload, env, now) {
     });
   if (isPaused(cwd, sessionId) || isPaused(project)) {
     if (fresh) updateSession(sessionId, { backfill: "done" });
-    else skipText(sessionId, hook, transcript);
-    return NONE3;
+    return quiet(NONE3);
   }
   const ts = now.toISOString();
   const event = scrubEvent({

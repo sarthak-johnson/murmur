@@ -16,6 +16,7 @@ import {
   sessionProjectState,
   setPaused,
   setProjectState,
+  skipText,
   updateSession,
   writeCredentials,
 } from "./local.js";
@@ -25,6 +26,7 @@ type StartPoller = (
   server: string,
   interval: number,
   expiresIn: number,
+  session?: string,
 ) => void;
 
 type Obj = Record<string, unknown>;
@@ -36,7 +38,11 @@ const USAGE =
 const spawnPoller: StartPoller = (...args) => {
   spawn(
     process.execPath,
-    [process.argv[1] as string, "--poll", ...args.map(String)],
+    [
+      process.argv[1] as string,
+      "--poll",
+      ...args.flatMap((a) => (a === undefined ? [] : [String(a)])),
+    ],
     { detached: true, stdio: "ignore", windowsHide: true },
   ).unref();
 };
@@ -52,7 +58,11 @@ const post = (url: string, body: unknown) =>
 const positive = (n: unknown): n is number =>
   typeof n === "number" && Number.isFinite(n) && n > 0;
 
-async function login(server: string, startPoller: StartPoller) {
+async function login(
+  server: string,
+  startPoller: StartPoller,
+  session: string | undefined,
+) {
   let res: Response;
   try {
     res = await post(`${server}/api/device/start`, {
@@ -73,7 +83,13 @@ async function login(server: string, startPoller: StartPoller) {
     !positive(s.expiresIn)
   )
     throw new Error(`${server} did not start a login (HTTP ${res.status}).`);
-  startPoller(s.deviceCode, server, s.interval, s.expiresIn);
+  startPoller(
+    s.deviceCode,
+    server,
+    s.interval,
+    s.expiresIn,
+    ...(session ? [session] : []),
+  );
   return `Open ${s.verifyUrl} and enter ${s.userCode}. Murmur connects when you approve.`;
 }
 
@@ -83,6 +99,7 @@ export async function poll(
   server: string,
   interval: number,
   expiresIn: number,
+  session?: string,
 ): Promise<void> {
   const end = Date.now() + expiresIn * 1000;
   while (Date.now() < end) {
@@ -93,6 +110,8 @@ export async function poll(
       if (res.status !== 200) continue;
       const b = (await res.json()) as Obj;
       if (typeof b.token === "string" && typeof b.machineId === "string") {
+        // What Claude wrote while logged out is never sent.
+        if (session) skipText(session);
         writeCredentials({ server, token: b.token, machineId: b.machineId });
         return;
       }
@@ -129,9 +148,16 @@ export async function run(
   const cwd = arg || process.cwd();
   const session = env.CLAUDE_CODE_SESSION_ID || undefined;
   const scope = session ? "session" : "folder";
+  // Sending starts again from now: what Claude wrote before is never sent.
+  if (session && (cmd === "login" || cmd === "on" || cmd === "resume"))
+    skipText(session);
   switch (cmd) {
     case "login":
-      return login((arg || DEFAULT_SERVER).replace(/\/+$/, ""), startPoller);
+      return login(
+        (arg || DEFAULT_SERVER).replace(/\/+$/, ""),
+        startPoller,
+        session,
+      );
     case "logout":
       clearCredentials();
       clearQueue();
@@ -164,8 +190,8 @@ export async function run(
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args[0] === "--poll") {
-    const [, code = "", server = "", interval, expiresIn] = args;
-    await poll(code, server, Number(interval), Number(expiresIn));
+    const [, code = "", server = "", interval, expiresIn, session] = args;
+    await poll(code, server, Number(interval), Number(expiresIn), session);
     return;
   }
   try {
