@@ -15,7 +15,7 @@
   --text: #e7e9ee;
   --text-2: #cdd2da;
   --muted: #979eac;
-  --faint: #6c7482;
+  --faint: #858d9b;
   --now: #6d96ff;
   --done: #4cbb88;
   --agent: #e6a957;
@@ -661,8 +661,14 @@ label {
 .phase-seg.now {
   color: var(--now);
   background: color-mix(in srgb, var(--now) 10%, var(--panel));
-  outline: 1.5px solid var(--now);
-  outline-offset: -1.5px;
+  border-color: color-mix(in srgb, var(--now) 70%, transparent);
+}
+.phase-seg.open {
+  color: var(--agent);
+  background: color-mix(in srgb, var(--agent) 7%, var(--panel));
+}
+.phase-seg.open .bar i {
+  background: var(--agent);
 }
 .phase-seg.now .bar i {
   background: var(--now);
@@ -670,8 +676,11 @@ label {
 .phase-seg:hover {
   border-color: var(--line);
 }
+/* Selected reads as a pressed tab (raised and underlined), never as a focus ring. */
 .phase-seg[aria-pressed="true"] {
-  border-color: var(--muted);
+  background: var(--panel-2);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--text-2);
 }
 /* Grid: see the breakpoints at the end */
 .live-grid {
@@ -861,6 +870,15 @@ button.task:hover {
 .glyph.now {
   color: var(--now);
 }
+.glyph.open {
+  color: var(--agent);
+}
+.task.open {
+  color: var(--text-2);
+}
+.phase-card.open .phase-hd {
+  color: var(--agent);
+}
 .glyph.todo {
   color: var(--faint);
 }
@@ -874,10 +892,15 @@ button.task:hover {
   border-radius: 4px;
   border: 1px solid var(--line);
   color: var(--muted);
-  white-space: nowrap;
-  max-width: 130px;
+  max-width: 150px;
+  line-height: 1.35;
+  /* Two lines at most, broken between words, never inside one. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: normal;
 }
 .part-chip.hl {
   border-color: var(--now);
@@ -1353,6 +1376,7 @@ button.link.more {
 .story-side {
   display: grid;
   gap: 16px;
+  align-content: start;
   min-width: 0;
 }
 .story-side .now-col {
@@ -1698,10 +1722,15 @@ button.link.group-more {
 .file-row.open .pd-file {
   color: var(--text);
 }
+/* A path breaks only after a slash: each segment between <wbr>s is one flex item. */
 .pd-path {
+  display: inline-flex;
+  flex-wrap: wrap;
+  min-width: 0;
   font-family: var(--font-code);
   font-size: 12.5px;
-  overflow-wrap: break-word;
+  hyphens: none;
+  white-space: pre;
 }
 .pd-add {
   color: var(--done);
@@ -1788,6 +1817,14 @@ code.nw {
 @media (min-width: 1200px) {
   .pd {
     padding: 24px 32px 64px;
+  }
+  /* The side column stays in view down a long story. */
+  .story-side {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    overscroll-behavior: contain;
   }
   .pd-cols {
     grid-template-columns: minmax(0, 1fr) 340px;
@@ -2047,4 +2084,34 @@ code.nw {
 }
 .story-side .now-files li > .muted {
   grid-column: 1 / -1;
+}
+.skip {
+  position: absolute;
+  left: -9999px;
+}
+.skip:focus {
+  position: static;
+  display: inline-block;
+  margin-bottom: 8px;
+  color: var(--now);
+}
+.step-lead {
+  margin: 0;
+  max-width: 72ch;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.dl.edit {
+  display: block;
+  margin-top: 8px;
+  padding: 4px 12px;
+  background: var(--panel-2);
+  border-block: 1px solid var(--line-2);
+  font: 600 11.5px / 20px var(--font-ui);
+  color: var(--text-2);
+}
+.md-plain {
+  margin: 0;
+  white-space: pre-wrap;
 }
