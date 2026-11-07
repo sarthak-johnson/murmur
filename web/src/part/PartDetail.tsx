@@ -85,8 +85,14 @@ function StepCard(props: {
   events: MurmurEvent[];
   byId: Map<string, MurmurEvent>;
   cwd: string;
+  /** Recap steps carry made-up times, so they show none. */
+  timed?: boolean;
+  label?: string;
+  /** Text to show when Claude said nothing and no report came. */
+  fallback?: string | undefined;
 }) {
   const { n, step, request, agent, events, byId, cwd } = props;
+  const { timed = true, fallback, label = `step ${n}` } = props;
   const [open, setOpen] = useState<"report" | "brief" | "details" | null>(null);
   const call = step.eventIds.map((id) => byId.get(id)).find(Boolean);
   const helper = !!agent || call?.payload.tool_name === "Agent";
@@ -101,8 +107,8 @@ function StepCard(props: {
   const said = agent
     ? request.messages?.findLast((m) => m.agent === agent.id)?.text
     : undefined;
-  const text = said ?? (report ? reportLead(report.text) : "");
-  const who = [model(call), valid(step.ts) ? clock(step.ts) : ""]
+  const text = said ?? (report ? reportLead(report.text) : (fallback ?? ""));
+  const who = [model(call), timed && valid(step.ts) ? clock(step.ts) : ""]
     .filter(Boolean)
     .join(", ");
   const prompt =
@@ -122,7 +128,7 @@ function StepCard(props: {
   return (
     <li
       className={helper ? "step-card helper" : "step-card"}
-      aria-label={`step ${n}`}
+      aria-label={label}
     >
       <div className="step-hd">
         <span className={`sdot ${step.status}`} aria-hidden="true" />
@@ -195,32 +201,6 @@ function FileRow(props: {
   );
 }
 
-function Brief({ agent }: { agent: AgentView }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      {agent.brief && <p className="muted small">{agent.brief}</p>}
-      {agent.prompt && (
-        <>
-          <button
-            type="button"
-            className="link small"
-            aria-expanded={open}
-            onClick={() => setOpen(!open)}
-          >
-            Brief
-          </button>
-          {open && (
-            <div className="report-panel">
-              <Markdown text={agent.prompt} className="reading" />
-            </div>
-          )}
-        </>
-      )}
-    </>
-  );
-}
-
 /** Keyed by part, so open panels never carry over to another part. */
 export function PartDetail(props: Parameters<typeof PartBody>[0]) {
   return <PartBody key={props.part.id} {...props} />;
@@ -248,7 +228,7 @@ function PartBody(props: {
 
   // The band: time span, helpers, fix rounds, commits.
   const times = [
-    ...part.steps.map((s) => s.ts),
+    ...(request.recap ? [] : part.steps.map((s) => s.ts)),
     ...helpers.flatMap((a) => [a.startedAt, a.endedAt, a.report?.ts]),
   ]
     .filter(valid)
@@ -388,8 +368,44 @@ function PartBody(props: {
                     events={events}
                     byId={byId}
                     cwd={cwd}
+                    timed={!request.recap || !!s.agentId}
                   />
                 ))}
+              </ol>
+            </Section>
+          )}
+          {others.length > 0 && (
+            <Section name="Who's on it">
+              <ol className="steps">
+                {others.map((a) => {
+                  const call = events.find(
+                    (e) =>
+                      e.hook === "PreToolUse" &&
+                      e.payload.tool_name === "Agent" &&
+                      (e.payload.tool_input as { prompt?: unknown } | undefined)
+                        ?.prompt === a.prompt,
+                  );
+                  return (
+                    <StepCard
+                      key={a.id}
+                      n={number(a)}
+                      step={{
+                        ts: a.startedAt,
+                        text: `Agent ${number(a)}${a.description ? ` · ${a.description}` : ""}`,
+                        status: a.status === "running" ? "running" : "done",
+                        agentId: a.id,
+                        eventIds: call ? [call.id] : [],
+                      }}
+                      request={request}
+                      agent={a}
+                      events={events}
+                      byId={byId}
+                      cwd={cwd}
+                      fallback={a.brief}
+                      label={`helper ${number(a)}`}
+                    />
+                  );
+                })}
               </ol>
             </Section>
           )}
@@ -476,19 +492,6 @@ function PartBody(props: {
               <p>
                 <b>Gives:</b> {part.io.gives}
               </p>
-            </Section>
-          )}
-          {others.length > 0 && (
-            <Section name="Who's on it">
-              {others.map((a) => (
-                <div key={a.id} className="pd-agent">
-                  <div>
-                    Agent {number(a)}
-                    {a.description && ` · ${a.description}`}
-                  </div>
-                  <Brief agent={a} />
-                </div>
-              ))}
             </Section>
           )}
           {request.parts.length > 1 && (

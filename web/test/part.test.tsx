@@ -697,6 +697,42 @@ describe("task page", () => {
     expect(band.textContent).not.toContain("commit");
   });
 
+  it("a recapped part hides its made-up step times and shows its helpers with their reports", async () => {
+    const t = task1();
+    t.r.recap = true;
+    t.r.planInferred = false;
+    t.p.steps = [
+      {
+        ts: at(5),
+        text: "Builder added the tokens",
+        status: "done",
+        eventIds: [],
+      },
+      {
+        ts: at(5),
+        text: "Done after one fix round.",
+        status: "done",
+        eventIds: [],
+      },
+    ];
+    showTask1(t);
+    const steps = within(section("How it went")).getAllByRole("listitem", {
+      name: /step/,
+    });
+    expect(steps[0]?.querySelector(".step-who")).toBeNull();
+    const band = screen.getByRole("group", { name: "Summary" });
+    expect(band.textContent).toContain(`${clock(at(10))} to ${clock(at(15))}`);
+    const who = section("Who's on it");
+    const first = within(who).getByRole("listitem", { name: "helper 1" });
+    expect(first.textContent).toContain("Agent 1 · Build Task 1: tokens");
+    expect(first.textContent).toContain(`Sonnet, ${clock(at(10))}`);
+    expect(within(first).getByText("Done, with concerns")).toBeTruthy();
+    await userEvent.click(
+      within(first).getByRole("button", { name: "Helper's full report" }),
+    );
+    expect(first.querySelector(".report-panel .md")).toBeTruthy();
+  });
+
   it("a helper shown as a step card is not listed again under who's on it", () => {
     showTask1();
     expect(screen.queryByRole("region", { name: "Who's on it" })).toBeNull();
