@@ -48,7 +48,7 @@ The last three came from running the recap on the author's real session (see "Fo
   - `readLines` takes an optional live window (`from`, `end`): it reads from a byte offset and leaves a last line with no newline for the next read.
   - `entryEvent` is the one event builder for the backfill and the live read (same deterministic id: entry uuid, block index, hook).
   - The backfill emits `AssistantText` for main-thread, non-sidechain, non-empty text blocks, and `UserPromptSubmit` for `origin.kind: "task-notification"` entries; a notification that set the cutoff is skipped like a prompt.
-  - `catchUpText(sessionId, env)`: reads from `textOffset`, queues new text, stores the new offset; before its first read after a backfill it starts at 0 and keeps text from the cutoff on; off, paused (session or project) moves the offset without sending; logged out, revoked, headless or a backfill not done yet do nothing.
+  - `catchUpText(sessionId, env)`: reads from `textOffset`, queues new text, stores the new offset (see "Review fixes" for what it does when nothing may be sent, or when no offset is on record).
   - `runBackfill` catches up text after the import, flushes, runs the recap, and flushes again when the recap queued anything.
 - `src/hook.ts`: the detached flush child gets the session id (`--flush <id>`) and catches up text before it flushes.
   The hook only stats the transcript: a brand new session, or a seen one with no transcript on record (first seen while off), starts its live text at the file's size; a Stop while off or paused moves the offset past what was said.
@@ -99,7 +99,7 @@ Each new test was run against the code before the change and failed for the reas
 | plugin `dist.test.ts`, the recap run uploads nothing (1 test) | written with the recap; a mutation that passes `MURMUR_ALLOW_HEADLESS` to `claude` makes it fail with the recap run's own session on the server | passed |
 
 The Stop timing test logs every open and read of the transcript through a `--require` spy in both processes: the hook process has none, its detached child does.
-The recap proof uses a fake `claude` that runs the built hook the way the real one does in `-p` (headless env, an "on" project), while the parent has `MURMUR_ALLOW_HEADLESS=1`; the server receives the recap's events and none from that run's session, and the queue is empty after.
+The recap proof uses a fake `claude` that runs the built hook in an "on" project with the env it was given, while the parent has `MURMUR_ALLOW_HEADLESS=1` (and, since the review fixes, a `claude-vscode` attended entry point); the server receives the recap's events and none from that run's session, and the queue is empty after.
 
 Totals: core 241 (206 before), plugin 140 (112 before), server 92, web 110, all passing.
 
@@ -165,7 +165,7 @@ Rounds 2 and 3 were needed because round 1 and round 2 each showed a bug on the 
 
 ## Left or uncertain
 
-- The 20 MB backfill cap now drops the two oldest style requests of this session ("I think we need to revamp from the style itself", "Like the Lit plate one"): the whole history is 23.2 MB, mostly because a Bash result's `bashEditDiff` is now sent whole (Bash results are 8.6 MB). Raising the cap to about 30 MB, or not repeating `tool_input` in backfilled PostToolUse events, would bring them back; I left the cap as the backfill brief set it.
+- The backfill cap was 20 MB when this report was first written, which dropped the two oldest style requests of this session (the whole history is 23.2 MB, mostly because a Bash result's `bashEditDiff` is now sent whole). It was raised to 40 MB in `d23a858`, so the whole session fits; the queue cap went to 100 MB in the review fixes so two imports at once fit too.
 - "What Murmur sends" needs its sentence in `web/src/pages/WhatMurmurSends.tsx` (screens builder).
 - A recap with a timeout of 60 s holds for these three (14 to 37 s); a request with many more parts could pass it and keep its inferred view.
 - A recap is never redone: the server keeps the first copy of each id, so changing a recap means deleting and re-importing the session.
@@ -173,3 +173,70 @@ Rounds 2 and 3 were needed because round 1 and round 2 each showed a bug on the 
 - The costs above are what `claude -p` reports; this account signs in with Claude Code's own login (`apiKeySource: none`), so they are notional rather than billed per call.
 - One relative path changed in both a worktree and the main tree maps to the last full path seen (marked `ponytail:` in `recap.ts`).
 - Message task links on the narrated "continue with the work" request are 0: its task titles do not appear in Claude's messages and its messages name no task ids from its own plan.
+
+## Review fixes
+
+From an Opus review of the data layer. Each fix has a test that failed first for the reason named, unless noted.
+
+### Commits
+
+- `e7fdc48` fix(plugin): text from times Murmur sends nothing is never sent later (items 1, 2, 11 hook part, 4 hook part)
+- `777e8f4` fix(plugin): the upload queue holds 100 MB, two history imports at once (item 10)
+- `783af83` fix(plugin): the recap is bounded, headless on purpose and scrubbed (items 3 to 9)
+- `174362a` docs(web): What Murmur sends says the recap runs on your machine (item 11 copy)
+
+### What changed
+
+1. Quiet times (critical). `skipText` (in `local.ts`) moves a session's `textOffset` to its transcript's current size, for a session on record, with a stat only.
+   `handleHook` calls it on every path that sends nothing: headless, the recap's own run, no project state, off, asked, logged out, disconnected, paused, on any hook, not only Stop.
+   `catchUpText` calls it instead of returning in the same cases.
+   `murmur on`, `resume` and `login` call it for the session they run in, and the login poller calls it again when the login is approved.
+   Tests, one per sequence the reviewer reproduced, with real `handleHook` and `catchUpText` calls: a headless `claude -p --resume` turn, then an interactive Stop; text while logged out and while disconnected, then a login; a paused turn stopped with Esc after its last hook, then `/murmur:resume`; plus `on` and `login`, and the poller.
+2. Sessions imported before this branch. A missing `textOffset` now means "start at the transcript's current size": the live read sends nothing and sets it.
+   `runBackfill` sets `textOffset` itself: it stats the transcript first, reads the history only up to that byte, keeps Claude's text from the cutoff up to there in the import, and stores the end of the last whole line it read. That replaces the second whole-file read; a line half written at that moment is read live once it is whole.
+3. Recap bounds. Only the 5 newest unmapped requests are ever asked, newest first.
+   No ask starts after 150 s, or later than 70 s before the backfill child's deadline (230 s of its 240 s), and the second upload gets what time is left.
+   A request is marked `recapped` just before it is asked, so one never asked is asked by a later run.
+   Live `claude` children are killed when the process exits; a killed run ends at once rather than when its own children let go of the pipe.
+   Tests with the fake `claude`: 7 requests asked as the 5 newest in order; a 300 ms budget against 600 ms asks stops after the first 3 and marks only those, a later run asks the other 2; `killRecaps` kills a running fake.
+4. The recap's run is headless on purpose. Its env gets `CLAUDE_CODE_ENTRYPOINT=sdk-cli`, `CLAUDE_CODE_SESSION_ATTENDED=0` and `MURMUR_RECAP_RUN=1`, still without `MURMUR_ALLOW_HEADLESS`.
+   `MURMUR_RECAP=0` stays the user's switch; `MURMUR_RECAP_RUN=1` is the run's own marker, which the hook, the live read and the recap all refuse outright.
+   The dist test's fake `claude` no longer sets a headless env itself: it runs the built hook with exactly the env it was given, under a `claude-vscode`, attended parent with `MURMUR_ALLOW_HEADLESS=1`. Against the old code the recap run's own session reached the server; now nothing from it does.
+5. Recap events go through `scrubEvent`; a test puts `token=...` in an aim.
+6. A full path longer than narrate's 300 characters falls back to the path the model was shown, so the part's detail still validates.
+7. Before each ask the recap checks the session is logged in, its project on and it is not paused; a test turns the project off, then pauses the session, and nothing is asked or marked.
+8. The hook records what started an import (`triggerHook`, `SessionStart:<source>` for a start). `lastRequestOpen` says the last request may still be going unless a prompt or a non-compact SessionStart started it; then the recap leaves the last request alone.
+9. `RecapInput` refuses duplicate part ids, task ids, part detail ids and task end ids.
+10. The upload queue cap is 100 MB (was 50 MB). The test was written after the change; with the value set back to 50 MB it fails (1 of 3 big files kept).
+11. `handleHook` refuses `AssistantText` from stdin. "What Murmur sends" gains: "Imported history is summarised once by your own Claude, on your machine, for up to 5 recent requests." It has no test, as `web/test` is not mine to change.
+
+Tests written after the code they cover, each checked with a mutation that makes it fail: the login poller (removing its `skipText`), the half-written line at the end of a backfill (storing the stat size instead of the last whole line), and the queue cap.
+One existing test changed: "after a backfill, starts from its cutoff" became "a session imported before Claude's text was read starts at the transcript's end", since that is the rule now.
+
+### Tests, RED then GREEN
+
+| Suite | RED | GREEN |
+| --- | --- | --- |
+| plugin `text.test.ts`, quiet times, old imports, AssistantText on stdin, the recap marker, the backfill offset (8 tests) | 8 failed | passed |
+| plugin `text.test.ts`, the login poller, a half-written last line (2 tests) | after the code; mutations fail them | passed |
+| plugin `recap.test.ts`, duplicate ids (2 cases), 5 newest, budget, kill, state re-check, last request, trigger recorded, child env, scrub, long path (11 tests) | 11 failed (`killRecaps` missing for one) | 26 passed in the file |
+| plugin `dist.test.ts`, the recap run uploads nothing under a `claude-vscode` parent | failed: the run's own session reached the server | passed |
+| plugin `upload.test.ts`, queue cap (1 test) | after the code; fails at 50 MB | passed |
+
+Totals: core 241, plugin 161 (140 before the review), server 92.
+
+### Checks
+
+Each run on its own after the last commit. Web files the screens builder was editing at the same time are named where they fail.
+
+| Check | Exit code |
+| --- | --- |
+| `pnpm -s lint` | 1, only for `web/test/zz-prof.test.tsx` (the screens builder's file, being written); `biome check plugin packages server` and the copy file pass |
+| `pnpm -s typecheck` | 0 |
+| `pnpm -s test` | 1, only `web/test/zz-prof.test.tsx > prof`; core 241, plugin 161, server 92 pass, web 202 of 203 |
+| `pnpm -s build:plugin` | 0 (no diff in `plugin/dist`) |
+| `pnpm --filter @murmur/web -s build` | 0 |
+
+The first run, a minute earlier, also failed web typecheck (`web/src/part/EventView.tsx`), web lint (`web/src/markdown.tsx`, `web/test/markdown.test.tsx`) and two `web/test/events.test.tsx` tests, all files the screens builder was changing; they passed on the rerun.
+
+The author's session was not re-imported or recapped again.
