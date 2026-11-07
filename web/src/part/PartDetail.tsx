@@ -7,12 +7,11 @@ import type {
   StepView,
 } from "@murmur/core";
 import { type ReactNode, useState } from "react";
-import { FileList, PathText } from "../files";
-import { PlanSource } from "../live/PlanPanel";
+import { FileList, PathText, sharedFolder } from "../files";
+import { Glyph, PlanSource } from "../live/PlanColumn";
 import { Fold, inline, Markdown } from "../markdown";
 import { Pill } from "../Pill";
-import { LiveSkeleton } from "../pages/Session";
-import { navigate } from "../router";
+import { helperKind, rounds as roundsWord, shortTitle } from "../session";
 import {
   aboutWork,
   clock,
@@ -25,9 +24,9 @@ import {
   type Tone,
   verdictOf,
 } from "../story";
-import { useSession } from "../useSession";
 import { DiffView, hunksOf } from "./Diff";
 import { EventData, EventView } from "./EventView";
+import { helperLanes, Timeline } from "./Timeline";
 
 const enc = encodeURIComponent;
 const MINUS = "−";
@@ -36,12 +35,6 @@ const STATUS: Record<PartView["status"], [string, Tone]> = {
   now: ["In progress", "now"],
   done: ["Done", "done"],
   todo: ["Not started", "plain"],
-};
-
-const DOT: Record<PartView["status"], string> = {
-  now: "running",
-  done: "done",
-  todo: "",
 };
 
 const valid = (ts: string | undefined): ts is string =>
@@ -59,20 +52,29 @@ const model = (e: MurmurEvent | undefined) => {
 function Section(props: {
   name: string;
   count?: number;
+  /** A note beside the heading. */
+  note?: string | undefined;
   className?: string;
+  /** The heading is drawn above, outside the section. */
+  bare?: boolean;
+  /** Margin sections use the smaller heading. */
+  small?: boolean;
   children: ReactNode;
 }) {
   return (
     <section className={props.className} aria-label={props.name}>
-      <h2 className="lbl">
-        {props.name}
-        {props.count !== undefined && (
-          <>
-            {" "}
-            <span className="lbl-count">{props.count}</span>
-          </>
-        )}
-      </h2>
+      {!props.bare && (
+        <h2 className={props.small ? "mh" : "hh"}>
+          {props.name}
+          {props.count !== undefined && (
+            <>
+              {" "}
+              <span className="lbl-count">{props.count}</span>
+            </>
+          )}
+          {props.note && <span className="hh-note">{props.note}</span>}
+        </h2>
+      )}
       {props.children}
     </section>
   );
@@ -96,10 +98,12 @@ function StepCard(props: {
   lead?: string | undefined;
   /** A recap step's Details would only repeat its own title. */
   details?: boolean;
+  /** How the helper's last run ended, as the timeline judged it. */
+  result?: Tone | undefined;
 }) {
   const { n, step, request, agent, events, byId, cwd } = props;
   const { timed = true, fallback, label = `step ${n}`, lead } = props;
-  const { details = true } = props;
+  const { details = true, result } = props;
   const [open, setOpen] = useState<"report" | "brief" | "details" | null>(null);
   const call = step.eventIds.map((id) => byId.get(id)).find(Boolean);
   const helper = !!agent || call?.payload.tool_name === "Agent";
@@ -138,8 +142,14 @@ function StepCard(props: {
       className={helper ? "step-card helper" : "step-card"}
       aria-label={label}
     >
+      <span
+        className={`sdot ${step.status}`}
+        data-tone={result && result !== "plain" ? result : verdict?.tone}
+        aria-hidden="true"
+      >
+        {n}
+      </span>
       <div className="step-hd">
-        <span className={`sdot ${step.status}`} aria-hidden="true" />
         <span className="step-title">{step.text}</span>
         {who && <span className="step-who">{who}</span>}
         {verdict && <Pill tone={verdict.tone}>{verdict.label}</Pill>}
@@ -185,9 +195,10 @@ function StepCard(props: {
 function FileRow(props: {
   file: FileTouch;
   cwd: string;
+  strip: string;
   byId: Map<string, MurmurEvent>;
 }) {
-  const { file, cwd, byId } = props;
+  const { file, cwd, strip, byId } = props;
   const [open, setOpen] = useState(false);
   return (
     <li className={open ? "file-row open" : "file-row"}>
@@ -197,7 +208,7 @@ function FileRow(props: {
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        <PathText path={file.path} cwd={cwd} />
+        <PathText path={file.path} cwd={cwd} strip={strip} />
         <span className={file.added ? "pd-add" : "pd-add zero"}>
           +{file.added}
         </span>
@@ -205,8 +216,7 @@ function FileRow(props: {
           {MINUS}
           {file.removed}
         </span>
-        <span className="pd-tag">{file.isNew ? "new" : "edited"}</span>
-        {file.role && <span className="muted">{file.role}</span>}
+        {file.isNew && <span className="pd-tag">new</span>}
       </button>
       {open && <DiffView hunks={hunksOf(file, byId)} />}
     </li>
@@ -232,9 +242,23 @@ function PartBody(props: {
   const problem = request.phases
     .flatMap((p) => p.tasks)
     .find((t) => t.part === part.id && t.problem)?.problem;
-  const [label, tone]: [string, Tone] =
-    part.failures >= 3 ? ["Stuck", "bad"] : STATUS[part.status];
   const helpers = partAgents(request, part);
+  const judged = new Map(
+    helperLanes(part, helpers, events).map((l) => {
+      const tone = l.runs.at(-1)?.tone;
+      return [l.a.id, tone === "good" ? ("done" as const) : tone];
+    }),
+  );
+  const rounds = fixRounds(part, helpers);
+  const [label, tone]: [string, Tone] =
+    part.failures >= 3
+      ? ["Stuck", "bad"]
+      : part.status === "done" && rounds
+        ? [`Done after ${roundsWord(rounds)}`, "done"]
+        : STATUS[part.status];
+  const tasks = request.phases.flatMap((p) => p.tasks);
+  const task = tasks.find((t) => t.part === part.id);
+  const phase = request.phases.find((p) => task && p.tasks.includes(task));
   const number = (a: AgentView) => request.agents.indexOf(a) + 1;
   const reports = helpers.flatMap((a) => (a.report ? [a.report] : []));
 
@@ -253,13 +277,14 @@ function PartBody(props: {
         ? clock(from)
         : `${clock(from)} to ${clock(to)}`
       : "";
-  const rounds = fixRounds(part, helpers);
   const commits = commitsIn(reports.map((r) => r.text));
+  const added = part.files.reduce((n, f) => n + f.added, 0);
+  const removed = part.files.reduce((n, f) => n + f.removed, 0);
   const facts: ReactNode[] = [
     ...(span
       ? [
-          <span key="t" className="fact">
-            {span}
+          <span key="t" className="fact num">
+            <b>{span}</b>
           </span>,
         ]
       : []),
@@ -274,6 +299,18 @@ function PartBody(props: {
       ? [
           <span key="f" className="fact">
             <b>{rounds}</b> {plural(rounds, "fix round")}
+          </span>,
+        ]
+      : []),
+    ...(part.files.length
+      ? [
+          <span key="files" className="fact num">
+            <b>{part.files.length}</b> {plural(part.files.length, "file")},{" "}
+            <b className="pd-add">+{added}</b>{" "}
+            <b className="pd-del">
+              {MINUS}
+              {removed}
+            </b>
           </span>,
         ]
       : []),
@@ -337,7 +374,7 @@ function PartBody(props: {
         n={n}
         step={{
           ts: a.startedAt,
-          text: `Agent ${number(a)}${a.description ? ` · ${a.description}` : ""}`,
+          text: helperTitle(a, number(a)),
           status: a.status === "running" ? "running" : "done",
           agentId: a.id,
           eventIds: call ? [call.id] : [],
@@ -350,65 +387,113 @@ function PartBody(props: {
         fallback={a.brief}
         label={label}
         lead={lead}
+        result={judged.get(a.id)}
       />
     );
   };
 
+  const shared = sharedFolder(
+    part.files.map((f) => f.path),
+    cwd,
+  );
+  const groups = fileGroups(part.files);
+  const timeline = helpers.length > 0;
+  const recapped =
+    request.recap && (part.steps.length > 0 || others.length > 0);
+  const how = recapped || part.steps.length > 0;
+  const margin =
+    concerns.length > 0 ||
+    assumed.length > 0 ||
+    part.checks.length > 0 ||
+    part.words.length > 0 ||
+    !!part.io;
+
   return (
-    <main className="pd">
-      <div className="pd-bar">
-        <nav className="pd-crumb" aria-label="Breadcrumb">
-          <a
-            href={base}
-            onClick={(e) => {
-              e.preventDefault();
-              onBack();
-            }}
-          >
-            {request.goal || request.prompt}
-          </a>
-          <span aria-hidden="true"> › </span>
-          <span>{part.title}</span>
-        </nav>
-        <button type="button" className="link pd-back" onClick={onBack}>
-          ‹ Back to the request
-        </button>
-      </div>
-      <header className="pd-head">
+    <div className="pd">
+      <nav className="crumb" aria-label="Breadcrumb">
+        <a
+          href={base}
+          title={request.goal || request.prompt}
+          onClick={(e) => {
+            e.preventDefault();
+            onBack();
+          }}
+        >
+          {crumbGoal(request.goal || request.prompt)}
+        </a>
+        {phase && (
+          <>
+            <span className="sep" aria-hidden="true">
+              /
+            </span>
+            <span>{phase.title}</span>
+          </>
+        )}
+        {task && (
+          <>
+            <span className="sep" aria-hidden="true">
+              /
+            </span>
+            <span>Task {tasks.indexOf(task) + 1}</span>
+          </>
+        )}
+      </nav>
+      <header className="tt">
         <h1 className="pd-title">
-          {part.title}
+          {shortTitle(part.title)}
           <PlanSource request={request} />
         </h1>
-        <Pill tone={tone}>{label}</Pill>
+        <span className={`verdict ${tone}`}>
+          <Glyph
+            status={
+              tone === "bad"
+                ? "failed"
+                : tone === "plain"
+                  ? "todo"
+                  : part.status
+            }
+          />
+          {label}
+        </span>
         {problem && <Pill tone="bad">{problem}</Pill>}
       </header>
+      {purpose && (
+        <section className="deck" aria-label="What it was for">
+          <p className="deck-text">
+            {inline(purpose.text)}{" "}
+            <span className="source">{purpose.source}</span>
+          </p>
+          {purpose.doneWhen && (
+            <p className="done-when">
+              <span className="lbl-inline">Done when</span> {purpose.doneWhen}
+            </p>
+          )}
+        </section>
+      )}
       {facts.length > 0 && (
         // biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the facts
-        <div className="band" role="group" aria-label="Summary">
+        <div className="facts" role="group" aria-label="Summary">
           {facts}
         </div>
       )}
       {!described && (
         <p className="muted">Claude has not described this part yet.</p>
       )}
-      <div className="pd-cols">
-        <div className="pd-main">
-          {purpose && (
-            <Section name="What it was for" className="purpose">
-              <p className="purpose-text">
-                {inline(purpose.text)}{" "}
-                <span className="source">{purpose.source}</span>
-              </p>
-              {purpose.doneWhen && (
-                <p className="done-when">
-                  <span className="lbl-inline">Done when</span>{" "}
-                  {purpose.doneWhen}
-                </p>
-              )}
-            </Section>
-          )}
-          {request.recap && (part.steps.length > 0 || others.length > 0) ? (
-            <Section name="How it went">
+      {timeline && (
+        <div className="how">
+          <h2 className="hh">How it went</h2>
+          <Timeline
+            request={request}
+            part={part}
+            helpers={helpers}
+            events={events}
+          />
+        </div>
+      )}
+      <div className={margin ? "split" : "split solo"}>
+        <div className="split-main">
+          {recapped ? (
+            <Section name="How it went" bare={timeline}>
               <ol className="steps">
                 {recapRounds(part.steps, others).map(({ step, helper }, i) =>
                   helper ? (
@@ -432,8 +517,8 @@ function PartBody(props: {
             </Section>
           ) : (
             <>
-              {part.steps.length > 0 && (
-                <Section name="How it went">
+              {how && (
+                <Section name="How it went" bare={timeline}>
                   <ol className="steps">
                     {part.steps.map((s, i) => (
                       <StepCard
@@ -443,6 +528,7 @@ function PartBody(props: {
                         step={s}
                         request={request}
                         agent={helpers.find((a) => a.id === s.agentId)}
+                        result={s.agentId ? judged.get(s.agentId) : undefined}
                         events={events}
                         byId={byId}
                         cwd={cwd}
@@ -466,158 +552,190 @@ function PartBody(props: {
               )}
             </>
           )}
-          {part.files.length > 0 && (
-            <Section name="Files changed" count={part.files.length}>
-              <FileList
-                files={part.files}
-                events={events}
-                className="pd-files"
-                row={(f) => (
-                  <FileRow key={f.path} file={f} cwd={cwd} byId={byId} />
-                )}
-              />
-            </Section>
-          )}
           {chosen.length > 0 && (
             <Section name="Choices it made">
-              <ul className="pd-list">
+              <ul className="mn-list">
                 {chosen.map((c, i) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: Claude may repeat a choice
-                  <li key={i}>
-                    <b>{c.choice}</b> <span className="muted">{c.reason}</span>
-                  </li>
-                ))}
-              </ul>
-            </Section>
-          )}
-        </div>
-        <aside className="pd-side">
-          {(concerns.length > 0 || assumed.length > 0) && (
-            <Section name="Left open">
-              <ul className="open-list">
-                {concerns.map((c) => (
-                  <li key={`c:${c}`}>{inline(c)}</li>
-                ))}
-                {assumed.map((c, i) => (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: Claude may repeat a choice
-                  <li key={`a:${i}`}>
-                    <b>{c.choice}</b> <span className="muted">{c.reason}</span>
-                    <div className="pd-assume">
-                      Claude's assumption. You never said this.
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </Section>
-          )}
-          {part.checks.length > 0 && (
-            <Section name="Checked so far">
-              <ul className="pd-list">
-                {part.checks.map((c) => (
-                  <li key={c.check} className={`pd-check ${c.status}`}>
-                    <span aria-hidden="true">
-                      {c.status === "pass"
-                        ? "✓"
-                        : c.status === "fail"
-                          ? "✕"
-                          : "○"}
-                    </span>{" "}
-                    {c.check}
-                    <span className="sr-only">
-                      {" "}
-                      ({c.status === "untried" ? "not tried yet" : c.status})
+                  <li key={i} className="mn plain">
+                    <span>
+                      <b>{c.choice}</b>{" "}
+                      <span className="muted">{c.reason}</span>
                     </span>
                   </li>
                 ))}
               </ul>
             </Section>
           )}
-          {part.words.length > 0 && (
-            <Section name="Words used here">
-              <ul className="pd-list">
-                {part.words.map((w) => (
-                  <li key={w.term}>
-                    <b>{w.term}</b> <span className="muted">{w.meaning}</span>
-                  </li>
-                ))}
-              </ul>
-            </Section>
-          )}
-          {part.io && (
-            <Section name="What goes in and out">
-              <p>
-                <b>Gets:</b> {part.io.gets}
-              </p>
-              <p>
-                <b>Gives:</b> {part.io.gives}
-              </p>
-            </Section>
-          )}
-          {request.parts.length > 1 && (
-            <Section name="In this request">
-              <ul className="siblings">
-                {request.parts.map((p) => (
-                  <li key={p.id}>
-                    <a
-                      href={`${base}/p/${enc(p.id)}`}
-                      className="sib"
-                      aria-current={p.id === part.id ? "page" : undefined}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        navigate(`${base}/p/${enc(p.id)}`);
-                      }}
-                    >
-                      <span
-                        className={`sdot ${DOT[p.status]}`}
-                        aria-hidden="true"
+        </div>
+        {margin && (
+          <aside className="margin">
+            {(concerns.length > 0 || assumed.length > 0) && (
+              <Section name="Left open" small>
+                <ul className="mn-list">
+                  {concerns.map((c) => (
+                    <li key={`c:${c}`} className="mn">
+                      <Glyph status="todo" />
+                      <span>{inline(c)}</span>
+                    </li>
+                  ))}
+                  {assumed.map((c, i) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: Claude may repeat a choice
+                    <li key={`a:${i}`} className="mn">
+                      <Glyph status="todo" />
+                      <span>
+                        <b>{c.choice}</b>{" "}
+                        <span className="muted">{c.reason}</span>
+                        <span className="pd-assume">
+                          Claude's assumption. You never said this.
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            )}
+            {part.checks.length > 0 && (
+              <Section name="Checked" small>
+                <ul className="mn-list">
+                  {part.checks.map((c) => (
+                    <li key={c.check} className={`mn pd-check ${c.status}`}>
+                      <Glyph
+                        status={
+                          c.status === "pass"
+                            ? "done"
+                            : c.status === "fail"
+                              ? "failed"
+                              : "todo"
+                        }
                       />
-                      <span className="sib-title">{p.title}</span>
-                    </a>
+                      <span>
+                        {c.check}
+                        <span className="sr-only">
+                          {" "}
+                          ({c.status === "untried" ? "not tried yet" : c.status}
+                          )
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            )}
+            {part.words.length > 0 && (
+              <Section name="Words used here" small>
+                <ul className="mn-list">
+                  {part.words.map((w) => (
+                    <li key={w.term} className="mn plain">
+                      <span>
+                        <b>{w.term}</b>{" "}
+                        <span className="muted">{w.meaning}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            )}
+            {part.io && (
+              <Section name="What goes in and out" small>
+                <ul className="mn-list">
+                  <li className="mn plain">
+                    <span>
+                      <b>Gets:</b> {part.io.gets}
+                    </span>
                   </li>
-                ))}
-              </ul>
-            </Section>
-          )}
-        </aside>
+                  <li className="mn plain">
+                    <span>
+                      <b>Gives:</b> {part.io.gives}
+                    </span>
+                  </li>
+                </ul>
+              </Section>
+            )}
+          </aside>
+        )}
       </div>
-    </main>
+      {part.files.length > 0 && (
+        <Section
+          name="Files, by what they do"
+          count={part.files.length}
+          note={shared ? `in ${shared}` : undefined}
+          className="files"
+        >
+          <div className="fgrid">
+            {groups.map((g) => (
+              <div key={g.title} className="fcard">
+                <h3>{g.title}</h3>
+                {g.why && <p className="why">{g.why}</p>}
+                <FileList
+                  files={g.files}
+                  events={events}
+                  className="pd-files"
+                  row={(f) => (
+                    <FileRow
+                      key={f.path}
+                      file={f}
+                      cwd={cwd}
+                      strip={shared}
+                      byId={byId}
+                    />
+                  )}
+                />
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+    </div>
   );
 }
 
-/** Route wrapper: loads the session, finds the part, falls back politely. */
-export function PartPage(props: {
-  sessionId: string;
-  requestId: string;
-  partId: string;
-}) {
-  const { sessionId, requestId, partId } = props;
-  const { view, events, status } = useSession(sessionId);
-  if (!view) return <LiveSkeleton status={status} />;
-  const found = view.requests
-    .find((r) => r.id === requestId)
-    ?.parts.some((p) => p.id === partId);
-  // The first pages may not reach this part yet: wait instead of saying it is missing.
-  if (!found && status === "loading") return <LiveSkeleton status={status} />;
-  const back = () => navigate(`/s/${enc(sessionId)}/r/${enc(requestId)}`);
-  const request = view.requests.find((r) => r.id === requestId);
-  const part = request?.parts.find((p) => p.id === partId);
-  if (!request || !part)
-    return (
-      <main className="pd">
-        <p>This part is not in the map yet.</p>
-        <button type="button" className="link" onClick={back}>
-          ‹ Back to the request
-        </button>
-      </main>
-    );
-  return (
-    <PartDetail
-      sessionId={sessionId}
-      cwd={view.cwd}
-      request={request}
-      part={part}
-      events={events}
-      onBack={back}
-    />
-  );
+const TEST = /(?:^|\/)(?:__tests__|tests?|spec)\/|\.(?:test|spec)\.[a-z]+$/i;
+
+/** Files grouped by what they do: one card per role, tests on their own, the rest last. */
+function fileGroups(files: FileTouch[]) {
+  const groups = new Map<string, FileTouch[]>();
+  const add = (k: string, f: FileTouch) =>
+    groups.set(k, [...(groups.get(k) ?? []), f]);
+  const tests: FileTouch[] = [];
+  const rest: FileTouch[] = [];
+  for (const f of files)
+    if (TEST.test(f.path)) tests.push(f);
+    else if (f.role) add(f.role, f);
+    else rest.push(f);
+  const fresh = (fs: FileTouch[]) =>
+    fs.every((f) => f.isNew) ? (fs.length > 1 ? "All new" : "New") : undefined;
+  return [
+    ...[...groups].map(([title, fs]) => ({ title, files: fs, why: undefined })),
+    ...(tests.length
+      ? [{ title: "Tests", files: tests, why: fresh(tests) }]
+      : []),
+    ...(rest.length
+      ? [
+          {
+            title: groups.size || tests.length ? "Other files" : "Files",
+            files: rest,
+            why: undefined,
+          },
+        ]
+      : []),
+  ];
+}
+
+/** The request's goal, short enough for a breadcrumb: its first clause, cut at a word. */
+function crumbGoal(goal: string): string {
+  const first = goal.split(/,\s|\s\(|\s-\s|:\s/)[0] ?? goal;
+  if (first.length <= 48) return first;
+  const head = first.slice(0, 48);
+  return `${head.slice(0, head.lastIndexOf(" "))}…`;
+}
+
+const DID = { build: "Built", review: "Reviewed", recheck: "Rechecked" };
+
+/** "Built by Agent 1" when the helper's job is known, else its number and description. */
+function helperTitle(a: AgentView, k: number): string {
+  const kind = helperKind(a);
+  if (kind)
+    return `${/^fix\b/i.test(a.description) && kind === "build" ? "Fixed" : DID[kind]} by Agent ${k}`;
+  return `Agent ${k}${a.description ? ` · ${a.description}` : ""}`;
 }

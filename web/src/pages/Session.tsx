@@ -1,21 +1,36 @@
-import { catchUp, type MurmurEvent, type SessionView } from "@murmur/core";
+import type { MurmurEvent, RequestView, SessionView } from "@murmur/core";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { ApiError, api } from "../api";
+import { ApiError, api, type Me } from "../api";
+import { catchUpBrief } from "../catchup";
+import { FileList, PathText } from "../files";
 import { useLastLooked } from "../lastLooked";
 import { Assumptions } from "../live/Assumptions";
-import { Notices } from "../live/Notices";
-import { NowCard } from "../live/NowCard";
-import { PhaseStrip } from "../live/PhaseStrip";
-import { PlanPanel } from "../live/PlanPanel";
-import { RequestList } from "../live/RequestList";
-import { RequestHead, type RequestStatus, Story } from "../live/Story";
+import { BriefBlock } from "../live/Brief";
+import { PlanColumn } from "../live/PlanColumn";
+import { Story, storyPhases } from "../live/Story";
+import { TopBar } from "../live/TopBar";
 import { MapView } from "../map/MapView";
+import { PartDetail } from "../part/PartDetail";
 import { navigate } from "../router";
+import {
+  livePhase,
+  type RequestState,
+  requestState,
+  type Waiting,
+  waitingOn,
+} from "../session";
+import { clock, sentBack } from "../story";
 import { type SessionStatus, useSession } from "../useSession";
+
+const enc = encodeURIComponent;
+const MINUS = "−";
 
 export function SessionPage(props: {
   sessionId: string;
   requestId?: string | undefined;
+  partId?: string | undefined;
+  me?: Me;
+  onSignOut?(): void;
 }) {
   const { view, viewAt, status, events } = useSession(props.sessionId);
   const lastLooked = useLastLooked(props.sessionId);
@@ -30,8 +45,6 @@ export function SessionPage(props: {
     />
   );
 }
-
-const enc = encodeURIComponent;
 
 function StatusLine(props: { status: SessionStatus; ended?: boolean }) {
   const { status, ended } = props;
@@ -104,41 +117,90 @@ function DeleteSession({ sessionId }: { sessionId: string }) {
   );
 }
 
-function Skeleton() {
+/** The plan column's foot: the connection, who is signed in, and the session's actions. */
+function Footer(props: {
+  sessionId: string;
+  status: SessionStatus;
+  ended?: boolean;
+  me?: Me | undefined;
+  onSignOut?: (() => void) | undefined;
+}) {
+  const { sessionId, status, ended, me, onSignOut } = props;
   return (
-    <div className="skeleton" aria-hidden="true">
-      <div className="notice-row" />
-      <div className="sk sk-strip" />
-      <div className="sk-grid">
-        <div className="sk sk-now" />
-        <div className="sk sk-plan" />
-        <div className="sk sk-map" />
-      </div>
+    <div className="spine-foot">
+      <StatusLine status={status} {...(ended ? { ended } : {})} />
+      {me && (
+        <span className="user">
+          {me.avatarUrl && <img src={me.avatarUrl} alt="" />}
+          {me.login}
+        </span>
+      )}
+      <nav aria-label="Account">
+        <a
+          href="/settings"
+          onClick={(e) => {
+            e.preventDefault();
+            navigate("/settings");
+          }}
+        >
+          Settings
+        </a>
+        {onSignOut && (
+          <button type="button" className="link" onClick={onSignOut}>
+            Sign out
+          </button>
+        )}
+      </nav>
+      <DeleteSession sessionId={sessionId} />
     </div>
   );
 }
 
-/** The live screen before anything has loaded, also shown while /api/me loads. */
-export function LiveSkeleton({ status }: { status?: SessionStatus }) {
+function Skeleton() {
   return (
-    <main className="live-page">
-      {status !== "error" && (
-        <div className="sk-requests" aria-hidden="true">
-          <div className="sk sk-req" />
-          <div className="sk sk-req" />
+    <div className="skeleton" aria-hidden="true">
+      <div className="sk sk-title" />
+      <div className="sk sk-facts" />
+      <div className="sk sk-brief" />
+      <div className="sk sk-line" />
+      <div className="sk sk-line" />
+    </div>
+  );
+}
+
+/** The frame before anything has loaded, also shown while /api/me loads. */
+export function LiveSkeleton(props: { status?: SessionStatus; note?: string }) {
+  const { status, note } = props;
+  return (
+    <div className="frame">
+      <header className="bar">
+        <div className="bar-brand">
+          <span className="brand">
+            <i aria-hidden="true" />
+            Murmur
+          </span>
         </div>
-      )}
-      <div className="live-main">
-        {/* Same rows as the loaded screen, so nothing jumps when data lands. */}
-        <div className="live-top">
-          {status !== "error" && (
-            <div className="sk sk-title" aria-hidden="true" />
-          )}
-          {status && <StatusLine status={status} />}
-        </div>
-        {status !== "error" && <Skeleton />}
-      </div>
-    </main>
+        {note && (
+          <span className="cell muted" role="status">
+            {note}
+          </span>
+        )}
+      </header>
+      <aside className="spine" aria-hidden={status === "error" || undefined}>
+        {status !== "error" && (
+          <div className="sk-spine" aria-hidden="true">
+            <div className="sk sk-ph" />
+            <div className="sk sk-ph" />
+          </div>
+        )}
+        {status && (
+          <div className="spine-foot">
+            <StatusLine status={status} />
+          </div>
+        )}
+      </aside>
+      <main className="main">{status !== "error" && <Skeleton />}</main>
+    </div>
   );
 }
 
@@ -146,166 +208,257 @@ export function LiveSkeleton({ status }: { status?: SessionStatus }) {
 export function Live(props: {
   sessionId: string;
   requestId?: string | undefined;
+  /** A task's page inside the same frame. */
+  partId?: string | undefined;
   view: SessionView | null;
   viewAt(ts: string): SessionView | null;
   events?: MurmurEvent[];
   status: SessionStatus;
   lastLooked: string | null;
+  me?: Me | undefined;
+  onSignOut?: (() => void) | undefined;
 }) {
   const { sessionId, view, viewAt, events = [], status, lastLooked } = props;
-  // Relative times ("14 min ago") move on even when no events arrive.
+  const { partId, me, onSignOut } = props;
+  // Relative times ("14 m ago") move on even when no events arrive.
   const [, tick] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
     const t = setInterval(tick, 30_000);
     return () => clearInterval(t);
   }, []);
+  const [hoverPart, setHoverPart] = useState<string>();
 
   if (!view) return <LiveSkeleton status={status} />;
-
   const wanted = view.requests.find((r) => r.id === props.requestId);
   // A deep link to a request the first pages have not reached yet waits for it.
   if (props.requestId && !wanted && status === "loading")
     return <LiveSkeleton status={status} />;
   const req = wanted ?? view.requests.at(-1);
+  const part = partId ? req?.parts.find((p) => p.id === partId) : undefined;
+  // Nor does a task page wait-free: its part may be on a later page.
+  if (partId && !part && status === "loading")
+    return <LiveSkeleton status={status} />;
+
+  const waiting = req ? waitingOn(view, req, events) : null;
+  const { state, end } = req
+    ? requestState(view, req, events, waiting)
+    : { state: "running" as RequestState, end: view.lastEventAt };
+  const done = state === "done";
+  const base = req ? `/s/${enc(sessionId)}/r/${enc(req.id)}` : "";
+  const open = (p: string) => navigate(`${base}/p/${enc(p)}`);
+  const live = req ? livePhase(req, done) : undefined;
+  const storied =
+    req && !partId
+      ? new Set(storyPhases(req).map((g) => g.phase.id))
+      : undefined;
+  const footer = (
+    <Footer
+      sessionId={sessionId}
+      status={status}
+      ended={view.ended}
+      me={me}
+      onSignOut={onSignOut}
+    />
+  );
+
   return (
-    <main className="live-page">
-      {req && (
-        <RequestList
-          requests={view.requests}
-          selectedId={req.id}
-          onSelect={(id) => navigate(`/s/${enc(sessionId)}/r/${enc(id)}`)}
+    <div className="frame">
+      <TopBar
+        sessionId={sessionId}
+        view={view}
+        request={req}
+        state={state}
+        waiting={waiting}
+        events={events}
+        onTaskPage={!!partId}
+      />
+      {req ? (
+        <PlanColumn
+          request={req}
+          done={done}
+          end={end}
+          events={events}
+          partId={partId}
+          {...(storied ? { storyPhases: storied } : {})}
+          onOpen={open}
+          onHover={setHoverPart}
+          footer={footer}
         />
+      ) : (
+        <aside className="spine" aria-label="Plan">
+          {footer}
+        </aside>
       )}
-      <div className="live-main">
-        <div className="live-top">
-          <h1 className="live-title">
-            {req?.goal || req?.prompt || view.title}
-          </h1>
-          <StatusLine status={status} ended={view.ended} />
-          <DeleteSession sessionId={sessionId} />
-        </div>
-        {req ? (
-          <RequestScreen
+      <main className="main">
+        {!req ? (
+          <p className="muted">Waiting for the first prompt in this session.</p>
+        ) : partId ? (
+          part ? (
+            <PartDetail
+              sessionId={sessionId}
+              cwd={view.cwd}
+              request={req}
+              part={part}
+              events={events}
+              onBack={() => navigate(base)}
+            />
+          ) : (
+            <>
+              <p>This part is not in the map yet.</p>
+              <button
+                type="button"
+                className="link"
+                onClick={() => navigate(base)}
+              >
+                ‹ Back to the request
+              </button>
+            </>
+          )
+        ) : (
+          <RequestMain
             key={req.id}
             sessionId={sessionId}
             view={view}
             viewAt={viewAt}
             events={events}
             lastLooked={lastLooked}
-            requestId={req.id}
+            status={status}
+            request={req}
+            waiting={waiting}
+            live={live}
+            hoverPart={hoverPart}
+            onOpenPart={open}
           />
-        ) : (
-          <p className="muted">Waiting for the first prompt in this session.</p>
         )}
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
 
-function RequestScreen(props: {
+const n_ = (n: number, one: string, many = `${one}s`) =>
+  n ? [`${n} ${n === 1 ? one : many}`] : [];
+
+function RequestMain(props: {
   sessionId: string;
   view: SessionView;
   viewAt(ts: string): SessionView | null;
   events: MurmurEvent[];
   lastLooked: string | null;
-  requestId: string;
+  request: RequestView;
+  waiting: Waiting | null;
+  live: ReturnType<typeof livePhase>;
+  hoverPart: string | undefined;
+  status: SessionStatus;
+  onOpenPart(partId: string): void;
 }) {
-  const { sessionId, view, viewAt, events, lastLooked, requestId } = props;
-  const req = view.requests.find((r) => r.id === requestId);
-  const [phaseId, setPhaseId] = useState<string>();
-  const [partId, setPartId] = useState<string>();
+  const { sessionId, view, viewAt, events, lastLooked, request: req } = props;
+  const { status } = props;
+  const { waiting, live, hoverPart, onOpenPart } = props;
+  const hasStory = (req.messages?.length ?? 0) > 0;
+  const [mode, setMode] = useState<"story" | "map">("story");
   const before = lastLooked ? viewAt(lastLooked) : null;
-  const since = useMemo(
-    () => (before ? catchUp(before, view, requestId) : null),
-    [before, view, requestId],
+  // Read once the stream is live and kept still after, so new work never moves the
+  // story under the reader; it is read again when they come back (a new last look).
+  const ready = status === "live";
+  // biome-ignore lint/correctness/useExhaustiveDependencies: frozen on purpose, see above
+  const brief = useMemo(
+    () =>
+      ready ? catchUpBrief(before, view, req.id, lastLooked, waiting) : null,
+    [ready, lastLooked],
   );
-  if (!req) return null;
-  const open = (part: string) =>
-    navigate(`/s/${enc(sessionId)}/r/${enc(req.id)}/p/${enc(part)}`);
-  const k = view.requests.indexOf(req);
-  const next = view.requests[k + 1];
-  // The request's last activity: its last event before the next prompt.
-  const last = events.findLast(
-    (e) => e.ts >= req.startedAt && (!next || e.ts < next.startedAt),
-  );
-  const end = last?.ts ?? next?.startedAt ?? view.lastEventAt;
-  // Claude ended its turn and no helper is still at work: done, until a new prompt.
-  const stopped =
-    last?.hook === "Stop" && !req.agents.some((a) => a.status === "running");
-  const done = req.finished || view.ended || stopped;
-  const state: RequestStatus = done
-    ? "done"
-    : view.needsYou && !next
-      ? "needs"
-      : "running";
-  const story = (req.messages?.length ?? 0) > 1;
-  const plan = (
-    <PlanPanel
-      request={req}
-      hoverPart={partId}
-      onHover={setPartId}
-      onOpen={open}
-    />
-  );
-  const map = (
-    <section className="map-panel" aria-label="Map">
-      <h2 className="lbl">How it ties together</h2>
-      <div className="map-box">
-        <MapView
-          request={req}
-          highlight={{
-            ...(partId ? { partId } : {}),
-            ...(phaseId ? { phaseId } : {}),
-          }}
-          onOpenPart={open}
-        />
-      </div>
-    </section>
-  );
-  const assumptions = (
-    <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
-  );
-
+  const tasks = req.phases.flatMap((p) => p.tasks).length;
+  const back = sentBack(req);
+  const facts = [
+    ...n_(tasks, "task"),
+    ...n_(req.tally.helpers, "helper"),
+    ...n_(back, "sent back after review", "sent back after review"),
+  ];
+  const showMap = !hasStory || mode === "map";
   return (
     <>
-      <RequestHead request={req} status={state} end={end}>
-        <Notices
-          needsYou={view.needsYou}
-          flags={req.flags}
-          parts={req.parts}
-          catchUp={since}
-          since={lastLooked}
-          needsSaid={state === "needs"}
-        />
-      </RequestHead>
-      <PhaseStrip
-        finished={req.finished}
-        phases={req.phases}
-        inferred={req.planInferred}
-        selected={phaseId}
-        onSelect={setPhaseId}
-      />
-      {story ? (
-        <>
-          <div className="story-grid">
-            <Story request={req} onOpenPart={open} />
-            <aside className="story-side">
-              {!done && (
-                <NowCard request={req} cwd={view.cwd} events={events} />
-              )}
-              {plan}
-              {assumptions}
-            </aside>
-          </div>
-          {map}
-        </>
-      ) : (
-        <div className="live-grid">
-          <NowCard request={req} cwd={view.cwd} events={events} />
-          {plan}
-          {map}
-          {assumptions}
+      <h1 className="ask live-title" title={req.prompt}>
+        {req.goal || req.prompt}
+      </h1>
+      <div className="asked-row">
+        {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the facts */}
+        <div className="asked" role="group" aria-label="Summary">
+          <span className="num">
+            Asked at <b>{clock(req.startedAt)}</b>
+          </span>
+          {facts.map((f) => {
+            const [n, ...rest] = f.split(" ");
+            return (
+              <span key={f}>
+                <b>{n}</b> {rest.join(" ")}
+              </span>
+            );
+          })}
         </div>
+        {hasStory && (
+          // biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around two buttons
+          <div className="view-toggle" role="group" aria-label="View">
+            {(["story", "map"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={mode === m}
+                onClick={() => setMode(m)}
+              >
+                {m === "story" ? "Story" : "Map"}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <BriefBlock
+        brief={brief}
+        since={lastLooked}
+        waiting={waiting}
+        flags={req.flags}
+      />
+      <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
+      {showMap ? (
+        <section className="map-panel" aria-label="Map">
+          <div className="sect">
+            <h2>How it ties together</h2>
+          </div>
+          <div className="map-box">
+            <MapView
+              request={req}
+              highlight={hoverPart ? { partId: hoverPart } : {}}
+              onOpenPart={onOpenPart}
+            />
+          </div>
+        </section>
+      ) : (
+        <Story request={req} live={live} onOpenPart={onOpenPart} />
+      )}
+      {req.looseFiles.length > 0 && (
+        <section className="loose" aria-label="Files touched">
+          <div className="sect">
+            <h2>Files touched</h2>
+            <span>outside any task</span>
+          </div>
+          <FileList
+            files={req.looseFiles}
+            events={events}
+            label="Files touched"
+            className="loose-files"
+            row={(f) => (
+              <li key={f.path}>
+                <PathText path={f.path} cwd={view.cwd} />
+                <span className={f.added ? "pd-add" : "pd-add zero"}>
+                  +{f.added}
+                </span>
+                <span className={f.removed ? "pd-del" : "pd-del zero"}>
+                  {MINUS}
+                  {f.removed}
+                </span>
+                {f.role && <span className="muted">{f.role}</span>}
+              </li>
+            )}
+          />
+        </section>
       )}
     </>
   );

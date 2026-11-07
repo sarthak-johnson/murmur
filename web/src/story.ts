@@ -18,7 +18,7 @@ export const MOMENT: Record<Moment, { label: string; tone: Tone }> = {
   problem: { label: "Problem found", tone: "bad" },
   fixing: { label: "Fixing", tone: "warn" },
   done: { label: "Done", tone: "done" },
-  decision: { label: "Decision", tone: "now" },
+  decision: { label: "Decision", tone: "plain" },
   plan: { label: "Plan changed", tone: "plain" },
 };
 

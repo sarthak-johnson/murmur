@@ -3,10 +3,19 @@ import { Fragment, type ReactNode, useState } from "react";
 
 const SHOWN = 8;
 
-/** A path as a person reads it; the full path is its title. Breaks only after a `/`. */
-export function PathText({ path, cwd }: { path: string; cwd: string }) {
+/**
+ * A path as a person reads it; the full path is its title. Breaks only after a `/`.
+ * `strip` drops a folder already named around it (no trailing slash).
+ */
+export function PathText(props: { path: string; cwd: string; strip?: string }) {
+  const { path, cwd, strip } = props;
   const full = path.startsWith("/") || !cwd ? path : `${cwd}/${path}`;
-  const parts = displayPath(path, cwd).split("/");
+  const shown = displayPath(path, cwd);
+  const parts = (
+    strip && shown.startsWith(`${strip}/`)
+      ? shown.slice(strip.length + 1)
+      : shown
+  ).split("/");
   return (
     <span className="pd-path" title={full}>
       {parts.map((p, i) => (
@@ -67,4 +76,13 @@ export function FileList(props: {
       )}
     </>
   );
+}
+
+/** The folder every path shares, as shown (no trailing slash), or "". */
+export function sharedFolder(paths: string[], cwd: string): string {
+  const dirs = paths.map((p) => displayPath(p, cwd).split("/").slice(0, -1));
+  const first = dirs[0] ?? [];
+  let n = 0;
+  while (n < first.length && dirs.every((d) => d[n] === first[n])) n++;
+  return first.slice(0, n).join("/");
 }

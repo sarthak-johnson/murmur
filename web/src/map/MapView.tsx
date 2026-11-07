@@ -231,7 +231,7 @@ export function MapView(props: {
         (1 - t) ** 2 * sx + 2 * (1 - t) * t * cx + t * t * ex,
         (1 - t) ** 2 * sy + 2 * (1 - t) * t * cy + t * t * ey,
       ];
-      const lw = textWidth(l.label, 10.5) + 8;
+      const lw = textWidth(l.label, 12) + 8;
       // On the curve first, then further outside or inside it.
       const spots = [0, 16, -16, 32, -32, 48, -48].flatMap((shift) =>
         [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8].map((t) => {
@@ -454,7 +454,7 @@ function Chips(props: {
       key: id,
       w: CHIP_W,
       text,
-      label: truncate(text, CHIP_W - 16, 10.5),
+      label: truncate(text, CHIP_W - 16, 12),
     };
   });
   if (running.length > 2) {
