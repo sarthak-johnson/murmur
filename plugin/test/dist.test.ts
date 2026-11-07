@@ -19,7 +19,10 @@ let repo: string;
 let env: NodeJS.ProcessEnv;
 let servers: http.Server[] = [];
 beforeEach(() => {
-  home = fs.mkdtempSync(path.join(os.tmpdir(), "murmur-dist-"));
+  // The real path, as Claude Code reports it (macOS /var is /private/var).
+  home = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "murmur-dist-")),
+  );
   repo = path.join(home, "repo");
   fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
   env = {
