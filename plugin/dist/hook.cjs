@@ -19790,7 +19790,20 @@ var MAP_TOOL = "mcp__plugin_murmur_murmur__map";
 var NARRATE_TOOL = "mcp__plugin_murmur_murmur__narrate";
 var text = external_exports.string().max(300);
 var list = (item) => external_exports.array(item).max(20);
-var status = external_exports.enum(["running", "done", "failed"]);
+var STATUS_WORDS = {
+  in_progress: "running",
+  "in-progress": "running",
+  started: "running",
+  working: "running",
+  complete: "done",
+  completed: "done",
+  finished: "done",
+  passed: "done",
+  error: "failed",
+  errored: "failed"
+};
+var said = (v) => typeof v === "string" ? STATUS_WORDS[v.toLowerCase()] ?? v.toLowerCase() : v;
+var status = external_exports.preprocess(said, external_exports.enum(["running", "done", "failed"]));
 var MapInput = external_exports.object({
   kind: external_exports.enum(["feature", "bug", "refactor", "question"]),
   goal: text,
@@ -19827,7 +19840,10 @@ var NarrateInput = external_exports.object({
   part: text.optional(),
   task: text.optional(),
   // Claude says "blocked" on its own when it waits on the user; read it as failed.
-  taskStatus: external_exports.union([status, external_exports.literal("blocked")]).optional(),
+  taskStatus: external_exports.preprocess(
+    (v) => v === "waiting" || v === "on_hold" ? "blocked" : said(v),
+    external_exports.enum(["running", "done", "failed", "blocked"])
+  ).optional(),
   step: external_exports.object({ text, status }).optional(),
   aim: external_exports.object({ aim: text, doneWhen: text }).optional(),
   io: external_exports.object({ gets: text, gives: text }).optional(),
