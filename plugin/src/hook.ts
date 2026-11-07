@@ -1,17 +1,25 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 import {
   HOOK_NAMES,
   type HookName,
+  isNotRequest,
   MAP_TOOL,
   type MurmurEvent,
   NARRATE_TOOL,
   scrubEvent,
 } from "@murmur/core";
-import { backfillStale, runBackfill, stableId } from "./backfill.js";
+import {
+  backfillStale,
+  catchUpText,
+  runBackfill,
+  stableId,
+} from "./backfill.js";
 import { MID_SESSION_LINE } from "./instruction.js";
 import {
   clearProjectPause,
+  isHeadless,
   isNewSession,
   isPaused,
   isRevoked,
@@ -24,6 +32,7 @@ import {
   readSession,
   sessionProjectState,
   setProjectState,
+  skipText,
   updateSession,
   writeSession,
 } from "./local.js";
@@ -48,13 +57,14 @@ const show = (line: string): Result => ({
   event: null,
 });
 
-// docs/hook-facts.md section 6. Other entrypoints (cli, IDE extensions, desktop)
-// are interactive and must upload.
-function isHeadless(env: NodeJS.ProcessEnv): boolean {
-  return (
-    (env.CLAUDE_CODE_ENTRYPOINT ?? "").startsWith("sdk") ||
-    env.CLAUDE_CODE_SESSION_ATTENDED === "0"
-  );
+/** The transcript's size now: where Claude's live text starts. A stat, never a read. */
+function textStart(transcriptPath: unknown): { textOffset: number } | object {
+  if (typeof transcriptPath !== "string" || !transcriptPath) return {};
+  try {
+    return { textOffset: fs.statSync(transcriptPath).size };
+  } catch {
+    return { textOffset: 0 };
+  }
 }
 
 export function handleHook(
@@ -64,17 +74,29 @@ export function handleHook(
 ): Result {
   const hook = payload.hook_event_name;
   const cwd = payload.cwd;
+  // AssistantText is Murmur's own, read from the transcript; no hook sends it.
   if (
     typeof hook !== "string" ||
+    hook === "AssistantText" ||
     !(HOOK_NAMES as readonly string[]).includes(hook)
   )
     return NONE;
-  if (isHeadless(env) && env.MURMUR_ALLOW_HEADLESS !== "1") return NONE;
-  if (typeof cwd !== "string" || !cwd) return NONE;
   const sessionId =
     typeof payload.session_id === "string" && payload.session_id
       ? payload.session_id
       : env.CLAUDE_CODE_SESSION_ID;
+  // Whatever Claude wrote while Murmur sends nothing is never sent later either.
+  const quiet = (r: Result): Result => {
+    if (sessionId) skipText(sessionId, payload.transcript_path);
+    return r;
+  };
+  // The recap's own `claude -p` run never uploads, whatever entry point it inherited.
+  if (
+    env.MURMUR_RECAP_RUN === "1" ||
+    (isHeadless(env) && env.MURMUR_ALLOW_HEADLESS !== "1")
+  )
+    return quiet(NONE);
+  if (typeof cwd !== "string" || !cwd) return NONE;
   const start = hook === "SessionStart";
 
   if (start && payload.source === "startup") {
@@ -83,36 +105,47 @@ export function handleHook(
   }
   const state = sessionProjectState(cwd, sessionId);
   if (state === undefined) {
-    if (!start) return NONE;
+    if (!start) return quiet(NONE);
     setProjectState(cwd, "asked");
-    return show(askLine(cwd));
+    return quiet(show(askLine(cwd)));
   }
   if (state === "off") {
     // A session seen while its project is off is never imported after /murmur:on.
     if (sessionId && isNewSession(sessionId))
       updateSession(sessionId, { backfill: "done" });
-    return NONE;
+    return quiet(NONE);
   }
-  if (state !== "on") return NONE;
+  if (state !== "on") return quiet(NONE);
   const creds = readCredentials();
-  if (!creds) return start ? show(LOGIN_LINE) : NONE;
-  if (isRevoked()) return start ? show(REVOKED_LINE) : NONE;
+  if (!creds) return quiet(start ? show(LOGIN_LINE) : NONE);
+  if (isRevoked()) return quiet(start ? show(REVOKED_LINE) : NONE);
   if (!sessionId) return NONE;
   const fresh = isNewSession(sessionId);
   // First seen while its project is on: from now on the session follows that project,
   // so a cd into a worktree or another folder keeps it on.
   const seen = readSession(sessionId);
   const project = seen.project ?? projectKey(cwd);
-  // A session file that could not be read is rewritten as already imported.
-  if (!seen.project || (!fresh && !seen.backfill))
+  // A session file that could not be read is rewritten as already imported. A seen
+  // session with no transcript on record (first seen while off, or before Murmur read
+  // Claude's text) has its live text start now.
+  const transcript = payload.transcript_path;
+  const noTranscript =
+    !fresh &&
+    !seen.transcriptPath &&
+    typeof transcript === "string" &&
+    !!transcript;
+  if (!seen.project || (!fresh && !seen.backfill) || noTranscript)
     updateSession(sessionId, {
       project,
       ...(fresh ? {} : { backfill: seen.backfill ?? "done" }),
+      ...(noTranscript
+        ? { transcriptPath: transcript, cwd, ...textStart(transcript) }
+        : {}),
     });
   if (isPaused(cwd, sessionId) || isPaused(project)) {
     // What happens while paused is never shown, not even by a later backfill.
     if (fresh) updateSession(sessionId, { backfill: "done" });
-    return NONE;
+    return quiet(NONE);
   }
 
   const ts = now.toISOString();
@@ -135,6 +168,8 @@ export function handleHook(
       updateSession(sessionId, {
         backfill: "pending",
         cutoff: ts,
+        // Whether the last imported request is over: see lastRequestOpen.
+        triggerHook: start ? `SessionStart:${String(payload.source)}` : hook,
         ...(hook === "UserPromptSubmit" && typeof payload.prompt === "string"
           ? { triggerPrompt: payload.prompt }
           : {}),
@@ -142,20 +177,26 @@ export function handleHook(
         cwd,
       });
       backfill = sessionId;
-    } else updateSession(sessionId, { backfill: "done" });
+    } else
+      updateSession(sessionId, {
+        backfill: "done",
+        ...(typeof transcriptPath === "string" && transcriptPath
+          ? { transcriptPath, cwd, ...textStart(transcriptPath) }
+          : {}),
+      });
   } else if (backfillStale(readSession(sessionId), now.getTime())) {
     // Its child died: hand the same cutoff to a new one.
     updateSession(sessionId, { backfill: "pending", runningSince: ts });
     backfill = sessionId;
   }
-  let stdout = trackNarration(sessionId, hook, payload);
+  // A prompt that is not a request (a task notification, /murmur:*) stays part of the
+  // request before, as core reads it: no narration reset, no instruction.
+  const prompt = hook === "UserPromptSubmit" && !isNotRequest(payload.prompt);
+  let stdout = trackNarration(sessionId, hook, payload, prompt);
   // SessionStart injects for every source, so the instruction survives compaction. A
   // session that started before Murmur was on gets it once, with its next prompt, and
   // maps the work already under way.
-  if (
-    start ||
-    (hook === "UserPromptSubmit" && !readSession(sessionId).instructed)
-  ) {
+  if (start || (prompt && !readSession(sessionId).instructed)) {
     updateSession(sessionId, { instructed: true });
     stdout = JSON.stringify({
       hookSpecificOutput: {
@@ -176,8 +217,9 @@ function trackNarration(
   sessionId: string,
   hook: string,
   p: Record<string, unknown>,
+  prompt: boolean,
 ): string {
-  if (hook === "UserPromptSubmit") updateSession(sessionId, NO_NARRATION);
+  if (prompt) updateSession(sessionId, NO_NARRATION);
   const tool = hook === "PostToolUse" ? p.tool_name : undefined;
   if (tool !== MAP_TOOL && tool !== NARRATE_TOOL && hook !== "Stop") return "";
   const n = readSession(sessionId);
@@ -219,7 +261,11 @@ const BACKFILL = process.argv.indexOf("--backfill");
 
 async function main(): Promise<void> {
   const creds = readCredentials();
-  if (process.argv.includes("--flush")) {
+  const flushAt = process.argv.indexOf("--flush");
+  if (flushAt >= 0) {
+    // Claude's text since the last read goes out with the hook's own event.
+    const id = process.argv[flushAt + 1];
+    if (id) catchUpText(id);
     if (creds) await flush(creds);
     return;
   }
@@ -244,7 +290,9 @@ async function main(): Promise<void> {
   // Synchronous hooks never wait on the network: their upload runs in a detached
   // process, as does a backfill, which flushes this event too.
   if (backfill || SYNC_HOOKS.has(event.hook)) {
-    const args = backfill ? ["--backfill", backfill] : ["--flush"];
+    const args = backfill
+      ? ["--backfill", backfill]
+      : ["--flush", event.sessionId];
     spawn(process.execPath, [process.argv[1] as string, ...args], {
       detached: true,
       stdio: "ignore",
@@ -257,11 +305,11 @@ async function main(): Promise<void> {
 const SYNC_HOOKS = new Set(["SessionStart", "Stop", "UserPromptSubmit"]);
 
 // Never block or fail Claude: always exit 0, and within 5 s whatever happens. A
-// backfill runs detached, so it gets a minute.
+// backfill runs detached, so it gets 4 minutes: its uploads and the recap's runs.
 if (/[\\/]hook\.(c?js|ts)$/.test(process.argv[1] ?? "")) {
   const done = () => process.exit(0);
   process.on("uncaughtException", done);
   process.stdout.on("error", () => {});
-  setTimeout(done, BACKFILL >= 0 ? 60_000 : 5000).unref();
+  setTimeout(done, BACKFILL >= 0 ? 240_000 : 5000).unref();
   main().then(done, done);
 }

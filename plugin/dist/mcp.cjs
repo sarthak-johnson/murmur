@@ -36679,7 +36679,9 @@ var HOOK_NAMES = [
   "TaskCreated",
   "TaskCompleted",
   "PreCompact",
-  "PostCompact"
+  "PostCompact",
+  // Not a Claude Code hook: Murmur reads it from the transcript (see AssistantTextPayload).
+  "AssistantText"
 ];
 var MurmurEventSchema = external_exports.object({
   id: external_exports.string(),
@@ -36743,6 +36745,30 @@ var NarrateInput = external_exports.object({
   ).optional(),
   words: list(external_exports.object({ term: text, meaning: text })).optional()
 });
+var RecapInput = external_exports.object({
+  map: MapInput,
+  parts: list(
+    NarrateInput.pick({
+      aim: true,
+      choices: true,
+      checks: true,
+      words: true,
+      files: true
+    }).extend({
+      id: text,
+      steps: list(external_exports.object({ text, status })).optional(),
+      helpers: external_exports.array(text).max(40).optional()
+    })
+  ),
+  tasks: external_exports.array(external_exports.object({ id: text, status, ended: external_exports.string().max(200) })).max(100)
+}).refine(({ map: map2, parts }) => {
+  const ids = new Set(map2.parts.map((p) => p.id));
+  const tasks = map2.phases.flatMap((ph) => ph.tasks);
+  return tasks.every((t) => t.part === void 0 || ids.has(t.part)) && parts.every((p) => ids.has(p.id));
+}, "every part a task or detail names is in the map").refine(({ map: map2, parts, tasks }) => {
+  const once = (ids) => new Set(ids).size === ids.length;
+  return once(map2.parts.map((p) => p.id)) && once(map2.phases.flatMap((ph) => ph.tasks.map((t) => t.id))) && once(parts.map((p) => p.id)) && once(tasks.map((t) => t.id));
+}, "part and task ids are unique");
 
 // ../packages/core/src/scrub.ts
 var MAX_STRING = 262144;

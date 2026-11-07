@@ -1,4 +1,4 @@
-import { catchUp, type SessionView } from "@murmur/core";
+import { catchUp, type MurmurEvent, type SessionView } from "@murmur/core";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ApiError, api } from "../api";
 import { useLastLooked } from "../lastLooked";
@@ -8,6 +8,7 @@ import { NowCard } from "../live/NowCard";
 import { PhaseStrip } from "../live/PhaseStrip";
 import { PlanPanel } from "../live/PlanPanel";
 import { RequestList } from "../live/RequestList";
+import { RequestHead, type RequestStatus, Story } from "../live/Story";
 import { MapView } from "../map/MapView";
 import { navigate } from "../router";
 import { type SessionStatus, useSession } from "../useSession";
@@ -16,12 +17,13 @@ export function SessionPage(props: {
   sessionId: string;
   requestId?: string | undefined;
 }) {
-  const { view, viewAt, status } = useSession(props.sessionId);
+  const { view, viewAt, status, events } = useSession(props.sessionId);
   const lastLooked = useLastLooked(props.sessionId);
   return (
     <Live
       {...props}
       view={view}
+      events={events}
       viewAt={viewAt}
       status={status}
       lastLooked={lastLooked}
@@ -146,10 +148,11 @@ export function Live(props: {
   requestId?: string | undefined;
   view: SessionView | null;
   viewAt(ts: string): SessionView | null;
+  events?: MurmurEvent[];
   status: SessionStatus;
   lastLooked: string | null;
 }) {
-  const { sessionId, view, viewAt, status, lastLooked } = props;
+  const { sessionId, view, viewAt, events = [], status, lastLooked } = props;
   // Relative times ("14 min ago") move on even when no events arrive.
   const [, tick] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
@@ -159,8 +162,11 @@ export function Live(props: {
 
   if (!view) return <LiveSkeleton status={status} />;
 
-  const req =
-    view.requests.find((r) => r.id === props.requestId) ?? view.requests.at(-1);
+  const wanted = view.requests.find((r) => r.id === props.requestId);
+  // A deep link to a request the first pages have not reached yet waits for it.
+  if (props.requestId && !wanted && status === "loading")
+    return <LiveSkeleton status={status} />;
+  const req = wanted ?? view.requests.at(-1);
   return (
     <main className="live-page">
       {req && (
@@ -184,6 +190,7 @@ export function Live(props: {
             sessionId={sessionId}
             view={view}
             viewAt={viewAt}
+            events={events}
             lastLooked={lastLooked}
             requestId={req.id}
           />
@@ -199,10 +206,11 @@ function RequestScreen(props: {
   sessionId: string;
   view: SessionView;
   viewAt(ts: string): SessionView | null;
+  events: MurmurEvent[];
   lastLooked: string | null;
   requestId: string;
 }) {
-  const { sessionId, view, viewAt, lastLooked, requestId } = props;
+  const { sessionId, view, viewAt, events, lastLooked, requestId } = props;
   const req = view.requests.find((r) => r.id === requestId);
   const [phaseId, setPhaseId] = useState<string>();
   const [partId, setPartId] = useState<string>();
@@ -214,45 +222,91 @@ function RequestScreen(props: {
   if (!req) return null;
   const open = (part: string) =>
     navigate(`/s/${enc(sessionId)}/r/${enc(req.id)}/p/${enc(part)}`);
+  const k = view.requests.indexOf(req);
+  const next = view.requests[k + 1];
+  // The request's last activity: its last event before the next prompt.
+  const last = events.findLast(
+    (e) => e.ts >= req.startedAt && (!next || e.ts < next.startedAt),
+  );
+  const end = last?.ts ?? next?.startedAt ?? view.lastEventAt;
+  // Claude ended its turn and no helper is still at work: done, until a new prompt.
+  const stopped =
+    last?.hook === "Stop" && !req.agents.some((a) => a.status === "running");
+  const done = req.finished || view.ended || stopped;
+  const state: RequestStatus = done
+    ? "done"
+    : view.needsYou && !next
+      ? "needs"
+      : "running";
+  const story = (req.messages?.length ?? 0) > 1;
+  const plan = (
+    <PlanPanel
+      request={req}
+      hoverPart={partId}
+      onHover={setPartId}
+      onOpen={open}
+    />
+  );
+  const map = (
+    <section className="map-panel" aria-label="Map">
+      <h2 className="lbl">How it ties together</h2>
+      <div className="map-box">
+        <MapView
+          request={req}
+          highlight={{
+            ...(partId ? { partId } : {}),
+            ...(phaseId ? { phaseId } : {}),
+          }}
+          onOpenPart={open}
+        />
+      </div>
+    </section>
+  );
+  const assumptions = (
+    <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
+  );
 
   return (
     <>
-      <Notices
-        needsYou={view.needsYou}
-        flags={req.flags}
-        parts={req.parts}
-        catchUp={since}
-        since={lastLooked}
-      />
+      <RequestHead request={req} status={state} end={end}>
+        <Notices
+          needsYou={view.needsYou}
+          flags={req.flags}
+          parts={req.parts}
+          catchUp={since}
+          since={lastLooked}
+          needsSaid={state === "needs"}
+        />
+      </RequestHead>
       <PhaseStrip
+        finished={req.finished}
         phases={req.phases}
         inferred={req.planInferred}
         selected={phaseId}
         onSelect={setPhaseId}
       />
-      <div className="live-grid">
-        <NowCard request={req} />
-        <PlanPanel
-          request={req}
-          hoverPart={partId}
-          onHover={setPartId}
-          onOpen={open}
-        />
-        <section className="map-panel" aria-label="Map">
-          <div className="lbl">How it ties together</div>
-          <div className="map-box">
-            <MapView
-              request={req}
-              highlight={{
-                ...(partId ? { partId } : {}),
-                ...(phaseId ? { phaseId } : {}),
-              }}
-              onOpenPart={open}
-            />
+      {story ? (
+        <>
+          <div className="story-grid">
+            <Story request={req} onOpenPart={open} />
+            <aside className="story-side">
+              {!done && (
+                <NowCard request={req} cwd={view.cwd} events={events} />
+              )}
+              {plan}
+              {assumptions}
+            </aside>
           </div>
-        </section>
-        <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
-      </div>
+          {map}
+        </>
+      ) : (
+        <div className="live-grid">
+          <NowCard request={req} cwd={view.cwd} events={events} />
+          {plan}
+          {map}
+          {assumptions}
+        </div>
+      )}
     </>
   );
 }

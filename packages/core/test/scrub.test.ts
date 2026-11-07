@@ -1,5 +1,10 @@
 import { expect, test } from "vitest";
-import { MAX_STRING, scrubEvent, scrubString } from "../src/index.js";
+import {
+  MAX_STRING,
+  OUTPUT_MAX,
+  scrubEvent,
+  scrubString,
+} from "../src/index.js";
 import { ev } from "./helpers.js";
 
 test("redacts known key formats", () => {
@@ -213,4 +218,113 @@ test.each([
   const t = performance.now();
   scrubString(s);
   expect(performance.now() - t).toBeLessThan(200);
+});
+
+test("cuts the results nothing shows to their start; keeps Edit, Write and Agent results whole", () => {
+  const big = "x".repeat(50_000);
+  const post = (tool_name: string, hook = "PostToolUse") => ({
+    ...ev({
+      tool_name,
+      tool_input: { file_path: "/p/a.ts", content: big },
+      tool_response: { file: { content: big }, stdout: big },
+    }),
+    hook,
+  });
+  for (const tool of ["Read", "Bash", "mcp__x__screenshot"]) {
+    const r = scrubEvent(post(tool) as never).payload.tool_response as {
+      file: { content: string };
+      stdout: string;
+    };
+    expect(r.stdout).toBe(
+      `${"x".repeat(OUTPUT_MAX)}…[truncated ${50_000 - OUTPUT_MAX} chars]`,
+    );
+    expect(r.file.content.length).toBeLessThan(OUTPUT_MAX + 40);
+  }
+  expect(
+    (
+      scrubEvent(post("Read", "PostToolUseFailure") as never).payload
+        .tool_response as { stdout: string }
+    ).stdout.length,
+  ).toBeLessThan(OUTPUT_MAX + 40);
+  for (const tool of ["Edit", "Write", "Agent"]) {
+    const p = scrubEvent(post(tool) as never).payload;
+    expect((p.tool_response as { stdout: string }).stdout).toBe(big);
+  }
+  // Inputs stay whole: a Write's content is the code change.
+  expect(
+    (
+      scrubEvent(post("Read") as never).payload.tool_input as {
+        content: string;
+      }
+    ).content,
+  ).toBe(big);
+});
+
+test("a token at the edge of a cut result never shows in part", () => {
+  const token = `ghp_${"A1b2C3d4E5".repeat(4)}`;
+  // Redaction shrinks the head by far more than the 4 KB scan margin.
+  const head = `Authorization: Basic ${"x".repeat(5000)}\n`;
+  // Puts the token across the scan window's edge, 4,096 past the 2,000 shown.
+  for (let pad = 1000; pad < 1100; pad += 3) {
+    const s = `${head}${"z".repeat(pad)}${token} tail ${"y".repeat(20_000)}`;
+    const out = scrubEvent({
+      ...ev({ tool_name: "Bash", tool_response: { stdout: s } }),
+    }).payload.tool_response as { stdout: string };
+    expect(out.stdout).not.toMatch(/ghp_A1b2/);
+  }
+});
+
+test("a live failure's error is cut like a result", () => {
+  const e = {
+    ...ev({ tool_name: "Bash", error: "e".repeat(50_000) }),
+    hook: "PostToolUseFailure" as const,
+  };
+  const err = scrubEvent(e).payload.error as string;
+  expect(err.length).toBeLessThan(OUTPUT_MAX + 40);
+});
+
+test("the cut marker survives a cut inside name=value", () => {
+  const s = `${"a".repeat(OUTPUT_MAX - 8)} token=${"v".repeat(10_000)}`;
+  const out = scrubEvent(
+    ev({ tool_name: "Bash", tool_response: { stdout: s } }),
+  ).payload.tool_response as { stdout: string };
+  expect(out.stdout).toMatch(/…\[truncated \d+ chars\]$/);
+});
+
+test("a Bash result keeps its bashEditDiff whole, secrets still redacted, the rest cut", () => {
+  const lines = Array.from(
+    { length: 400 },
+    (_, i) => `+line ${i} of the stylesheet`,
+  );
+  // A minified line is longer than an unshown result may be.
+  lines.push(`+${"a{b:c}".repeat(1000)}`);
+  lines.push("+API_KEY=abc123secretvalue");
+  const r = scrubEvent(
+    ev({
+      tool_name: "Bash",
+      tool_response: {
+        stdout: "o".repeat(50_000),
+        bashEditDiff: {
+          files: [
+            {
+              filePath: "/p/a.css",
+              hunks: [
+                { oldStart: 0, oldLines: 0, newStart: 1, newLines: 402, lines },
+              ],
+            },
+          ],
+        },
+      },
+    }),
+  ).payload.tool_response as {
+    stdout: string;
+    bashEditDiff: {
+      files: { hunks: { lines: string[]; newLines: number }[] }[];
+    };
+  };
+  const hunk = r.bashEditDiff.files[0]?.hunks[0];
+  expect(hunk?.newLines).toBe(402);
+  expect(hunk?.lines.slice(0, 401)).toEqual(lines.slice(0, 401));
+  expect(hunk?.lines[401]).toBe("+API_KEY=[redacted]");
+  expect(r.stdout.length).toBeLessThan(OUTPUT_MAX + 40);
 });

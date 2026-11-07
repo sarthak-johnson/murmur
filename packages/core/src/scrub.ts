@@ -88,28 +88,72 @@ const isEnvFile = (o: Record<string, unknown>) =>
       /^\.env(\..*)?$/.test(p.split(/[\\/]/).pop() ?? ""),
   );
 
-function walk(v: unknown, env = false): unknown {
+function walk(v: unknown, env = false, max = MAX_STRING): unknown {
   if (typeof v === "string") {
     // Cut first so scrubbing never scans multi-MB strings; N counts the original.
-    const cut = v.length > CUT ? v.slice(0, CUT) : v;
+    const limit = max + CUT - MAX_STRING;
+    let cut = v.length > limit ? v.slice(0, limit) : v;
+    // A token cut in half no longer matches its pattern, and redaction before it can pull
+    // it into the part shown: drop the word the cut split (up to 1 KB of it).
+    if (cut.length < v.length) {
+      let i = cut.length;
+      while (i > 0 && i > cut.length - 1024 && !/\s/.test(cut[i - 1] as string))
+        i--;
+      cut = cut.slice(0, i);
+    }
     const s = scrubString(env ? cut.replace(ANY_ASSIGN, `$1${R}`) : cut);
     // N = original chars never read (tail beyond the cut) + scrubbed chars sliced off.
     // Never negative; the marker shows whenever anything was dropped.
-    const over = Math.max(0, s.length - MAX_STRING);
+    const over = Math.max(0, s.length - max);
     const n = v.length - cut.length + over;
-    return n > 0 ? `${s.slice(0, MAX_STRING)}…[truncated ${n} chars]` : s;
+    return n > 0 ? `${s.slice(0, max)}…[truncated ${n} chars]` : s;
   }
-  if (Array.isArray(v)) return v.map((x) => walk(x, env));
+  if (Array.isArray(v)) return v.map((x) => walk(x, env, max));
   if (v && typeof v === "object") {
     const o = v as Record<string, unknown>;
     const e = env || isEnvFile(o);
     return Object.fromEntries(
-      Object.entries(o).map(([k, x]) => [k, walk(x, e)]),
+      Object.entries(o).map(([k, x]) => [k, walk(x, e, max)]),
     );
   }
   return v;
 }
 
+/** How much of a tool result is sent when the view never shows it (file reads, screenshots). */
+export const OUTPUT_MAX = 2000;
+// The view reads these results: diffs from Edit and Write, the helper's id and report
+// from Agent. A Bash result's `bashEditDiff` is read too, and kept apart.
+const SHOWN_RESULTS = new Set(["Edit", "Write", "Agent"]);
+
+const obj = (v: unknown): Record<string, unknown> =>
+  v && typeof v === "object" && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : {};
+
 export function scrubEvent(e: MurmurEvent): MurmurEvent {
-  return { ...e, payload: walk(e.payload) as Record<string, unknown> };
+  const p = e.payload;
+  if (e.hook !== "PostToolUse" && e.hook !== "PostToolUseFailure")
+    return { ...e, payload: walk(p) as Record<string, unknown> };
+  // Walked apart from the rest, so a cut marker is never scrubbed a second time. A live
+  // failure carries its output in `error`, which no view shows.
+  const { tool_response, error, ...rest } = p;
+  const payload = walk(rest) as Record<string, unknown>;
+  if ("tool_response" in p) {
+    // A Bash result's file diff is shown like an Edit's; the rest of it is not.
+    const { bashEditDiff, ...output } = obj(tool_response);
+    const bash = p.tool_name === "Bash" && bashEditDiff !== undefined;
+    payload.tool_response = walk(
+      bash ? output : tool_response,
+      false,
+      SHOWN_RESULTS.has(String(p.tool_name)) ? MAX_STRING : OUTPUT_MAX,
+    );
+    if (bash)
+      (payload.tool_response as Record<string, unknown>).bashEditDiff = walk(
+        bashEditDiff,
+        false,
+        MAX_STRING,
+      );
+  }
+  if ("error" in p) payload.error = walk(error, false, OUTPUT_MAX);
+  return { ...e, payload };
 }

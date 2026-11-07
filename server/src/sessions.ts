@@ -4,12 +4,7 @@ import type { Context, Hono } from "hono";
 import type { Deps } from "./app.js";
 import { type AppEnv, readBody } from "./auth.js";
 import type { Db } from "./db/client.js";
-import {
-  assumptionDecisions,
-  events,
-  ingestTokens,
-  sessions,
-} from "./db/schema.js";
+import { assumptionDecisions, events, sessions } from "./db/schema.js";
 
 export const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const PAGE = 5000;
@@ -29,12 +24,14 @@ export async function ownSession(db: Db, userId: string, sessionId: string) {
 // Cookie routes: the guard in app.ts has already run requireSameOrigin and requireUser.
 export function sessionRoutes(app: Hono<AppEnv>, { db, now }: Deps) {
   app.get("/api/sessions", async (c) => {
+    // Written out with table names: drizzle renders columns in sql`` unqualified, so
+    // `user_id = user_id` compared the token with itself and named any user's machine.
     const machineName = sql<string | null>`(
-      select ${ingestTokens.machineName} from ${ingestTokens}
-      where ${ingestTokens.userId} = ${sessions.userId}
-        and ${ingestTokens.machineId} = ${sessions.machineId}
-        and ${ingestTokens.revokedAt} is null
-      order by ${ingestTokens.createdAt} desc limit 1)`;
+      select t.machine_name from ingest_tokens t
+      where t.user_id = sessions.user_id
+        and t.machine_id = sessions.machine_id
+        and t.revoked_at is null
+      order by t.created_at desc limit 1)`;
     const rows = await db
       .select({
         sessionId: sessions.sessionId,

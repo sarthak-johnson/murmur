@@ -33,8 +33,9 @@ __export(hook_exports, {
   handleHook: () => handleHook
 });
 module.exports = __toCommonJS(hook_exports);
-var import_node_child_process = require("node:child_process");
+var import_node_child_process2 = require("node:child_process");
 var import_node_crypto2 = require("node:crypto");
+var import_node_fs4 = __toESM(require("node:fs"), 1);
 
 // ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/external.js
 var external_exports = {};
@@ -742,8 +743,8 @@ var Cached = class {
 function cached(getter) {
   return new Cached(getter);
 }
-function nullish(input2) {
-  return input2 === null || input2 === void 0;
+function nullish(input3) {
+  return input3 === null || input3 === void 0;
 }
 function cleanRegex(source) {
   const start = source.startsWith("^") ? 1 : 0;
@@ -781,8 +782,8 @@ function defineLazy(object2, key, getter) {
     configurable: true
   });
 }
-function objectClone(obj2) {
-  return Object.create(Object.getPrototypeOf(obj2), Object.getOwnPropertyDescriptors(obj2));
+function objectClone(obj8) {
+  return Object.create(Object.getPrototypeOf(obj8), Object.getOwnPropertyDescriptors(obj8));
 }
 function assignProp(target, prop, value) {
   Object.defineProperty(target, prop, {
@@ -853,10 +854,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj2, path4) {
+function getElementAtPath(obj8, path4) {
   if (!path4)
-    return obj2;
-  return path4.reduce((acc, key) => acc?.[key], obj2);
+    return obj8;
+  return path4.reduce((acc, key) => acc?.[key], obj8);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -871,17 +872,17 @@ function promiseAllObject(promisesObj) {
 }
 function randomString(length = 10) {
   const chars = "abcdefghijklmnopqrstuvwxyz";
-  let str2 = "";
+  let str7 = "";
   for (let i = 0; i < length; i++) {
-    str2 += chars[Math.floor(Math.random() * chars.length)];
+    str7 += chars[Math.floor(Math.random() * chars.length)];
   }
-  return str2;
+  return str7;
 }
-function esc(str2) {
-  return JSON.stringify(str2);
+function esc(str7) {
+  return JSON.stringify(str7);
 }
-function slugify(input2) {
-  return input2.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
+function slugify(input3) {
+  return input3.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
 }
 var captureStackTrace = "captureStackTrace" in Error ? Error.captureStackTrace : (..._args) => {
 };
@@ -992,8 +993,8 @@ var primitiveTypes = /* @__PURE__ */ new Set([
   "symbol",
   "undefined"
 ]);
-function escapeRegex(str2) {
-  return str2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escapeRegex(str7) {
+  return str7.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function clone(inst, def, params) {
   const cl = new inst._zod.constr(def ?? inst._zod.def);
@@ -1249,33 +1250,33 @@ function finalizeIssue(iss, ctx, config2) {
   }
   return full;
 }
-function getSizableOrigin(input2) {
-  if (input2 instanceof Set)
+function getSizableOrigin(input3) {
+  if (input3 instanceof Set)
     return "set";
-  if (input2 instanceof Map)
+  if (input3 instanceof Map)
     return "map";
-  if (input2 instanceof File)
+  if (input3 instanceof File)
     return "file";
   return "unknown";
 }
 var highSurrogate = /[\uD800-\uDBFF]/;
-function codePointLength(str2) {
-  const units = str2.length;
-  if (!highSurrogate.test(str2))
+function codePointLength(str7) {
+  const units = str7.length;
+  if (!highSurrogate.test(str7))
     return units;
   let count = units;
   for (let i = 0; i < units - 1; i++) {
-    if ((str2.charCodeAt(i) & 64512) === 55296 && (str2.charCodeAt(i + 1) & 64512) === 56320) {
+    if ((str7.charCodeAt(i) & 64512) === 55296 && (str7.charCodeAt(i + 1) & 64512) === 56320) {
       count--;
       i++;
     }
   }
   return count;
 }
-function getLengthableOrigin(input2) {
-  if (Array.isArray(input2))
+function getLengthableOrigin(input3) {
+  if (Array.isArray(input3))
     return "array";
-  if (typeof input2 === "string")
+  if (typeof input3 === "string")
     return "string";
   return "unknown";
 }
@@ -1292,28 +1293,28 @@ function parsedType(data) {
       if (Array.isArray(data)) {
         return "array";
       }
-      const obj2 = data;
-      if (obj2 && Object.getPrototypeOf(obj2) !== Object.prototype && "constructor" in obj2 && obj2.constructor) {
-        return obj2.constructor.name;
+      const obj8 = data;
+      if (obj8 && Object.getPrototypeOf(obj8) !== Object.prototype && "constructor" in obj8 && obj8.constructor) {
+        return obj8.constructor.name;
       }
     }
   }
   return t;
 }
 function issue(...args) {
-  const [iss, input2, inst] = args;
+  const [iss, input3, inst] = args;
   if (typeof iss === "string") {
     return {
       message: iss,
       code: "custom",
-      input: input2,
+      input: input3,
       inst
     };
   }
   return { ...iss };
 }
-function cleanEnum(obj2) {
-  return Object.entries(obj2).filter(([k, _]) => {
+function cleanEnum(obj8) {
+  return Object.entries(obj8).filter(([k, _]) => {
     return Number.isNaN(Number.parseInt(k, 10));
   }).map((el) => el[1]);
 }
@@ -1638,15 +1639,15 @@ var $ZodError = $constructor("$ZodError", initializer);
 var $ZodRealError = $constructor("$ZodError", initializer, void 0, {
   Parent: Error
 });
-function node(obj2, key, make) {
-  if (!Object.prototype.hasOwnProperty.call(obj2, key)) {
+function node(obj8, key, make) {
+  if (!Object.prototype.hasOwnProperty.call(obj8, key)) {
     if (key === "__proto__") {
-      Object.defineProperty(obj2, key, { value: make(), writable: true, enumerable: true, configurable: true });
+      Object.defineProperty(obj8, key, { value: make(), writable: true, enumerable: true, configurable: true });
     } else {
-      obj2[key] = make();
+      obj8[key] = make();
     }
   }
-  return obj2[key];
+  return obj8[key];
 }
 function flattenError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = {};
@@ -1894,18 +1895,18 @@ var validateAsync = async (schema, value, _ctx) => {
   return result.issues.length === 0;
 };
 var _encode = (_Err) => {
-  const parse3 = _parse(_Err);
+  const parse4 = _parse(_Err);
   const fn = (schema, value, _ctx, _params) => {
     const ctx = _ctx ? { ..._ctx, direction: "backward" } : { direction: "backward" };
-    return parse3(schema, value, ctx, finalizeParams(fn, _params));
+    return parse4(schema, value, ctx, finalizeParams(fn, _params));
   };
   return fn;
 };
 var encode = /* @__PURE__ */ _encode($ZodRealError);
 var _decode = (_Err) => {
-  const parse3 = _parse(_Err);
+  const parse4 = _parse(_Err);
   const fn = (schema, value, _ctx, _params) => {
-    return parse3(schema, value, _ctx, finalizeParams(fn, _params));
+    return parse4(schema, value, _ctx, finalizeParams(fn, _params));
   };
   return fn;
 };
@@ -2202,23 +2203,23 @@ var $ZodCheckNumberFormat = /* @__PURE__ */ $constructor("$ZodCheckNumberFormat"
   const origin = isInt ? "int" : "number";
   const [minimum, maximum] = NUMBER_FORMAT_RANGES[def.format];
   inst._zod.check = (payload) => {
-    const input2 = payload.value;
+    const input3 = payload.value;
     if (isInt) {
-      if (!Number.isInteger(input2)) {
+      if (!Number.isInteger(input3)) {
         payload.issues.push({
           expected: origin,
           format: def.format,
           code: "invalid_type",
           continue: false,
-          input: input2,
+          input: input3,
           inst
         });
         return;
       }
-      if (!Number.isSafeInteger(input2)) {
-        if (input2 > 0) {
+      if (!Number.isSafeInteger(input3)) {
+        if (input3 > 0) {
           payload.issues.push({
-            input: input2,
+            input: input3,
             code: "too_big",
             maximum: Number.MAX_SAFE_INTEGER,
             note: "Integers must be within the safe integer range.",
@@ -2229,7 +2230,7 @@ var $ZodCheckNumberFormat = /* @__PURE__ */ $constructor("$ZodCheckNumberFormat"
           });
         } else {
           payload.issues.push({
-            input: input2,
+            input: input3,
             code: "too_small",
             minimum: Number.MIN_SAFE_INTEGER,
             note: "Integers must be within the safe integer range.",
@@ -2242,10 +2243,10 @@ var $ZodCheckNumberFormat = /* @__PURE__ */ $constructor("$ZodCheckNumberFormat"
         return;
       }
     }
-    if (input2 < minimum) {
+    if (input3 < minimum) {
       payload.issues.push({
         origin: "number",
-        input: input2,
+        input: input3,
         code: "too_small",
         minimum,
         inclusive: true,
@@ -2253,10 +2254,10 @@ var $ZodCheckNumberFormat = /* @__PURE__ */ $constructor("$ZodCheckNumberFormat"
         continue: !def.abort
       });
     }
-    if (input2 > maximum) {
+    if (input3 > maximum) {
       payload.issues.push({
         origin: "number",
-        input: input2,
+        input: input3,
         code: "too_big",
         maximum,
         inclusive: true,
@@ -2270,11 +2271,11 @@ var $ZodCheckBigIntFormat = /* @__PURE__ */ $constructor("$ZodCheckBigIntFormat"
   $ZodCheck.init(inst, def);
   const [minimum, maximum] = BIGINT_FORMAT_RANGES[def.format];
   inst._zod.check = (payload) => {
-    const input2 = payload.value;
-    if (input2 < minimum) {
+    const input3 = payload.value;
+    if (input3 < minimum) {
       payload.issues.push({
         origin: "bigint",
-        input: input2,
+        input: input3,
         code: "too_small",
         minimum,
         inclusive: true,
@@ -2282,10 +2283,10 @@ var $ZodCheckBigIntFormat = /* @__PURE__ */ $constructor("$ZodCheckBigIntFormat"
         continue: !def.abort
       });
     }
-    if (input2 > maximum) {
+    if (input3 > maximum) {
       payload.issues.push({
         origin: "bigint",
-        input: input2,
+        input: input3,
         code: "too_big",
         maximum,
         inclusive: true,
@@ -2300,16 +2301,16 @@ var $ZodCheckMaxSize = /* @__PURE__ */ $constructor("$ZodCheckMaxSize", (inst, d
   $ZodCheck.init(inst, def);
   (_a3 = inst._zod.def).when ?? (_a3.when = _whenHasSize);
   inst._zod.check = (payload) => {
-    const input2 = payload.value;
-    const size = input2.size;
+    const input3 = payload.value;
+    const size = input3.size;
     if (size <= def.maximum)
       return;
     payload.issues.push({
-      origin: getSizableOrigin(input2),
+      origin: getSizableOrigin(input3),
       code: "too_big",
       maximum: def.maximum,
       inclusive: true,
-      input: input2,
+      input: input3,
       inst,
       continue: !def.abort
     });
@@ -2320,16 +2321,16 @@ var $ZodCheckMinSize = /* @__PURE__ */ $constructor("$ZodCheckMinSize", (inst, d
   $ZodCheck.init(inst, def);
   (_a3 = inst._zod.def).when ?? (_a3.when = _whenHasSize);
   inst._zod.check = (payload) => {
-    const input2 = payload.value;
-    const size = input2.size;
+    const input3 = payload.value;
+    const size = input3.size;
     if (size >= def.minimum)
       return;
     payload.issues.push({
-      origin: getSizableOrigin(input2),
+      origin: getSizableOrigin(input3),
       code: "too_small",
       minimum: def.minimum,
       inclusive: true,
-      input: input2,
+      input: input3,
       inst,
       continue: !def.abort
     });
@@ -2340,13 +2341,13 @@ var $ZodCheckSizeEquals = /* @__PURE__ */ $constructor("$ZodCheckSizeEquals", (i
   $ZodCheck.init(inst, def);
   (_a3 = inst._zod.def).when ?? (_a3.when = _whenHasSize);
   inst._zod.check = (payload) => {
-    const input2 = payload.value;
-    const size = input2.size;
+    const input3 = payload.value;
+    const size = input3.size;
     if (size === def.size)
       return;
     const tooBig = size > def.size;
     payload.issues.push({
-      origin: getSizableOrigin(input2),
+      origin: getSizableOrigin(input3),
       ...tooBig ? { code: "too_big", maximum: def.size } : { code: "too_small", minimum: def.size },
       inclusive: true,
       exact: true,
@@ -2361,18 +2362,18 @@ var $ZodCheckMaxLength = /* @__PURE__ */ $constructor("$ZodCheckMaxLength", (ins
   $ZodCheck.init(inst, def);
   (_a3 = inst._zod.def).when ?? (_a3.when = _whenHasLength);
   inst._zod.check = (payload) => {
-    const input2 = payload.value;
-    const units = input2.length;
-    const length = typeof input2 === "string" && units > def.maximum ? codePointLength(input2) : units;
+    const input3 = payload.value;
+    const units = input3.length;
+    const length = typeof input3 === "string" && units > def.maximum ? codePointLength(input3) : units;
     if (length <= def.maximum)
       return;
-    const origin = getLengthableOrigin(input2);
+    const origin = getLengthableOrigin(input3);
     payload.issues.push({
       origin,
       code: "too_big",
       maximum: def.maximum,
       inclusive: true,
-      input: input2,
+      input: input3,
       inst,
       continue: !def.abort
     });
@@ -2383,18 +2384,18 @@ var $ZodCheckMinLength = /* @__PURE__ */ $constructor("$ZodCheckMinLength", (ins
   $ZodCheck.init(inst, def);
   (_a3 = inst._zod.def).when ?? (_a3.when = _whenHasLength);
   inst._zod.check = (payload) => {
-    const input2 = payload.value;
-    const units = input2.length;
-    const length = typeof input2 === "string" && units >= def.minimum && units < def.minimum * 2 ? codePointLength(input2) : units;
+    const input3 = payload.value;
+    const units = input3.length;
+    const length = typeof input3 === "string" && units >= def.minimum && units < def.minimum * 2 ? codePointLength(input3) : units;
     if (length >= def.minimum)
       return;
-    const origin = getLengthableOrigin(input2);
+    const origin = getLengthableOrigin(input3);
     payload.issues.push({
       origin,
       code: "too_small",
       minimum: def.minimum,
       inclusive: true,
-      input: input2,
+      input: input3,
       inst,
       continue: !def.abort
     });
@@ -2405,12 +2406,12 @@ var $ZodCheckLengthEquals = /* @__PURE__ */ $constructor("$ZodCheckLengthEquals"
   $ZodCheck.init(inst, def);
   (_a3 = inst._zod.def).when ?? (_a3.when = _whenHasLength);
   inst._zod.check = (payload) => {
-    const input2 = payload.value;
-    const units = input2.length;
-    const length = typeof input2 === "string" && units >= def.length && units <= def.length * 2 ? codePointLength(input2) : units;
+    const input3 = payload.value;
+    const units = input3.length;
+    const length = typeof input3 === "string" && units >= def.length && units <= def.length * 2 ? codePointLength(input3) : units;
     if (length === def.length)
       return;
-    const origin = getLengthableOrigin(input2);
+    const origin = getLengthableOrigin(input3);
     const tooBig = length > def.length;
     payload.issues.push({
       origin,
@@ -2556,10 +2557,10 @@ var $ZodCheckProperties = /* @__PURE__ */ $constructor("$ZodCheckProperties", (i
       return void 0;
     }
     entries ?? (entries = Reflect.ownKeys(def.shape).map((key) => [key, def.shape[key]]));
-    const input2 = payload.value;
+    const input3 = payload.value;
     let proms;
     for (const [key, schema] of entries) {
-      const result = schema._zod.run({ value: input2[key], issues: [] }, {});
+      const result = schema._zod.run({ value: input3[key], issues: [] }, {});
       if (result instanceof Promise) {
         proms ?? (proms = []);
         proms.push(result.then((result2) => handleCheckPropertyResult(result2, payload, key)));
@@ -2827,11 +2828,11 @@ var $ZodEmail = /* @__PURE__ */ $constructor("$ZodEmail", (inst, def) => {
 });
 var URL_BAD_FORMAT = 1;
 var URL_UNPARSEABLE = 2;
-function canParseURL(input2) {
+function canParseURL(input3) {
   try {
     if (typeof URL !== "undefined" && typeof URL.canParse === "function")
-      return URL.canParse(input2);
-    new URL(input2);
+      return URL.canParse(input3);
+    new URL(input3);
     return true;
   } catch {
     return false;
@@ -3113,10 +3114,10 @@ function isLuhnAlgo(digits) {
   }
   return sum % 10 === 0;
 }
-function isValidCreditCard(input2) {
-  if (!creditCard.test(input2))
+function isValidCreditCard(input3) {
+  if (!creditCard.test(input3))
     return false;
-  return isLuhnAlgo(input2.replace(CC_SANITIZE, ""));
+  return isLuhnAlgo(input3.replace(CC_SANITIZE, ""));
 }
 var $ZodCreditCard = /* @__PURE__ */ $constructor("$ZodCreditCard", (inst, def) => {
   def.pattern ?? (def.pattern = creditCard);
@@ -3146,10 +3147,10 @@ function isIso7064Mod97(iban3) {
   }
   return remainder === 1;
 }
-function isValidIBAN(input2) {
-  if (!iban.test(input2))
+function isValidIBAN(input3) {
+  if (!iban.test(input3))
     return false;
-  return isIso7064Mod97(input2);
+  return isIso7064Mod97(input3);
 }
 var $ZodIBAN = /* @__PURE__ */ $constructor("$ZodIBAN", (inst, def) => {
   def.pattern ?? (def.pattern = iban);
@@ -3223,15 +3224,15 @@ var $ZodNumber = /* @__PURE__ */ $constructor("$ZodNumber", (inst, def) => {
         payload.value = Number(payload.value);
       } catch (_) {
       }
-    const input2 = payload.value;
-    if (typeof input2 === "number" && !Number.isNaN(input2) && Number.isFinite(input2)) {
+    const input3 = payload.value;
+    if (typeof input3 === "number" && !Number.isNaN(input3) && Number.isFinite(input3)) {
       return payload;
     }
-    const received = typeof input2 === "number" ? Number.isNaN(input2) ? "NaN" : !Number.isFinite(input2) ? String(input2) : void 0 : void 0;
+    const received = typeof input3 === "number" ? Number.isNaN(input3) ? "NaN" : !Number.isFinite(input3) ? String(input3) : void 0 : void 0;
     payload.issues.push({
       expected: "number",
       code: "invalid_type",
-      input: input2,
+      input: input3,
       inst,
       ...received ? { received } : {}
     });
@@ -3251,13 +3252,13 @@ var $ZodBoolean = /* @__PURE__ */ $constructor("$ZodBoolean", (inst, def) => {
         payload.value = Boolean(payload.value);
       } catch (_) {
       }
-    const input2 = payload.value;
-    if (typeof input2 === "boolean")
+    const input3 = payload.value;
+    if (typeof input3 === "boolean")
       return payload;
     payload.issues.push({
       expected: "boolean",
       code: "invalid_type",
-      input: input2,
+      input: input3,
       inst
     });
     return payload;
@@ -3290,13 +3291,13 @@ var $ZodBigIntFormat = /* @__PURE__ */ $constructor("$ZodBigIntFormat", (inst, d
 var $ZodSymbol = /* @__PURE__ */ $constructor("$ZodSymbol", (inst, def) => {
   $ZodType.init(inst, def);
   inst._zod.parse = (payload, _ctx) => {
-    const input2 = payload.value;
-    if (typeof input2 === "symbol")
+    const input3 = payload.value;
+    if (typeof input3 === "symbol")
       return payload;
     payload.issues.push({
       expected: "symbol",
       code: "invalid_type",
-      input: input2,
+      input: input3,
       inst
     });
     return payload;
@@ -3307,13 +3308,13 @@ var $ZodUndefined = /* @__PURE__ */ $constructor("$ZodUndefined", (inst, def) =>
   inst._zod.pattern = _undefined;
   inst._zod.values = /* @__PURE__ */ new Set([void 0]);
   inst._zod.parse = (payload, _ctx) => {
-    const input2 = payload.value;
-    if (typeof input2 === "undefined")
+    const input3 = payload.value;
+    if (typeof input3 === "undefined")
       return payload;
     payload.issues.push({
       expected: "undefined",
       code: "invalid_type",
-      input: input2,
+      input: input3,
       inst
     });
     return payload;
@@ -3324,13 +3325,13 @@ var $ZodNull = /* @__PURE__ */ $constructor("$ZodNull", (inst, def) => {
   inst._zod.pattern = _null;
   inst._zod.values = /* @__PURE__ */ new Set([null]);
   inst._zod.parse = (payload, _ctx) => {
-    const input2 = payload.value;
-    if (input2 === null)
+    const input3 = payload.value;
+    if (input3 === null)
       return payload;
     payload.issues.push({
       expected: "null",
       code: "invalid_type",
-      input: input2,
+      input: input3,
       inst
     });
     return payload;
@@ -3359,13 +3360,13 @@ var $ZodNever = /* @__PURE__ */ $constructor("$ZodNever", (inst, def) => {
 var $ZodVoid = /* @__PURE__ */ $constructor("$ZodVoid", (inst, def) => {
   $ZodType.init(inst, def);
   inst._zod.parse = (payload, _ctx) => {
-    const input2 = payload.value;
-    if (typeof input2 === "undefined")
+    const input3 = payload.value;
+    if (typeof input3 === "undefined")
       return payload;
     payload.issues.push({
       expected: "void",
       code: "invalid_type",
-      input: input2,
+      input: input3,
       inst
     });
     return payload;
@@ -3380,15 +3381,15 @@ var $ZodDate = /* @__PURE__ */ $constructor("$ZodDate", (inst, def) => {
       } catch (_err) {
       }
     }
-    const input2 = payload.value;
-    const isDate = input2 instanceof Date;
-    const isValidDate = isDate && !Number.isNaN(input2.getTime());
+    const input3 = payload.value;
+    const isDate = input3 instanceof Date;
+    const isValidDate = isDate && !Number.isNaN(input3.getTime());
     if (isValidDate)
       return payload;
     payload.issues.push({
       expected: "date",
       code: "invalid_type",
-      input: input2,
+      input: input3,
       ...isDate ? { received: "Invalid Date" } : {},
       inst
     });
@@ -3400,7 +3401,7 @@ function capSize(inst, size) {
   if (!caps.length)
     return;
   const cap = Math.min(...caps.map((c) => c[0]));
-  const parse3 = inst._zod.parse;
+  const parse4 = inst._zod.parse;
   inst._zod.parse = (payload, ctx) => {
     const n = size(payload.value);
     if (n > cap && !ctx?.skipChecks && ctx?.direction !== "backward") {
@@ -3414,12 +3415,12 @@ function capSize(inst, size) {
         }
       }
     }
-    return parse3(payload, ctx);
+    return parse4(payload, ctx);
   };
 }
-var arraySize = (input2) => Array.isArray(input2) ? input2.length : -1;
-var mapSize = (input2) => input2 instanceof Map ? input2.size : -1;
-var setSize = (input2) => input2 instanceof Set ? input2.size : -1;
+var arraySize = (input3) => Array.isArray(input3) ? input3.length : -1;
+var mapSize = (input3) => input3 instanceof Map ? input3.size : -1;
+var setSize = (input3) => input3 instanceof Set ? input3.size : -1;
 function handleArrayResult(result, final, index) {
   if (result.issues.length) {
     final.issues.push(...prefixIssues(index, result.issues));
@@ -3431,21 +3432,21 @@ var $ZodArray = /* @__PURE__ */ $constructor("$ZodArray", (inst, def) => {
   const memo2 = globalConfig.memoizer;
   memo2?.attach(inst);
   inst._zod.parse = (payload, ctx) => {
-    const input2 = payload.value;
-    if (!Array.isArray(input2)) {
+    const input3 = payload.value;
+    if (!Array.isArray(input3)) {
       payload.issues.push({
         expected: "array",
         code: "invalid_type",
-        input: input2,
+        input: input3,
         inst
       });
       return payload;
     }
-    payload.value = memo2 ? memo2.alloc(inst, payload, Array(input2.length), ctx) : Array(input2.length);
+    payload.value = memo2 ? memo2.alloc(inst, payload, Array(input3.length), ctx) : Array(input3.length);
     const proms = [];
     const abortEarly = ctx?.abortEarly;
-    for (let i = 0; i < input2.length; i++) {
-      const item = input2[i];
+    for (let i = 0; i < input3.length; i++) {
+      const item = input3[i];
       const result = def.element._zod.run({
         value: item,
         issues: []
@@ -3465,8 +3466,8 @@ var $ZodArray = /* @__PURE__ */ $constructor("$ZodArray", (inst, def) => {
   };
   capSize(inst, arraySize);
 });
-function handlePropertyResult(result, final, key, input2, optin, optout) {
-  const isPresent = key in input2;
+function handlePropertyResult(result, final, key, input3, optin, optout) {
+  const isPresent = key in input3;
   const isOptionalOut = optout === "optional";
   if (!isPresent && isOptionalOut && optin === "optional") {
     return;
@@ -3518,7 +3519,7 @@ function normalizeDef(def) {
     optionalKeys: new Set(okeys)
   };
 }
-function handleCatchall(proms, input2, payload, ctx, def, inst, abortEarly) {
+function handleCatchall(proms, input3, payload, ctx, def, inst, abortEarly) {
   const unrecognized = [];
   const keySet = def.keySet;
   const _catchall = def.catchall._zod;
@@ -3526,7 +3527,7 @@ function handleCatchall(proms, input2, payload, ctx, def, inst, abortEarly) {
   const optin = _catchall.optin;
   const optout = _catchall.optout;
   let seen = 0;
-  for (const key in input2) {
+  for (const key in input3) {
     if (abortEarly && payload.issues.length !== seen) {
       if (aborted(payload, seen))
         break;
@@ -3543,18 +3544,18 @@ function handleCatchall(proms, input2, payload, ctx, def, inst, abortEarly) {
       unrecognized.push(key);
       continue;
     }
-    const r = _catchall.run({ value: input2[key], issues: [] }, ctx);
+    const r = _catchall.run({ value: input3[key], issues: [] }, ctx);
     if (r instanceof Promise) {
-      proms.push(r.then((r2) => handlePropertyResult(r2, payload, key, input2, optin, optout)));
+      proms.push(r.then((r2) => handlePropertyResult(r2, payload, key, input3, optin, optout)));
     } else {
-      handlePropertyResult(r, payload, key, input2, optin, optout);
+      handlePropertyResult(r, payload, key, input3, optin, optout);
     }
   }
   if (unrecognized.length) {
     payload.issues.push({
       code: "unrecognized_keys",
       keys: unrecognized,
-      input: input2,
+      input: input3,
       inst,
       // Describes the shape of the input, not the validity of the parsed value, so it never aborts. The parse still fails; the schema's own checks just get to run first, and an enclosing intersection can reconcile the key against a sibling operand.
       continue: true
@@ -3605,12 +3606,12 @@ var $ZodObject = /* @__PURE__ */ $constructor("$ZodObject", (inst, def) => {
   memo2?.attach(inst);
   inst._zod.parse = (payload, ctx) => {
     value ?? (value = _normalized.value);
-    const input2 = payload.value;
-    if (!isObject2(input2)) {
+    const input3 = payload.value;
+    if (!isObject2(input3)) {
       payload.issues.push({
         expected: "object",
         code: "invalid_type",
-        input: input2,
+        input: input3,
         inst
       });
       return payload;
@@ -3631,17 +3632,17 @@ var $ZodObject = /* @__PURE__ */ $constructor("$ZodObject", (inst, def) => {
       const el = shape[key];
       const optin = el._zod.optin;
       const optout = el._zod.optout;
-      const r = el._zod.run({ value: input2[key], issues: [] }, ctx);
+      const r = el._zod.run({ value: input3[key], issues: [] }, ctx);
       if (r instanceof Promise) {
-        proms.push(r.then((r2) => handlePropertyResult(r2, payload, key, input2, optin, optout)));
+        proms.push(r.then((r2) => handlePropertyResult(r2, payload, key, input3, optin, optout)));
       } else {
-        handlePropertyResult(r, payload, key, input2, optin, optout);
+        handlePropertyResult(r, payload, key, input3, optin, optout);
       }
     }
     if (!catchall) {
       return proms.length ? Promise.all(proms).then(() => payload) : payload;
     }
-    return handleCatchall(proms, input2, payload, ctx, _normalized.value, inst, abortEarly === true);
+    return handleCatchall(proms, input3, payload, ctx, _normalized.value, inst, abortEarly === true);
   };
 });
 var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) => {
@@ -3668,9 +3669,9 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
           }`;
     doc.write(`const input = payload.value;`);
     const ids = /* @__PURE__ */ Object.create(null);
-    let counter = 0;
+    let counter2 = 0;
     for (const key of normalized.allKeys) {
-      ids[key] = `key_${counter++}`;
+      ids[key] = `key_${counter2++}`;
     }
     doc.write(memo2 ? `const newResult = memo.alloc(inst, payload, {}, ctx);` : `const newResult = {};`);
     for (const key of normalized.allKeys) {
@@ -3750,12 +3751,12 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
   let value;
   inst._zod.parse = (payload, ctx) => {
     value ?? (value = _normalized.value);
-    const input2 = payload.value;
-    if (!isObject2(input2)) {
+    const input3 = payload.value;
+    if (!isObject2(input3)) {
       payload.issues.push({
         expected: "object",
         code: "invalid_type",
-        input: input2,
+        input: input3,
         inst
       });
       return payload;
@@ -3766,7 +3767,7 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
       payload = fastpass(payload, ctx);
       if (!catchall)
         return payload;
-      return handleCatchall([], input2, payload, ctx, value, inst, ctx?.abortEarly === true);
+      return handleCatchall([], input3, payload, ctx, value, inst, ctx?.abortEarly === true);
     }
     return superParse(payload, ctx);
   };
@@ -3958,17 +3959,17 @@ var $ZodDiscriminatedUnion = /* @__PURE__ */ $constructor("$ZodDiscriminatedUnio
   });
   const disc = cached(() => discriminatorMap(def));
   inst._zod.parse = (payload, ctx) => {
-    const input2 = payload.value;
-    if (!isObject(input2)) {
+    const input3 = payload.value;
+    if (!isObject(input3)) {
       payload.issues.push({
         code: "invalid_type",
         expected: "object",
-        input: input2,
+        input: input3,
         inst
       });
       return payload;
     }
-    const value = input2?.[def.discriminator];
+    const value = input3?.[def.discriminator];
     const opt = disc.value.get(value);
     if (opt && (value !== void 0 || ctx.direction !== "backward")) {
       return opt._zod.run(payload, ctx);
@@ -3982,7 +3983,7 @@ var $ZodDiscriminatedUnion = /* @__PURE__ */ $constructor("$ZodDiscriminatedUnio
       note: "No matching discriminator",
       discriminator: def.discriminator,
       options: Array.from(disc.value.keys()).filter((value2) => disc.value.get(value2) !== null),
-      input: input2,
+      input: input3,
       path: [def.discriminator],
       inst
     });
@@ -3992,9 +3993,9 @@ var $ZodDiscriminatedUnion = /* @__PURE__ */ $constructor("$ZodDiscriminatedUnio
 var $ZodIntersection = /* @__PURE__ */ $constructor("$ZodIntersection", (inst, def) => {
   $ZodType.init(inst, def);
   inst._zod.parse = (payload, ctx) => {
-    const input2 = payload.value;
-    const left = def.left._zod.run({ value: input2, issues: [] }, ctx);
-    const right = def.right._zod.run({ value: input2, issues: [] }, ctx);
+    const input3 = payload.value;
+    const left = def.left._zod.run({ value: input3, issues: [] }, ctx);
+    const right = def.right._zod.run({ value: input3, issues: [] }, ctx);
     const async = left instanceof Promise || right instanceof Promise;
     if (async) {
       return Promise.all([left, right]).then(([left2, right2]) => {
@@ -4109,10 +4110,10 @@ var $ZodTuple = /* @__PURE__ */ $constructor("$ZodTuple", (inst, def) => {
   const memo2 = globalConfig.memoizer;
   memo2?.attach(inst);
   inst._zod.parse = (payload, ctx) => {
-    const input2 = payload.value;
-    if (!Array.isArray(input2)) {
+    const input3 = payload.value;
+    if (!Array.isArray(input3)) {
       payload.issues.push({
-        input: input2,
+        input: input3,
         inst,
         expected: "tuple",
         code: "invalid_type"
@@ -4124,23 +4125,23 @@ var $ZodTuple = /* @__PURE__ */ $constructor("$ZodTuple", (inst, def) => {
     const optinStart = getTupleOptStart(items, "optin");
     const optoutStart = getTupleOptStart(items, "optout");
     if (!def.rest) {
-      if (input2.length < optinStart) {
+      if (input3.length < optinStart) {
         payload.issues.push({
           code: "too_small",
           minimum: optinStart,
           inclusive: true,
-          input: input2,
+          input: input3,
           inst,
           origin: "array"
         });
         return payload;
       }
-      if (input2.length > items.length) {
+      if (input3.length > items.length) {
         payload.issues.push({
           code: "too_big",
           maximum: items.length,
           inclusive: true,
-          input: input2,
+          input: input3,
           inst,
           origin: "array"
         });
@@ -4150,7 +4151,7 @@ var $ZodTuple = /* @__PURE__ */ $constructor("$ZodTuple", (inst, def) => {
     const abortEarly = def.rest ? ctx?.abortEarly : void 0;
     let itemAborted = false;
     for (let i = 0; i < items.length; i++) {
-      const r = items[i]._zod.run({ value: input2[i], issues: [] }, ctx);
+      const r = items[i]._zod.run({ value: input3[i], issues: [] }, ctx);
       if (r instanceof Promise) {
         proms.push(r.then((rr) => {
           itemResults[i] = rr;
@@ -4163,7 +4164,7 @@ var $ZodTuple = /* @__PURE__ */ $constructor("$ZodTuple", (inst, def) => {
     }
     if (def.rest && !itemAborted) {
       let i = items.length - 1;
-      const rest = input2.slice(items.length);
+      const rest = input3.slice(items.length);
       let seen = payload.issues.length;
       for (const el of rest) {
         if (abortEarly && payload.issues.length !== seen) {
@@ -4181,9 +4182,9 @@ var $ZodTuple = /* @__PURE__ */ $constructor("$ZodTuple", (inst, def) => {
       }
     }
     if (proms.length) {
-      return Promise.all(proms).then(() => handleTupleResults(itemResults, payload, items, input2, optoutStart));
+      return Promise.all(proms).then(() => handleTupleResults(itemResults, payload, items, input3, optoutStart));
     }
-    return handleTupleResults(itemResults, payload, items, input2, optoutStart);
+    return handleTupleResults(itemResults, payload, items, input3, optoutStart);
   };
 });
 function getTupleOptStart(items, key) {
@@ -4200,10 +4201,10 @@ function handleTupleResult(result, final, index) {
   }
   final.value[index] = result.value;
 }
-function handleTupleResults(itemResults, final, items, input2, optoutStart) {
+function handleTupleResults(itemResults, final, items, input3, optoutStart) {
   for (let i = 0; i < items.length; i++) {
     const r = itemResults[i];
-    const isPresent = i < input2.length;
+    const isPresent = i < input3.length;
     if (!isPresent && i >= optoutStart && items[i]._zod.optin === "optional") {
       final.value.length = i;
       break;
@@ -4217,7 +4218,7 @@ function handleTupleResults(itemResults, final, items, input2, optoutStart) {
     }
     final.value[i] = r.value;
   }
-  for (let i = final.value.length - 1; i >= input2.length; i--) {
+  for (let i = final.value.length - 1; i >= input3.length; i--) {
     if (items[i]._zod.optout === "optional" && final.value[i] === void 0) {
       final.value.length = i;
     } else {
@@ -4231,12 +4232,12 @@ var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
   const memo2 = globalConfig.memoizer;
   memo2?.attach(inst);
   inst._zod.parse = (payload, ctx) => {
-    const input2 = payload.value;
-    if (!isPlainObject(input2)) {
+    const input3 = payload.value;
+    if (!isPlainObject(input3)) {
       payload.issues.push({
         expected: "record",
         code: "invalid_type",
-        input: input2,
+        input: input3,
         inst
       });
       return payload;
@@ -4269,7 +4270,7 @@ var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
           const outKey = keyResult.value;
           if (outKey === "__proto__")
             continue;
-          const result = def.valueType._zod.run({ value: input2[key], issues: [] }, ctx);
+          const result = def.valueType._zod.run({ value: input3[key], issues: [] }, ctx);
           if (result instanceof Promise) {
             proms.push(result.then((result2) => {
               if (result2.issues.length) {
@@ -4286,12 +4287,12 @@ var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
         }
       }
       let unrecognized;
-      for (const key in input2) {
+      for (const key in input3) {
         if (!recordKeys.has(key)) {
           if (def.mode === "loose") {
             if (key === "__proto__")
               continue;
-            payload.value[key] = input2[key];
+            payload.value[key] = input3[key];
           } else {
             unrecognized = unrecognized ?? [];
             unrecognized.push(key);
@@ -4301,7 +4302,7 @@ var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
       if (unrecognized && unrecognized.length > 0) {
         payload.issues.push({
           code: "unrecognized_keys",
-          input: input2,
+          input: input3,
           inst,
           keys: unrecognized,
           continue: true
@@ -4310,10 +4311,10 @@ var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
     } else {
       payload.value = memo2 ? memo2.alloc(inst, payload, {}, ctx) : {};
       let unrecognized;
-      for (const key of Reflect.ownKeys(input2)) {
+      for (const key of Reflect.ownKeys(input3)) {
         if (key === "__proto__")
           continue;
-        if (!Object.prototype.propertyIsEnumerable.call(input2, key))
+        if (!Object.prototype.propertyIsEnumerable.call(input3, key))
           continue;
         let keyResult = def.keyType._zod.run({ value: key, issues: [] }, ctx);
         if (keyResult instanceof Promise) {
@@ -4331,7 +4332,7 @@ var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
         }
         if (keyResult.issues.length) {
           if (def.mode === "loose") {
-            payload.value[key] = input2[key];
+            payload.value[key] = input3[key];
           } else if (values) {
             unrecognized = unrecognized ?? [];
             unrecognized.push(key);
@@ -4350,7 +4351,7 @@ var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
         const outKey = keyResult.value;
         if (outKey === "__proto__")
           continue;
-        const result = def.valueType._zod.run({ value: input2[key], issues: [] }, ctx);
+        const result = def.valueType._zod.run({ value: input3[key], issues: [] }, ctx);
         if (result instanceof Promise) {
           proms.push(result.then((result2) => {
             if (result2.issues.length) {
@@ -4368,7 +4369,7 @@ var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
       if (unrecognized && unrecognized.length > 0) {
         payload.issues.push({
           code: "unrecognized_keys",
-          input: input2,
+          input: input3,
           inst,
           keys: unrecognized,
           continue: true
@@ -4386,12 +4387,12 @@ var $ZodMap = /* @__PURE__ */ $constructor("$ZodMap", (inst, def) => {
   const memo2 = globalConfig.memoizer;
   memo2?.attach(inst);
   inst._zod.parse = (payload, ctx) => {
-    const input2 = payload.value;
-    if (!(input2 instanceof Map)) {
+    const input3 = payload.value;
+    if (!(input3 instanceof Map)) {
       payload.issues.push({
         expected: "map",
         code: "invalid_type",
-        input: input2,
+        input: input3,
         inst
       });
       return payload;
@@ -4400,7 +4401,7 @@ var $ZodMap = /* @__PURE__ */ $constructor("$ZodMap", (inst, def) => {
     payload.value = memo2 ? memo2.alloc(inst, payload, /* @__PURE__ */ new Map(), ctx) : /* @__PURE__ */ new Map();
     const abortEarly = ctx?.abortEarly;
     let seen = payload.issues.length;
-    for (const [key, value] of input2) {
+    for (const [key, value] of input3) {
       if (abortEarly && payload.issues.length !== seen) {
         if (aborted(payload, seen))
           break;
@@ -4410,10 +4411,10 @@ var $ZodMap = /* @__PURE__ */ $constructor("$ZodMap", (inst, def) => {
       const valueResult = def.valueType._zod.run({ value, issues: [] }, ctx);
       if (keyResult instanceof Promise || valueResult instanceof Promise) {
         proms.push(Promise.all([keyResult, valueResult]).then(([keyResult2, valueResult2]) => {
-          handleMapResult(keyResult2, valueResult2, payload, key, input2, inst, ctx);
+          handleMapResult(keyResult2, valueResult2, payload, key, input3, inst, ctx);
         }));
       } else {
-        handleMapResult(keyResult, valueResult, payload, key, input2, inst, ctx);
+        handleMapResult(keyResult, valueResult, payload, key, input3, inst, ctx);
       }
     }
     if (proms.length)
@@ -4422,7 +4423,7 @@ var $ZodMap = /* @__PURE__ */ $constructor("$ZodMap", (inst, def) => {
   };
   capSize(inst, mapSize);
 });
-function handleMapResult(keyResult, valueResult, final, key, input2, inst, ctx) {
+function handleMapResult(keyResult, valueResult, final, key, input3, inst, ctx) {
   if (keyResult.issues.length) {
     if (propertyKeyTypes.has(typeof key)) {
       final.issues.push(...prefixIssues(key, keyResult.issues));
@@ -4430,7 +4431,7 @@ function handleMapResult(keyResult, valueResult, final, key, input2, inst, ctx) 
       final.issues.push({
         code: "invalid_key",
         origin: "map",
-        input: input2,
+        input: input3,
         inst,
         issues: keyResult.issues.map((iss) => finalizeIssue(iss, ctx, config()))
       });
@@ -4443,7 +4444,7 @@ function handleMapResult(keyResult, valueResult, final, key, input2, inst, ctx) 
       final.issues.push({
         origin: "map",
         code: "invalid_element",
-        input: input2,
+        input: input3,
         inst,
         key,
         issues: valueResult.issues.map((iss) => finalizeIssue(iss, ctx, config()))
@@ -4457,10 +4458,10 @@ var $ZodSet = /* @__PURE__ */ $constructor("$ZodSet", (inst, def) => {
   const memo2 = globalConfig.memoizer;
   memo2?.attach(inst);
   inst._zod.parse = (payload, ctx) => {
-    const input2 = payload.value;
-    if (!(input2 instanceof Set)) {
+    const input3 = payload.value;
+    if (!(input3 instanceof Set)) {
       payload.issues.push({
-        input: input2,
+        input: input3,
         inst,
         expected: "set",
         code: "invalid_type"
@@ -4471,7 +4472,7 @@ var $ZodSet = /* @__PURE__ */ $constructor("$ZodSet", (inst, def) => {
     payload.value = memo2 ? memo2.alloc(inst, payload, /* @__PURE__ */ new Set(), ctx) : /* @__PURE__ */ new Set();
     const abortEarly = ctx?.abortEarly;
     let seen = payload.issues.length;
-    for (const item of input2) {
+    for (const item of input3) {
       if (abortEarly && payload.issues.length !== seen) {
         if (aborted(payload, seen))
           break;
@@ -4505,14 +4506,14 @@ var $ZodEnum = /* @__PURE__ */ $constructor("$ZodEnum", (inst, def) => {
     return new RegExp(patternValues.length ? `^(${patternValues.map((o) => escapeRegex(o.toString())).join("|")})$` : "^[^\\s\\S]$");
   });
   inst._zod.parse = (payload, _ctx) => {
-    const input2 = payload.value;
-    if (valuesSet.has(input2)) {
+    const input3 = payload.value;
+    if (valuesSet.has(input3)) {
       return payload;
     }
     payload.issues.push({
       code: "invalid_value",
       values,
-      input: input2,
+      input: input3,
       inst
     });
     return payload;
@@ -4527,14 +4528,14 @@ var $ZodLiteral = /* @__PURE__ */ $constructor("$ZodLiteral", (inst, def) => {
     return new RegExp(vals.length ? `^(${vals.map((o) => typeof o === "string" ? escapeRegex(o) : o ? escapeRegex(o.toString()) : String(o)).join("|")})$` : "^[^\\s\\S]$");
   });
   inst._zod.parse = (payload, _ctx) => {
-    const input2 = payload.value;
-    if (values.has(input2)) {
+    const input3 = payload.value;
+    if (values.has(input3)) {
       return payload;
     }
     payload.issues.push({
       code: "invalid_value",
       values: def.values,
-      input: input2,
+      input: input3,
       inst
     });
     return payload;
@@ -4543,13 +4544,13 @@ var $ZodLiteral = /* @__PURE__ */ $constructor("$ZodLiteral", (inst, def) => {
 var $ZodFile = /* @__PURE__ */ $constructor("$ZodFile", (inst, def) => {
   $ZodType.init(inst, def);
   inst._zod.parse = (payload, _ctx) => {
-    const input2 = payload.value;
-    if (input2 instanceof File)
+    const input3 = payload.value;
+    if (input3 instanceof File)
       return payload;
     payload.issues.push({
       expected: "file",
       code: "invalid_type",
-      input: input2,
+      input: input3,
       inst
     });
     return payload;
@@ -5057,20 +5058,20 @@ var $ZodCustom = /* @__PURE__ */ $constructor("$ZodCustom", (inst, def) => {
     return payload;
   };
   inst._zod.check = (payload) => {
-    const input2 = payload.value;
-    const r = def.fn(input2);
+    const input3 = payload.value;
+    const r = def.fn(input3);
     if (r instanceof Promise) {
-      return r.then((r2) => handleRefineResult(r2, payload, input2, inst));
+      return r.then((r2) => handleRefineResult(r2, payload, input3, inst));
     }
-    handleRefineResult(r, payload, input2, inst);
+    handleRefineResult(r, payload, input3, inst);
     return;
   };
 });
-function handleRefineResult(result, payload, input2, inst) {
+function handleRefineResult(result, payload, input3, inst) {
   if (!result) {
     const _iss = {
       code: "custom",
-      input: input2,
+      input: input3,
       inst,
       // incorporates params.error into issue reporting
       path: [...inst._zod.def.path ?? []],
@@ -5302,8 +5303,8 @@ var memo = {
           else
             rechecked = true;
         }
-        const input2 = payload.value;
-        if (!isRef(input2))
+        const input3 = payload.value;
+        if (!isRef(input3))
           return base(payload, ctx);
         let state = ctx[STATE];
         if (!state) {
@@ -5318,7 +5319,7 @@ var memo = {
           lastCtx = ctx;
           lastBucket = bucket;
         }
-        const hit = bucket.get(input2);
+        const hit = bucket.get(input3);
         if (hit) {
           payload.value = hit.value;
           if (hit.issues) {
@@ -6824,9 +6825,9 @@ var error12 = () => {
     nan: "NaN"
     // All other type names omitted - they fall back to raw values via ?? operator
   };
-  function getTypeName(type, input2) {
-    if (type === "number" && typeof input2 === "number" && !Number.isFinite(input2)) {
-      return String(input2);
+  function getTypeName(type, input3) {
+    if (type === "number" && typeof input3 === "number" && !Number.isFinite(input3)) {
+      return String(input3);
     }
     return TypeDictionary[type] ?? type;
   }
@@ -7861,51 +7862,51 @@ var error20 = () => {
       }
       case "too_big": {
         const sizing = getSizing(issue2.origin);
-        const subject = withDefinite(issue2.origin ?? "value");
+        const subject2 = withDefinite(issue2.origin ?? "value");
         if (issue2.origin === "string") {
-          return `${sizing?.longLabel ?? "\u05D0\u05E8\u05D5\u05DA"} \u05DE\u05D3\u05D9: ${subject} \u05E6\u05E8\u05D9\u05DB\u05D4 \u05DC\u05D4\u05DB\u05D9\u05DC ${issue2.maximum.toString()} ${sizing?.unit ?? ""} ${issue2.inclusive ? "\u05D0\u05D5 \u05E4\u05D7\u05D5\u05EA" : "\u05DC\u05DB\u05DC \u05D4\u05D9\u05D5\u05EA\u05E8"}`.trim();
+          return `${sizing?.longLabel ?? "\u05D0\u05E8\u05D5\u05DA"} \u05DE\u05D3\u05D9: ${subject2} \u05E6\u05E8\u05D9\u05DB\u05D4 \u05DC\u05D4\u05DB\u05D9\u05DC ${issue2.maximum.toString()} ${sizing?.unit ?? ""} ${issue2.inclusive ? "\u05D0\u05D5 \u05E4\u05D7\u05D5\u05EA" : "\u05DC\u05DB\u05DC \u05D4\u05D9\u05D5\u05EA\u05E8"}`.trim();
         }
         if (issue2.origin === "number") {
           const comparison = issue2.inclusive ? `\u05E7\u05D8\u05DF \u05D0\u05D5 \u05E9\u05D5\u05D5\u05D4 \u05DC-${issue2.maximum}` : `\u05E7\u05D8\u05DF \u05DE-${issue2.maximum}`;
-          return `\u05D2\u05D3\u05D5\u05DC \u05DE\u05D3\u05D9: ${subject} \u05E6\u05E8\u05D9\u05DA \u05DC\u05D4\u05D9\u05D5\u05EA ${comparison}`;
+          return `\u05D2\u05D3\u05D5\u05DC \u05DE\u05D3\u05D9: ${subject2} \u05E6\u05E8\u05D9\u05DA \u05DC\u05D4\u05D9\u05D5\u05EA ${comparison}`;
         }
         if (issue2.origin === "array" || issue2.origin === "set") {
           const verb = issue2.origin === "set" ? "\u05E6\u05E8\u05D9\u05DB\u05D4" : "\u05E6\u05E8\u05D9\u05DA";
           const comparison = issue2.inclusive ? `${issue2.maximum} ${sizing?.unit ?? ""} \u05D0\u05D5 \u05E4\u05D7\u05D5\u05EA` : `\u05E4\u05D7\u05D5\u05EA \u05DE-${issue2.maximum} ${sizing?.unit ?? ""}`;
-          return `\u05D2\u05D3\u05D5\u05DC \u05DE\u05D3\u05D9: ${subject} ${verb} \u05DC\u05D4\u05DB\u05D9\u05DC ${comparison}`.trim();
+          return `\u05D2\u05D3\u05D5\u05DC \u05DE\u05D3\u05D9: ${subject2} ${verb} \u05DC\u05D4\u05DB\u05D9\u05DC ${comparison}`.trim();
         }
         const adj = issue2.inclusive ? "<=" : "<";
         const be = verbFor(issue2.origin ?? "value");
         if (sizing?.unit) {
-          return `${sizing.longLabel} \u05DE\u05D3\u05D9: ${subject} ${be} ${adj}${issue2.maximum.toString()} ${sizing.unit}`;
+          return `${sizing.longLabel} \u05DE\u05D3\u05D9: ${subject2} ${be} ${adj}${issue2.maximum.toString()} ${sizing.unit}`;
         }
-        return `${sizing?.longLabel ?? "\u05D2\u05D3\u05D5\u05DC"} \u05DE\u05D3\u05D9: ${subject} ${be} ${adj}${issue2.maximum.toString()}`;
+        return `${sizing?.longLabel ?? "\u05D2\u05D3\u05D5\u05DC"} \u05DE\u05D3\u05D9: ${subject2} ${be} ${adj}${issue2.maximum.toString()}`;
       }
       case "too_small": {
         const sizing = getSizing(issue2.origin);
-        const subject = withDefinite(issue2.origin ?? "value");
+        const subject2 = withDefinite(issue2.origin ?? "value");
         if (issue2.origin === "string") {
-          return `${sizing?.shortLabel ?? "\u05E7\u05E6\u05E8"} \u05DE\u05D3\u05D9: ${subject} \u05E6\u05E8\u05D9\u05DB\u05D4 \u05DC\u05D4\u05DB\u05D9\u05DC ${issue2.minimum.toString()} ${sizing?.unit ?? ""} ${issue2.inclusive ? "\u05D0\u05D5 \u05D9\u05D5\u05EA\u05E8" : "\u05DC\u05E4\u05D7\u05D5\u05EA"}`.trim();
+          return `${sizing?.shortLabel ?? "\u05E7\u05E6\u05E8"} \u05DE\u05D3\u05D9: ${subject2} \u05E6\u05E8\u05D9\u05DB\u05D4 \u05DC\u05D4\u05DB\u05D9\u05DC ${issue2.minimum.toString()} ${sizing?.unit ?? ""} ${issue2.inclusive ? "\u05D0\u05D5 \u05D9\u05D5\u05EA\u05E8" : "\u05DC\u05E4\u05D7\u05D5\u05EA"}`.trim();
         }
         if (issue2.origin === "number") {
           const comparison = issue2.inclusive ? `\u05D2\u05D3\u05D5\u05DC \u05D0\u05D5 \u05E9\u05D5\u05D5\u05D4 \u05DC-${issue2.minimum}` : `\u05D2\u05D3\u05D5\u05DC \u05DE-${issue2.minimum}`;
-          return `\u05E7\u05D8\u05DF \u05DE\u05D3\u05D9: ${subject} \u05E6\u05E8\u05D9\u05DA \u05DC\u05D4\u05D9\u05D5\u05EA ${comparison}`;
+          return `\u05E7\u05D8\u05DF \u05DE\u05D3\u05D9: ${subject2} \u05E6\u05E8\u05D9\u05DA \u05DC\u05D4\u05D9\u05D5\u05EA ${comparison}`;
         }
         if (issue2.origin === "array" || issue2.origin === "set") {
           const verb = issue2.origin === "set" ? "\u05E6\u05E8\u05D9\u05DB\u05D4" : "\u05E6\u05E8\u05D9\u05DA";
           if (issue2.minimum === 1 && issue2.inclusive) {
             const singularPhrase = issue2.origin === "set" ? "\u05DC\u05E4\u05D7\u05D5\u05EA \u05E4\u05E8\u05D9\u05D8 \u05D0\u05D7\u05D3" : "\u05DC\u05E4\u05D7\u05D5\u05EA \u05E4\u05E8\u05D9\u05D8 \u05D0\u05D7\u05D3";
-            return `\u05E7\u05D8\u05DF \u05DE\u05D3\u05D9: ${subject} ${verb} \u05DC\u05D4\u05DB\u05D9\u05DC ${singularPhrase}`;
+            return `\u05E7\u05D8\u05DF \u05DE\u05D3\u05D9: ${subject2} ${verb} \u05DC\u05D4\u05DB\u05D9\u05DC ${singularPhrase}`;
           }
           const comparison = issue2.inclusive ? `${issue2.minimum} ${sizing?.unit ?? ""} \u05D0\u05D5 \u05D9\u05D5\u05EA\u05E8` : `\u05D9\u05D5\u05EA\u05E8 \u05DE-${issue2.minimum} ${sizing?.unit ?? ""}`;
-          return `\u05E7\u05D8\u05DF \u05DE\u05D3\u05D9: ${subject} ${verb} \u05DC\u05D4\u05DB\u05D9\u05DC ${comparison}`.trim();
+          return `\u05E7\u05D8\u05DF \u05DE\u05D3\u05D9: ${subject2} ${verb} \u05DC\u05D4\u05DB\u05D9\u05DC ${comparison}`.trim();
         }
         const adj = issue2.inclusive ? ">=" : ">";
         const be = verbFor(issue2.origin ?? "value");
         if (sizing?.unit) {
-          return `${sizing.shortLabel} \u05DE\u05D3\u05D9: ${subject} ${be} ${adj}${issue2.minimum.toString()} ${sizing.unit}`;
+          return `${sizing.shortLabel} \u05DE\u05D3\u05D9: ${subject2} ${be} ${adj}${issue2.minimum.toString()} ${sizing.unit}`;
         }
-        return `${sizing?.shortLabel ?? "\u05E7\u05D8\u05DF"} \u05DE\u05D3\u05D9: ${subject} ${be} ${adj}${issue2.minimum.toString()}`;
+        return `${sizing?.shortLabel ?? "\u05E7\u05D8\u05DF"} \u05DE\u05D3\u05D9: ${subject2} ${be} ${adj}${issue2.minimum.toString()}`;
       }
       case "invalid_format": {
         const _issue = issue2;
@@ -9386,8 +9387,8 @@ function ko_default() {
 }
 
 // ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/lt.js
-var capitalizeFirstCharacter = (text2) => {
-  return text2.charAt(0).toUpperCase() + text2.slice(1);
+var capitalizeFirstCharacter = (text3) => {
+  return text3.charAt(0).toUpperCase() + text3.slice(1);
 };
 function getUnitTypeFromNumber(number4) {
   const abs = Math.abs(number4);
@@ -15274,23 +15275,23 @@ function _overwrite(tx) {
 }
 // @__NO_SIDE_EFFECTS__
 function _normalize(form) {
-  return /* @__PURE__ */ _overwrite((input2) => input2.normalize(form));
+  return /* @__PURE__ */ _overwrite((input3) => input3.normalize(form));
 }
 // @__NO_SIDE_EFFECTS__
 function _trim() {
-  return /* @__PURE__ */ _overwrite((input2) => input2.trim());
+  return /* @__PURE__ */ _overwrite((input3) => input3.trim());
 }
 // @__NO_SIDE_EFFECTS__
 function _toLowerCase() {
-  return /* @__PURE__ */ _overwrite((input2) => input2.toLowerCase());
+  return /* @__PURE__ */ _overwrite((input3) => input3.toLowerCase());
 }
 // @__NO_SIDE_EFFECTS__
 function _toUpperCase() {
-  return /* @__PURE__ */ _overwrite((input2) => input2.toUpperCase());
+  return /* @__PURE__ */ _overwrite((input3) => input3.toUpperCase());
 }
 // @__NO_SIDE_EFFECTS__
 function _slugify() {
-  return /* @__PURE__ */ _overwrite((input2) => slugify(input2));
+  return /* @__PURE__ */ _overwrite((input3) => slugify(input3));
 }
 // @__NO_SIDE_EFFECTS__
 function _array(Class2, element, params) {
@@ -15596,8 +15597,8 @@ function _stringbool(Classes, _params) {
     type: "pipe",
     in: stringSchema,
     out: booleanSchema,
-    transform: ((input2, payload) => {
-      let data = input2;
+    transform: ((input3, payload) => {
+      let data = input3;
       if (params.case !== "sensitive")
         data = data.toLowerCase();
       if (truthySet.has(data)) {
@@ -15616,8 +15617,8 @@ function _stringbool(Classes, _params) {
         return {};
       }
     }),
-    reverseTransform: ((input2, _payload) => {
-      if (input2 === true) {
+    reverseTransform: ((input3, _payload) => {
+      if (input3 === true) {
         return truthyArray[0] || "true";
       } else {
         return falsyArray[0] || "false";
@@ -15727,12 +15728,12 @@ function processSchema(schema, ctx, _params = { path: [], schemaPath: [] }) {
       }
       processor(schema, ctx, _json, params);
     }
-    const parent = schema._zod.parent;
-    if (parent) {
+    const parent2 = schema._zod.parent;
+    if (parent2) {
       if (!result.ref)
-        result.ref = parent;
-      processSchema(parent, ctx, params);
-      ctx.seen.get(parent).isParent = true;
+        result.ref = parent2;
+      processSchema(parent2, ctx, params);
+      ctx.seen.get(parent2).isParent = true;
     }
   }
   const meta3 = ctx.metadataRegistry.get(schema);
@@ -15995,10 +15996,10 @@ function finalize(ctx, schema) {
         }
       }
     }
-    const parent = zodSchema._zod.parent;
-    if (parent && parent !== ref) {
-      flattenRef(parent);
-      const parentSeen = ctx.seen.get(parent);
+    const parent2 = zodSchema._zod.parent;
+    if (parent2 && parent2 !== ref) {
+      flattenRef(parent2);
+      const parentSeen = ctx.seen.get(parent2);
       if (parentSeen?.schema.$ref) {
         schema2.$ref = parentSeen.schema.$ref;
         if (parentSeen.def) {
@@ -16890,9 +16891,9 @@ var allProcessors = {
   optional: optionalProcessor,
   lazy: lazyProcessor
 };
-function toJSONSchema(input2, params) {
-  if ("_idmap" in input2) {
-    const registry2 = input2;
+function toJSONSchema(input3, params) {
+  if ("_idmap" in input3) {
+    const registry2 = input3;
     const ctx2 = initializeContext({ ...params, processors: allProcessors });
     const defs = {};
     for (const entry of registry2._idmap.entries()) {
@@ -16920,9 +16921,9 @@ function toJSONSchema(input2, params) {
     return { schemas };
   }
   const ctx = initializeContext({ ...params, processors: allProcessors });
-  processSchema(input2, ctx);
-  extractDefs(ctx, input2);
-  return finalize(ctx, input2);
+  processSchema(input3, ctx);
+  extractDefs(ctx, input3);
+  return finalize(ctx, input3);
 }
 
 // ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/json-schema-generator.js
@@ -19770,7 +19771,9 @@ var HOOK_NAMES = [
   "TaskCreated",
   "TaskCompleted",
   "PreCompact",
-  "PostCompact"
+  "PostCompact",
+  // Not a Claude Code hook: Murmur reads it from the transcript (see AssistantTextPayload).
+  "AssistantText"
 ];
 var MurmurEventSchema = external_exports.object({
   id: external_exports.string(),
@@ -19836,6 +19839,30 @@ var NarrateInput = external_exports.object({
   ).optional(),
   words: list(external_exports.object({ term: text, meaning: text })).optional()
 });
+var RecapInput = external_exports.object({
+  map: MapInput,
+  parts: list(
+    NarrateInput.pick({
+      aim: true,
+      choices: true,
+      checks: true,
+      words: true,
+      files: true
+    }).extend({
+      id: text,
+      steps: list(external_exports.object({ text, status })).optional(),
+      helpers: external_exports.array(text).max(40).optional()
+    })
+  ),
+  tasks: external_exports.array(external_exports.object({ id: text, status, ended: external_exports.string().max(200) })).max(100)
+}).refine(({ map: map2, parts }) => {
+  const ids = new Set(map2.parts.map((p) => p.id));
+  const tasks = map2.phases.flatMap((ph) => ph.tasks);
+  return tasks.every((t) => t.part === void 0 || ids.has(t.part)) && parts.every((p) => ids.has(p.id));
+}, "every part a task or detail names is in the map").refine(({ map: map2, parts, tasks }) => {
+  const once = (ids) => new Set(ids).size === ids.length;
+  return once(map2.parts.map((p) => p.id)) && once(map2.phases.flatMap((ph) => ph.tasks.map((t) => t.id))) && once(parts.map((p) => p.id)) && once(tasks.map((t) => t.id));
+}, "part and task ids are unique");
 
 // ../packages/core/src/scrub.ts
 var MAX_STRING = 262144;
@@ -19899,26 +19926,1069 @@ function scrubString(s) {
 var isEnvFile = (o) => [o.file_path, o.filePath].some(
   (p) => typeof p === "string" && /^\.env(\..*)?$/.test(p.split(/[\\/]/).pop() ?? "")
 );
-function walk(v, env = false) {
+function walk(v, env = false, max = MAX_STRING) {
   if (typeof v === "string") {
-    const cut2 = v.length > CUT ? v.slice(0, CUT) : v;
+    const limit = max + CUT - MAX_STRING;
+    let cut2 = v.length > limit ? v.slice(0, limit) : v;
+    if (cut2.length < v.length) {
+      let i = cut2.length;
+      while (i > 0 && i > cut2.length - 1024 && !/\s/.test(cut2[i - 1]))
+        i--;
+      cut2 = cut2.slice(0, i);
+    }
     const s = scrubString(env ? cut2.replace(ANY_ASSIGN, `$1${R}`) : cut2);
-    const over = Math.max(0, s.length - MAX_STRING);
+    const over = Math.max(0, s.length - max);
     const n = v.length - cut2.length + over;
-    return n > 0 ? `${s.slice(0, MAX_STRING)}\u2026[truncated ${n} chars]` : s;
+    return n > 0 ? `${s.slice(0, max)}\u2026[truncated ${n} chars]` : s;
   }
-  if (Array.isArray(v)) return v.map((x) => walk(x, env));
+  if (Array.isArray(v)) return v.map((x) => walk(x, env, max));
   if (v && typeof v === "object") {
     const o = v;
     const e = env || isEnvFile(o);
     return Object.fromEntries(
-      Object.entries(o).map(([k, x]) => [k, walk(x, e)])
+      Object.entries(o).map(([k, x]) => [k, walk(x, e, max)])
     );
   }
   return v;
 }
+var OUTPUT_MAX = 2e3;
+var SHOWN_RESULTS = /* @__PURE__ */ new Set(["Edit", "Write", "Agent"]);
+var obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
 function scrubEvent(e) {
-  return { ...e, payload: walk(e.payload) };
+  const p = e.payload;
+  if (e.hook !== "PostToolUse" && e.hook !== "PostToolUseFailure")
+    return { ...e, payload: walk(p) };
+  const { tool_response, error: error62, ...rest } = p;
+  const payload = walk(rest);
+  if ("tool_response" in p) {
+    const { bashEditDiff, ...output2 } = obj(tool_response);
+    const bash = p.tool_name === "Bash" && bashEditDiff !== void 0;
+    payload.tool_response = walk(
+      bash ? output2 : tool_response,
+      false,
+      SHOWN_RESULTS.has(String(p.tool_name)) ? MAX_STRING : OUTPUT_MAX
+    );
+    if (bash)
+      payload.tool_response.bashEditDiff = walk(
+        bashEditDiff,
+        false,
+        MAX_STRING
+      );
+  }
+  if ("error" in p) payload.error = walk(error62, false, OUTPUT_MAX);
+  return { ...e, payload };
+}
+
+// ../packages/core/src/view/requests.ts
+var cut = (s, n) => s.slice(0, n);
+var TASK_STATUS = { running: "now", done: "done", failed: "failed" };
+var relPath = (path4, cwd) => path4.startsWith(`${cwd}/`) ? path4.slice(cwd.length + 1) : path4.replace(/^\.\//, "");
+var str = (v) => typeof v === "string" ? v : void 0;
+function newRequest(start) {
+  const p = start.payload.prompt;
+  const prompt = typeof p === "string" ? p : "";
+  return {
+    id: start.id,
+    prompt,
+    startedAt: start.ts,
+    kind: "feature",
+    kindInferred: true,
+    goal: cut(prompt, 80),
+    phases: [],
+    planInferred: true,
+    parts: [],
+    looseFiles: [],
+    now: null,
+    agents: [],
+    assumptions: [],
+    flags: [],
+    finished: false,
+    tally: { helpers: 0, files: 0, commands: 0 },
+    messages: []
+  };
+}
+var input2 = (e, tool) => e.hook === "PostToolUse" && e.payload.tool_name === tool ? e.payload.tool_input : void 0;
+function applyPlan(req, events) {
+  let last = { part: void 0, task: void 0 };
+  const trace = { before: [], narrated: [] };
+  events.forEach((e, i) => {
+    trace.before.push(last);
+    const map2 = MapInput.safeParse(input2(e, MAP_TOOL));
+    if (map2.success) {
+      applyMap(req, map2.data);
+      if (e.payload.recap === true) req.recap = true;
+      else delete req.recap;
+    }
+    const note = NarrateInput.safeParse(input2(e, NARRATE_TOOL));
+    if (note.success) {
+      last = applyNarrate(req, e, note.data);
+      trace.narrated.push({ ...last, i, e, n: note.data });
+    }
+  });
+  setStatuses(req, last);
+  return trace;
+}
+function applyMap(req, map2) {
+  const oldParts = new Map(req.parts.map((p) => [p.id, p]));
+  const oldTasks = new Map(
+    req.phases.flatMap((ph) => ph.tasks).map((t) => [t.id, t])
+  );
+  req.kind = map2.kind;
+  req.kindInferred = false;
+  req.goal = map2.goal;
+  req.planInferred = false;
+  req.phases = map2.phases.map((ph) => ({
+    id: ph.id,
+    title: ph.title,
+    status: "todo",
+    tasks: ph.tasks.map((t) => {
+      const task = oldTasks.get(t.id) ?? {
+        id: t.id,
+        title: t.title,
+        status: "todo",
+        agents: []
+      };
+      task.title = t.title;
+      delete task.part;
+      if (t.part !== void 0) task.part = t.part;
+      return task;
+    })
+  }));
+  req.parts = map2.parts.map((p) => {
+    const part = oldParts.get(p.id) ?? {
+      id: p.id,
+      title: p.title,
+      status: "todo",
+      links: [],
+      steps: [],
+      files: [],
+      choices: [],
+      checks: [],
+      words: [],
+      agents: [],
+      failures: 0
+    };
+    part.title = p.title;
+    part.links = p.links ?? [];
+    delete part.phase;
+    delete part.tag;
+    if (p.phase !== void 0) part.phase = p.phase;
+    if (p.tag !== void 0) part.tag = p.tag;
+    return part;
+  });
+}
+function applyNarrate(req, e, n) {
+  const task = req.phases.flatMap((ph) => ph.tasks).find((t) => t.id === n.task);
+  const partId = n.part ?? task?.part;
+  const part = req.parts.find((p) => p.id === partId);
+  const agentId = str(e.payload.agent_id);
+  req.now = { text: n.now, why: n.why, ts: e.ts };
+  if (part) req.now.part = part.id;
+  if (task && n.taskStatus) task.status = TASK_STATUS[n.taskStatus];
+  if (task && agentId) addOnce(task.agents, agentId);
+  if (part) {
+    if (n.step)
+      part.steps.push({
+        ts: e.ts,
+        ...n.step,
+        ...agentId ? { agentId } : {},
+        eventIds: [e.id]
+      });
+    if (agentId) addOnce(part.agents, agentId);
+    if (n.aim) part.aim = n.aim;
+    if (n.io) part.io = n.io;
+    for (const f of n.files ?? []) {
+      const path4 = relPath(f.path, e.cwd);
+      const file2 = part.files.find((x) => x.path === path4);
+      if (file2) file2.role = f.role;
+      else
+        part.files.push({
+          path: path4,
+          role: f.role,
+          added: 0,
+          removed: 0,
+          isNew: false,
+          eventIds: []
+        });
+    }
+    upsert(part.choices, n.choices, (c) => c.choice);
+    upsert(part.checks, n.checks, (c) => c.check);
+    upsert(part.words, n.words, (w) => w.term);
+  }
+  return { part: part?.id, task: task?.id };
+}
+var addOnce = (list2, id) => list2.includes(id) || list2.push(id);
+function upsert(list2, items, key) {
+  for (const item of items ?? []) {
+    const i = list2.findIndex((x) => key(x) === key(item));
+    if (i < 0) list2.push(item);
+    else list2[i] = item;
+  }
+}
+function setStatuses(req, last) {
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  for (const t of tasks) {
+    if (t.status === "todo" && t.id === last.task) t.status = "now";
+  }
+  const allDone = (ts) => ts.length > 0 && ts.every((t) => t.status === "done");
+  for (const p of req.parts) {
+    const own2 = tasks.filter((t) => t.part === p.id);
+    const done = p.steps.findLastIndex((s) => s.status === "done");
+    const stepDone = done >= 0 && !p.steps.slice(done).some((s) => s.status === "running");
+    p.status = own2.some((t) => t.status === "now") ? "now" : allDone(own2) || stepDone ? "done" : p.id === last.part ? "now" : "todo";
+  }
+  for (const ph of req.phases) {
+    ph.status = ph.tasks.some(
+      (t) => t.status === "now" || t.status === "failed"
+    ) ? "now" : allDone(ph.tasks) ? "done" : "todo";
+  }
+}
+
+// ../packages/core/src/view/files.ts
+function applyFiles(req, events, { before, narrated }) {
+  const naming = /* @__PURE__ */ new Map();
+  for (const x of narrated)
+    for (const f of x.n.files ?? []) {
+      const path4 = relPath(f.path, x.e.cwd);
+      naming.set(path4, [...naming.get(path4) ?? [], x]);
+    }
+  const helpers = /* @__PURE__ */ new Map();
+  for (const x of narrated) {
+    const id = x.e.payload.agent_id;
+    if (typeof id === "string" && id && x.part)
+      helpers.set(id, [...helpers.get(id) ?? [], x]);
+  }
+  const near = (list2, i) => list2.findLast((x) => x.i < i) ?? list2.find((x) => x.i > i);
+  events.forEach((e, i) => {
+    for (const t of touchesOf(e)) addAt(t, i, String(e.payload.agent_id ?? ""));
+  });
+  function addAt(t, i, agentId) {
+    const by = near(helpers.get(agentId) ?? [], i) ?? near(naming.get(t.path) ?? [], i);
+    const partId = by?.part ?? before[i]?.part;
+    const part = req.parts.find((p) => p.id === partId);
+    addTouch(part ? part.files : req.looseFiles, t);
+  }
+  for (const p of req.parts) p.files = p.files.filter((f) => f.eventIds.length);
+}
+function addTouch(files, t) {
+  const file2 = files.find((f) => f.path === t.path);
+  if (!file2) files.push({ ...t, eventIds: [...t.eventIds] });
+  else {
+    file2.added += t.added;
+    file2.removed += t.removed;
+    file2.isNew ||= t.isNew;
+    file2.eventIds.push(...t.eventIds);
+  }
+}
+var hunkLines = (hunks) => Array.isArray(hunks) ? hunks.flatMap(
+  (h) => Array.isArray(h?.lines) ? h.lines : []
+) : [];
+var counter = (lines) => (c) => lines.filter((l) => typeof l === "string" && l.startsWith(c)).length;
+function touchesOf(e) {
+  const { tool_name: tool, tool_response: res } = e.payload;
+  if (e.hook !== "PostToolUse" || !res || typeof res !== "object") return [];
+  const r = res;
+  if (tool === "Edit" || tool === "Write") {
+    const t = editTouch(e, r);
+    return t ? [t] : [];
+  }
+  if (tool !== "Bash") return [];
+  const diff = r.bashEditDiff;
+  const files = Array.isArray(diff?.files) ? diff.files : [];
+  return files.flatMap((f) => {
+    if (typeof f?.filePath !== "string") return [];
+    const count = counter(hunkLines(f.hunks));
+    const hunks = Array.isArray(f.hunks) ? f.hunks : [];
+    const isNew = hunks.length === 1 && hunks[0]?.oldStart === 0 && hunks[0]?.oldLines === 0;
+    return [
+      {
+        path: relPath(f.filePath, e.cwd),
+        added: count("+"),
+        removed: count("-"),
+        isNew,
+        eventIds: [e.id]
+      }
+    ];
+  });
+}
+function editTouch(e, r) {
+  if (typeof r.filePath !== "string") return;
+  const lines = hunkLines(r.structuredPatch);
+  const count = counter(lines);
+  const isNew = r.type === "create";
+  const content = typeof r.content === "string" ? r.content : "";
+  const created = content === "" ? 0 : content.split("\n").length - +content.endsWith("\n");
+  return {
+    path: relPath(r.filePath, e.cwd),
+    added: isNew && !lines.length ? created : count("+"),
+    removed: count("-"),
+    isNew,
+    eventIds: [e.id]
+  };
+}
+var NOISE = [
+  /^\/(?:private\/)?tmp\/claude-[^/]+\/-[^/]+\/[0-9a-f-]{36}\//,
+  /^\/(?:private\/)?tmp\/claude-[^/]+\//,
+  /^\/(?:Users|home)\/[^/]+\/\.claude\/projects\/[^/]+\//,
+  /^\/(?:private\/)?var\/folders\/[^/]+\/[^/]+\/T\//,
+  /^\/(?:private\/)?tmp\//
+];
+var WORKTREE = /^\.claude\/worktrees\/[^/]+\//;
+var HOME = /^\/(?:Users|home)\/[^/]+\//;
+function displayPath(path4, cwd) {
+  const rel = relPath(path4, cwd);
+  if (!rel.startsWith("/")) return rel.replace(WORKTREE, "");
+  const noise = NOISE.find((re) => re.test(rel));
+  if (noise) return rel.replace(noise, "");
+  const mine = HOME.exec(`${cwd}/`)?.[0];
+  const home = mine && rel.startsWith(mine) ? mine : void 0;
+  const rest = rel.slice(home ? home.length : 1).split("/");
+  const tail = rest.length > 3 ? `\u2026/${rest.slice(-3).join("/")}` : null;
+  return home ? `~/${tail ?? rest.join("/")}` : tail ?? rel;
+}
+
+// ../packages/core/src/view/flags.ts
+var NOTIFY = {
+  permission_prompt: "permission",
+  elicitation_dialog: "question",
+  idle_prompt: "idle",
+  agent_needs_input: "input"
+};
+var CLEARS = /* @__PURE__ */ new Set([
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure",
+  "SessionEnd"
+]);
+var str2 = (v) => typeof v === "string" ? v : void 0;
+var obj2 = (v) => v && typeof v === "object" ? v : {};
+function needsYou(events) {
+  let out = null;
+  for (const e of events) {
+    const p = e.payload;
+    const reason = e.hook === "PermissionRequest" ? "permission" : e.hook === "Notification" ? NOTIFY[str2(p.notification_type) ?? ""] : void 0;
+    if (CLEARS.has(e.hook)) out = null;
+    else if (reason && out?.reason !== reason) {
+      const tool = str2(p.tool_name);
+      const text3 = e.hook === "PermissionRequest" ? `Claude needs your permission${tool ? ` to use ${tool}` : ""}` : str2(p.message) ?? "";
+      out = { reason, text: text3, since: e.ts };
+    }
+  }
+  return out;
+}
+function fnv1a(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++)
+    h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+function assumptionKey(requestId, part, choice) {
+  return `${requestId}:${part ?? "-"}:${fnv1a(choice)}`;
+}
+var segments = (cmd) => cmd.split(/[;&|\n]+/).map(
+  (s) => s.trim().split(/\s+/).map(
+    (w) => w.replace(/^["'`$(\\]+/, "").replace(/(?<!["'`);])["'`);]+$/, "")
+  )
+);
+var shortFlag = (t, c) => /^-[a-zA-Z]+$/.test(t) && c.test(t);
+function isRisky(cmd) {
+  if (/\bdrop\s+(table|database)\b/i.test(cmd)) return true;
+  if (/\bprod(uction)?\b/i.test(cmd)) return true;
+  return segments(cmd).some((t) => {
+    const after = (word, from = 0) => {
+      const i = t.indexOf(word, from);
+      return i < 0 ? void 0 : t.slice(i + 1);
+    };
+    const rm = t.findIndex((w) => w === "rm" || w.endsWith("/rm"));
+    if (rm >= 0) {
+      const args = t.slice(rm + 1);
+      const r = args.some((a) => a === "--recursive" || shortFlag(a, /[rR]/));
+      const f = args.some((a) => a === "--force" || shortFlag(a, /f/));
+      if (r && f) return true;
+    }
+    const git = t.indexOf("git");
+    if (git < 0) return false;
+    const push = after("push", git);
+    if (push?.some((a) => a.startsWith("--force") || shortFlag(a, /f/)))
+      return true;
+    return after("reset", git)?.includes("--hard") ?? false;
+  });
+}
+var NONE2 = { part: void 0, task: void 0 };
+function applyFlags(req, events, { before, narrated }, followed = false) {
+  const notes = new Map(narrated.map((x) => [x.i, x]));
+  const runs = /* @__PURE__ */ new Map();
+  const risky = /* @__PURE__ */ new Map();
+  const seen = /* @__PURE__ */ new Set();
+  const finished = new Set(
+    events.filter(
+      (e) => e.hook === "PostToolUse" || e.hook === "PostToolUseFailure"
+    ).map((e) => str2(e.payload.tool_use_id))
+  );
+  const closeRisky = () => {
+    for (const flag of risky.values()) flag.pending = false;
+  };
+  const fail = (key, e, at, narrate) => {
+    const run = runs.get(key) ?? { n: 0, ...NONE2, narrate };
+    runs.set(key, run);
+    run.n++;
+    run.part = at.part;
+    run.task = at.task;
+    if (run.n < 3) return;
+    if (!run.flag) {
+      run.flag = { kind: "stuck", text: "", ts: e.ts, pending: true };
+      req.flags.push(run.flag);
+    }
+    run.flag.text = `Tried a fix ${run.n} times`;
+    delete run.flag.part;
+    if (at.part) run.flag.part = at.part;
+  };
+  const end = (key) => {
+    const flag = runs.get(key)?.flag;
+    if (flag) flag.pending = false;
+    runs.delete(key);
+  };
+  events.forEach((e, i) => {
+    const note = notes.get(i);
+    if (note?.part && note.n.step) {
+      const key = `part:${note.part}`;
+      if (note.n.step.status === "failed") fail(key, e, note, true);
+      else end(key);
+    }
+    for (const c of note?.n.choices ?? []) {
+      const key = assumptionKey(req.id, note?.part, c.choice);
+      if (!c.assumption || seen.has(key)) continue;
+      seen.add(key);
+      req.assumptions.push({
+        key,
+        ...note?.part ? { part: note.part } : {},
+        choice: c.choice,
+        reason: c.reason,
+        ts: e.ts
+      });
+    }
+    const p = e.payload;
+    const useId = str2(p.tool_use_id) ?? "";
+    const input3 = obj2(p.tool_input);
+    const command = str2(input3.command);
+    if (e.hook === "PreToolUse" && p.tool_name === "Bash" && command && isRisky(command)) {
+      const flag = {
+        kind: "risky",
+        text: `About to run: ${cut(command, 120)}`,
+        ts: e.ts,
+        pending: !finished.has(useId)
+      };
+      const part = before[i]?.part;
+      if (part) flag.part = part;
+      risky.set(useId, flag);
+      req.flags.push(flag);
+    }
+    if (e.hook === "Stop" || e.hook === "SessionEnd") closeRisky();
+    if (e.hook === "PostToolUse" || e.hook === "PostToolUseFailure") {
+      const flag = risky.get(useId);
+      if (flag) flag.pending = false;
+      const target = str2(input3.file_path) ?? command;
+      if (!target) return;
+      const key = `tool:${str2(p.tool_name)}:${target}`;
+      if (e.hook === "PostToolUse") end(key);
+      else fail(key, e, before[i] ?? NONE2, false);
+    }
+  });
+  if (followed) closeRisky();
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  for (const run of runs.values()) {
+    if (!run.flag && !run.narrate) continue;
+    const part = req.parts.find((x) => x.id === run.part);
+    if (part) part.failures = Math.max(part.failures, run.n);
+    const task = tasks.find((t) => t.id === run.task);
+    if (task && run.flag) task.problem = run.flag.text;
+  }
+}
+
+// ../packages/core/src/view/agents.ts
+var str3 = (v) => typeof v === "string" ? v : "";
+var obj3 = (v) => v && typeof v === "object" ? v : {};
+function applyAgents(req, events, { before, narrated }, known) {
+  const isAgent = (e) => e.payload.tool_name === "Agent";
+  const calls = events.filter((e) => e.hook === "PreToolUse" && isAgent(e));
+  const key = (c) => str3(c.payload.tool_use_id) || c.id;
+  const linked = /* @__PURE__ */ new Map();
+  for (const e of events)
+    if (e.hook === "PostToolUse" && isAgent(e)) {
+      const id = str3(obj3(e.payload.tool_response).agentId);
+      const use = str3(e.payload.tool_use_id);
+      if (id && use) linked.set(id, use);
+    }
+  const claimed = new Set(linked.values());
+  const started = /* @__PURE__ */ new Map();
+  events.forEach((e, i) => {
+    const id = str3(e.payload.agent_id);
+    if (e.hook === "SubagentStart" && id && !known.has(id)) {
+      const type = str3(e.payload.agent_type);
+      const free = calls.filter((c) => !claimed.has(key(c)));
+      const call = calls.find((c) => key(c) === linked.get(id)) ?? free.find(
+        (c) => str3(obj3(c.payload.tool_input).subagent_type) === type
+      ) ?? free[0];
+      if (call) {
+        claimed.add(key(call));
+        started.set(key(call), id);
+      }
+      const input3 = obj3(call?.payload.tool_input);
+      const part = narrated.findLast((x) => x.part && x.e.payload.agent_id === id)?.part ?? before[i]?.part;
+      const agent2 = {
+        id,
+        type,
+        description: str3(input3.description),
+        prompt: str3(input3.prompt),
+        ...part ? { part } : {},
+        status: "running",
+        startedAt: e.ts
+      };
+      known.set(id, agent2);
+      req.agents.push(agent2);
+      const task = req.phases.flatMap((ph) => ph.tasks).find((t) => t.id === before[i]?.task);
+      if (task) addOnce(task.agents, id);
+      const at = req.parts.find((p) => p.id === before[i]?.part);
+      if (at) addOnce(at.agents, id);
+    }
+    const agent = known.get(id);
+    if (e.hook === "SubagentStop" && agent) {
+      agent.status = "done";
+      agent.endedAt = e.ts;
+      const text3 = str3(e.payload.last_assistant_message);
+      if (text3) agent.lastText = text3;
+    }
+  });
+  return started;
+}
+
+// ../packages/core/src/view/history.ts
+var MAX_FOLDERS = 6;
+var ID = /\b(?:tasks?\s+(\d+(?:\s*[-–]\s*\d+)?)|(?:bug\s+b?|b)(\d+))\b/i;
+var VERB = /^(implement|build|draft|write|fix|add|research|investigate|re-?review|review)\b[\s:]*/i;
+var QUIET_MS = 6e5;
+var REVIEW = /^(re-?)?review\b/i;
+var LABEL = {
+  implement: "Built",
+  build: "Built",
+  review: "Reviewed",
+  "re-review": "Re-reviewed",
+  rereview: "Re-reviewed",
+  fix: "Fixed",
+  draft: "Drafted"
+};
+var str4 = (v) => typeof v === "string" ? v : "";
+var obj4 = (v) => v && typeof v === "object" ? v : {};
+var isTool = (e, hook, name) => e.hook === hook && e.payload.tool_name === name;
+var describe3 = (e) => str4(obj4(e.payload.tool_input).description).trim();
+function subject(description) {
+  const m = ID.exec(description);
+  if (!m) return void 0;
+  return m[1] ? `task:${m[1].replace(/\s*[-–]\s*/, "-")}` : `item:B${m[2]}`;
+}
+function titleOf(description) {
+  const t = description.replace(VERB, "") || description || "A helper";
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+function inferHistory(reqs, events, agents, started) {
+  const all = events.flat();
+  const lastAt = /* @__PURE__ */ new Map();
+  for (const e of all) {
+    const id = str4(e.payload.agent_id);
+    if (id) lastAt.set(id, e.ts);
+  }
+  const latest = Date.parse(all.at(-1)?.ts ?? "");
+  const endAt = all.findLast((e) => e.hook === "SessionEnd")?.ts ?? "";
+  const over = (since) => endAt > since || latest - Date.parse(since) > QUIET_MS;
+  const failed = /* @__PURE__ */ new Set();
+  const returned = /* @__PURE__ */ new Set();
+  for (const e of all) {
+    const use = str4(e.payload.tool_use_id);
+    if (!use) continue;
+    if (isTool(e, "PostToolUseFailure", "Agent")) failed.add(use);
+    const res = obj4(e.payload.tool_response);
+    if (isTool(e, "PostToolUse", "Agent") && res.isAsync !== true && res.status !== "async_launched")
+      returned.add(use);
+  }
+  const owner = /* @__PURE__ */ new Map();
+  const built = reqs.map((req, i) => {
+    const out = /* @__PURE__ */ new Map();
+    if (!req.planInferred) return out;
+    for (const e of events[i] ?? []) {
+      if (!isTool(e, "PreToolUse", "Agent")) continue;
+      const use = str4(e.payload.tool_use_id);
+      const description = describe3(e);
+      const id = subject(description) ?? `run:${use || e.id}`;
+      const agentId = started.get(use || e.id);
+      const agent = agentId ? agents.get(agentId) : void 0;
+      const status2 = failed.has(use) ? "failed" : agent?.status === "done" || returned.has(use) || req.finished && over(lastAt.get(agentId ?? "") ?? e.ts) ? "done" : "running";
+      if (status2 !== "running" && agent?.status === "running")
+        agent.status = "done";
+      const review = REVIEW.test(description);
+      let b = out.get(id);
+      if (!b) {
+        b = {
+          part: newPart(id, description),
+          start: e.ts,
+          lastFailed: false,
+          titled: !review
+        };
+        out.set(id, b);
+      } else if (!b.titled && !review) {
+        b.part.title = titleOf(description);
+        b.titled = true;
+      }
+      const verb = VERB.exec(description)?.[1]?.toLowerCase() ?? "";
+      b.part.steps.push({
+        ts: e.ts,
+        text: LABEL[verb] ?? description,
+        status: status2,
+        ...agentId ? { agentId } : {},
+        eventIds: [e.id]
+      });
+      b.lastFailed = status2 === "failed";
+      if (agentId) {
+        addOnce(b.part.agents, agentId);
+        owner.set(agentId, b.part);
+      }
+    }
+    return out;
+  });
+  const main2 = reqs.map(() => []);
+  for (const req of reqs) if (req.planInferred) req.looseFiles = [];
+  events.forEach((list2, j) => {
+    const req = reqs[j];
+    for (const e of list2)
+      for (const t of touchesOf(e)) {
+        const agentId = str4(e.payload.agent_id);
+        const part = owner.get(agentId);
+        if (part) addTouch(part.files, t);
+        else if (!req.planInferred) continue;
+        else if (agentId) addTouch(req.looseFiles, t);
+        else main2[j]?.push({ touch: t, ts: e.ts });
+      }
+  });
+  reqs.forEach((req, i) => {
+    if (!req.planInferred) return;
+    const helpers = [...built[i]?.values() ?? []];
+    for (const b of helpers) {
+      b.part.status = b.part.steps.some((s) => s.status === "running") ? "now" : "done";
+    }
+    const cwd = events[i]?.[0]?.cwd ?? "";
+    const folders = folderParts(main2[i] ?? [], cwd, req.looseFiles);
+    const parts = [...helpers, ...folders].sort(byStart);
+    req.parts = parts.map((b) => b.part);
+    req.parts.forEach((b, k) => {
+      const paths = new Set(b.files.map((f) => f.path));
+      for (const a of req.parts.slice(0, k))
+        if (a.files.some((f) => paths.has(f.path)))
+          b.links.push({ to: a.id, label: "same files" });
+    });
+    if (req.phases.length || !parts.length) return;
+    const tasks = parts.map(({ part, lastFailed }) => ({
+      id: part.id,
+      title: part.title,
+      part: part.id,
+      status: lastFailed ? "failed" : part.status,
+      agents: []
+    }));
+    req.phases = [
+      {
+        id: "did",
+        title: "What Claude did",
+        status: tasks.some((t) => t.status === "now" || t.status === "failed") ? "now" : tasks.every((t) => t.status === "done") ? "done" : "todo",
+        tasks
+      }
+    ];
+  });
+  reqs.forEach((req, i) => {
+    const list2 = events[i] ?? [];
+    const count = (name) => list2.filter((e) => isTool(e, "PreToolUse", name)).length;
+    const paths = new Set(
+      [...req.parts.flatMap((p) => p.files), ...req.looseFiles].map(
+        (f) => f.path
+      )
+    );
+    req.tally = {
+      helpers: count("Agent"),
+      files: paths.size,
+      commands: count("Bash")
+    };
+  });
+}
+function newPart(id, description) {
+  return {
+    id,
+    title: titleOf(description),
+    status: "todo",
+    links: [],
+    steps: [],
+    files: [],
+    choices: [],
+    checks: [],
+    words: [],
+    agents: [],
+    failures: 0
+  };
+}
+var byStart = (a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0;
+var OWN_FILES = /(^|\/)\.claude\//;
+var parent = (folder) => folder.slice(0, Math.max(0, folder.lastIndexOf("/")));
+function folderParts(touches, cwd, loose) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const { touch, ts } of touches) {
+    const folder = parent(displayPath(touch.path, cwd));
+    const own2 = /^[/~]/.test(touch.path) && OWN_FILES.test(touch.path);
+    if (!folder || own2) {
+      addTouch(loose, touch);
+      continue;
+    }
+    const g = groups.get(folder) ?? { files: [], start: ts };
+    groups.set(folder, g);
+    addTouch(g.files, touch);
+  }
+  const depth = (f) => f.split("/").length;
+  for (const folder of [...groups.keys()].sort((a, b) => depth(b) - depth(a))) {
+    const g = groups.get(folder);
+    if (g?.files.length !== 1) continue;
+    let up = parent(folder);
+    while (up && !groups.has(up)) up = parent(up);
+    const into = groups.get(up);
+    if (!into) continue;
+    for (const f of g.files) addTouch(into.files, f);
+    if (g.start < into.start) into.start = g.start;
+    groups.delete(folder);
+  }
+  const ranked = [...groups.entries()].sort(
+    ([, a], [, b]) => b.files.length - a.files.length || byStart(a, b)
+  );
+  for (const [, g] of ranked.slice(MAX_FOLDERS))
+    for (const f of g.files) addTouch(loose, f);
+  return ranked.slice(0, MAX_FOLDERS).map(([folder, g]) => ({
+    part: {
+      ...newPart(`dir:${folder}`, folder),
+      title: folder,
+      status: "done",
+      files: g.files
+    },
+    start: g.start,
+    lastFailed: false,
+    titled: true
+  }));
+}
+
+// ../packages/core/src/view/infer.ts
+var BUG = /\b(bug|fix|error|broken|crash|fails?|failing|issue)\b/i;
+var REFACTOR = /\b(refactor|rename|clean ?up|restructure|extract)\b/i;
+var QUESTION = /^\s*(how|what|why|where|which|can|does|is)\b/i;
+function inferKind(prompt) {
+  if (BUG.test(prompt)) return "bug";
+  if (REFACTOR.test(prompt)) return "refactor";
+  if (prompt.trimEnd().endsWith("?") || QUESTION.test(prompt))
+    return "question";
+  return "feature";
+}
+var obj5 = (v) => typeof v === "object" && v !== null ? v : {};
+var text2 = (...vs) => vs.find((v) => typeof v === "string" && v !== "") ?? vs.find((v) => typeof v === "number")?.toString();
+function applyInference(req, events) {
+  if (req.kindInferred) req.kind = inferKind(req.prompt);
+  if (!req.planInferred) return;
+  const tasks = [];
+  for (const e of events) {
+    if (e.hook !== "TaskCreated" && e.hook !== "TaskCompleted") continue;
+    const p = e.payload;
+    const t = obj5(p.task);
+    const id = text2(p.task_id, t.id, p.id);
+    if (!id) continue;
+    let task = tasks.find((x) => x.id === id);
+    if (!task) {
+      task = {
+        id,
+        title: text2(
+          p.task_subject,
+          p.subject,
+          t.subject,
+          p.title,
+          p.task_description,
+          p.description
+        ) ?? id,
+        status: "todo",
+        agents: []
+      };
+      tasks.push(task);
+    }
+    if (e.hook === "TaskCompleted") task.status = "done";
+  }
+  if (!tasks.length) return;
+  req.phases = [
+    {
+      id: "tasks",
+      title: "Tasks",
+      status: tasks.every((t) => t.status === "done") ? "done" : tasks.some((t) => t.status === "done") ? "now" : "todo",
+      tasks
+    }
+  ];
+}
+var TOOL_HOOKS = /* @__PURE__ */ new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure"]);
+var QUIET = /* @__PURE__ */ new Set([
+  MAP_TOOL,
+  NARRATE_TOOL,
+  "ToolSearch",
+  "TaskList",
+  "TaskGet"
+]);
+var basename = (v) => typeof v === "string" && v ? v.split("/").filter(Boolean).at(-1) : void 0;
+function toolText(p) {
+  const name = String(p.tool_name);
+  const input3 = obj5(p.tool_input);
+  const file2 = basename(input3.file_path);
+  const command = typeof input3.command === "string" ? input3.command.replace(/\s+/g, " ").trim().slice(0, 60) : "";
+  const description = text2(input3.description);
+  if ((name === "Edit" || name === "Write") && file2) return `Editing ${file2}`;
+  if (name === "Read" && file2) return `Reading ${file2}`;
+  if (name === "Bash" && command) return `Running ${command}`;
+  if (name === "Agent" && description)
+    return `Started a helper: ${description}`;
+  return `Using ${name}`;
+}
+function inferNow(req, events, trace) {
+  let tool = -1;
+  let stop = -1;
+  events.forEach((e2, i) => {
+    const name = e2.payload.tool_name;
+    if (TOOL_HOOKS.has(e2.hook) && !QUIET.has(String(name))) tool = i;
+    if (e2.hook === "Stop") stop = i;
+  });
+  const last = Math.max(tool, stop);
+  if (last < 0 || (trace.narrated.at(-1)?.i ?? -1) > tool) return;
+  const e = events[last];
+  req.now = {
+    text: stop > tool ? "Finished this request" : toolText(e.payload),
+    why: "",
+    ts: e.ts,
+    inferred: true
+  };
+}
+
+// ../packages/core/src/view/words.ts
+var str5 = (v) => typeof v === "string" ? v : "";
+var obj6 = (v) => v && typeof v === "object" ? v : {};
+var unentity = (s) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+var tag = (name, s) => {
+  const m = new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(s);
+  return m ? unentity(m[1].trim()) : void 0;
+};
+var VERDICT = /^Status:\s*([A-Z][A-Z_]+)(?![A-Za-z])/;
+var INTERIM = /waiting on its own background work|may be interim/i;
+function verdictOf(text3) {
+  const first = text3.trim().split("\n")[0]?.replace(/\*/g, "") ?? "";
+  return VERDICT.exec(first.trim())?.[1];
+}
+function parseNotification(prompt, ts) {
+  if (!/^\s*<task-notification>/.test(prompt)) return void 0;
+  const use = tag("tool-use-id", prompt);
+  if (!use) return void 0;
+  const open2 = prompt.indexOf("<result>");
+  const close = prompt.lastIndexOf("</result>");
+  const text3 = open2 >= 0 && close > open2 ? unentity(prompt.slice(open2 + "<result>".length, close).trim()) : "";
+  const summary = tag("summary", prompt) ?? "";
+  const verdict = verdictOf(text3);
+  return {
+    use,
+    report: {
+      status: tag("status", prompt) ?? "completed",
+      summary,
+      text: text3,
+      ...verdict ? { verdict } : {},
+      ts,
+      interim: INTERIM.test(`${summary}
+${tag("note", prompt) ?? ""}`)
+    }
+  };
+}
+function foregroundText(res) {
+  const content = Array.isArray(res.content) ? res.content : [];
+  return content.map((b) => str5(obj6(b).text)).filter((t) => t && !/^\s*<tools-used-before-summary>/.test(t)).join("\n").trim();
+}
+function applyWords(reqs, events, agents, started) {
+  const reportAt = /* @__PURE__ */ new Map();
+  for (const list2 of events)
+    for (const e of list2) {
+      const got = reportOf(e, started);
+      const agent = got && agents.get(got.agentId);
+      if (!got || !agent) continue;
+      agent.report = got.report;
+      reportAt.set(e.id, agent.id);
+    }
+  for (const agent of agents.values()) {
+    const brief = briefOf(agent.prompt);
+    if (brief) agent.brief = brief;
+  }
+  reqs.forEach((req, i) => {
+    req.messages = messagesOf(req, events[i] ?? [], reportAt);
+  });
+}
+function reportOf(e, started) {
+  if (e.hook === "UserPromptSubmit") {
+    const n = parseNotification(str5(e.payload.prompt), e.ts);
+    const agentId2 = n && started.get(n.use);
+    return n && agentId2 ? { agentId: agentId2, report: n.report } : void 0;
+  }
+  if (e.hook !== "PostToolUse" || e.payload.tool_name !== "Agent") return;
+  const res = obj6(e.payload.tool_response);
+  if (res.isAsync === true || res.status === "async_launched") return;
+  const agentId = str5(res.agentId) || started.get(str5(e.payload.tool_use_id)) || "";
+  const text3 = foregroundText(res);
+  if (!agentId || !text3) return;
+  const verdict = verdictOf(text3);
+  return {
+    agentId,
+    report: {
+      status: str5(res.status) || "completed",
+      summary: "",
+      text: text3,
+      ...verdict ? { verdict } : {},
+      ts: e.ts,
+      interim: false
+    }
+  };
+}
+var ENDS_TURN = (e) => e.hook === "Stop" || e.hook === "UserPromptSubmit" || e.hook === "PreToolUse" && e.payload.tool_name === "Agent";
+function messagesOf(req, events, reportAt) {
+  const out = [];
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  let agent;
+  for (const e of events) {
+    const by = reportAt.get(e.id);
+    if (by) {
+      agent = by;
+      continue;
+    }
+    if (ENDS_TURN(e)) agent = void 0;
+    if (e.hook !== "AssistantText" || e.payload.agent_id) continue;
+    const text3 = str5(e.payload.text);
+    if (!text3.trim()) continue;
+    const task = taskOf(text3, tasks, req);
+    out.push({
+      id: e.id,
+      ts: e.ts,
+      text: text3,
+      ...task ? { task } : {},
+      ...agent ? { agent } : {}
+    });
+  }
+  return out;
+}
+var SUBJECT = /\b(?:tasks?\s+(\d+)(?:\s*(?:[-–]|and|&)\s*(\d+))?|(?:bug\s+b?|b)(\d+))\b/gi;
+function subjectsOf(text3) {
+  return [...text3.matchAll(SUBJECT)].map((m) => {
+    if (m[3]) return { kind: "item", id: Number(m[3]) };
+    const from = Number(m[1]);
+    const to = m[2] ? Number(m[2]) : from;
+    return { kind: "task", from: Math.min(from, to), to: Math.max(from, to) };
+  });
+}
+var covers = (key, s) => key.kind === "task" && s.kind === "task" ? key.from <= s.from && s.to <= key.to : key.kind === "item" && s.kind === "item" && key.id === s.id;
+function taskOf(text3, tasks, req) {
+  const partTitle = (t) => req.parts.find((p) => p.id === t.part)?.title ?? "";
+  const named = subjectsOf(text3);
+  if (named.length) {
+    const keyed = tasks.flatMap((t) => {
+      const keys = subjectsOf(`${t.title}
+${partTitle(t)}`);
+      return keys.length ? [{ t, key: keys[0] }] : [];
+    });
+    const hit = /* @__PURE__ */ new Set();
+    for (const s of named) {
+      const by = keyed.filter((k) => covers(k.key, s));
+      if (by.length !== 1) return void 0;
+      hit.add(by[0].t);
+    }
+    return hit.size === 1 ? [...hit][0]?.id : void 0;
+  }
+  if (req.planInferred) return void 0;
+  const has = (title) => title.length >= 8 && text3.toLowerCase().includes(title.toLowerCase());
+  const byTask = tasks.filter((t) => has(t.title));
+  if (byTask.length === 1) return byTask[0]?.id;
+  if (byTask.length > 1) return void 0;
+  const parts = req.parts.filter((p) => has(p.title));
+  const own2 = tasks.filter((t) => t.part === parts[0]?.id);
+  return parts.length === 1 && own2.length === 1 ? own2[0]?.id : void 0;
+}
+var BRIEF_MAX = 600;
+var POINTER = /^(?:please\s+)?(?:first\s+)?(?:then\s+)?(?:read|look at|see|study|open|check out|follow)\b|^[\w ()-]{1,40}:\s*(?:`?[~.]?\/|https?:)/i;
+var RULE = /^(?:read-only\b|never\b|do not\b|don't\b|always\b|work (?:and commit )?only\b|commit\b|no\s+co-author|rules?:|you must\b|keep it\b)/i;
+var SENTENCE = /(?<=[.!?])\s+(?=[A-Z0-9"'`(*[])/;
+var plain = (s) => s.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\*\*|__|`/g, "").replace(/^\s*(?:[-*+]|\d+[.)])\s+/gm, "").replace(/\s+/g, " ").trim();
+function briefOf(prompt) {
+  const context = /^#{1,6}\s*context\s*$/im.exec(prompt);
+  const body = context ? prompt.slice(context.index + context[0].length) : prompt;
+  for (const para of body.split(/\n\s*\n/)) {
+    if (/^\s*#/.test(para) && !para.trim().includes("\n")) continue;
+    const lines = para.split("\n").filter((l) => !/^\s*#/.test(l));
+    const kept = plain(lines.join("\n")).split(SENTENCE).filter((s) => !POINTER.test(s) && !RULE.test(s) && !s.endsWith(":")).join(" ").trim();
+    if (kept) return cutAtSentence(kept, BRIEF_MAX);
+    if (context) return void 0;
+  }
+  return void 0;
+}
+function cutAtSentence(s, max) {
+  if (s.length <= max) return s;
+  const head = s.slice(0, max);
+  const end = Math.max(...[". ", "! ", "? "].map((p) => head.lastIndexOf(p)));
+  if (end > 0) return head.slice(0, end + 1);
+  return `${head.slice(0, head.lastIndexOf(" ")).trimEnd()}\u2026`;
+}
+
+// ../packages/core/src/view/reduce.ts
+function reduce(events) {
+  const sorted = sortEvents(events);
+  const agents = /* @__PURE__ */ new Map();
+  const started = /* @__PURE__ */ new Map();
+  const ended = sorted.some((e) => e.hook === "SessionEnd");
+  const split = splitRequests(sorted);
+  const requests = split.map(({ start, rest }, i, all) => {
+    const req = newRequest(start);
+    const trace = applyPlan(req, rest);
+    applyInference(req, rest);
+    inferNow(req, rest, trace);
+    applyFiles(req, rest, trace);
+    for (const [use, id] of applyAgents(req, rest, trace, agents))
+      started.set(use, id);
+    applyFlags(req, rest, trace, i < all.length - 1);
+    req.finished = i < all.length - 1 || rest.at(-1)?.hook === "SessionEnd";
+    return req;
+  });
+  const lists = split.map((s) => [s.start, ...s.rest]);
+  inferHistory(requests, lists, agents, started);
+  applyWords(requests, lists, agents, started);
+  const first = sorted[0];
+  return {
+    sessionId: first?.sessionId ?? "",
+    cwd: first?.cwd ?? "",
+    title: cut(requests[0]?.prompt ?? "", 80),
+    startedAt: first?.ts ?? "",
+    lastEventAt: sorted.at(-1)?.ts ?? "",
+    ended,
+    requests,
+    needsYou: needsYou(sorted)
+  };
+}
+var cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+function sortEvents(events) {
+  const seen = /* @__PURE__ */ new Set();
+  return [...events].sort((a, b) => cmp(a.ts, b.ts) || cmp(a.id, b.id)).filter((e) => !seen.has(e.id) && seen.add(e.id));
+}
+var isNotRequest = (prompt) => typeof prompt === "string" && /^\s*(\/murmur:\w+(\s|$)|<task-notification>)/.test(prompt);
+function splitRequests(events) {
+  const out = [];
+  for (const e of events) {
+    if (e.hook === "UserPromptSubmit" && !isNotRequest(e.payload.prompt))
+      out.push({ start: e, rest: [] });
+    else out.at(-1)?.rest.push(e);
+  }
+  return out;
 }
 
 // src/backfill.ts
@@ -19958,6 +21028,9 @@ Keep each call short. Never mention these tools to the user unless asked.`;
 var MID_SESSION_LINE = "This session was already under way. Call `map` now for the work in progress, then narrate as below.";
 
 // src/local.ts
+function isHeadless(env) {
+  return (env.CLAUDE_CODE_ENTRYPOINT ?? "").startsWith("sdk") || env.CLAUDE_CODE_SESSION_ATTENDED === "0";
+}
 var DEFAULT_SERVER = process.env.MURMUR_SERVER ?? "http://localhost:8787";
 function murmurDir() {
   if (process.env.MURMUR_HOME) return process.env.MURMUR_HOME;
@@ -19994,13 +21067,13 @@ function projectKey(cwd) {
   return start;
 }
 function worktreeMain(root) {
-  let text2;
+  let text3;
   try {
-    text2 = import_node_fs.default.readFileSync(import_node_path.default.join(root, ".git"), "utf8");
+    text3 = import_node_fs.default.readFileSync(import_node_path.default.join(root, ".git"), "utf8");
   } catch {
     return void 0;
   }
-  const gitdir = /^gitdir:\s*(.+?)\s*$/m.exec(text2)?.[1];
+  const gitdir = /^gitdir:\s*(.+?)\s*$/m.exec(text3)?.[1];
   if (!gitdir) return void 0;
   const worktrees = import_node_path.default.dirname(import_node_path.default.resolve(root, gitdir));
   const dotGit = import_node_path.default.dirname(worktrees);
@@ -20133,16 +21206,33 @@ function pruneSessions(now) {
     }
   }
 }
+function skipText(sessionId, transcriptPath) {
+  if (isNewSession(sessionId)) return;
+  const s = readSession(sessionId);
+  const file2 = s.transcriptPath ?? (typeof transcriptPath === "string" && transcriptPath ? transcriptPath : void 0);
+  if (!file2) return;
+  let size;
+  try {
+    size = import_node_fs.default.statSync(file2).size;
+  } catch {
+    return;
+  }
+  if (s.textOffset !== size) updateSession(sessionId, { textOffset: size });
+}
 function updateSession(sessionId, patch) {
   writeSession(sessionId, { ...readSession(sessionId), ...patch });
 }
+
+// src/recap.ts
+var import_node_child_process = require("node:child_process");
+var import_node_os2 = __toESM(require("node:os"), 1);
 
 // src/upload.ts
 var import_node_fs2 = __toESM(require("node:fs"), 1);
 var import_node_path2 = __toESM(require("node:path"), 1);
 var MAX_EVENTS = 200;
 var MAX_AGE_MS = 7 * 24 * 3600 * 1e3;
-var MAX_QUEUE_BYTES = 5e7;
+var MAX_QUEUE_BYTES = 1e8;
 var MAX_BYTES = 5e6;
 var QUEUED = /^\d{15}-[^/\\]+\.json$/;
 var WRAPPER = '{"events":[]}'.length;
@@ -20156,15 +21246,15 @@ function enqueue(e) {
   import_node_fs2.default.renameSync(tmp, import_node_path2.default.join(dir, name));
 }
 function readQueued(file2, wanted) {
-  let text2;
+  let text3;
   try {
-    text2 = import_node_fs2.default.readFileSync(file2, "utf8");
+    text3 = import_node_fs2.default.readFileSync(file2, "utf8");
   } catch {
     return null;
   }
   try {
-    const r = MurmurEventSchema.safeParse(JSON.parse(text2));
-    if (r.success && wanted(r.data)) return text2;
+    const r = MurmurEventSchema.safeParse(JSON.parse(text3));
+    if (r.success && wanted(r.data)) return text3;
   } catch {
   }
   import_node_fs2.default.rmSync(file2, { force: true });
@@ -20265,52 +21355,440 @@ async function flush(c, {
   return { sent, kept };
 }
 
+// src/recap.ts
+var MAX_INPUT = 6e4;
+var TIMEOUT_MS = 6e4;
+var PARALLEL = 3;
+var MESSAGE_MAX = 3e3;
+var MAX_REQUESTS = 5;
+var BUDGET_MS = 15e4;
+var TEXT_MAX = 300;
+function lastRequestOpen(trigger) {
+  return !(trigger === "UserPromptSubmit" || trigger?.startsWith("SessionStart:") && trigger !== "SessionStart:compact");
+}
+var live = /* @__PURE__ */ new Set();
+function killRecaps() {
+  for (const c of live) c.kill("SIGKILL");
+}
+process.once("exit", killRecaps);
+var ARGS = [
+  "-p",
+  "--model",
+  "sonnet",
+  "--output-format",
+  "json",
+  "--tools",
+  "",
+  "--max-turns",
+  "1",
+  "--no-session-persistence",
+  // No hooks (so no Murmur upload), plugins, MCP servers, CLAUDE.md or slash commands.
+  "--safe-mode",
+  "--strict-mcp-config",
+  "--disable-slash-commands",
+  "--settings",
+  '{"disableAllHooks":true}'
+];
+var INSTRUCTIONS = `You summarise one finished request from a Claude Code session for Murmur, a page that shows a coding session as a story to the person who asked for it.
+Below are the person's request, Claude's own messages to them in order, the helpers Claude started (H1, H2, ... with what each was asked and reported), and the files changed.
+Answer with one JSON object and nothing else, in exactly this shape:
+{
+  "map": {
+    "kind": "feature" | "bug" | "refactor" | "question",
+    "goal": "the request in a few plain words",
+    "phases": [{ "id": "p1", "title": "...", "tasks": [{ "id": "t1", "title": "...", "part": "<part id>" }] }],
+    "parts": [{ "id": "<short id>", "title": "...", "phase": "p1", "links": [{ "to": "<part id>", "label": "uses" }] }]
+  },
+  "parts": [{
+    "id": "<part id>",
+    "aim": { "aim": "what this part is for", "doneWhen": "how we know it is done" },
+    "steps": [{ "text": "what was done", "status": "done" | "failed" | "running" }],
+    "choices": [{ "choice": "...", "reason": "...", "assumption": false }],
+    "checks": [{ "check": "...", "status": "pass" | "fail" | "untried" }],
+    "words": [{ "term": "a word the person may not know", "meaning": "plain meaning" }],
+    "files": [{ "path": "<copied exactly from the file list>", "role": "what it does" }],
+    "helpers": ["H1"]
+  }],
+  "tasks": [{ "id": "t1", "status": "done" | "failed" | "running", "ended": "one line on how it ended" }]
+}
+Rules: a part is one piece of the work (a task, a fix, a screen), not a folder. "map.parts" lists every part, and every task's "part" and every entry of "parts" uses one of those ids. Every task in "map" has one entry in "tasks". Keep the person's own names for things ("Task 1: ..."). Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
+var time3 = (ts) => ts.slice(11, 16);
+function recapInput(req, cwd, calls = []) {
+  const used = /* @__PURE__ */ new Set();
+  const helpers = calls.map((c, i) => {
+    const input3 = c.payload.tool_input ?? {};
+    const description = String(input3.description ?? "");
+    const prompt = String(input3.prompt ?? "");
+    const agent = req.agents.find(
+      (a) => !used.has(a.id) && a.description === description && a.prompt === prompt
+    );
+    if (agent) used.add(agent.id);
+    const brief = agent?.brief ?? briefOf(prompt);
+    const report = agent?.report;
+    return [
+      `H${i + 1}: ${description}`,
+      brief ? `  Asked: ${brief}` : "",
+      report?.verdict ? `  Verdict: ${report.verdict}` : "",
+      report?.summary ? `  Summary: ${report.summary}` : ""
+    ].filter(Boolean).join("\n");
+  });
+  const files = [...req.parts.flatMap((p) => p.files), ...req.looseFiles].map(
+    (f) => `${f.path} (+${f.added} -${f.removed}${f.isNew ? ", new" : ""})`
+  );
+  const head = [
+    INSTRUCTIONS,
+    `
+Project folder: ${cwd}`,
+    `
+## Request (${req.startedAt})
+${req.prompt.slice(0, 4e3)}`,
+    `
+## Helpers
+${helpers.join("\n") || "none"}`,
+    `
+## Files changed
+${[...new Set(files)].join("\n") || "none"}`,
+    "\n## Claude's messages, in order\n"
+  ].join("\n");
+  let out = head.slice(0, MAX_INPUT);
+  for (const m of req.messages ?? []) {
+    const text3 = m.text.length > MESSAGE_MAX ? `${m.text.slice(0, MESSAGE_MAX)}\u2026` : m.text;
+    const line = `[${time3(m.ts)}] ${text3}
+`;
+    if (out.length + line.length > MAX_INPUT) {
+      out += "[later messages left out]\n";
+      break;
+    }
+    out += line;
+  }
+  return out;
+}
+function ask(input3, env, timeoutMs) {
+  const t0 = Date.now();
+  const done = (r) => ({ ...r, ms: Date.now() - t0 });
+  const { MURMUR_ALLOW_HEADLESS: _, ...rest } = env;
+  return new Promise((resolve) => {
+    let out = "";
+    let settled = false;
+    const finish = (r) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(r);
+    };
+    const child = (0, import_node_child_process.spawn)("claude", ARGS, {
+      cwd: import_node_os2.default.tmpdir(),
+      env: {
+        ...rest,
+        CLAUDE_CODE_ENTRYPOINT: "sdk-cli",
+        CLAUDE_CODE_SESSION_ATTENDED: "0",
+        MURMUR_RECAP_RUN: "1"
+      },
+      stdio: ["pipe", "pipe", "ignore"]
+    });
+    live.add(child);
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish(done({ ok: false, why: `timed out after ${timeoutMs} ms` }));
+    }, timeoutMs);
+    child.on("error", (e) => {
+      live.delete(child);
+      finish(done({ ok: false, why: e.message }));
+    });
+    child.stdout.on("data", (c) => {
+      out += c;
+    });
+    child.stdin.on("error", () => {
+    });
+    child.stdin.end(input3);
+    child.on("exit", (_code, signal) => {
+      if (signal) finish(done({ ok: false, why: `killed (${signal})` }));
+    });
+    child.on("close", (code) => {
+      live.delete(child);
+      if (code !== 0)
+        return finish(done({ ok: false, why: `exit code ${code}` }));
+      finish(done(parse3(out)));
+    });
+  });
+}
+function parse3(stdout) {
+  let res;
+  try {
+    const all = JSON.parse(stdout);
+    const list2 = Array.isArray(all) ? all : [all];
+    res = list2.findLast(
+      (m) => m && typeof m === "object" && m.type === "result"
+    );
+  } catch {
+    return { ok: false, why: "output is not JSON" };
+  }
+  if (!res || res.is_error === true || typeof res.result !== "string")
+    return { ok: false, why: "no result" };
+  const text3 = res.result.trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
+  let json2;
+  try {
+    json2 = JSON.parse(text3);
+  } catch {
+    return { ok: false, why: "the answer is not JSON" };
+  }
+  const recap = RecapInput.safeParse(json2);
+  if (!recap.success)
+    return {
+      ok: false,
+      why: `the answer is not a recap (${recap.error.issues[0]?.path.join(".")})`
+    };
+  const cost = typeof res.total_cost_usd === "number" ? res.total_cost_usd : void 0;
+  return {
+    ok: true,
+    recap: recap.data,
+    ...cost === void 0 ? {} : { cost }
+  };
+}
+function recapEvents(req, recap, helperIds, base, paths = /* @__PURE__ */ new Map()) {
+  const out = [];
+  const at = Date.parse(req.startedAt);
+  const add = (tool, input3, extra = {}) => {
+    const k = out.length + 1;
+    const payload = {
+      hook_event_name: "PostToolUse",
+      session_id: base.sessionId,
+      cwd: base.cwd,
+      tool_name: tool,
+      tool_input: input3,
+      tool_use_id: `murmur-recap:${req.id}:${k}`,
+      recap: true,
+      ...extra
+    };
+    out.push(
+      scrubEvent({
+        id: stableId(base.sessionId, "PostToolUse", payload),
+        sessionId: base.sessionId,
+        machineId: base.machineId,
+        cwd: base.cwd,
+        // A millisecond apart just after the prompt, in order, before what Claude did.
+        ts: new Date(at + k).toISOString(),
+        hook: "PostToolUse",
+        payload
+      })
+    );
+  };
+  const cut2 = (s) => s.slice(0, 200);
+  add(MAP_TOOL, recap.map);
+  const tasks = recap.map.phases.flatMap((ph) => ph.tasks);
+  for (const p of recap.parts) {
+    const title = recap.map.parts.find((x) => x.id === p.id)?.title ?? p.id;
+    const { id, steps, helpers, files, ...detail } = p;
+    add(NARRATE_TOOL, {
+      now: cut2(title),
+      why: "",
+      part: id,
+      ...detail,
+      // Named by the path it was changed at, so it matches whatever cwd reads it.
+      ...files ? {
+        files: files.map((f) => {
+          const full = paths.get(f.path);
+          return {
+            ...f,
+            path: full && full.length <= TEXT_MAX ? full : f.path
+          };
+        })
+      } : {}
+    });
+    for (const step of steps ?? [])
+      add(NARRATE_TOOL, { now: cut2(step.text), why: "", part: id, step });
+    for (const h of helpers ?? []) {
+      const agentId = helperIds[Number(/^H(\d+)$/.exec(h)?.[1]) - 1];
+      if (agentId)
+        add(
+          NARRATE_TOOL,
+          { now: cut2(title), why: "", part: id },
+          { agent_id: agentId }
+        );
+    }
+  }
+  for (const t of recap.tasks) {
+    const task = tasks.find((x) => x.id === t.id);
+    if (!task) continue;
+    add(NARRATE_TOOL, {
+      now: t.ended,
+      why: "",
+      task: t.id,
+      taskStatus: t.status,
+      ...task.part ? { step: { text: t.ended, status: t.status } } : {}
+    });
+  }
+  add(NARRATE_TOOL, { now: cut2(recap.map.goal), why: "" });
+  return out;
+}
+async function runRecap(sessionId, events, {
+  env = process.env,
+  timeoutMs = TIMEOUT_MS,
+  budgetMs = BUDGET_MS,
+  lastOpen = false,
+  log = (l) => process.stderr.write(`${l}
+`)
+} = {}) {
+  if (env.MURMUR_RECAP === "0" || env.MURMUR_RECAP_RUN === "1" || isHeadless(env))
+    return { ran: 0, ok: 0 };
+  const t0 = Date.now();
+  const view = reduce(events);
+  const done = new Set(readSession(sessionId).recapped ?? []);
+  const last = view.requests.at(-1);
+  const queue = view.requests.filter((r) => r.planInferred && !(lastOpen && r === last)).reverse().slice(0, MAX_REQUESTS).filter((r) => !done.has(r.id));
+  const sending = () => {
+    const s = readSession(sessionId);
+    const cwd = s.cwd ?? view.cwd;
+    return readCredentials() !== null && !isRevoked() && sessionProjectState(cwd, sessionId) === "on" && !isPaused(cwd, sessionId) && !(s.project !== void 0 && isPaused(s.project));
+  };
+  const byId = new Map(events.map((e) => [e.id, e]));
+  const calls = callsByRequest(events, new Set(view.requests.map((r) => r.id)));
+  const paths = changedPaths(events);
+  let ok = 0;
+  let ran = 0;
+  const worker = async () => {
+    for (let req = queue.shift(); req; req = queue.shift()) {
+      if (Date.now() - t0 > budgetMs || !sending()) return;
+      const s = readSession(sessionId);
+      updateSession(sessionId, { recapped: [...s.recapped ?? [], req.id] });
+      ran++;
+      const mine = calls.get(req.id) ?? [];
+      const r = await ask(recapInput(req, view.cwd, mine), env, timeoutMs);
+      const secs = (r.ms / 1e3).toFixed(1);
+      if (!r.ok) {
+        log(
+          `murmur recap: ${req.id} kept the inferred view: ${r.why} (${secs} s)`
+        );
+        continue;
+      }
+      const helperIds = mine.map((c) => {
+        const input3 = c.payload.tool_input ?? {};
+        return req.agents.find(
+          (a) => a.description === input3.description && a.prompt === input3.prompt
+        )?.id;
+      });
+      for (const e of recapEvents(
+        req,
+        r.recap,
+        helperIds,
+        byId.get(req.id),
+        paths
+      ))
+        enqueue(e);
+      ok++;
+      log(
+        `murmur recap: ${req.id} ok (${secs} s${r.cost === void 0 ? "" : `, $${r.cost.toFixed(4)}`})`
+      );
+    }
+  };
+  await Promise.all(Array.from({ length: PARALLEL }, worker));
+  return { ran, ok };
+}
+function callsByRequest(events, ids) {
+  const out = /* @__PURE__ */ new Map();
+  let current;
+  for (const e of [...events].sort(
+    (a, b) => a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0
+  )) {
+    if (ids.has(e.id)) {
+      current = [];
+      out.set(e.id, current);
+    } else if (current && e.hook === "PreToolUse" && e.payload.tool_name === "Agent" && !e.payload.agent_id)
+      current.push(e);
+  }
+  return out;
+}
+function changedPaths(events) {
+  const out = /* @__PURE__ */ new Map();
+  const add = (abs, cwd) => {
+    if (typeof abs === "string") out.set(relPath(abs, cwd), abs);
+  };
+  for (const e of events) {
+    if (e.hook !== "PostToolUse") continue;
+    const res = e.payload.tool_response ?? {};
+    add(res.filePath, e.cwd);
+    const diff = res.bashEditDiff;
+    for (const f of Array.isArray(diff?.files) ? diff.files : [])
+      add(f?.filePath, e.cwd);
+  }
+  return out;
+}
+
 // src/backfill.ts
-var MAX_EVENTS2 = 5e3;
-var MAX_BYTES2 = 2e7;
-var TAIL_BYTES = 3e7;
+var MAX_EVENTS2 = 1e4;
+var MAX_BYTES2 = 4e7;
+var TAIL_BYTES = 512e6;
+var CHUNK = 1 << 20;
 var STALE_MS = 10 * 6e4;
 function uuidFrom(key) {
   const h = (0, import_node_crypto.createHash)("sha1").update(key).digest("hex");
   const variant = (Number.parseInt(h[16], 16) & 3 | 8).toString(16);
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${variant}${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
-var TOOL_HOOKS = /* @__PURE__ */ new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure"]);
+var TOOL_HOOKS2 = /* @__PURE__ */ new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure"]);
 function stableId(sessionId, hook, p) {
-  const key = TOOL_HOOKS.has(hook) ? p.tool_use_id : hook === "SubagentStart" || hook === "SubagentStop" ? p.agent_id : void 0;
+  const key = TOOL_HOOKS2.has(hook) ? p.tool_use_id : hook === "SubagentStart" || hook === "SubagentStop" ? p.agent_id : void 0;
   return typeof key === "string" && key ? uuidFrom(`murmur:${sessionId}:${hook}:${key}`) : void 0;
 }
-var obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : void 0;
-var str = (v) => typeof v === "string" && v ? v : void 0;
-function readLines(file2, tailBytes) {
-  let text2;
+var obj7 = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : void 0;
+var str6 = (v) => typeof v === "string" && v ? v : void 0;
+function* readLines(file2, tailBytes, at, upTo) {
+  let fd;
   try {
-    const fd = import_node_fs3.default.openSync(file2, "r");
-    try {
-      const size = import_node_fs3.default.fstatSync(fd).size;
-      const start = Math.max(0, size - tailBytes);
-      const buf = Buffer.alloc(size - start);
-      import_node_fs3.default.readSync(fd, buf, 0, buf.length, start);
-      text2 = buf.toString("utf8");
-      if (start > 0) text2 = text2.slice(text2.indexOf("\n") + 1);
-    } finally {
-      import_node_fs3.default.closeSync(fd);
+    fd = import_node_fs3.default.openSync(file2, "r");
+  } catch {
+    return;
+  }
+  try {
+    const size = Math.min(import_node_fs3.default.fstatSync(fd).size, upTo?.from ?? Infinity);
+    let pos = at ? at.from <= size ? at.from : 0 : Math.max(0, size - tailBytes);
+    let end = pos;
+    if (upTo) upTo.end = pos;
+    const buf = Buffer.alloc(CHUNK);
+    let skip = false;
+    if (pos > 0 && !at) {
+      import_node_fs3.default.readSync(fd, buf, 0, 1, pos - 1);
+      skip = buf[0] !== 10;
+    }
+    let rest = Buffer.alloc(0);
+    const parse4 = (line) => {
+      try {
+        return obj7(JSON.parse(line.toString("utf8")));
+      } catch {
+        return void 0;
+      }
+    };
+    while (pos < size) {
+      const n = import_node_fs3.default.readSync(fd, buf, 0, Math.min(CHUNK, size - pos), pos);
+      if (n <= 0) break;
+      pos += n;
+      let data = Buffer.concat([rest, buf.subarray(0, n)]);
+      for (let nl = data.indexOf(10); nl !== -1; nl = data.indexOf(10)) {
+        const line = data.subarray(0, nl);
+        data = data.subarray(nl + 1);
+        end += nl + 1;
+        if (at) at.end = end;
+        if (upTo) upTo.end = end;
+        if (skip) skip = false;
+        else {
+          const e = parse4(line);
+          if (e) yield e;
+        }
+      }
+      rest = Buffer.from(data);
+    }
+    if (!at && !upTo && !skip && rest.length) {
+      const e = parse4(rest);
+      if (e) yield e;
     }
   } catch {
-    return [];
+  } finally {
+    import_node_fs3.default.closeSync(fd);
   }
-  return text2.split("\n").flatMap((line) => {
-    try {
-      const e = obj(JSON.parse(line));
-      return e ? [e] : [];
-    } catch {
-      return [];
-    }
-  });
 }
 function readMeta(file2) {
   try {
-    return obj(JSON.parse(import_node_fs3.default.readFileSync(file2, "utf8"))) ?? {};
+    return obj7(JSON.parse(import_node_fs3.default.readFileSync(file2, "utf8"))) ?? {};
   } catch {
     return {};
   }
@@ -20319,76 +21797,103 @@ var COMMAND = /^\s*<command-(?:name|message)>/;
 function promptText(content) {
   if (typeof content === "string") {
     if (!COMMAND.test(content)) return content;
-    const tag = (t) => new RegExp(`<command-${t}>([\\s\\S]*?)</command-${t}>`).exec(content)?.[1]?.trim() ?? "";
-    const name = tag("name");
+    const tag2 = (t) => new RegExp(`<command-${t}>([\\s\\S]*?)</command-${t}>`).exec(content)?.[1]?.trim() ?? "";
+    const name = tag2("name");
     if (!name) return void 0;
-    return `${name.startsWith("/") ? name : `/${name}`} ${tag("args")}`.trim();
+    return `${name.startsWith("/") ? name : `/${name}`} ${tag2("args")}`.trim();
   }
   if (!Array.isArray(content)) return void 0;
-  const text2 = content.flatMap((b) => {
-    const block = obj(b);
+  const text3 = content.flatMap((b) => {
+    const block = obj7(b);
     return block?.type === "text" && typeof block.text === "string" ? [block.text] : [];
   }).join("\n");
-  return text2 || void 0;
+  return text3 || void 0;
 }
 function backfillStale(s, now) {
   if (s.backfill !== "pending" && s.backfill !== "running") return false;
   return !(now - Date.parse(s.runningSince ?? s.cutoff ?? "") <= STALE_MS);
 }
+function entryEvent(b, e, index, hook, fields) {
+  const cwd = str6(e.cwd) ?? b.cwd;
+  const payload = {
+    ...fields,
+    hook_event_name: hook,
+    session_id: b.sessionId,
+    cwd
+  };
+  return scrubEvent({
+    id: stableId(b.sessionId, hook, payload) ?? uuidFrom(`murmur-backfill:${b.sessionId}:${e.uuid}:${index}:${hook}`),
+    sessionId: b.sessionId,
+    machineId: b.machineId,
+    cwd,
+    ts: new Date(Date.parse(e.timestamp)).toISOString(),
+    hook,
+    payload
+  });
+}
+function textBlocks(e) {
+  const content = obj7(e.message)?.content;
+  if (e.type !== "assistant" || e.isSidechain === true || !Array.isArray(content))
+    return [];
+  return content.flatMap((raw, i) => {
+    const block = obj7(raw);
+    const text3 = block?.type === "text" ? str6(block.text) : void 0;
+    return text3?.trim() ? [{ i, text: text3 }] : [];
+  });
+}
 function readBackfill(b, {
   maxEvents = MAX_EVENTS2,
   maxBytes = MAX_BYTES2,
   tailBytes = TAIL_BYTES,
-  skipPrompt
+  skipPrompt,
+  textUntil
 } = {}) {
   const cutoff = Date.parse(b.cutoff);
   const out = [];
   const emit = (e, index, hook, fields) => {
-    const cwd = str(e.cwd) ?? b.cwd;
-    const payload = {
-      ...fields,
-      hook_event_name: hook,
-      session_id: b.sessionId,
-      cwd
-    };
-    out.push(
-      scrubEvent({
-        id: stableId(b.sessionId, hook, payload) ?? uuidFrom(`murmur-backfill:${b.sessionId}:${e.uuid}:${index}:${hook}`),
-        sessionId: b.sessionId,
-        machineId: b.machineId,
-        cwd,
-        ts: new Date(Date.parse(e.timestamp)).toISOString(),
-        hook,
-        payload
-      })
-    );
+    out.push(entryEvent(b, e, index, hook, fields));
   };
-  const usable = (list2) => list2.filter((e) => {
+  const usable = (e) => {
     const ts = typeof e.timestamp === "string" ? Date.parse(e.timestamp) : NaN;
-    return str(e.uuid) && ts < cutoff;
-  });
+    return Boolean(str6(e.uuid)) && ts < cutoff;
+  };
   const ended = /* @__PURE__ */ new Set();
   let newest;
   const mapEntries = (list2, agent) => {
     const uses = /* @__PURE__ */ new Map();
+    let first;
+    let last;
     for (const e of list2) {
-      const content = obj(e.message)?.content;
-      if (e.type === "user" && obj(e.origin)?.kind === "human" && !agent.agent_id) {
+      if (textUntil !== void 0 && !agent.agent_id && !usable(e)) {
+        if (str6(e.uuid) && Date.parse(e.timestamp) >= cutoff)
+          for (const { i, text: text3 } of textBlocks(e))
+            emit(e, i, "AssistantText", { text: text3 });
+        continue;
+      }
+      if (!usable(e)) continue;
+      first ??= e;
+      last = e;
+      const content = obj7(e.message)?.content;
+      const kind = obj7(e.origin)?.kind;
+      if (e.type === "user" && (kind === "human" || kind === "task-notification") && !agent.agent_id) {
         const prompt = promptText(content);
         if (prompt) {
           emit(e, 0, "UserPromptSubmit", {
             prompt,
-            ...str(e.promptId) ? { prompt_id: e.promptId } : {}
+            ...str6(e.promptId) ? { prompt_id: e.promptId } : {}
           });
           newest = { at: out.length - 1, text: prompt };
         }
       }
+      if (!agent.agent_id)
+        for (const { i, text: text3 } of textBlocks(e))
+          emit(e, i, "AssistantText", { text: text3 });
       if (!Array.isArray(content)) continue;
       content.forEach((raw, i) => {
-        const block = obj(raw);
+        const block = obj7(raw);
         if (!block) return;
         if (e.type === "assistant" && block.type === "tool_use") {
-          const id = str(block.id);
+          const id = str6(block.id);
           if (!id) return;
           uses.set(id, block);
           emit(e, i, "PreToolUse", {
@@ -20398,10 +21903,10 @@ function readBackfill(b, {
             tool_use_id: id
           });
         } else if (e.type === "user" && block.type === "tool_result") {
-          const id = str(block.tool_use_id);
+          const id = str6(block.tool_use_id);
           const use = id ? uses.get(id) : void 0;
           if (!use || !id) return;
-          if (obj(e.toolUseResult)?.status !== "async_launched") ended.add(id);
+          if (obj7(e.toolUseResult)?.status !== "async_launched") ended.add(id);
           emit(
             e,
             i,
@@ -20417,8 +21922,9 @@ function readBackfill(b, {
         }
       });
     }
+    return { first, last };
   };
-  mapEntries(usable(readLines(b.transcriptPath, tailBytes)), {});
+  mapEntries(readLines(b.transcriptPath, tailBytes, void 0, textUntil), {});
   if (newest && skipPrompt !== void 0 && newest.text.trim() === skipPrompt.trim())
     out.splice(newest.at, 1);
   const dir = import_node_path3.default.join(
@@ -20438,13 +21944,15 @@ function readBackfill(b, {
       agent_id: agentId,
       agent_type: typeof meta3.agentType === "string" ? meta3.agentType : ""
     };
-    const list2 = usable(readLines(import_node_path3.default.join(dir, name), tailBytes));
-    const first = list2[0];
-    const last = list2.at(-1);
+    const at = out.length;
+    const { first, last } = mapEntries(
+      readLines(import_node_path3.default.join(dir, name), tailBytes),
+      agent
+    );
     if (!first || !last) continue;
     emit(first, 0, "SubagentStart", agent);
-    mapEntries(list2, agent);
-    const call = str(meta3.toolUseId);
+    out.splice(at, 0, out.pop());
+    const call = str6(meta3.toolUseId);
     if (meta3.finished === true || call && ended.has(call))
       emit(last, 0, "SubagentStop", agent);
   }
@@ -20460,6 +21968,7 @@ function readBackfill(b, {
   return out.slice(from);
 }
 async function runBackfill(sessionId, opts = {}) {
+  const deadline = Date.now() + 23e4;
   const creds = readCredentials();
   const s = readSession(sessionId);
   if (!creds || !(s.backfill === "pending" || backfillStale(s, Date.now())))
@@ -20469,6 +21978,12 @@ async function runBackfill(sessionId, opts = {}) {
     runningSince: (/* @__PURE__ */ new Date()).toISOString()
   });
   let events = [];
+  let upTo;
+  try {
+    const size = s.transcriptPath ? import_node_fs3.default.statSync(s.transcriptPath).size : NaN;
+    if (size >= 0) upTo = { from: size, end: 0 };
+  } catch {
+  }
   if (s.cutoff && s.transcriptPath && s.cwd)
     events = readBackfill(
       {
@@ -20478,14 +21993,46 @@ async function runBackfill(sessionId, opts = {}) {
         transcriptPath: s.transcriptPath,
         cutoff: s.cutoff
       },
-      { skipPrompt: s.triggerPrompt }
+      { skipPrompt: s.triggerPrompt, textUntil: upTo }
     );
   for (const e of events) enqueue(e);
   const { triggerPrompt: _prompt, ...rest } = readSession(sessionId);
-  writeSession(sessionId, { ...rest, backfill: "done" });
-  if (readCredentials()?.token === creds.token)
-    await flush(creds, { budgetMs: 5e4, ...opts });
+  writeSession(sessionId, {
+    ...rest,
+    backfill: "done",
+    ...upTo ? { textOffset: upTo.end } : {}
+  });
+  const same = () => readCredentials()?.token === creds.token;
+  if (same()) await flush(creds, { budgetMs: 5e4, ...opts });
+  const left = () => deadline - Date.now();
+  const recap = await runRecap(sessionId, events, {
+    lastOpen: lastRequestOpen(s.triggerHook),
+    budgetMs: Math.min(15e4, left() - 7e4)
+  });
+  if (recap.ok && same())
+    await flush(creds, { budgetMs: Math.max(1e3, left()), ...opts });
   return events.length;
+}
+function catchUpText(sessionId, env = process.env) {
+  const s = readSession(sessionId);
+  if (s.backfill !== "done" || !s.transcriptPath || !s.cwd) return 0;
+  const creds = readCredentials();
+  if (s.textOffset === void 0 || env.MURMUR_RECAP_RUN === "1" || isHeadless(env) && env.MURMUR_ALLOW_HEADLESS !== "1" || !creds || isRevoked() || sessionProjectState(s.cwd, sessionId) !== "on" || isPaused(s.cwd, sessionId) || s.project !== void 0 && isPaused(s.project)) {
+    skipText(sessionId);
+    return 0;
+  }
+  const at = { from: s.textOffset, end: s.textOffset };
+  const b = { sessionId, machineId: creds.machineId, cwd: s.cwd };
+  let n = 0;
+  for (const e of readLines(s.transcriptPath, 0, at)) {
+    if (!str6(e.uuid)) continue;
+    for (const { i, text: text3 } of textBlocks(e)) {
+      enqueue(entryEvent(b, e, i, "AssistantText", { text: text3 }));
+      n++;
+    }
+  }
+  updateSession(sessionId, { textOffset: at.end });
+  return n;
 }
 
 // src/hook.ts
@@ -20496,22 +22043,32 @@ var BLOCK = JSON.stringify({
   decision: "block",
   reason: "Murmur: before you finish, call narrate to mark each finished task done and say what you did."
 });
-var NONE2 = { stdout: "", event: null };
+var NONE3 = { stdout: "", event: null };
 var show = (line) => ({
   stdout: JSON.stringify({ systemMessage: line }),
   event: null
 });
-function isHeadless(env) {
-  return (env.CLAUDE_CODE_ENTRYPOINT ?? "").startsWith("sdk") || env.CLAUDE_CODE_SESSION_ATTENDED === "0";
+function textStart(transcriptPath) {
+  if (typeof transcriptPath !== "string" || !transcriptPath) return {};
+  try {
+    return { textOffset: import_node_fs4.default.statSync(transcriptPath).size };
+  } catch {
+    return { textOffset: 0 };
+  }
 }
 function handleHook(payload, env, now) {
   const hook = payload.hook_event_name;
   const cwd = payload.cwd;
-  if (typeof hook !== "string" || !HOOK_NAMES.includes(hook))
-    return NONE2;
-  if (isHeadless(env) && env.MURMUR_ALLOW_HEADLESS !== "1") return NONE2;
-  if (typeof cwd !== "string" || !cwd) return NONE2;
+  if (typeof hook !== "string" || hook === "AssistantText" || !HOOK_NAMES.includes(hook))
+    return NONE3;
   const sessionId = typeof payload.session_id === "string" && payload.session_id ? payload.session_id : env.CLAUDE_CODE_SESSION_ID;
+  const quiet = (r) => {
+    if (sessionId) skipText(sessionId, payload.transcript_path);
+    return r;
+  };
+  if (env.MURMUR_RECAP_RUN === "1" || isHeadless(env) && env.MURMUR_ALLOW_HEADLESS !== "1")
+    return quiet(NONE3);
+  if (typeof cwd !== "string" || !cwd) return NONE3;
   const start = hook === "SessionStart";
   if (start && payload.source === "startup") {
     clearProjectPause(cwd);
@@ -20519,31 +22076,34 @@ function handleHook(payload, env, now) {
   }
   const state = sessionProjectState(cwd, sessionId);
   if (state === void 0) {
-    if (!start) return NONE2;
+    if (!start) return quiet(NONE3);
     setProjectState(cwd, "asked");
-    return show(askLine(cwd));
+    return quiet(show(askLine(cwd)));
   }
   if (state === "off") {
     if (sessionId && isNewSession(sessionId))
       updateSession(sessionId, { backfill: "done" });
-    return NONE2;
+    return quiet(NONE3);
   }
-  if (state !== "on") return NONE2;
+  if (state !== "on") return quiet(NONE3);
   const creds = readCredentials();
-  if (!creds) return start ? show(LOGIN_LINE) : NONE2;
-  if (isRevoked()) return start ? show(REVOKED_LINE) : NONE2;
-  if (!sessionId) return NONE2;
+  if (!creds) return quiet(start ? show(LOGIN_LINE) : NONE3);
+  if (isRevoked()) return quiet(start ? show(REVOKED_LINE) : NONE3);
+  if (!sessionId) return NONE3;
   const fresh = isNewSession(sessionId);
   const seen = readSession(sessionId);
   const project = seen.project ?? projectKey(cwd);
-  if (!seen.project || !fresh && !seen.backfill)
+  const transcript = payload.transcript_path;
+  const noTranscript = !fresh && !seen.transcriptPath && typeof transcript === "string" && !!transcript;
+  if (!seen.project || !fresh && !seen.backfill || noTranscript)
     updateSession(sessionId, {
       project,
-      ...fresh ? {} : { backfill: seen.backfill ?? "done" }
+      ...fresh ? {} : { backfill: seen.backfill ?? "done" },
+      ...noTranscript ? { transcriptPath: transcript, cwd, ...textStart(transcript) } : {}
     });
   if (isPaused(cwd, sessionId) || isPaused(project)) {
     if (fresh) updateSession(sessionId, { backfill: "done" });
-    return NONE2;
+    return quiet(NONE3);
   }
   const ts = now.toISOString();
   const event = scrubEvent({
@@ -20563,18 +22123,25 @@ function handleHook(payload, env, now) {
       updateSession(sessionId, {
         backfill: "pending",
         cutoff: ts,
+        // Whether the last imported request is over: see lastRequestOpen.
+        triggerHook: start ? `SessionStart:${String(payload.source)}` : hook,
         ...hook === "UserPromptSubmit" && typeof payload.prompt === "string" ? { triggerPrompt: payload.prompt } : {},
         transcriptPath,
         cwd
       });
       backfill = sessionId;
-    } else updateSession(sessionId, { backfill: "done" });
+    } else
+      updateSession(sessionId, {
+        backfill: "done",
+        ...typeof transcriptPath === "string" && transcriptPath ? { transcriptPath, cwd, ...textStart(transcriptPath) } : {}
+      });
   } else if (backfillStale(readSession(sessionId), now.getTime())) {
     updateSession(sessionId, { backfill: "pending", runningSince: ts });
     backfill = sessionId;
   }
-  let stdout = trackNarration(sessionId, hook, payload);
-  if (start || hook === "UserPromptSubmit" && !readSession(sessionId).instructed) {
+  const prompt = hook === "UserPromptSubmit" && !isNotRequest(payload.prompt);
+  let stdout = trackNarration(sessionId, hook, payload, prompt);
+  if (start || prompt && !readSession(sessionId).instructed) {
     updateSession(sessionId, { instructed: true });
     stdout = JSON.stringify({
       hookSpecificOutput: {
@@ -20586,8 +22153,8 @@ ${NARRATION_INSTRUCTION}`
   }
   return backfill ? { stdout, event, backfill } : { stdout, event };
 }
-function trackNarration(sessionId, hook, p) {
-  if (hook === "UserPromptSubmit") updateSession(sessionId, NO_NARRATION);
+function trackNarration(sessionId, hook, p, prompt) {
+  if (prompt) updateSession(sessionId, NO_NARRATION);
   const tool = hook === "PostToolUse" ? p.tool_name : void 0;
   if (tool !== MAP_TOOL && tool !== NARRATE_TOOL && hook !== "Stop") return "";
   const n = readSession(sessionId);
@@ -20601,13 +22168,13 @@ function trackNarration(sessionId, hook, p) {
     );
   }
   if (tool === NARRATE_TOOL) {
-    const input2 = p.tool_input ?? {};
+    const input3 = p.tool_input ?? {};
     n.narrates++;
-    if (typeof input2.task === "string" && input2.task) {
-      const task = input2.task;
+    if (typeof input3.task === "string" && input3.task) {
+      const task = input3.task;
       if (!n.named.includes(task)) n.named.push(task);
       n.done = n.done.filter((t) => t !== task);
-      if (input2.taskStatus === "done") n.done.push(task);
+      if (input3.taskStatus === "done") n.done.push(task);
     }
   }
   let out = "";
@@ -20624,7 +22191,10 @@ function trackNarration(sessionId, hook, p) {
 var BACKFILL = process.argv.indexOf("--backfill");
 async function main() {
   const creds = readCredentials();
-  if (process.argv.includes("--flush")) {
+  const flushAt = process.argv.indexOf("--flush");
+  if (flushAt >= 0) {
+    const id = process.argv[flushAt + 1];
+    if (id) catchUpText(id);
     if (creds) await flush(creds);
     return;
   }
@@ -20633,9 +22203,9 @@ async function main() {
     if (id) await runBackfill(id);
     return;
   }
-  let input2 = "";
-  for await (const chunk of process.stdin) input2 += chunk;
-  const payload = JSON.parse(input2);
+  let input3 = "";
+  for await (const chunk of process.stdin) input3 += chunk;
+  const payload = JSON.parse(input3);
   if (!payload || typeof payload !== "object") return;
   const { stdout, event, backfill } = handleHook(
     payload,
@@ -20647,8 +22217,8 @@ async function main() {
   if (!event || !creds) return;
   enqueue(event);
   if (backfill || SYNC_HOOKS.has(event.hook)) {
-    const args = backfill ? ["--backfill", backfill] : ["--flush"];
-    (0, import_node_child_process.spawn)(process.execPath, [process.argv[1], ...args], {
+    const args = backfill ? ["--backfill", backfill] : ["--flush", event.sessionId];
+    (0, import_node_child_process2.spawn)(process.execPath, [process.argv[1], ...args], {
       detached: true,
       stdio: "ignore",
       windowsHide: true
@@ -20663,7 +22233,7 @@ if (/[\\/]hook\.(c?js|ts)$/.test(process.argv[1] ?? "")) {
   process.on("uncaughtException", done);
   process.stdout.on("error", () => {
   });
-  setTimeout(done, BACKFILL >= 0 ? 6e4 : 5e3).unref();
+  setTimeout(done, BACKFILL >= 0 ? 24e4 : 5e3).unref();
   main().then(done, done);
 }
 // Annotate the CommonJS export names for ESM import in node:

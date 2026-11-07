@@ -1,4 +1,8 @@
-import { type MurmurEvent, MurmurEventSchema } from "@murmur/core";
+import {
+  isNotRequest,
+  type MurmurEvent,
+  MurmurEventSchema,
+} from "@murmur/core";
 import { sql } from "drizzle-orm";
 import type { Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -53,7 +57,9 @@ function sessionRow(
   const last = sorted.at(-1) as MurmurEvent;
   const prompt = sorted.find(
     (e) =>
-      e.hook === "UserPromptSubmit" && typeof e.payload.prompt === "string",
+      e.hook === "UserPromptSubmit" &&
+      typeof e.payload.prompt === "string" &&
+      !isNotRequest(e.payload.prompt),
   )?.payload.prompt as string | undefined;
   const title = prompt?.trim() ? makeTitle(prompt.trim()) : null;
   return {

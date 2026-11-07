@@ -17,9 +17,24 @@ export const HOOK_NAMES = [
   "TaskCompleted",
   "PreCompact",
   "PostCompact",
+  // Not a Claude Code hook: Murmur reads it from the transcript (see AssistantTextPayload).
+  "AssistantText",
 ] as const;
 
 export type HookName = (typeof HOOK_NAMES)[number];
+
+/**
+ * The payload of an `AssistantText` event: one non-empty text block Claude wrote to the
+ * user on the main thread (a subagent's text never becomes one). Claude Code has no such
+ * hook; the plugin reads these from the session transcript, in the backfill and in the
+ * detached upload child, with the same id for the same block either way.
+ */
+export interface AssistantTextPayload {
+  text: string;
+  session_id: string;
+  cwd: string;
+  hook_event_name: "AssistantText";
+}
 
 export interface MurmurEvent {
   id: string;

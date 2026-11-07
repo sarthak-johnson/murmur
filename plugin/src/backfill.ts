@@ -3,18 +3,29 @@ import fs from "node:fs";
 import path from "node:path";
 import { type HookName, type MurmurEvent, scrubEvent } from "@murmur/core";
 import {
+  isHeadless,
+  isPaused,
+  isRevoked,
   readCredentials,
   readSession,
   type SessionState,
+  sessionProjectState,
+  skipText,
   updateSession,
   writeSession,
 } from "./local.js";
+import { lastRequestOpen, runRecap } from "./recap.js";
 import { enqueue, type FlushOptions, flush } from "./upload.js";
 
-const MAX_EVENTS = 5000;
-const MAX_BYTES = 20_000_000;
-// Only the newest events are kept, so only the end of each file is read.
-const TAIL_BYTES = 30_000_000;
+// With unshown tool results cut to their start, MAX_BYTES is the real bound; a 5-day
+// session with whole diffs and Claude's messages is ~7,000 events and ~23 MB. It stays
+// under the queue's 50 MB cap (upload.ts), so a backfill is never cut by the queue.
+const MAX_EVENTS = 10_000;
+const MAX_BYTES = 40_000_000;
+// Files are streamed, so this only bounds the time a huge transcript takes. What fits
+// is set by MAX_BYTES: all of a few-day session, the last day or so of a longer one.
+const TAIL_BYTES = 512_000_000;
+const CHUNK = 1 << 20;
 // A backfill pending or running this long died; the next hook starts it again.
 const STALE_MS = 10 * 60_000;
 
@@ -65,32 +76,85 @@ const obj = (v: unknown): Record<string, unknown> | undefined =>
     : undefined;
 const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
 
-/** The JSON lines in the last `tailBytes` of `file`, starting at a whole line. */
-function readLines(file: string, tailBytes: number): Entry[] {
-  let text: string;
+/** Where a live read starts, and, after it, the end of the last whole line it read. */
+interface Window {
+  from: number;
+  end: number;
+}
+
+/**
+ * The JSON lines in the last `tailBytes` of `file`, starting at a whole line, read in
+ * chunks so the file is never in memory at once (the mapped events still are). With
+ * `at`, it reads from `at.from` instead and leaves a last line with no newline (still
+ * being written) for the next read, setting `at.end` past the last whole line. With
+ * `upTo`, it reads the tail only up to byte `upTo.from`, also leaves a last line with no
+ * newline, and sets `upTo.end` past the last whole line.
+ */
+function* readLines(
+  file: string,
+  tailBytes: number,
+  at?: Window,
+  upTo?: Window,
+): Generator<Entry> {
+  let fd: number;
   try {
-    const fd = fs.openSync(file, "r");
-    try {
-      const size = fs.fstatSync(fd).size;
-      const start = Math.max(0, size - tailBytes);
-      const buf = Buffer.alloc(size - start);
-      fs.readSync(fd, buf, 0, buf.length, start);
-      text = buf.toString("utf8");
-      if (start > 0) text = text.slice(text.indexOf("\n") + 1);
-    } finally {
-      fs.closeSync(fd);
+    fd = fs.openSync(file, "r");
+  } catch {
+    return;
+  }
+  try {
+    const size = Math.min(fs.fstatSync(fd).size, upTo?.from ?? Infinity);
+    // A transcript shorter than where the last read ended was replaced: read it all.
+    let pos = at
+      ? at.from <= size
+        ? at.from
+        : 0
+      : Math.max(0, size - tailBytes);
+    let end = pos;
+    if (upTo) upTo.end = pos;
+    const buf = Buffer.alloc(CHUNK);
+    // The first line is cut unless the window starts right after a newline.
+    let skip = false;
+    if (pos > 0 && !at) {
+      fs.readSync(fd, buf, 0, 1, pos - 1);
+      skip = buf[0] !== 10;
+    }
+    let rest = Buffer.alloc(0);
+    const parse = (line: Buffer): Entry | undefined => {
+      try {
+        return obj(JSON.parse(line.toString("utf8")));
+      } catch {
+        return undefined;
+      }
+    };
+    while (pos < size) {
+      const n = fs.readSync(fd, buf, 0, Math.min(CHUNK, size - pos), pos);
+      if (n <= 0) break;
+      pos += n;
+      let data = Buffer.concat([rest, buf.subarray(0, n)]);
+      for (let nl = data.indexOf(10); nl !== -1; nl = data.indexOf(10)) {
+        const line = data.subarray(0, nl);
+        data = data.subarray(nl + 1);
+        end += nl + 1;
+        if (at) at.end = end;
+        if (upTo) upTo.end = end;
+        if (skip) skip = false;
+        else {
+          const e = parse(line);
+          if (e) yield e;
+        }
+      }
+      rest = Buffer.from(data);
+    }
+    if (!at && !upTo && !skip && rest.length) {
+      const e = parse(rest);
+      if (e) yield e;
     }
   } catch {
-    return [];
+    // Best effort: what was read so far stands.
+  } finally {
+    fs.closeSync(fd);
   }
-  return text.split("\n").flatMap((line) => {
-    try {
-      const e = obj(JSON.parse(line));
-      return e ? [e] : [];
-    } catch {
-      return [];
-    }
-  });
 }
 
 function readMeta(file: string): Record<string, unknown> {
@@ -132,6 +196,50 @@ export function backfillStale(s: SessionState, now: number): boolean {
   return !(now - Date.parse(s.runningSince ?? s.cutoff ?? "") <= STALE_MS);
 }
 
+/** One transcript entry's hook event, with the id a backfill and a live read share. */
+function entryEvent(
+  b: Pick<BackfillInput, "sessionId" | "machineId" | "cwd">,
+  e: Entry,
+  index: number,
+  hook: HookName,
+  fields: Record<string, unknown>,
+): MurmurEvent {
+  const cwd = str(e.cwd) ?? b.cwd;
+  const payload = {
+    ...fields,
+    hook_event_name: hook,
+    session_id: b.sessionId,
+    cwd,
+  };
+  return scrubEvent({
+    id:
+      stableId(b.sessionId, hook, payload) ??
+      uuidFrom(`murmur-backfill:${b.sessionId}:${e.uuid}:${index}:${hook}`),
+    sessionId: b.sessionId,
+    machineId: b.machineId,
+    cwd,
+    ts: new Date(Date.parse(e.timestamp as string)).toISOString(),
+    hook,
+    payload,
+  });
+}
+
+/** Claude's own words in a main-thread entry: its non-empty text blocks, by index. */
+function textBlocks(e: Entry): { i: number; text: string }[] {
+  const content = obj(e.message)?.content;
+  if (
+    e.type !== "assistant" ||
+    e.isSidechain === true ||
+    !Array.isArray(content)
+  )
+    return [];
+  return content.flatMap((raw: unknown, i) => {
+    const block = obj(raw);
+    const text = block?.type === "text" ? str(block.text) : undefined;
+    return text?.trim() ? [{ i, text }] : [];
+  });
+}
+
 export interface ReadOptions {
   maxEvents?: number;
   maxBytes?: number;
@@ -141,6 +249,12 @@ export interface ReadOptions {
    * only when it is this same text, so nothing is lost if its entry is not written yet.
    */
   skipPrompt?: string | undefined;
+  /**
+   * Read the main transcript only up to byte `textUntil.from`, also keep Claude's text
+   * from the cutoff on, and set `textUntil.end` past the last whole line read, where the
+   * live read starts.
+   */
+  textUntil?: Window | undefined;
 }
 
 /**
@@ -154,6 +268,7 @@ export function readBackfill(
     maxBytes = MAX_BYTES,
     tailBytes = TAIL_BYTES,
     skipPrompt,
+    textUntil,
   }: ReadOptions = {},
 ): MurmurEvent[] {
   const cutoff = Date.parse(b.cutoff);
@@ -164,45 +279,43 @@ export function readBackfill(
     hook: HookName,
     fields: Record<string, unknown>,
   ) => {
-    const cwd = str(e.cwd) ?? b.cwd;
-    const payload = {
-      ...fields,
-      hook_event_name: hook,
-      session_id: b.sessionId,
-      cwd,
-    };
-    out.push(
-      scrubEvent({
-        id:
-          stableId(b.sessionId, hook, payload) ??
-          uuidFrom(`murmur-backfill:${b.sessionId}:${e.uuid}:${index}:${hook}`),
-        sessionId: b.sessionId,
-        machineId: b.machineId,
-        cwd,
-        ts: new Date(Date.parse(e.timestamp as string)).toISOString(),
-        hook,
-        payload,
-      }),
-    );
+    out.push(entryEvent(b, e, index, hook, fields));
   };
   // Entries that can become events: with a uuid and a time before the cutoff.
-  const usable = (list: Entry[]) =>
-    list.filter((e) => {
-      const ts =
-        typeof e.timestamp === "string" ? Date.parse(e.timestamp) : NaN;
-      return str(e.uuid) && ts < cutoff;
-    });
+  const usable = (e: Entry) => {
+    const ts = typeof e.timestamp === "string" ? Date.parse(e.timestamp) : NaN;
+    return Boolean(str(e.uuid)) && ts < cutoff;
+  };
 
   // Agent calls whose result says the helper finished (not just launched it).
   const ended = new Set<string>();
   let newest: { at: number; text: string } | undefined;
-  const mapEntries = (list: Entry[], agent: Record<string, unknown>) => {
+  // Maps the usable entries of `list`; returns the first and last of them.
+  const mapEntries = (
+    list: Iterable<Entry>,
+    agent: Record<string, unknown>,
+  ) => {
     const uses = new Map<string, Block>();
+    let first: Entry | undefined;
+    let last: Entry | undefined;
     for (const e of list) {
+      // Claude's words after the cutoff, before the live read's start.
+      if (textUntil !== undefined && !agent.agent_id && !usable(e)) {
+        if (str(e.uuid) && Date.parse(e.timestamp as string) >= cutoff)
+          for (const { i, text } of textBlocks(e))
+            emit(e, i, "AssistantText", { text });
+        continue;
+      }
+      if (!usable(e)) continue;
+      first ??= e;
+      last = e;
       const content = obj(e.message)?.content;
+      // A helper's report comes as a task notification, which the live hook sends as a
+      // prompt too; core keeps it out of requests.
+      const kind = obj(e.origin)?.kind;
       if (
         e.type === "user" &&
-        obj(e.origin)?.kind === "human" &&
+        (kind === "human" || kind === "task-notification") &&
         !agent.agent_id
       ) {
         const prompt = promptText(content);
@@ -214,6 +327,9 @@ export function readBackfill(
           newest = { at: out.length - 1, text: prompt };
         }
       }
+      if (!agent.agent_id)
+        for (const { i, text } of textBlocks(e))
+          emit(e, i, "AssistantText", { text });
       if (!Array.isArray(content)) continue;
       content.forEach((raw: unknown, i) => {
         const block = obj(raw);
@@ -248,9 +364,10 @@ export function readBackfill(
         }
       });
     }
+    return { first, last };
   };
 
-  mapEntries(usable(readLines(b.transcriptPath, tailBytes)), {});
+  mapEntries(readLines(b.transcriptPath, tailBytes, undefined, textUntil), {});
   // Compared before scrubbing, the way the user typed both.
   if (
     newest &&
@@ -275,12 +392,15 @@ export function readBackfill(
       agent_id: agentId,
       agent_type: typeof meta.agentType === "string" ? meta.agentType : "",
     };
-    const list = usable(readLines(path.join(dir, name), tailBytes));
-    const first = list[0];
-    const last = list.at(-1);
+    const at = out.length;
+    const { first, last } = mapEntries(
+      readLines(path.join(dir, name), tailBytes),
+      agent,
+    );
     if (!first || !last) continue;
+    // The start goes before the helper's own events, which can share its time.
     emit(first, 0, "SubagentStart", agent);
-    mapEntries(list, agent);
+    out.splice(at, 0, out.pop() as MurmurEvent);
     // A running subagent's meta has no `finished` and its Agent call has no result yet;
     // its stop comes live later.
     const call = str(meta.toolUseId);
@@ -309,6 +429,8 @@ export async function runBackfill(
   sessionId: string,
   opts: FlushOptions = {},
 ): Promise<number> {
+  // A little under the child's 4-minute exit timer (hook.ts).
+  const deadline = Date.now() + 230_000;
   const creds = readCredentials();
   const s = readSession(sessionId);
   if (!creds || !(s.backfill === "pending" || backfillStale(s, Date.now())))
@@ -318,6 +440,13 @@ export async function runBackfill(
     runningSince: new Date().toISOString(),
   });
   let events: MurmurEvent[] = [];
+  // The live read starts where this read ends; Claude's text from the cutoff to here is
+  // in this import, so nothing is read twice or missed.
+  let upTo: Window | undefined;
+  try {
+    const size = s.transcriptPath ? fs.statSync(s.transcriptPath).size : NaN;
+    if (size >= 0) upTo = { from: size, end: 0 };
+  } catch {}
   if (s.cutoff && s.transcriptPath && s.cwd)
     events = readBackfill(
       {
@@ -327,14 +456,71 @@ export async function runBackfill(
         transcriptPath: s.transcriptPath,
         cutoff: s.cutoff,
       },
-      { skipPrompt: s.triggerPrompt },
+      { skipPrompt: s.triggerPrompt, textUntil: upTo },
     );
   for (const e of events) enqueue(e);
   // The raw prompt text is only needed for this run.
   const { triggerPrompt: _prompt, ...rest } = readSession(sessionId);
-  writeSession(sessionId, { ...rest, backfill: "done" });
+  writeSession(sessionId, {
+    ...rest,
+    backfill: "done",
+    ...(upTo ? { textOffset: upTo.end } : {}),
+  });
   // A logout or new login while this ran must not send with the old token.
-  if (readCredentials()?.token === creds.token)
-    await flush(creds, { budgetMs: 50_000, ...opts });
+  const same = () => readCredentials()?.token === creds.token;
+  if (same()) await flush(creds, { budgetMs: 50_000, ...opts });
+  // What the history alone cannot say, the user's own Claude says, then that goes too.
+  // All of it inside the child's 4 minutes: no ask starts unless it can end (60 s) with
+  // time left to send.
+  const left = () => deadline - Date.now();
+  const recap = await runRecap(sessionId, events, {
+    lastOpen: lastRequestOpen(s.triggerHook),
+    budgetMs: Math.min(150_000, left() - 70_000),
+  });
+  if (recap.ok && same())
+    await flush(creds, { budgetMs: Math.max(1000, left()), ...opts });
   return events.length;
+}
+
+/**
+ * Runs in the detached child a hook spawns, never in the hook: queues the main-thread
+ * text Claude wrote since the last read (`textOffset`) as `AssistantText`, with the
+ * backfill's ids, and stores where it stopped. A last line still being written waits for
+ * the next read. With no `textOffset` on record (a session imported before Murmur read
+ * Claude's text) it starts at the transcript's end. Whenever Murmur would send nothing
+ * (headless, the recap's own run, logged out, disconnected, off, paused) it only moves
+ * the offset, so that text is never sent. Returns how many it queued.
+ */
+export function catchUpText(
+  sessionId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const s = readSession(sessionId);
+  if (s.backfill !== "done" || !s.transcriptPath || !s.cwd) return 0;
+  const creds = readCredentials();
+  if (
+    s.textOffset === undefined ||
+    env.MURMUR_RECAP_RUN === "1" ||
+    (isHeadless(env) && env.MURMUR_ALLOW_HEADLESS !== "1") ||
+    !creds ||
+    isRevoked() ||
+    sessionProjectState(s.cwd, sessionId) !== "on" ||
+    isPaused(s.cwd, sessionId) ||
+    (s.project !== undefined && isPaused(s.project))
+  ) {
+    skipText(sessionId);
+    return 0;
+  }
+  const at = { from: s.textOffset, end: s.textOffset };
+  const b = { sessionId, machineId: creds.machineId, cwd: s.cwd };
+  let n = 0;
+  for (const e of readLines(s.transcriptPath, 0, at)) {
+    if (!str(e.uuid)) continue;
+    for (const { i, text } of textBlocks(e)) {
+      enqueue(entryEvent(b, e, i, "AssistantText", { text }));
+      n++;
+    }
+  }
+  updateSession(sessionId, { textOffset: at.end });
+  return n;
 }

@@ -25,6 +25,8 @@ beforeEach(() => {
   env = {
     PATH: process.env.PATH,
     MURMUR_HOME: path.join(home, "murmur"),
+    // Never the real `claude` on PATH; the recap test below brings a fake one.
+    MURMUR_RECAP: "0",
     CLAUDE_CODE_ENTRYPOINT: "cli",
     CLAUDE_CODE_SESSION_ATTENDED: "1",
   };
@@ -241,6 +243,204 @@ describe("built plugin", () => {
     expect(want.length).toBeGreaterThan(5);
     expect(posted).toEqual(want);
     expect(JSON.parse(fs.readFileSync(state, "utf8")).backfill).toBe("done");
+  });
+
+  it("Stop never reads the transcript; its detached child sends Claude's new text", async () => {
+    const posted: { hook: string; payload: { text?: string } }[] = [];
+    const server = await listen((req, res) => {
+      let body = "";
+      req.on("data", (c) => {
+        body += c;
+      });
+      req.on("end", () => {
+        posted.push(...JSON.parse(body).events);
+        res.setHeader("Content-Type", "application/json");
+        res.end("{}");
+      });
+    });
+    const dir = env.MURMUR_HOME as string;
+    fs.mkdirSync(path.join(dir, "sessions"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "credentials.json"),
+      JSON.stringify({ server, token: "t", machineId: "m1" }),
+    );
+    expect((await murmur("on", repo)).code).toBe(0);
+    const transcript = path.join(home, "s1.jsonl");
+    fs.writeFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: "assistant",
+        uuid: "u1",
+        timestamp: "2026-11-07T09:00:00.000Z",
+        cwd: repo,
+        message: { content: [{ type: "text", text: "Tokens are in." }] },
+      })}\n`,
+    );
+    fs.writeFileSync(
+      path.join(dir, "sessions", "s1.json"),
+      JSON.stringify({
+        backfill: "done",
+        project: repo,
+        transcriptPath: transcript,
+        cwd: repo,
+        textOffset: 0,
+      }),
+    );
+    // Logs every open or read of the transcript, by process.
+    const log = path.join(home, "opens.log");
+    const spy = path.join(home, "spy.cjs");
+    fs.writeFileSync(
+      spy,
+      `const fs = require("node:fs");
+const who = process.argv.includes("--flush") ? "child" : "hook";
+for (const name of ["openSync", "readFileSync", "createReadStream", "open", "readFile"]) {
+  const real = fs[name];
+  fs[name] = function (p, ...rest) {
+    if (String(p) === process.env.SPY_PATH) fs.appendFileSync(process.env.SPY_LOG, who + "\\n");
+    return real.call(this, p, ...rest);
+  };
+}`,
+    );
+    const t0 = Date.now();
+    const r = runHook(
+      "Stop",
+      {
+        hook_event_name: "Stop",
+        session_id: "s1",
+        cwd: repo,
+        transcript_path: transcript,
+      },
+      { NODE_OPTIONS: `--require ${spy}`, SPY_PATH: transcript, SPY_LOG: log },
+    );
+    expect(Date.now() - t0).toBeLessThan(1500);
+    expect(r.status).toBe(0);
+    for (
+      let i = 0;
+      i < 60 && !posted.some((e) => e.hook === "AssistantText");
+      i++
+    )
+      await new Promise((ok) => setTimeout(ok, 50));
+    expect(
+      posted
+        .filter((e) => e.hook === "AssistantText")
+        .map((e) => e.payload.text),
+    ).toEqual(["Tokens are in."]);
+    expect(fs.readFileSync(log, "utf8").trim().split("\n")).not.toContain(
+      "hook",
+    );
+    expect(fs.readFileSync(log, "utf8")).toContain("child");
+  });
+
+  it("hook.cjs --backfill recaps with the user's claude, and that run itself sends nothing", async () => {
+    const posted: { sessionId: string; payload: { recap?: boolean } }[] = [];
+    const server = await listen((req, res) => {
+      let body = "";
+      req.on("data", (c) => {
+        body += c;
+      });
+      req.on("end", () => {
+        posted.push(...JSON.parse(body).events);
+        res.setHeader("Content-Type", "application/json");
+        res.end("{}");
+      });
+    });
+    const sid = "11111111-2222-4333-8444-555555555555";
+    const fixture = path.join(root, "test/fixtures/backfill", `${sid}.jsonl`);
+    const dir = env.MURMUR_HOME as string;
+    fs.mkdirSync(path.join(dir, "sessions"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "credentials.json"),
+      JSON.stringify({ server, token: "t", machineId: "m1" }),
+    );
+    fs.writeFileSync(
+      path.join(dir, "projects.json"),
+      JSON.stringify({ "/work/demo": "on", [repo]: "on" }),
+    );
+    fs.writeFileSync(
+      path.join(dir, "sessions", `${sid}.json`),
+      JSON.stringify({
+        backfill: "pending",
+        cutoff: "2026-11-07T09:00:15.000Z",
+        // A prompt started the import, so its last request is over.
+        triggerHook: "UserPromptSubmit",
+        transcriptPath: fixture,
+        cwd: "/work/demo",
+      }),
+    );
+    const recap = {
+      map: {
+        kind: "feature",
+        goal: "A greet function",
+        phases: [
+          {
+            id: "p1",
+            title: "Build",
+            tasks: [{ id: "t1", title: "Greet", part: "greet" }],
+          },
+        ],
+        parts: [{ id: "greet", title: "Greet function" }],
+      },
+      parts: [
+        { id: "greet", steps: [{ text: "Wrote greet", status: "done" }] },
+      ],
+      tasks: [{ id: "t1", status: "done", ended: "Written, tests missing." }],
+    };
+    // A fake claude that runs the plugin's hooks in an "on" project with the env it was
+    // given. The real one in -p rewrites only an inherited `cli` entry point to
+    // `sdk-cli`; from an IDE it keeps `claude-vscode` and an attended session.
+    const bin = path.join(home, "bin");
+    fs.mkdirSync(bin);
+    const answer = JSON.stringify([
+      { type: "result", is_error: false, result: JSON.stringify(recap) },
+    ]);
+    fs.writeFileSync(
+      path.join(bin, "claude"),
+      `#!/bin/sh
+echo "$@" > "${home}/claude-args"
+env > "${home}/claude-env"
+cat > /dev/null
+echo '{"hook_event_name":"UserPromptSubmit","session_id":"recap-run","cwd":"${repo}","prompt":"recap"}' | "${process.execPath}" "${root}/dist/hook.cjs" > /dev/null
+cat <<'JSON'
+${answer}
+JSON
+`,
+    );
+    fs.chmodSync(path.join(bin, "claude"), 0o755);
+    const { MURMUR_RECAP: _, ...rest } = env;
+    const code = await new Promise<number>((ok) =>
+      execFile(
+        process.execPath,
+        [path.join(root, "dist/hook.cjs"), "--backfill", sid],
+        {
+          env: {
+            ...rest,
+            PATH: `${bin}:${env.PATH}`,
+            CLAUDE_CODE_ENTRYPOINT: "claude-vscode",
+            CLAUDE_CODE_SESSION_ATTENDED: "1",
+            MURMUR_ALLOW_HEADLESS: "1",
+          },
+        },
+        (err) => ok(err ? Number(err.code) : 0),
+      ),
+    );
+    expect(code).toBe(0);
+    expect(posted.filter((e) => e.payload.recap).length).toBeGreaterThan(2);
+    // Nothing from the recap run's own session.
+    expect(posted.map((e) => e.sessionId).filter((id) => id !== sid)).toEqual(
+      [],
+    );
+    expect(fs.readFileSync(path.join(home, "claude-args"), "utf8")).toContain(
+      "--safe-mode",
+    );
+    expect(
+      fs.readFileSync(path.join(home, "claude-env"), "utf8"),
+    ).not.toContain("MURMUR_ALLOW_HEADLESS");
+    const queue = path.join(dir, "queue");
+    expect(fs.existsSync(queue) ? fs.readdirSync(queue) : []).toEqual([]);
+    const state = JSON.parse(
+      fs.readFileSync(path.join(dir, "sessions", `${sid}.json`), "utf8"),
+    );
+    expect(state.recapped).toHaveLength(1);
   });
 
   it("bin/murmur login leaves a poller that stores the token", async () => {

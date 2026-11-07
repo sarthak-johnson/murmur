@@ -2,24 +2,35 @@ import type { MurmurEvent } from "../events.js";
 import { applyAgents } from "./agents.js";
 import { applyFiles } from "./files.js";
 import { applyFlags, needsYou } from "./flags.js";
+import { inferHistory } from "./history.js";
 import { applyInference, inferNow } from "./infer.js";
 import { applyPlan, cut, newRequest } from "./requests.js";
 import type { AgentView, SessionView } from "./types.js";
+import { applyWords } from "./words.js";
 
 /** The one function every screen is drawn from: raw events in, view out. */
 export function reduce(events: MurmurEvent[]): SessionView {
   const sorted = sortEvents(events);
   const agents = new Map<string, AgentView>();
-  const requests = splitRequests(sorted).map(({ start, rest }, i, all) => {
+  const started = new Map<string, string>();
+  const ended = sorted.some((e) => e.hook === "SessionEnd");
+  const split = splitRequests(sorted);
+  const requests = split.map(({ start, rest }, i, all) => {
     const req = newRequest(start);
     const trace = applyPlan(req, rest);
     applyInference(req, rest);
     inferNow(req, rest, trace);
     applyFiles(req, rest, trace);
-    applyAgents(req, rest, trace, agents);
+    for (const [use, id] of applyAgents(req, rest, trace, agents))
+      started.set(use, id);
     applyFlags(req, rest, trace, i < all.length - 1);
+    // A resumed session goes on after its SessionEnd, so only a last one counts.
+    req.finished = i < all.length - 1 || rest.at(-1)?.hook === "SessionEnd";
     return req;
   });
+  const lists = split.map((s) => [s.start, ...s.rest]);
+  inferHistory(requests, lists, agents, started);
+  applyWords(requests, lists, agents, started);
   const first = sorted[0];
   return {
     sessionId: first?.sessionId ?? "",
@@ -27,7 +38,7 @@ export function reduce(events: MurmurEvent[]): SessionView {
     title: cut(requests[0]?.prompt ?? "", 80),
     startedAt: first?.ts ?? "",
     lastEventAt: sorted.at(-1)?.ts ?? "",
-    ended: sorted.some((e) => e.hook === "SessionEnd"),
+    ended,
     requests,
     needsYou: needsYou(sorted),
   };
@@ -43,11 +54,24 @@ function sortEvents(events: MurmurEvent[]): MurmurEvent[] {
     .filter((e) => !seen.has(e.id) && seen.add(e.id));
 }
 
-/** Each UserPromptSubmit starts a request; events before the first belong to none. */
+/**
+ * Prompts that are not a person asking for work: /murmur:on and the like switch
+ * Murmur itself, and Claude Code submits a `<task-notification>` when a background
+ * helper finishes.
+ */
+export const isNotRequest = (prompt: unknown): boolean =>
+  typeof prompt === "string" &&
+  /^\s*(\/murmur:\w+(\s|$)|<task-notification>)/.test(prompt);
+
+/**
+ * Each UserPromptSubmit starts a request, except `isNotRequest` ones, whose events
+ * stay with the request before; events before the first belong to none.
+ */
 function splitRequests(events: MurmurEvent[]) {
   const out: { start: MurmurEvent; rest: MurmurEvent[] }[] = [];
   for (const e of events) {
-    if (e.hook === "UserPromptSubmit") out.push({ start: e, rest: [] });
+    if (e.hook === "UserPromptSubmit" && !isNotRequest(e.payload.prompt))
+      out.push({ start: e, rest: [] });
     else out.at(-1)?.rest.push(e);
   }
   return out;

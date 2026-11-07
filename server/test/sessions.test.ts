@@ -75,6 +75,23 @@ test("sessions list is newest first and titled from the first prompt", async () 
   ).toBeNull();
 });
 
+test("a session names its own machine, never another user's", async () => {
+  t = await testApp();
+  const a = await linkMachine(t, "ann", "ann-laptop");
+  await ingest(t, a.token, [
+    ev("s1", "UserPromptSubmit", { payload: { prompt: "hi" } }),
+  ]);
+  // Linked later, so it is the newest token on the server.
+  await linkMachine(t, "bob", "bob-desktop");
+  const res = await t.app.request("/api/sessions", {
+    headers: sameOrigin(a.cookie),
+  });
+  const { sessions: list } = (await res.json()) as {
+    sessions: { machineName: string | null }[];
+  };
+  expect(list.map((s) => s.machineName)).toEqual(["ann-laptop"]);
+});
+
 test("events after a cursor are ordered", async () => {
   t = await testApp();
   const { token, cookie, machineId } = await linkMachine(t, "ada");

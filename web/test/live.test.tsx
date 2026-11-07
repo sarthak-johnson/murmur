@@ -121,6 +121,8 @@ function request(r: Partial<RequestView> = {}): RequestView {
     agents: [agent("a1", "writing tests for this endpoint", "endpoint")],
     assumptions: [],
     flags: [],
+    finished: false,
+    tally: { helpers: 1, files: 0, commands: 0 },
     ...r,
   };
 }
@@ -218,15 +220,32 @@ describe("live screen", () => {
     expect(done.className).toContain("done");
   });
 
+  it("a plan with one phase shows its tasks as a list and no phase strip", () => {
+    const one = request({
+      phases: [
+        {
+          id: "p1",
+          title: "What Claude did",
+          status: "done",
+          tasks: [task("t1", "Style A", "done"), task("t2", "Style B", "done")],
+        },
+      ],
+    });
+    show(session({ requests: [one] }));
+    expect(screen.queryByRole("group", { name: "Phases" })).toBeNull();
+    const plan = screen.getByRole("region", { name: /Plan/ });
+    expect(within(plan).getByText("Style A")).toBeTruthy();
+    expect(within(plan).queryByText("Style A · Style B")).toBeNull();
+    expect(within(plan).queryByRole("button", { name: /phase 1/ })).toBeNull();
+  });
+
   it("plan panel folds finished phases", async () => {
     show(session());
     const plan = screen.getByRole("region", { name: /Plan/ });
     expect(within(plan).getByText("Plan · step 5 of 7")).toBeTruthy();
-    expect(
-      within(plan).getByText(
-        "Read how watchlists work · Agreed the plan with you",
-      ),
-    ).toBeTruthy();
+    // A folded finished phase says how many tasks it holds, not a run-on list of them.
+    expect(within(plan).getByText("2 tasks, all done")).toBeTruthy();
+    expect(within(plan).queryByText(/Read how watchlists work ·/)).toBeNull();
     expect(within(plan).queryByText("Read how watchlists work")).toBeNull();
     await userEvent.click(
       within(plan).getByRole("button", { name: /Show phase 1/ }),
@@ -257,9 +276,11 @@ describe("live screen", () => {
         },
       }),
     );
-    const chip = screen.getByText("Needs you");
-    expect(chip.closest("p")?.textContent).toBe(
-      "Needs youClaude needs your permission to use Bash",
+    // The band beside the notice says "Needs you", so the notice does not repeat it.
+    const band = screen.getByRole("group", { name: "Summary" });
+    expect(within(band).getByText("Needs you")).toBeTruthy();
+    expect(document.querySelector(".notice-needs")?.textContent).toBe(
+      "Claude needs your permission to use Bash",
     );
     expect(screen.queryByText(/Claude needs you:/)).toBeNull();
   });
@@ -311,7 +332,7 @@ describe("live screen", () => {
       );
     const { rerender } = show(session());
     const empty = blocks();
-    expect(empty).toContain("notice-row");
+    expect(empty).toContain("head-row");
     expect(document.querySelector(".notice-row")?.children).toHaveLength(0);
     rerender(
       <Live
@@ -586,7 +607,7 @@ describe("live screen", () => {
     const items = within(list).getAllByRole("button");
     expect(items[0]?.textContent).toContain("Price alerts");
     expect(items[0]?.getAttribute("aria-current")).toBe("true");
-    expect(items[1]?.textContent).toContain("bug hunt");
+    expect(items[1]?.textContent).toContain("Bug hunt");
     expect(items[1]?.getAttribute("aria-current")).toBeNull();
     await userEvent.click(items[1] as HTMLElement);
     expect(location.pathname).toBe("/s/s1/r/r1");
@@ -662,6 +683,160 @@ describe("live screen", () => {
     expect(within(row).getByText("↳ Agent 1 · tests")).toBeTruthy();
     expect(screen.getByText("Agent 1: tests")).toBeTruthy();
     expect(req.agents).toHaveLength(1);
+  });
+
+  it("a finished inferred request shows a Done card instead of a stale now", () => {
+    const view = session();
+    view.requests[1] = request({
+      planInferred: true,
+      finished: true,
+      now: { text: "Editing style.css", why: "", ts: T0, inferred: true },
+      tally: { helpers: 3, files: 19, commands: 51 },
+      agents: [],
+    });
+    show(view);
+    const now = screen.getByRole("region", { name: "Now" });
+    expect(within(now).getByText("Done")).toBeTruthy();
+    expect(
+      within(now).getByText("3 helpers, 19 files changed, 51 commands run"),
+    ).toBeTruthy();
+    expect(within(now).queryByText(/Editing/)).toBeNull();
+    expect(within(now).queryByText("Helpers running")).toBeNull();
+    expect(now.textContent).toContain('Started from: "add price alerts');
+  });
+
+  it("a Done card says when helpers are still running", () => {
+    const view = session();
+    const running = (id: string) => agent(id, "Build style A", "endpoint");
+    view.requests[1] = request({
+      planInferred: true,
+      finished: true,
+      agents: [running("a1"), { ...running("a2"), status: "done" }],
+    });
+    show(view);
+    const now = screen.getByRole("region", { name: "Now" });
+    expect(within(now).getByText("Done, 1 helper still running")).toBeTruthy();
+    cleanup();
+    view.requests[1] = request({
+      planInferred: true,
+      finished: true,
+      agents: [running("a1"), running("a2")],
+    });
+    show(view);
+    expect(screen.getByText("Done, 2 helpers still running")).toBeTruthy();
+  });
+
+  it("the Done line counts in plain words and skips zeros", () => {
+    const view = session();
+    view.requests[1] = request({
+      planInferred: true,
+      finished: true,
+      tally: { helpers: 0, files: 1, commands: 1 },
+    });
+    show(view);
+    const now = screen.getByRole("region", { name: "Now" });
+    expect(within(now).getByText("1 file changed, 1 command run")).toBeTruthy();
+    cleanup();
+    view.requests[1] = request({
+      planInferred: true,
+      finished: true,
+      tally: { helpers: 0, files: 0, commands: 0 },
+    });
+    show(view);
+    expect(screen.getByText("Nothing changed")).toBeTruthy();
+  });
+
+  it("a running inferred request and a finished narrated one keep the Now card", () => {
+    const view = session();
+    view.requests[1] = request({ planInferred: true, finished: false });
+    show(view);
+    expect(
+      screen.getByText("Building the server endpoint that saves an alert"),
+    ).toBeTruthy();
+    expect(screen.queryByText("Done")).toBeNull();
+    cleanup();
+    view.requests[1] = request({ finished: true });
+    show(view);
+    expect(
+      screen.getByText("Building the server endpoint that saves an alert"),
+    ).toBeTruthy();
+  });
+
+  it("files touched shows 8 newest first, readable paths, then Show all N", async () => {
+    const tmp =
+      "/private/tmp/claude-501/-x-app/27a000a1-7dbc-4dd1-ab83-961149fc03ae";
+    const looseFiles = Array.from({ length: 10 }, (_, i) => ({
+      path: i === 9 ? `${tmp}/scratchpad/style/a/style.css` : `src/f${i}.ts`,
+      added: 117,
+      removed: 2,
+      isNew: false,
+      eventIds: [`e${i}`],
+    }));
+    const events: MurmurEvent[] = looseFiles.map((_, i) => ({
+      id: `e${i}`,
+      sessionId: "s1",
+      machineId: "m1",
+      cwd: "/x/app",
+      ts: new Date(Date.parse(T0) + i * 1000).toISOString(),
+      hook: "PostToolUse",
+      payload: {},
+    }));
+    const view = session();
+    view.requests[1] = request({ looseFiles });
+    render(
+      <Live
+        sessionId="s1"
+        view={view}
+        viewAt={() => null}
+        events={events}
+        status="live"
+        lastLooked={null}
+      />,
+    );
+    const now = screen.getByRole("region", { name: "Now" });
+    const names = () =>
+      within(now)
+        .getAllByRole("listitem")
+        .flatMap((li) => [...li.querySelectorAll(".pd-path")])
+        .map((el) => el.textContent);
+    expect(names()).toEqual([
+      "scratchpad/style/a/style.css",
+      "src/f8.ts",
+      "src/f7.ts",
+      "src/f6.ts",
+      "src/f5.ts",
+      "src/f4.ts",
+      "src/f3.ts",
+      "src/f2.ts",
+    ]);
+    const path = within(now).getByText("scratchpad/style/a/style.css");
+    expect(path.getAttribute("title")).toBe(
+      `${tmp}/scratchpad/style/a/style.css`,
+    );
+    expect(within(now).getByText("src/f8.ts").getAttribute("title")).toBe(
+      "/x/app/src/f8.ts",
+    );
+    // Breaks only after a slash.
+    expect(path.innerHTML).toBe("scratchpad/<wbr>style/<wbr>a/<wbr>style.css");
+    await userEvent.click(
+      within(now).getByRole("button", { name: "Show all 10" }),
+    );
+    expect(names()).toHaveLength(10);
+    await userEvent.click(
+      within(now).getByRole("button", { name: "Show fewer" }),
+    );
+    expect(names()).toHaveLength(8);
+  });
+
+  it("8 files or fewer need no toggle", () => {
+    const view = session();
+    view.requests[1] = request({
+      looseFiles: [
+        { path: "a.ts", added: 1, removed: 0, isNew: true, eventIds: [] },
+      ],
+    });
+    show(view);
+    expect(screen.queryByRole("button", { name: /Show all/ })).toBeNull();
   });
 
   it("the loading skeleton keeps a requests placeholder before the main column", () => {

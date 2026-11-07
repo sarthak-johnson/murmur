@@ -122,8 +122,8 @@ describe("readBackfill", () => {
   it("the reduced view has the request and the edited file", () => {
     const view = reduce(readBackfill(input()));
     expect(view.requests.map((r) => r.prompt)).toEqual([
+      // The /murmur:on command is imported but is not a request.
       "Add a greet function with a test",
-      "/murmur:on now",
       "Here is how it looks\nmake it match",
       "Now add a README",
     ]);
@@ -214,6 +214,57 @@ describe("readBackfill", () => {
     expect(events.map((e) => e.payload.prompt)).toEqual(
       Array.from({ length: 10 }, (_, i) => `prompt ${1990 + i}`),
     );
+  });
+
+  it("a window that starts right after a newline keeps that whole line", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "murmur-transcript-"));
+    const file = path.join(dir, `${SID}.jsonl`);
+    const line = (i: number) =>
+      JSON.stringify({
+        type: "user",
+        uuid: `x${i}`,
+        timestamp: t(i),
+        origin: { kind: "human" },
+        message: { role: "user", content: `prompt ${i}` },
+      });
+    const lines = [0, 1, 2, 3].map(line);
+    fs.writeFileSync(file, `${lines.join("\n")}\n`);
+    const tail = Buffer.byteLength(`${lines.slice(-2).join("\n")}\n`);
+    const events = readBackfill(
+      input({ transcriptPath: file, cutoff: t(50) }),
+      { tailBytes: tail },
+    );
+    expect(events.map((e) => e.payload.prompt)).toEqual([
+      "prompt 2",
+      "prompt 3",
+    ]);
+  });
+
+  it("streams the whole file: lines longer than a read chunk, and a last line with no newline", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "murmur-transcript-"));
+    const file = path.join(dir, `${SID}.jsonl`);
+    const line = (i: number, pad = "") =>
+      JSON.stringify({
+        type: "user",
+        uuid: `x${i}`,
+        timestamp: t(i),
+        origin: { kind: "human" },
+        message: { role: "user", content: `prompt ${i}` },
+        pad,
+      });
+    const big = "a".repeat(2.5 * (1 << 20));
+    fs.writeFileSync(
+      file,
+      [line(0), line(1, big), line(2), line(3, big), line(4)].join("\n"),
+    );
+    const events = readBackfill(input({ transcriptPath: file, cutoff: t(50) }));
+    expect(events.map((e) => e.payload.prompt)).toEqual([
+      "prompt 0",
+      "prompt 1",
+      "prompt 2",
+      "prompt 3",
+      "prompt 4",
+    ]);
   });
 
   it("gives the same ids on every run, and the live hook's id for tool and subagent events", () => {

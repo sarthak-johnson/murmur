@@ -3,14 +3,13 @@ import type { JSX, KeyboardEvent } from "react";
 import {
   CHIP_GAP,
   CHIP_H,
-  chipCount,
   layoutMap,
   linkFrame,
   MAX_CHIPS,
   mapSize,
   type NodeBox,
-  RING_CHIP_BOTTOM,
   RING_SIZE,
+  runningAgents,
 } from "./layout";
 
 const DIM = 0.35;
@@ -29,11 +28,29 @@ const charW = (c: string) =>
 export const textWidth = (text: string, font: number) =>
   [...text].reduce((w, c) => w + charW(c) * font, 0);
 
+/**
+ * Fits `text` in `px`. A path (slashes, no spaces) drops leading folders
+ * ("…/style/shared"); text ends at a word or a dash when one ends in the back half.
+ */
 function truncate(text: string, px: number, font: number): string {
+  if (textWidth(text, font) <= px) return text;
+  if (text.includes("/") && !text.includes(" ")) {
+    let tail = text;
+    while (tail.includes("/") && textWidth(`…/${tail}`, font) > px)
+      tail = tail.slice(tail.indexOf("/") + 1);
+    return cutAtWord(`…/${tail}`, px, font);
+  }
+  return cutAtWord(text, px, font);
+}
+
+function cutAtWord(text: string, px: number, font: number): string {
   if (textWidth(text, font) <= px) return text;
   let out = text;
   while (out && textWidth(`${out}…`, font) > px) out = out.slice(0, -1);
-  return `${out.trimEnd()}…`;
+  const whole = /[\s-]/.test(text.charAt(out.length));
+  const word = Math.max(out.lastIndexOf(" "), out.lastIndexOf("-"));
+  if (!whole && word > out.length / 2) out = out.slice(0, word);
+  return `${out.trimEnd().replace(/[,;:-]$/, "")}…`;
 }
 
 function stateOf(p: PartView): "now" | "done" | "todo" | "stuck" {
@@ -54,9 +71,6 @@ interface Rect {
   h: number;
 }
 
-const hits = (a: Rect, b: Rect) =>
-  a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-
 const overlap = (a: Rect, b: Rect) =>
   Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) *
   Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
@@ -68,10 +82,28 @@ const rectOf = (b: NodeBox): Rect => ({
   h: b.h,
 });
 
-type Side = "below" | "right" | "left" | "above";
+type Side = "below" | "above";
 
 const PITCH = CHIP_H + CHIP_GAP;
 const stackH = (n: number) => n * PITCH - CHIP_GAP;
+
+/**
+ * Chip side per ring slot, fixed so no stack ever moves as parts or helpers come
+ * and go: the bottom slots (2, 3, 7) have no room below inside the ring, so their
+ * chips go above; every other part has its chip room below.
+ */
+// ponytail: slots 4 and 5 sit between the stacks of 0 and 3 (1 and 2); with 2+
+// running helpers on both neighbours the stacks can touch. Move slots 4/5 if it shows.
+const RING_SIDE: Side[] = [
+  "below",
+  "below",
+  "above",
+  "above",
+  "below",
+  "below",
+  "below",
+  "above",
+];
 
 interface ChipSpot {
   side: Side;
@@ -87,39 +119,13 @@ function stackRect(spot: ChipSpot, n: number): Rect {
   return { x: spot.x, y, w: CHIP_W, h };
 }
 
-/**
- * Where a part's chips go: below, right, left or above, the first side where a
- * stack of `fit` chips is inside the canvas and clear of `others`, else the
- * first side inside, else below. Passing a fixed `fit` keeps the side and the
- * first chip still as agents come and go.
- */
-function chipSpot(
-  box: NodeBox,
-  fit: number,
-  others: Rect[],
-  width: number,
-  bottom: number,
-): ChipSpot {
+function chipSpot(box: NodeBox, side: Side): ChipSpot {
   const r = rectOf(box);
-  const below = {
-    side: "below" as const,
+  return {
+    side,
     x: box.x - CHIP_W / 2,
-    y: r.y + r.h + 8,
+    y: side === "above" ? r.y - 18 - CHIP_H : r.y + r.h + 8,
   };
-  const spots: ChipSpot[] = [
-    below,
-    { side: "right", x: r.x + r.w + 8, y: r.y },
-    { side: "left", x: r.x - 8 - CHIP_W, y: r.y },
-    { side: "above", x: box.x - CHIP_W / 2, y: r.y - 18 - CHIP_H },
-  ];
-  const inside = spots.filter((s) => {
-    const k = stackRect(s, fit);
-    return k.x >= 0 && k.y >= 0 && k.x + k.w <= width && k.y + k.h <= bottom;
-  });
-  const clear = inside.find(
-    (s) => !others.some((o) => hits(stackRect(s, fit), o)),
-  );
-  return clear ?? inside[0] ?? below;
 }
 
 /** Ray from the box centre toward (tx, ty), cut at the box edge. */
@@ -163,37 +169,30 @@ export function MapView(props: {
     onOpenPart(id);
   };
 
-  // Chip stacks go where they fit; link labels then avoid nodes, phase tags,
-  // chips and each other. `tagged` is each box plus the phase tag above it.
-  const tagged = rects.map((r) => ({ ...r, y: r.y - 16, h: r.h + 16 }));
+  // Every part keeps a full chip stack's room on a fixed side, helpers or not,
+  // so link labels avoid nodes, phase tags, chip room and each other, and never
+  // move as helpers start or finish. `tagged` is each box plus its phase tag,
+  // if it shows one (rects past the parts are the goal, which has none).
+  const tagged = rects.map((r, j) =>
+    phaseNo(parts[j]?.phase) ? { ...r, y: r.y - 16, h: r.h + 16 } : r,
+  );
   const frame = linkFrame(kind, width);
   const ringIds = new Set(
     kind === "feature" ? nodes.slice(0, RING_SIZE).map((n) => n.id) : [],
   );
-  // Ring parts and the goal never see overflow parts, so the overflow grid
-  // growing below cannot move their chips or labels. rects[nodes.length] is the goal.
+  // Ring labels never see overflow parts, so the overflow grid growing below
+  // cannot move them. rects[nodes.length] is the goal.
   const inRing = (j: number) =>
     kind !== "feature" || j < RING_SIZE || j === nodes.length;
-  const chipSpots = placed.map(({ part, box }, i) => {
-    const n = chipCount(part);
-    if (!n) return null;
-    const ring = ringIds.has(box.id);
-    // Ring stacks pick their side for the full stack, above the overflow
-    // tag band, so neither more agents nor overflow parts can move them.
-    const spot = chipSpot(
-      box,
-      ring ? MAX_CHIPS : n,
-      tagged.filter((_, j) => j !== i && (!ring || inRing(j))),
-      width,
-      ring ? RING_CHIP_BOTTOM : Number.POSITIVE_INFINITY,
-    );
-    return { ...spot, ring, rect: stackRect(spot, n) };
-  });
+  const chipSpots = placed.map(({ box }, i) =>
+    chipSpot(box, (kind === "feature" && RING_SIDE[i]) || "below"),
+  );
   const taken: (Rect & { ring: boolean })[] = [
     ...tagged.map((r, j) => ({ ...r, ring: inRing(j) })),
-    ...chipSpots.flatMap((c) =>
-      c ? [{ ...c.rect, ring: kind !== "feature" || c.ring }] : [],
-    ),
+    ...chipSpots.map((c, i) => ({
+      ...stackRect(c, MAX_CHIPS),
+      ring: inRing(i),
+    })),
   ];
   const links = parts.flatMap((p) =>
     p.links.flatMap((l) => {
@@ -233,8 +232,8 @@ export function MapView(props: {
         (1 - t) ** 2 * sy + 2 * (1 - t) * t * cy + t * t * ey,
       ];
       const lw = textWidth(l.label, 10.5) + 8;
-      // On the curve first, then just outside or inside it.
-      const spots = [0, 16, -16].flatMap((shift) =>
+      // On the curve first, then further outside or inside it.
+      const spots = [0, 16, -16, 32, -32, 48, -48].flatMap((shift) =>
         [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8].map((t) => {
           const [px = 0, py = 0] = at(t);
           const x = px + nx * shift;
@@ -242,13 +241,18 @@ export function MapView(props: {
           return { x, y, rect: { x: x - lw / 2, y: y - 8, w: lw, h: 14 } };
         }),
       );
-      // Least overlap wins; ties keep the earlier (preferred) spot.
-      const cost = (r: Rect) =>
-        (r.x < 0 || r.y < 0 || r.x + r.w > width ? 1e9 : 0) +
-        taken.reduce(
-          (sum, o) => (ring && !o.ring ? sum : sum + overlap(r, o)),
-          0,
+      // Least overlap wins, counted with a 3 px margin so a label's halo never
+      // touches a box; ties keep the earlier (preferred) spot.
+      const cost = (r: Rect) => {
+        const m = { x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 };
+        return (
+          (r.x < 0 || r.y < 0 || r.x + r.w > width ? 1e9 : 0) +
+          taken.reduce(
+            (sum, o) => (ring && !o.ring ? sum : sum + overlap(m, o)),
+            0,
+          )
         );
+      };
       const spot = spots.reduce((best, c) =>
         cost(c.rect) < cost(best.rect) ? c : best,
       );
@@ -375,7 +379,7 @@ export function MapView(props: {
             part={p}
             request={request}
             box={box}
-            spot={chipSpots[i] ?? null}
+            spot={chipSpots[i] as ChipSpot}
             opacity={full(p) ? 1 : DIM}
           />
         ))}
@@ -434,12 +438,13 @@ function Chips(props: {
   part: PartView;
   request: RequestView;
   box: NodeBox;
-  spot: ChipSpot | null;
+  spot: ChipSpot;
   opacity: number;
 }) {
   const { part, request, box, spot, opacity } = props;
-  if (!spot) return null;
-  const chips = part.agents.slice(0, 2).map((id) => {
+  const running = runningAgents(part, request);
+  if (!running.length) return null;
+  const chips = running.slice(0, 2).map((id) => {
     const k = request.agents.findIndex((a) => a.id === id);
     const agent = request.agents[k];
     const text = agent
@@ -452,20 +457,15 @@ function Chips(props: {
       label: truncate(text, CHIP_W - 16, 10.5),
     };
   });
-  if (part.agents.length > 2) {
-    const text = `+${part.agents.length - 2} more`;
+  if (running.length > 2) {
+    const text = `+${running.length - 2} more`;
     chips.push({ key: "more", w: MORE_W, text, label: text });
   }
   const r = rectOf(box);
-  const mid = spot.y + CHIP_H / 2;
   const connector =
     spot.side === "below"
       ? [box.x, r.y + r.h, box.x, spot.y]
-      : spot.side === "above"
-        ? [box.x, r.y - 16, box.x, spot.y + CHIP_H]
-        : spot.side === "right"
-          ? [r.x + r.w, mid, spot.x, mid]
-          : [r.x, mid, spot.x + CHIP_W, mid];
+      : [box.x, r.y - 16, box.x, spot.y + CHIP_H];
   return (
     <g className="map-chips">
       <g className="dim" style={{ opacity }}>
@@ -478,13 +478,7 @@ function Chips(props: {
         />
       </g>
       {chips.map((c, i) => {
-        // Narrow chips (`+N more`) sit on the stack's near edge to the node.
-        const x =
-          spot.side === "left"
-            ? spot.x + CHIP_W - c.w
-            : spot.side === "right"
-              ? spot.x
-              : spot.x + (CHIP_W - c.w) / 2;
+        const x = spot.x + (CHIP_W - c.w) / 2;
         // Above the node the stack grows upward, away from it.
         const y = spot.y + (spot.side === "above" ? -i : i) * PITCH;
         return (

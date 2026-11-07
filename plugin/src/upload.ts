@@ -11,10 +11,11 @@ import {
 } from "./local.js";
 
 const MAX_EVENTS = 200;
-// The queue keeps at most 7 days and 50 MB; the oldest go first. The 7 days are time
+// The queue keeps at most 7 days and 100 MB, room for two 40 MB history imports at once;
+// the oldest go first. The 7 days are time
 // spent waiting in the queue (file mtime), so backfilled history is not dropped for its age.
 const MAX_AGE_MS = 7 * 24 * 3600 * 1000;
-const MAX_QUEUE_BYTES = 50_000_000;
+const MAX_QUEUE_BYTES = 100_000_000;
 // Decimal MB, so batches fit whichever 5 MB the server's body limit means.
 const MAX_BYTES = 5_000_000;
 // Finished queue files only; temp files start with a dot.

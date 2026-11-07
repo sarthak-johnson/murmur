@@ -4,7 +4,7 @@ import type { AgentView, PartView, RequestView } from "@murmur/core";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MapView } from "../src/map/MapView";
+import { MapView, textWidth } from "../src/map/MapView";
 
 afterEach(cleanup);
 
@@ -54,6 +54,8 @@ function request(r: Partial<RequestView> = {}): RequestView {
     agents: [],
     assumptions: [],
     flags: [],
+    finished: false,
+    tally: { helpers: 0, files: 0, commands: 0 },
     ...r,
   };
 }
@@ -163,6 +165,23 @@ describe("MapView", () => {
     expect(screen.getByText("+1 more")).toBeTruthy();
   });
 
+  it("shows chips only for helpers still running", () => {
+    const req = request({
+      agents: [
+        { ...agent("a1", "built it"), status: "done" },
+        agent("a2", "reviewing"),
+      ],
+      parts: [
+        part({ id: "x", title: "Endpoint", agents: ["a1", "a2"] }),
+        part({ id: "y", title: "Done part", agents: ["a1"] }),
+      ],
+    });
+    render(<MapView request={req} onOpenPart={() => {}} />);
+    expect(screen.queryByText(/Agent 1/)).toBeNull();
+    expect(screen.getByText("Agent 2: reviewing")).toBeTruthy();
+    expect(screen.queryByText(/more$/)).toBeNull();
+  });
+
   it("marks a part with three failures as stuck", () => {
     const req = request({
       parts: [part({ id: "x", title: "Endpoint", status: "now", failures: 3 })],
@@ -209,6 +228,22 @@ describe("MapView", () => {
     ).toBeTruthy();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     expect(container.textContent).not.toContain(String.fromCharCode(0x2014));
+  });
+
+  it("the empty line shows only when there are no parts", () => {
+    render(
+      <MapView
+        request={request({
+          planInferred: true,
+          parts: [part({ id: "dir:web/src", title: "web/src" })],
+        })}
+        onOpenPart={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/The map appears/)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "web/src, not started" }),
+    ).toBeTruthy();
   });
 
   it("shows the goal as a caption for other kinds", () => {
@@ -404,6 +439,121 @@ describe("MapView", () => {
       }
   });
 
+  it("chip stacks of two bottom ring parts never cover each other", () => {
+    const parts = Array.from({ length: 6 }, (_, i) =>
+      part({
+        id: `p${i}`,
+        title: `Part ${i}`,
+        agents: i === 2 || i === 3 ? [`a${i}`] : [],
+      }),
+    );
+    const req = request({
+      agents: [agent("a2", "Build style B"), agent("a3", "Build style C")],
+      parts,
+    });
+    const { container } = render(
+      <MapView request={req} onOpenPart={() => {}} />,
+    );
+    const rect = (r: Element) => ({
+      x: Number(r.getAttribute("x")),
+      y: Number(r.getAttribute("y")),
+      w: Number(r.getAttribute("width")),
+      h: Number(r.getAttribute("height")),
+    });
+    const [a, b] = [...container.querySelectorAll("rect.chip-box")].map(rect);
+    if (!a || !b) throw new Error("two chips expected");
+    expect(
+      a.x + a.w <= b.x ||
+        b.x + b.w <= a.x ||
+        a.y + a.h <= b.y ||
+        b.y + b.h <= a.y,
+    ).toBe(true);
+  });
+
+  it("a link label in a crowded overflow grid finds a clear spot", () => {
+    const agents = Array.from({ length: 36 }, (_, i) =>
+      agent(`a${i}`, `Implement Task ${i}`),
+    );
+    const parts = Array.from({ length: 12 }, (_, i) =>
+      part({
+        id: `p${i}`,
+        title: `Task ${i}`,
+        status: "done",
+        agents: [`a${3 * i}`, `a${3 * i + 1}`, `a${3 * i + 2}`],
+        links: i === 11 ? [{ to: "p8", label: "same files" }] : [],
+      }),
+    );
+    const { container } = render(
+      <MapView request={request({ agents, parts })} onOpenPart={() => {}} />,
+    );
+    const label = container.querySelector(".link-label") as SVGTextElement;
+    const w = textWidth("same files", 10.5) + 8;
+    const x = Number(label.getAttribute("x")) - w / 2;
+    const y = Number(label.getAttribute("y")) - 3 - 8;
+    const boxes = [
+      ...container.querySelectorAll("rect.chip-box, rect.box, rect.goal-box"),
+    ].map((r) => ({
+      x: Number(r.getAttribute("x")),
+      y: Number(r.getAttribute("y")),
+      w: Number(r.getAttribute("width")),
+      h: Number(r.getAttribute("height")),
+    }));
+    const hits = boxes.filter(
+      (b) => x < b.x + b.w && b.x < x + w && y < b.y + b.h && b.y < y + 14,
+    );
+    expect(hits).toEqual([]);
+  });
+
+  it("a short link's label keeps a gap from the boxes around it", () => {
+    // Real case: Task 9 (first overflow row) shares files with Task 6 (ring bottom).
+    const parts = Array.from({ length: 11 }, (_, i) =>
+      part({
+        id: `p${i}`,
+        title: `Task ${i}`,
+        status: "done",
+        links: i === 10 ? [{ to: "p7", label: "same files" }] : [],
+      }),
+    );
+    const { container } = render(
+      <MapView request={request({ parts })} onOpenPart={() => {}} />,
+    );
+    const label = container.querySelector(".link-label") as SVGTextElement;
+    const w = textWidth("same files", 10.5) + 8;
+    const x = Number(label.getAttribute("x")) - w / 2;
+    const y = Number(label.getAttribute("y")) - 3 - 8;
+    const near = [...container.querySelectorAll("rect.box, rect.goal-box")]
+      .map(boxRect)
+      .filter(
+        (b) =>
+          x < b.x + b.w + 3 &&
+          b.x - 3 < x + w &&
+          y < b.y + b.h + 3 &&
+          b.y - 3 < y + 14,
+      );
+    expect(near).toEqual([]);
+  });
+
+  it("a cut title ends at a word, and a cut path keeps its last folders", () => {
+    render(
+      <MapView
+        request={request({
+          parts: [
+            part({ id: "a", title: "Style B, departure board and more" }),
+            part({ id: "b", title: "scratchpad/style/shared/deeper" }),
+            part({ id: "c", title: ".superpowers/sdd/2026-11-06-lit-plate-x" }),
+          ],
+        })}
+        onOpenPart={() => {}}
+      />,
+    );
+    const label = (name: RegExp) =>
+      screen.getByRole("button", { name }).querySelector(".label")?.textContent;
+    expect(label(/^Style B/)).toBe("Style B, departure…");
+    expect(label(/^scratchpad/)).toBe("…/style/shared/deeper");
+    // A last folder too long for the box ends at a dash, not mid-word.
+    expect(label(/^\.superpowers/)).toBe("…/2026-11-06-lit-plate…");
+  });
+
   it("a growing canvas never moves existing chips", () => {
     const agents = [agent("a1", "tests"), agent("a2", "reading")];
     const ring = Array.from({ length: 8 }, (_, i) =>
@@ -464,6 +614,59 @@ describe("MapView", () => {
           t.y + t.h <= c.y;
         expect(apart).toBe(true);
       }
+  });
+
+  it("other parts' chips and link labels never move when a helper finishes or a part's first helper starts", () => {
+    const ring = (status: Record<string, AgentView["status"]>) =>
+      request({
+        agents: Object.entries(status).map(([id, s]) => ({
+          ...agent(id, `Helper ${id}`),
+          status: s,
+        })),
+        parts: Array.from({ length: 8 }, (_, i) =>
+          part({
+            id: `p${i}`,
+            title: `Part ${i}`,
+            agents: [`a${i}`, `b${i}`].filter((id) => id in status),
+            links:
+              i === 4
+                ? [{ to: "p3", label: "same files" }]
+                : i === 0
+                  ? [{ to: "p4", label: "reads" }]
+                  : [],
+          }),
+        ),
+      });
+    const shown = (req: RequestView) => {
+      const { container, unmount } = render(
+        <MapView request={req} onOpenPart={() => {}} />,
+      );
+      const at = (el: Element) =>
+        `${el.getAttribute("x")},${el.getAttribute("y")}`;
+      const chips = Object.fromEntries(
+        [...container.querySelectorAll(".chip")].map((c) => [
+          c.querySelector(".chip-label")?.textContent,
+          at(c.querySelector("rect.chip-box") as Element),
+        ]),
+      );
+      const labels = [...container.querySelectorAll(".link-label")].map(at);
+      unmount();
+      return { chips, labels };
+    };
+    const base = shown(ring({ a2: "running", a4: "running", b4: "running" }));
+    expect(Object.keys(base.chips)).toHaveLength(3);
+    // b4 finishes: its chip goes, nothing else moves.
+    const finished = shown(ring({ a2: "running", a4: "running", b4: "done" }));
+    const { "Agent 3: Helper b4": gone, ...others } = base.chips;
+    expect(gone).toBeDefined();
+    expect(finished.chips).toEqual(others);
+    expect(finished.labels).toEqual(base.labels);
+    // p3 gets its first helper: every other chip and label stays.
+    const more = shown(
+      ring({ a2: "running", a4: "running", b4: "running", a3: "running" }),
+    );
+    expect(more.chips).toMatchObject(base.chips);
+    expect(more.labels).toEqual(base.labels);
   });
 
   it("a ring part's chip stack stays put as its agents go from 1 to 3", () => {
