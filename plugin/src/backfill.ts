@@ -17,9 +17,10 @@ import { runRecap } from "./recap.js";
 import { enqueue, type FlushOptions, flush } from "./upload.js";
 
 // With unshown tool results cut to their start, MAX_BYTES is the real bound; a 5-day
-// session is ~7,000 events and ~20 MB.
+// session with whole diffs and Claude's messages is ~7,000 events and ~23 MB. It stays
+// under the queue's 50 MB cap (upload.ts), so a backfill is never cut by the queue.
 const MAX_EVENTS = 10_000;
-const MAX_BYTES = 20_000_000;
+const MAX_BYTES = 40_000_000;
 // Files are streamed, so this only bounds the time a huge transcript takes. What fits
 // is set by MAX_BYTES: all of a few-day session, the last day or so of a longer one.
 const TAIL_BYTES = 512_000_000;

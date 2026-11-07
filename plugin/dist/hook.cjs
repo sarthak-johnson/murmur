@@ -21660,7 +21660,7 @@ function changedPaths(events) {
 
 // src/backfill.ts
 var MAX_EVENTS2 = 1e4;
-var MAX_BYTES2 = 2e7;
+var MAX_BYTES2 = 4e7;
 var TAIL_BYTES = 512e6;
 var CHUNK = 1 << 20;
 var STALE_MS = 10 * 6e4;
