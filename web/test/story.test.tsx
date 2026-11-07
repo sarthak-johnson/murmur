@@ -1,0 +1,598 @@
+import type {
+  AgentView,
+  MessageView,
+  MurmurEvent,
+  PartView,
+  RequestView,
+  SessionView,
+} from "@murmur/core";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Live } from "../src/pages/Session";
+import {
+  clock,
+  commitsIn,
+  concernsIn,
+  duration,
+  fixRounds,
+  moment,
+  outcome,
+  reportLead,
+  sentBack,
+  verdictOf,
+} from "../src/story";
+
+afterEach(cleanup);
+beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => ({ decisions: [] }),
+        }) as Response,
+    ),
+  );
+});
+
+const at = (min: number) =>
+  new Date(Date.UTC(2026, 10, 6, 10, min)).toISOString();
+
+function part(p: Partial<PartView> & { id: string; title: string }): PartView {
+  return {
+    status: "done",
+    links: [],
+    steps: [],
+    files: [],
+    choices: [],
+    checks: [],
+    words: [],
+    agents: [],
+    failures: 0,
+    ...p,
+  };
+}
+
+const step = (text: string, agentId?: string, min = 10) => ({
+  ts: at(min),
+  text,
+  status: "done" as const,
+  eventIds: [],
+  ...(agentId ? { agentId } : {}),
+});
+
+function agent(id: string, a: Partial<AgentView> = {}): AgentView {
+  return {
+    id,
+    type: "general-purpose",
+    description: id,
+    prompt: "",
+    status: "done",
+    startedAt: at(10),
+    ...a,
+  };
+}
+
+const msg = (id: string, min: number, text: string, m = {}): MessageView => ({
+  id,
+  ts: at(min),
+  text,
+  ...m,
+});
+
+const messages: MessageView[] = [
+  msg(
+    "m0",
+    6,
+    "Approved, so I'm starting. Here's the order: install dependencies first.",
+  ),
+  msg(
+    "m1",
+    10,
+    "One builder at a time, **not** two: the foundation tasks all edit the same few files.",
+  ),
+  msg(
+    "m2",
+    13,
+    "The review found one real problem: the plate's gain and loss colours used the weaker values.",
+    { task: "task:1", agent: "a2" },
+  ),
+  msg("m3", 14, "I also added an eleventh task to Phase 0."),
+  msg(
+    "m4",
+    15,
+    "The recheck passed. I'll confirm the values myself before marking Task 1 done.",
+    { task: "task:1" },
+  ),
+];
+
+function request(r: Partial<RequestView> = {}): RequestView {
+  return {
+    id: "r1",
+    prompt: "Yes please go ahead",
+    startedAt: at(5),
+    kind: "feature",
+    kindInferred: true,
+    goal: "Yes please go ahead",
+    phases: [
+      {
+        id: "did",
+        title: "What Claude did",
+        status: "done",
+        tasks: [
+          {
+            id: "task:1",
+            title: "Task 1: Lit plate tokens",
+            part: "task:1",
+            status: "done",
+            agents: [],
+          },
+          {
+            id: "task:2",
+            title: "Task 2: HeroMoney",
+            part: "task:2",
+            status: "done",
+            agents: [],
+          },
+          {
+            id: "task:3",
+            title: "Task 3: Dot field",
+            part: "task:3",
+            status: "done",
+            agents: [],
+          },
+        ],
+      },
+    ],
+    planInferred: true,
+    parts: [
+      part({
+        id: "task:1",
+        title: "Task 1: Lit plate tokens",
+        agents: ["a1", "a2", "a3"],
+        steps: [
+          step("Built", "a1"),
+          step("Reviewed", "a2", 12),
+          step("Re-reviewed", "a3", 14),
+        ],
+      }),
+      part({
+        id: "task:2",
+        title: "Task 2: HeroMoney",
+        agents: ["a4"],
+        steps: [step("Built", "a4", 16)],
+      }),
+      part({ id: "task:3", title: "Task 3: Dot field", steps: [] }),
+    ],
+    looseFiles: [],
+    now: null,
+    agents: [
+      agent("a1"),
+      agent("a2"),
+      agent("a3"),
+      agent("a4", {
+        report: {
+          status: "completed",
+          summary: 'Agent "Build Task 2" finished',
+          text: "Status: DONE_WITH_CONCERNS\n\nBuilt it.",
+          verdict: "DONE_WITH_CONCERNS",
+          ts: at(18),
+          interim: false,
+        },
+      }),
+    ],
+    assumptions: [],
+    flags: [],
+    finished: true,
+    tally: { helpers: 4, files: 3, commands: 12 },
+    messages,
+    ...r,
+  };
+}
+
+function session(req: RequestView, s: Partial<SessionView> = {}): SessionView {
+  return {
+    sessionId: "s1",
+    cwd: "/x/app",
+    title: "app",
+    startedAt: at(0),
+    lastEventAt: at(40),
+    ended: false,
+    requests: [req],
+    needsYou: null,
+    ...s,
+  };
+}
+
+const ev = (min: number): MurmurEvent => ({
+  id: `e${min}`,
+  sessionId: "s1",
+  machineId: "m",
+  cwd: "/x/app",
+  ts: at(min),
+  hook: "Stop",
+  payload: {},
+});
+
+function show(view: SessionView, events: MurmurEvent[] = []) {
+  return render(
+    <Live
+      sessionId="s1"
+      view={view}
+      viewAt={() => null}
+      events={events}
+      status="live"
+      lastLooked={null}
+    />,
+  );
+}
+
+const story = () => screen.getByRole("region", { name: "What happened" });
+const storyTexts = () =>
+  within(story())
+    .getAllByRole("listitem")
+    .map((li) => li.querySelector(".story-text")?.textContent ?? "");
+
+describe("moment badges", () => {
+  it("follow the plain, conservative rules", () => {
+    expect(moment("The review found one real problem")).toBe("problem");
+    expect(moment("The build failed twice")).toBe("problem");
+    expect(moment("That change broke the chart")).toBe("problem");
+    expect(moment("Sent back to the same builder")).toBe("fixing");
+    expect(moment("I'm fixing the comment now")).toBe("fixing");
+    expect(moment("Task 1 is done")).toBe("done");
+    expect(moment("The recheck passed")).toBe("done");
+    expect(moment("Values verified")).toBe("done");
+    expect(moment("One builder at a time, not two")).toBe("decision");
+    expect(moment("I used tokens rather than raw colours")).toBe("decision");
+    expect(moment("I decided to keep it")).toBe("decision");
+    expect(moment("I also added an eleventh task")).toBe("plan");
+    expect(moment("Reading the prototype next")).toBeUndefined();
+    // Words that only contain a rule's word do not count.
+    expect(moment("The prefix is undone notably")).toBeUndefined();
+  });
+});
+
+describe("story helpers", () => {
+  it("count tasks sent back after review and fix rounds", () => {
+    expect(sentBack(request())).toBe(1);
+    const p = part({
+      id: "x",
+      title: "X",
+      steps: [
+        step("Built"),
+        step("Reviewed"),
+        step("Fixed"),
+        step("Re-reviewed"),
+        step("Re-reviewed"),
+      ],
+    });
+    expect(fixRounds(p)).toBe(2);
+    expect(
+      fixRounds(part({ id: "y", title: "Y", steps: [step("Built")] })),
+    ).toBe(0);
+  });
+
+  it("formats a duration", () => {
+    expect(duration(at(0), at(0))).toBe("under a minute");
+    expect(duration(at(0), at(7))).toBe("7 m");
+    expect(
+      duration(at(0), new Date(Date.parse(at(0)) + 187 * 60_000).toISOString()),
+    ).toBe("3 h 07 m");
+  });
+
+  it("finds commits in reports", () => {
+    expect(
+      commitsIn([
+        "Status: DONE\nCommit: df095803a1b2\nOther: 1234567",
+        "**Commits:** `2b3689eb3`, abcdef0",
+        "Commit: df095803a1b2",
+      ]),
+    ).toEqual(["df095803a1b2", "2b3689eb3", "abcdef0"]);
+    expect(commitsIn(["No commit was made"])).toEqual([]);
+  });
+
+  it("finds the bullets under a Concerns heading", () => {
+    const text = [
+      "Status: DONE_WITH_CONCERNS",
+      "",
+      "Built the tokens.",
+      "",
+      "**Concerns:**",
+      "- Opacity steps on `--l2` won't work",
+      "  because their alpha is baked in",
+      "- One test already fails",
+      "",
+      "## Files",
+      "- a.css",
+    ].join("\n");
+    expect(concernsIn(text)).toEqual([
+      "Opacity steps on `--l2` won't work because their alpha is baked in",
+      "One test already fails",
+    ]);
+    expect(concernsIn("## Concerns\n\nNone.")).toEqual([]);
+    expect(concernsIn("Concerns: the light colours were a guess")).toEqual([
+      "the light colours were a guess",
+    ]);
+    expect(concernsIn("All good.")).toEqual([]);
+  });
+
+  it("reads a verdict as a label and a tone", () => {
+    const r = (verdict?: string, status = "completed") => ({
+      status,
+      summary: "",
+      text: "",
+      ts: at(0),
+      interim: false,
+      ...(verdict ? { verdict } : {}),
+    });
+    expect(verdictOf(r("DONE"))).toEqual({ label: "Done", tone: "done" });
+    expect(verdictOf(r("DONE_WITH_CONCERNS"))).toEqual({
+      label: "Done, with concerns",
+      tone: "warn",
+    });
+    expect(verdictOf(r("BLOCKED"))).toEqual({ label: "Blocked", tone: "bad" });
+    expect(verdictOf(r("NEEDS_CONTEXT"))).toEqual({
+      label: "Needs context",
+      tone: "warn",
+    });
+    expect(verdictOf(r("APPROVED"))).toEqual({
+      label: "Approved",
+      tone: "done",
+    });
+    expect(verdictOf(r(undefined, "failed"))).toEqual({
+      label: "Failed",
+      tone: "bad",
+    });
+    expect(verdictOf(r())).toBeUndefined();
+    expect(verdictOf(undefined)).toBeUndefined();
+  });
+
+  it("takes a report's lead paragraph without its status lines", () => {
+    expect(
+      reportLead(
+        "Status: DONE\nCommit: abc1234\n\n## Summary\n\nThe new tests pass.\n\nMore detail.",
+      ),
+    ).toBe("The new tests pass.");
+  });
+
+  it("gives each task a one-line outcome", () => {
+    const req = request();
+    const [t1, t2, t3] = req.phases[0]?.tasks ?? [];
+    if (!t1 || !t2 || !t3) throw new Error("fixture");
+    // The last linked message wins over a verdict.
+    expect(outcome(req, t1)).toBe(
+      "The recheck passed. I'll confirm the values myself before marking Task 1 done.",
+    );
+    // No message: the last helper's verdict.
+    expect(outcome(req, t2)).toBe("Done, with concerns");
+    expect(outcome(req, t3)).toBeUndefined();
+    // A recap's line (its part's last step) wins over both.
+    const recap = request({
+      recap: true,
+      planInferred: false,
+      parts: req.parts.map((p) =>
+        p.id === "task:1"
+          ? { ...p, steps: [step("Done after 1 fix: the colours were weak")] }
+          : p,
+      ),
+    });
+    expect(outcome(recap, t1)).toBe("Done after 1 fix: the colours were weak");
+  });
+
+  it("formats a clock time as hours and minutes", () => {
+    const d = new Date(at(6));
+    const two = (n: number) => String(n).padStart(2, "0");
+    expect(clock(at(6))).toBe(`${two(d.getHours())}:${two(d.getMinutes())}`);
+  });
+});
+
+describe("request page, story first", () => {
+  it("opens with the request and Claude's opening line", () => {
+    show(session(request()));
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Yes please go ahead" }),
+    ).toBeTruthy();
+    const open = screen.getByRole("group", { name: "Claude's opening line" });
+    expect(open.textContent).toContain("Approved, so I'm starting.");
+    expect(open.textContent).toContain(`Claude, ${clock(at(6))}`);
+    // The opening line is not repeated in the timeline.
+    expect(storyTexts().some((t) => t.includes("Approved"))).toBe(false);
+  });
+
+  it("the summary band says status, tasks, sent back, helpers and duration", () => {
+    show(session(request()), [ev(5), ev(30)]);
+    const band = screen.getByRole("group", { name: "Summary" });
+    const t = band.textContent ?? "";
+    expect(within(band).getByText("Done")).toBeTruthy();
+    expect(t).toContain("3 tasks");
+    expect(t).toContain("1 sent back after review");
+    expect(t).toContain("4 helpers");
+    expect(t).toContain("25 m");
+  });
+
+  it("the band says Running and Needs you, and skips zero counts", () => {
+    const running = request({
+      finished: false,
+      tally: { helpers: 0, files: 0, commands: 0 },
+      parts: [],
+    });
+    show(session(running));
+    let band = screen.getByRole("group", { name: "Summary" });
+    expect(within(band).getByText("Running")).toBeTruthy();
+    expect(band.textContent).not.toContain("helpers");
+    expect(band.textContent).not.toContain("sent back");
+    cleanup();
+    show(
+      session(running, {
+        needsYou: { reason: "permission", text: "Allow Bash?", since: at(9) },
+      }),
+    );
+    band = screen.getByRole("group", { name: "Summary" });
+    expect(within(band).getByText("Needs you")).toBeTruthy();
+  });
+
+  it("the timeline runs oldest first once done", () => {
+    show(session(request()));
+    expect(storyTexts().map((t) => t.slice(0, 12))).toEqual([
+      "One builder ",
+      "The review f",
+      "I also added",
+      "The recheck ",
+    ]);
+  });
+
+  it("the timeline runs newest first while the request runs", () => {
+    show(session(request({ finished: false })));
+    expect(storyTexts().map((t) => t.slice(0, 12))).toEqual([
+      "The recheck ",
+      "I also added",
+      "The review f",
+      "One builder ",
+    ]);
+  });
+
+  it("each moment has its time, task chip and badge", async () => {
+    show(session(request()));
+    const items = within(story()).getAllByRole("listitem");
+    const [decision, problem, plan, done] = items as HTMLElement[];
+    expect(within(decision as HTMLElement).getByText("Decision")).toBeTruthy();
+    expect(
+      within(problem as HTMLElement).getByText("Problem found"),
+    ).toBeTruthy();
+    expect(within(plan as HTMLElement).getByText("Plan changed")).toBeTruthy();
+    expect(within(done as HTMLElement).getByText("Done")).toBeTruthy();
+    expect(
+      within(problem as HTMLElement).getByText(clock(at(13))),
+    ).toBeTruthy();
+    const chip = within(problem as HTMLElement).getByRole("button", {
+      name: "Task 1: Lit plate tokens",
+    });
+    expect(within(decision as HTMLElement).queryByRole("button")).toBeNull();
+    await userEvent.click(chip);
+    expect(location.pathname).toBe("/s/s1/r/r1/p/task%3A1");
+  });
+
+  it("renders Markdown in messages as formatted text", () => {
+    show(session(request()));
+    const first = within(story()).getAllByRole("listitem")[0] as HTMLElement;
+    expect(first.querySelector("strong")?.textContent).toBe("not");
+    expect(first.textContent).not.toContain("**");
+  });
+
+  it("folds a long message after 4 lines", async () => {
+    const long = Array.from({ length: 7 }, (_, i) => `Point ${i}.`).join(
+      "\n\n",
+    );
+    show(
+      session(
+        request({
+          messages: [msg("m0", 6, "Starting."), msg("m1", 8, long)],
+        }),
+      ),
+    );
+    await userEvent.click(
+      within(story()).getByRole("button", { name: "Show more" }),
+    );
+    expect(
+      within(story()).getByRole("button", { name: "Show less" }),
+    ).toBeTruthy();
+  });
+
+  it("plan rows carry how each task ended", () => {
+    show(session(request()));
+    const plan = screen.getByRole("region", { name: "Plan" });
+    expect(
+      within(plan).getByText(/The recheck passed\. I'll confirm/),
+    ).toBeTruthy();
+    expect(within(plan).getByText("Done, with concerns")).toBeTruthy();
+  });
+
+  it("the map stays below the story", () => {
+    show(session(request()));
+    const map = screen.getByRole("region", { name: "Map" });
+    expect(
+      story().compareDocumentPosition(map) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("a request with no messages keeps today's screen and draws no story", () => {
+    show(session(request({ messages: [], finished: false })));
+    expect(screen.queryByRole("region", { name: "What happened" })).toBeNull();
+    expect(
+      screen.queryByRole("group", { name: "Claude's opening line" }),
+    ).toBeNull();
+    expect(screen.getByRole("region", { name: "Now" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Summary" })).toBeTruthy();
+    cleanup();
+    const old = request();
+    delete old.messages;
+    show(session(old));
+    expect(screen.queryByRole("region", { name: "What happened" })).toBeNull();
+  });
+
+  it("a request with only an opening line shows it and no story", () => {
+    show(session(request({ messages: [msg("m0", 6, "On it.")] })));
+    expect(
+      screen.getByRole("group", { name: "Claude's opening line" }).textContent,
+    ).toContain("On it.");
+    expect(screen.queryByRole("region", { name: "What happened" })).toBeNull();
+  });
+
+  it("an inferred now from a command reads as its description and opens as a terminal block", async () => {
+    const bash = (hook: MurmurEvent["hook"], extra = {}): MurmurEvent => ({
+      ...ev(20),
+      id: `b-${hook}`,
+      hook,
+      payload: {
+        tool_name: "Bash",
+        tool_use_id: "toolu_1",
+        tool_input: {
+          command: "cd /x/app && pnpm test 2>&1 | tail -3",
+          description: "Run the frontend suite",
+        },
+        ...extra,
+      },
+    });
+    show(
+      session(
+        request({
+          finished: false,
+          now: {
+            text: "Running cd /x/app && pnpm",
+            why: "",
+            ts: at(20),
+            inferred: true,
+          },
+        }),
+      ),
+      [
+        bash("PreToolUse"),
+        bash("PostToolUse", {
+          tool_response: { stdout: "3 passed", stderr: "" },
+        }),
+      ],
+    );
+    const now = screen.getByRole("region", { name: "Now" });
+    expect(within(now).getByText("Run the frontend suite")).toBeTruthy();
+    await userEvent.click(within(now).getByRole("button", { name: "Details" }));
+    expect(
+      within(now).getByText("cd /x/app && pnpm test 2>&1 | tail -3"),
+    ).toBeTruthy();
+    expect(within(now).getByText("Succeeded")).toBeTruthy();
+    expect(now.textContent).toContain("3 passed");
+  });
+
+  it("a recapped request is labelled Recap by Claude", () => {
+    show(
+      session(
+        request({ recap: true, planInferred: false, kindInferred: false }),
+      ),
+    );
+    expect(screen.getAllByText("Recap by Claude").length).toBeGreaterThan(0);
+    expect(screen.queryByText("inferred")).toBeNull();
+  });
+});

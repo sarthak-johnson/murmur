@@ -278,9 +278,11 @@ describe("live screen", () => {
         },
       }),
     );
-    const chip = screen.getByText("Needs you");
-    expect(chip.closest("p")?.textContent).toBe(
-      "Needs youClaude needs your permission to use Bash",
+    // The band beside the notice says "Needs you", so the notice does not repeat it.
+    const band = screen.getByRole("group", { name: "Summary" });
+    expect(within(band).getByText("Needs you")).toBeTruthy();
+    expect(document.querySelector(".notice-needs")?.textContent).toBe(
+      "Claude needs your permission to use Bash",
     );
     expect(screen.queryByText(/Claude needs you:/)).toBeNull();
   });
@@ -332,7 +334,7 @@ describe("live screen", () => {
       );
     const { rerender } = show(session());
     const empty = blocks();
-    expect(empty).toContain("notice-row");
+    expect(empty).toContain("head-row");
     expect(document.querySelector(".notice-row")?.children).toHaveLength(0);
     rerender(
       <Live
@@ -607,7 +609,7 @@ describe("live screen", () => {
     const items = within(list).getAllByRole("button");
     expect(items[0]?.textContent).toContain("Price alerts");
     expect(items[0]?.getAttribute("aria-current")).toBe("true");
-    expect(items[1]?.textContent).toContain("bug hunt");
+    expect(items[1]?.textContent).toContain("Bug hunt");
     expect(items[1]?.getAttribute("aria-current")).toBeNull();
     await userEvent.click(items[1] as HTMLElement);
     expect(location.pathname).toBe("/s/s1/r/r1");

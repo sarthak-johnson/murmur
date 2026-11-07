@@ -8,6 +8,7 @@ import { NowCard } from "../live/NowCard";
 import { PhaseStrip } from "../live/PhaseStrip";
 import { PlanPanel } from "../live/PlanPanel";
 import { RequestList } from "../live/RequestList";
+import { RequestHead, type RequestStatus, Story } from "../live/Story";
 import { MapView } from "../map/MapView";
 import { navigate } from "../router";
 import { type SessionStatus, useSession } from "../useSession";
@@ -218,45 +219,89 @@ function RequestScreen(props: {
   if (!req) return null;
   const open = (part: string) =>
     navigate(`/s/${enc(sessionId)}/r/${enc(req.id)}/p/${enc(part)}`);
+  const k = view.requests.indexOf(req);
+  const next = view.requests[k + 1];
+  // The request's last activity: its last event before the next prompt.
+  const end =
+    events.findLast(
+      (e) => e.ts >= req.startedAt && (!next || e.ts < next.startedAt),
+    )?.ts ??
+    next?.startedAt ??
+    view.lastEventAt;
+  const done = req.finished || view.ended;
+  const state: RequestStatus = done
+    ? "done"
+    : view.needsYou && !next
+      ? "needs"
+      : "running";
+  const story = (req.messages?.length ?? 0) > 1;
+  const plan = (
+    <PlanPanel
+      request={req}
+      hoverPart={partId}
+      onHover={setPartId}
+      onOpen={open}
+    />
+  );
+  const map = (
+    <section className="map-panel" aria-label="Map">
+      <h2 className="lbl">How it ties together</h2>
+      <div className="map-box">
+        <MapView
+          request={req}
+          highlight={{
+            ...(partId ? { partId } : {}),
+            ...(phaseId ? { phaseId } : {}),
+          }}
+          onOpenPart={open}
+        />
+      </div>
+    </section>
+  );
+  const assumptions = (
+    <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
+  );
 
   return (
     <>
-      <Notices
-        needsYou={view.needsYou}
-        flags={req.flags}
-        parts={req.parts}
-        catchUp={since}
-        since={lastLooked}
-      />
+      <RequestHead request={req} status={state} end={end}>
+        <Notices
+          needsYou={view.needsYou}
+          flags={req.flags}
+          parts={req.parts}
+          catchUp={since}
+          since={lastLooked}
+          needsSaid={state === "needs"}
+        />
+      </RequestHead>
       <PhaseStrip
         phases={req.phases}
         inferred={req.planInferred}
         selected={phaseId}
         onSelect={setPhaseId}
       />
-      <div className="live-grid">
-        <NowCard request={req} cwd={view.cwd} events={events} />
-        <PlanPanel
-          request={req}
-          hoverPart={partId}
-          onHover={setPartId}
-          onOpen={open}
-        />
-        <section className="map-panel" aria-label="Map">
-          <div className="lbl">How it ties together</div>
-          <div className="map-box">
-            <MapView
-              request={req}
-              highlight={{
-                ...(partId ? { partId } : {}),
-                ...(phaseId ? { phaseId } : {}),
-              }}
-              onOpenPart={open}
-            />
+      {story ? (
+        <>
+          <div className="story-grid">
+            <Story request={req} onOpenPart={open} />
+            <aside className="story-side">
+              {!done && (
+                <NowCard request={req} cwd={view.cwd} events={events} />
+              )}
+              {plan}
+              {assumptions}
+            </aside>
           </div>
-        </section>
-        <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
-      </div>
+          {map}
+        </>
+      ) : (
+        <div className="live-grid">
+          <NowCard request={req} cwd={view.cwd} events={events} />
+          {plan}
+          {map}
+          {assumptions}
+        </div>
+      )}
     </>
   );
 }

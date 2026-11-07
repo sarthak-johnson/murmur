@@ -1,6 +1,8 @@
 import type { MurmurEvent, RequestView } from "@murmur/core";
+import { useState } from "react";
 import { FileList, PathText } from "../files";
 import { ago } from "../format";
+import { EventView } from "../part/EventView";
 
 const MINUS = "−";
 
@@ -22,6 +24,56 @@ function doneLine({ helpers, files, commands }: RequestView["tally"]) {
   return bits.length ? bits.join(", ") : "Nothing changed";
 }
 
+/** The tool call an inferred now was read from. */
+function sourceOf(request: RequestView, events: MurmurEvent[]) {
+  const now = request.now;
+  return now?.inferred
+    ? events.findLast((e) => e.ts === now.ts && !!e.payload.tool_name)
+    : undefined;
+}
+
+/** A command's own description reads better than its first 60 characters. */
+function nowText(text: string, src: MurmurEvent | undefined) {
+  const input = src?.payload.tool_input as
+    | { description?: unknown }
+    | undefined;
+  const d = src?.payload.tool_name === "Bash" ? input?.description : undefined;
+  return typeof d === "string" && d.trim() ? d.trim() : text;
+}
+
+/** An inferred now opens as the tool call it was read from. */
+function NowSource(props: {
+  src: MurmurEvent;
+  request: RequestView;
+  cwd: string;
+  events: MurmurEvent[];
+}) {
+  const { src, request, cwd, events } = props;
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="link now-more"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        {open ? "Hide details" : "Details"}
+      </button>
+      {open && (
+        <div className="now-event">
+          <EventView
+            eventId={src.id}
+            events={events}
+            cwd={cwd}
+            agents={request.agents}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
 export function NowCard(props: {
   request: RequestView;
   cwd?: string;
@@ -29,6 +81,7 @@ export function NowCard(props: {
 }) {
   const { request, cwd = "", events = [] } = props;
   const { now, agents, parts, looseFiles } = request;
+  const src = sourceOf(request, events);
   // A request Claude never mapped, once over, says what it did instead of a stale now.
   const done = request.planInferred && request.finished;
   const live = agents
@@ -56,7 +109,15 @@ export function NowCard(props: {
           <p className="now-text">{doneLine(request.tally)}</p>
         ) : now ? (
           <>
-            <p className="now-text">{now.text}</p>
+            <p className="now-text">{nowText(now.text, src)}</p>
+            {src && (
+              <NowSource
+                src={src}
+                request={request}
+                cwd={cwd}
+                events={events}
+              />
+            )}
             {now.why && (
               <p className="now-why">
                 <b>Why now:</b> {now.why}
