@@ -347,7 +347,8 @@ function PartBody(props: {
           {purpose && (
             <Section name="What it was for" className="purpose">
               <p className="purpose-text">
-                {purpose.text} <span className="source">{purpose.source}</span>
+                {inline(purpose.text)}{" "}
+                <span className="source">{purpose.source}</span>
               </p>
               {purpose.doneWhen && (
                 <p className="muted">Done when {purpose.doneWhen}</p>

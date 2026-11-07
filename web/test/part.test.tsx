@@ -183,7 +183,7 @@ function task1(over: { agents?: Partial<AgentView>[] } = {}) {
       status: "done",
       startedAt: at(10),
       brief:
-        "This is the first task: it adds the design tokens every later part reads.",
+        "This is the first task: it adds the design tokens every later part reads, in `index.css`.",
       report: report(
         "Status: DONE_WITH_CONCERNS\nCommit: df095803a\n\n## Summary\n\nThe new token tests **pass**.\n\n**Concerns:**\n- Opacity steps on `--l2` won't work\n- One test on staging already fails",
         "DONE_WITH_CONCERNS",
@@ -588,6 +588,8 @@ describe("task page", () => {
       "This is the first task: it adds the design tokens",
     );
     expect(within(why).getByText("From the helper's brief")).toBeTruthy();
+    expect(why.querySelector("code")?.textContent).toBe("index.css");
+    expect(why.textContent).not.toContain("`");
   });
 
   it("a recap's aim wins and says where it came from", () => {
