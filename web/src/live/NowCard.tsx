@@ -1,6 +1,8 @@
 import type { MurmurEvent, RequestView } from "@murmur/core";
+import { useState } from "react";
 import { FileList, PathText } from "../files";
 import { ago } from "../format";
+import { EventView } from "../part/EventView";
 
 const MINUS = "−";
 
@@ -22,6 +24,59 @@ function doneLine({ helpers, files, commands }: RequestView["tally"]) {
   return bits.length ? bits.join(", ") : "Nothing changed";
 }
 
+/** The tool call an inferred now was read from. */
+function sourceOf(request: RequestView, events: MurmurEvent[]) {
+  const now = request.now;
+  return now?.inferred
+    ? events.findLast((e) => e.ts === now.ts && !!e.payload.tool_name)
+    : undefined;
+}
+
+/** A command reads as its own description, else in full (the card clamps it), never cut mid-word. */
+function nowText(text: string, src: MurmurEvent | undefined) {
+  if (src?.payload.tool_name !== "Bash") return text;
+  const input = src.payload.tool_input as
+    | { description?: unknown; command?: unknown }
+    | undefined;
+  const said = (v: unknown) =>
+    typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "";
+  const command = said(input?.command);
+  return said(input?.description) || (command ? `Running ${command}` : text);
+}
+
+/** An inferred now opens as the tool call it was read from. */
+function NowSource(props: {
+  src: MurmurEvent;
+  request: RequestView;
+  cwd: string;
+  events: MurmurEvent[];
+}) {
+  const { src, request, cwd, events } = props;
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="link now-more"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        {open ? "Hide details" : "Details"}
+      </button>
+      {open && (
+        <div className="now-event">
+          <EventView
+            eventId={src.id}
+            events={events}
+            cwd={cwd}
+            agents={request.agents}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
 export function NowCard(props: {
   request: RequestView;
   cwd?: string;
@@ -29,8 +84,12 @@ export function NowCard(props: {
 }) {
   const { request, cwd = "", events = [] } = props;
   const { now, agents, parts, looseFiles } = request;
-  // A request Claude never mapped, once over, says what it did instead of a stale now.
-  const done = request.planInferred && request.finished;
+  const src = sourceOf(request, events);
+  // A request that is over says what it did instead of a stale now: one Claude never
+  // mapped, one its recap mapped, or one whose now was only read from a tool call.
+  const done =
+    request.finished &&
+    (request.planInferred || !!request.recap || !!now?.inferred);
   const live = agents
     .map((a, i) => ({ a, k: i + 1 }))
     .filter(({ a }) => a.status === "running");
@@ -48,15 +107,27 @@ export function NowCard(props: {
       <div className={done ? "now-card done" : "now-card"}>
         <div className={done ? "lbl lbl-done" : "lbl lbl-now"}>
           {done ? doneLbl : "Now"}
-          {(done || now?.inferred) && (
-            <span className="inferred">inferred</span>
+          {request.recap && done ? (
+            <span className="inferred">Recap by Claude</span>
+          ) : (
+            (done || now?.inferred) && (
+              <span className="inferred">inferred</span>
+            )
           )}
         </div>
         {done ? (
           <p className="now-text">{doneLine(request.tally)}</p>
         ) : now ? (
           <>
-            <p className="now-text">{now.text}</p>
+            <p className="now-text">{nowText(now.text, src)}</p>
+            {src && (
+              <NowSource
+                src={src}
+                request={request}
+                cwd={cwd}
+                events={events}
+              />
+            )}
             {now.why && (
               <p className="now-why">
                 <b>Why now:</b> {now.why}

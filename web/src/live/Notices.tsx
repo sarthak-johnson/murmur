@@ -33,8 +33,10 @@ export function Notices(props: {
   parts: PartView[];
   catchUp: string | null;
   since: string | null;
+  /** The summary band beside the row already says "Needs you". */
+  needsSaid?: boolean;
 }) {
-  const { needsYou, flags, parts, catchUp, since } = props;
+  const { needsYou, flags, parts, catchUp, since, needsSaid } = props;
   const [open, setOpen] = useState(false);
   const pending = (kind: Flag["kind"]) =>
     flags.filter((f) => f.kind === kind && f.pending).sort(newest);
@@ -45,7 +47,7 @@ export function Notices(props: {
           {
             key: `needs:${needsYou.since}`,
             cls: "notice-needs",
-            chip: "Needs you",
+            ...(needsSaid ? {} : { chip: "Needs you" }),
             text: needsYou.text,
           },
         ]

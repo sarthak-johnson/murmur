@@ -1,5 +1,6 @@
 import type { PhaseView, RequestView, TaskView } from "@murmur/core";
 import { useState } from "react";
+import { outcome } from "../story";
 
 const GLYPH: Record<TaskView["status"], string> = {
   done: "✓",
@@ -7,6 +8,13 @@ const GLYPH: Record<TaskView["status"], string> = {
   todo: "○",
   failed: "✕",
 };
+
+/** Where the plan came from, when Claude did not lay it out live. */
+export function PlanSource({ request }: { request: RequestView }) {
+  if (request.recap) return <span className="inferred">Recap by Claude</span>;
+  if (request.planInferred) return <span className="inferred">inferred</span>;
+  return null;
+}
 
 export function PlanPanel(props: {
   request: RequestView;
@@ -23,7 +31,7 @@ export function PlanPanel(props: {
     <section className="plan" aria-label="Plan">
       <div className="lbl">
         {tasks.length ? `Plan · step ${step} of ${tasks.length}` : "Plan"}
-        {request.planInferred && <span className="inferred">inferred</span>}
+        <PlanSource request={request} />
       </div>
       {phases.length === 0 && (
         <p className="muted">
@@ -92,6 +100,7 @@ function PhaseCard(props: {
           {phase.tasks.map((t) => {
             // A chip that only repeats the task's own name says nothing.
             const named = partTitle(t.part);
+            const ended = t.status === "todo" ? undefined : outcome(request, t);
             const chip = named === t.title ? undefined : named;
             const body = (
               <>
@@ -117,6 +126,7 @@ function PhaseCard(props: {
                   ) : null;
                 })}
                 {t.problem && <span className="task-problem">{t.problem}</span>}
+                {ended && <span className="task-out">{ended}</span>}
               </>
             );
             const part = t.part;

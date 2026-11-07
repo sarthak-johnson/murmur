@@ -1,10 +1,10 @@
 import type { RequestView } from "@murmur/core";
 
 const KIND: Record<RequestView["kind"], string> = {
-  feature: "feature",
-  bug: "bug hunt",
-  refactor: "refactor",
-  question: "question",
+  feature: "Feature",
+  bug: "Bug hunt",
+  refactor: "Refactor",
+  question: "Question",
 };
 
 export function RequestList(props: {
