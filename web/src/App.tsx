@@ -5,7 +5,6 @@ import { Login } from "./pages/Login";
 import { LiveSkeleton, SessionPage } from "./pages/Session";
 import { Sessions } from "./pages/Sessions";
 import { Settings } from "./pages/Settings";
-import { PartPage } from "./part/PartDetail";
 import { navigate, useRoute } from "./router";
 
 const PENDING = "murmur:pendingDevice";
@@ -19,15 +18,15 @@ function store(op: () => unknown): string | null {
   }
 }
 
-function Header(props: { me: Me; wide: boolean; onSignOut: () => void }) {
-  const { me, wide, onSignOut } = props;
+function Header(props: { me: Me; onSignOut: () => void }) {
+  const { me, onSignOut } = props;
   const go = (path: string) => (e: React.MouseEvent) => {
     e.preventDefault();
     navigate(path);
   };
   return (
     <header className="header">
-      <div className={wide ? "header-in wide" : "header-in"}>
+      <div className="header-in">
         <a className="wordmark" href="/" onClick={go("/")}>
           Murmur
         </a>
@@ -103,26 +102,26 @@ export function App() {
     route.name === "session" ||
     route.name === "request" ||
     route.name === "part";
+  const note = unreachable ? "Could not reach Murmur. Retrying…" : undefined;
   if (me === undefined)
-    return (
+    // The live frame brings its own bar, so nothing moves when the page loads.
+    return wide ? (
+      <LiveSkeleton {...(note ? { note } : {})} />
+    ) : (
       <>
         <header className="header">
-          <div className={wide ? "header-in wide" : "header-in"}>
+          <div className="header-in">
             <span className="wordmark">Murmur</span>
-            {unreachable && (
+            {note && (
               <span className="muted header-note" role="status">
-                Could not reach Murmur. Retrying…
+                {note}
               </span>
             )}
           </div>
         </header>
-        {wide ? (
-          <LiveSkeleton />
-        ) : (
-          <main className="page" aria-hidden="true">
-            <div className="sk" />
-          </main>
-        )}
+        <main className="page" aria-hidden="true">
+          <div className="sk" />
+        </main>
       </>
     );
   if (me === null) return <Login />;
@@ -153,28 +152,22 @@ export function App() {
       break;
     case "session":
     case "request":
-      page = (
+    case "part":
+      // The live frame has its own bar; the account links sit at the foot of its plan.
+      return (
         <SessionPage
           key={route.sessionId}
           sessionId={route.sessionId}
-          requestId={route.name === "request" ? route.requestId : undefined}
+          requestId={route.name === "session" ? undefined : route.requestId}
+          partId={route.name === "part" ? route.partId : undefined}
+          me={me}
+          onSignOut={signOut}
         />
       );
-      break;
-    case "part":
-      page = (
-        <PartPage
-          key={route.sessionId}
-          sessionId={route.sessionId}
-          requestId={route.requestId}
-          partId={route.partId}
-        />
-      );
-      break;
   }
   return (
     <>
-      <Header me={me} wide={wide} onSignOut={signOut} />
+      <Header me={me} onSignOut={signOut} />
       {page}
     </>
   );

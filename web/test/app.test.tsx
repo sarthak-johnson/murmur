@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 
@@ -74,11 +80,12 @@ describe("App", () => {
     );
     const { container } = render(<App />);
     expect(screen.getByText("Murmur")).toBeTruthy();
-    // Mirrors the loaded layout: requests placeholder first, then the main column.
-    const page = container.querySelector(".live-page");
-    expect(page?.children[0]?.className).toContain("sk-requests");
-    expect(page?.children[1]?.className).toBe("live-main");
-    expect(page?.children[1]?.querySelector(".skeleton")).toBeTruthy();
+    // Mirrors the loaded frame: the bar, the plan column, then the main column.
+    const frame = container.querySelector(".frame");
+    expect(
+      [...(frame?.children ?? [])].map((c) => c.className.split(" ")[0]),
+    ).toEqual(["bar", "spine", "main"]);
+    expect(frame?.querySelector(".main .skeleton")).toBeTruthy();
   });
 
   it("a failed /api/me retries instead of showing the login page", async () => {
@@ -104,12 +111,33 @@ describe("App", () => {
     expect(screen.queryByText("Could not reach Murmur. Retrying…")).toBeNull();
   });
 
-  it("the part route uses the wide header like the live screen", async () => {
+  it("the part route uses the live frame, with the account links in it", async () => {
     history.pushState(null, "", "/s/s1/r/r1/p/x");
-    mockFetch({ "GET /api/me": { body: ME } });
-    const { container } = render(<App />);
-    await waitFor(() =>
-      expect(container.querySelector(".header-in.wide")).toBeTruthy(),
+    mockFetch({
+      "GET /api/me": { body: ME },
+      "GET /api/sessions/s1/events?": {
+        body: { events: [], hasMore: false },
+      },
+    });
+    vi.stubGlobal(
+      "EventSource",
+      class {
+        // Subscribed at once, with nothing new to send.
+        addEventListener(type: string, fn: () => void) {
+          if (type === "ready") setTimeout(fn);
+        }
+        close() {}
+      },
     );
+    const { container } = render(<App />);
+    await waitFor(() => expect(screen.getByText("ada")).toBeTruthy());
+    expect(container.querySelector(".frame > .bar")).toBeTruthy();
+    expect(container.querySelector(".header")).toBeNull();
+    expect(
+      within(screen.getByRole("navigation", { name: "Account" })).getByRole(
+        "button",
+        { name: "Sign out" },
+      ),
+    ).toBeTruthy();
   });
 });

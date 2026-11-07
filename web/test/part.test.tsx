@@ -321,13 +321,16 @@ describe("PartDetail", () => {
     expect(screen.getByText(/"command": "pnpm test"/)).toBeTruthy();
   });
 
-  it("file row shows counts and role and opens a diff view", async () => {
+  it("a file sits under what it does, shows its counts and opens a diff view", async () => {
     show(full);
-    const row = screen.getByRole("button", { name: /src\/alerts\.ts/ });
+    const row = screen.getByRole("button", { name: /alerts\.ts/ });
     expect(row.textContent).toContain("+4");
     expect(row.textContent).toContain("−1");
-    expect(row.textContent).toContain("edited");
-    expect(row.textContent).toContain("the route");
+    // Only a new file is tagged; an edited one needs no word.
+    expect(row.textContent).not.toContain("edited");
+    expect(row.closest(".fcard")?.querySelector("h3")?.textContent).toBe(
+      "the route",
+    );
     await userEvent.click(row);
     expect(row.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("new line").closest(".dl")?.className).toContain(
@@ -447,10 +450,10 @@ describe("PartDetail", () => {
     for (const h of [
       "What it was for",
       "How it went",
-      "Files changed",
+      "Files, by what they do",
       "Left open",
       "Choices it made",
-      "Checked so far",
+      "Checked",
       "Words used here",
       "What goes in and out",
       "Who's on it",
@@ -500,15 +503,17 @@ describe("PartDetail", () => {
       />,
     );
     const title = screen.getByRole("heading", { level: 1 });
-    expect(title.textContent).toBe("Task 1: Lit plate tokensinferred");
-    expect(
-      screen.getByRole("heading", { name: "Files changed 9" }),
-    ).toBeTruthy();
-    const shown = screen.getByText("scratchpad/f0.css");
+    expect(title.textContent).toBe("Lit plate tokensinferred");
+    // The folder they share is said once, readable; each row keeps its full path as its title.
+    const box = screen.getByRole("region", { name: "Files, by what they do" });
+    expect(within(box).getByRole("heading", { level: 2 }).textContent).toBe(
+      "Files, by what they do 9in scratchpad",
+    );
+    const shown = within(box).getByText("f0.css");
     expect(shown.getAttribute("title")).toBe(`${tmp}/scratchpad/f0.css`);
-    expect(screen.queryByText("scratchpad/f8.css")).toBeNull();
+    expect(screen.queryByText("f8.css")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Show all 9" }));
-    expect(screen.getByText("scratchpad/f8.css")).toBeTruthy();
+    expect(screen.getByText("f8.css")).toBeTruthy();
     expect(
       screen.queryByText("Claude has not described this part yet."),
     ).toBeNull();
@@ -724,12 +729,12 @@ describe("task page", () => {
     const lead = (k: number) =>
       items[k]?.querySelector(".step-lead")?.textContent;
     expect(lead(0)).toBe("Builder added the tokens");
-    expect(items[0]?.textContent).toContain("Agent 1 · Build Task 1: tokens");
+    expect(items[0]?.textContent).toContain("Built by Agent 1");
     expect(items[0]?.textContent).toContain(`Sonnet, ${clock(at(10))}`);
     expect(lead(1)).toBe("Review found the weak values; fixed");
-    expect(items[1]?.textContent).toContain("Agent 2 · Review Task 1");
+    expect(items[1]?.textContent).toContain("Reviewed by Agent 2");
     expect(lead(2)).toBe("Recheck passed; I confirmed the values");
-    expect(items[2]?.textContent).toContain("Agent 3 · Re-review Task 1");
+    expect(items[2]?.textContent).toContain("Rechecked by Agent 3");
     // The recap's closing line stands as a plain step, with no made-up time.
     expect(items[3]?.querySelector(".step-title")?.textContent).toBe(
       "Done after one fix round.",
@@ -772,9 +777,9 @@ describe("task page", () => {
     expect(
       items.map((li) => li.querySelector(".step-title")?.textContent),
     ).toEqual([
-      "Agent 1 · Build Task 1: tokens",
-      "Agent 2 · Review Task 1",
-      "Agent 3 · Re-review Task 1",
+      "Built by Agent 1",
+      "Reviewed by Agent 2",
+      "Rechecked by Agent 3",
       "Done after one fix round.",
     ]);
   });

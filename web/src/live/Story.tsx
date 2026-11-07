@@ -1,79 +1,14 @@
-import type { MessageView, RequestView, TaskView } from "@murmur/core";
-import { type ReactNode, useState } from "react";
+import type {
+  MessageView,
+  PhaseView,
+  RequestView,
+  TaskView,
+} from "@murmur/core";
+import { useState } from "react";
 import { Fold, plainText } from "../markdown";
 import { Pill } from "../Pill";
-import { clock, duration, MOMENT, moment, outcome, sentBack } from "../story";
-
-const count = (n: number, one: string, many = `${one}s`) =>
-  n ? [`${n} ${n === 1 ? one : many}`] : [];
-
-export type RequestStatus = "running" | "done" | "needs";
-const STATUS = {
-  running: { label: "Running", tone: "now" },
-  done: { label: "Done", tone: "done" },
-  needs: { label: "Needs you", tone: "warn" },
-} as const;
-
-/** Claude's opening line, then the summary band: status, tasks, rounds, helpers, time. */
-export function RequestHead(props: {
-  request: RequestView;
-  status: RequestStatus;
-  /** The request's last activity, for its duration. */
-  end: string;
-  /** The notice row, kept on the band's line so the page below never moves. */
-  children?: ReactNode;
-}) {
-  const { request, status, end, children } = props;
-  const opening = request.messages?.[0];
-  const tasks = request.phases.flatMap((p) => p.tasks).length;
-  const facts = [
-    ...count(tasks, "task"),
-    ...count(
-      sentBack(request),
-      "sent back after review",
-      "sent back after review",
-    ),
-    ...count(request.tally.helpers, "helper"),
-  ];
-  const s = STATUS[status];
-  return (
-    <>
-      {opening && (
-        // biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around a line of text
-        <div
-          className="opening"
-          role="group"
-          aria-label="Claude's opening line"
-        >
-          <Fold
-            text={opening.text}
-            lines={3}
-            className="opening-text"
-            aside={<span className="byline">Claude, {clock(opening.ts)}</span>}
-          />
-        </div>
-      )}
-      <div className="head-row">
-        {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the facts */}
-        <div className="band" role="group" aria-label="Summary">
-          <Pill tone={s.tone}>{s.label}</Pill>
-          {facts.map((f) => {
-            const [n, ...rest] = f.split(" ");
-            return (
-              <span key={f} className="fact">
-                <b>{n}</b> {rest.join(" ")}
-              </span>
-            );
-          })}
-          <span className="fact">
-            <b>{duration(request.startedAt, end)}</b>
-          </span>
-        </div>
-        {children}
-      </div>
-    </>
-  );
-}
+import { shortTitle } from "../session";
+import { clock, MOMENT, moment, outcome } from "../story";
 
 function TaskChip(props: { task: TaskView; onOpenPart(partId: string): void }) {
   const { task, onOpenPart } = props;
@@ -82,12 +17,15 @@ function TaskChip(props: { task: TaskView; onOpenPart(partId: string): void }) {
     <button
       type="button"
       className="task-chip"
+      title={task.title}
       onClick={() => onOpenPart(part)}
     >
-      {task.title}
+      {shortTitle(task.title)}
     </button>
   ) : (
-    <span className="task-chip">{task.title}</span>
+    <span className="task-chip" title={task.title}>
+      {shortTitle(task.title)}
+    </span>
   );
 }
 
@@ -114,8 +52,8 @@ function Moment(props: {
       <div className="moment-body">
         {(task || kind) && (
           <div className="moment-hd">
-            {task && <TaskChip task={task} onOpenPart={onOpenPart} />}
             <Badge text={m.text} />
+            {task && <TaskChip task={task} onOpenPart={onOpenPart} />}
           </div>
         )}
         <Fold text={m.text} className="story-text" />
@@ -227,51 +165,128 @@ export function taskOfMessage(
   return mine.length === 1 ? mine[0] : undefined;
 }
 
-/** Claude's messages after its opening line: newest first while running, oldest first once done. */
-export function Story(props: {
+/**
+ * Each message's phase: its task's, else the phase of the message before it (the work
+ * it was written during); messages before any task is named go with the first phase named.
+ */
+export function phaseOfMessages(
+  request: RequestView,
+  ms: MessageView[],
+): (PhaseView | undefined)[] {
+  const phaseOf = (t: TaskView | undefined) =>
+    t && request.phases.find((p) => p.tasks.includes(t));
+  let carry: PhaseView | undefined;
+  const out = ms.map((m) => {
+    carry = phaseOf(taskOfMessage(request, m)) ?? carry;
+    return carry;
+  });
+  const first = out.find(Boolean);
+  return out.map((p) => p ?? first);
+}
+
+/** One part of the story: its messages as moments and blocks, in the order given. */
+function Moments(props: {
   request: RequestView;
+  ms: MessageView[];
+  newestFirst: boolean;
   onOpenPart(partId: string): void;
 }) {
-  const { request, onOpenPart } = props;
-  const rest = (request.messages ?? []).slice(1);
-  const ordered = request.finished ? rest : [...rest].reverse();
+  const { request, ms, newestFirst, onOpenPart } = props;
+  const ordered = newestFirst ? [...ms].reverse() : ms;
   const taskOf = (m: MessageView | undefined) =>
     m ? taskOfMessage(request, m) : undefined;
   return (
+    <ol className="moments">
+      {runs(ordered, taskOf).map((run) => {
+        const task = taskOf(run[0]);
+        const head = run[0] as MessageView;
+        // Keyed by its oldest message, so a block stays open as newer ones arrive.
+        const oldest = (newestFirst ? run.at(-1) : head) as MessageView;
+        return task && run.length > 1 ? (
+          <Group
+            key={oldest.id}
+            ms={run}
+            task={task}
+            request={request}
+            onOpenPart={onOpenPart}
+          />
+        ) : (
+          <Moment key={head.id} m={head} task={task} onOpenPart={onOpenPart} />
+        );
+      })}
+    </ol>
+  );
+}
+
+/** The phases the story has a part for, in the order the story shows them. */
+export function storyPhases(request: RequestView, done: boolean) {
+  const ms = request.messages ?? [];
+  const of = phaseOfMessages(request, ms);
+  const groups = request.phases
+    .map((phase) => ({ phase, ms: ms.filter((_, i) => of[i] === phase) }))
+    .filter((g) => g.ms.length > 0);
+  // While it runs the newest work leads; once over the story reads in plan order.
+  return done ? groups : groups.reverse();
+}
+
+/**
+ * Claude's messages, under the phase they belong to: the live phase newest first, a
+ * finished one oldest first. A request with no plan is one list.
+ */
+export function Story(props: {
+  request: RequestView;
+  /** The phase where the work is now, if the request is still going. */
+  live: PhaseView | undefined;
+  /** Over or stopped: the story reads oldest first. */
+  done: boolean;
+  onOpenPart(partId: string): void;
+}) {
+  const { request, live, done, onOpenPart } = props;
+  const ms = request.messages ?? [];
+  const groups = storyPhases(request, done);
+  // The phase the work is in: the live one, else the latest one talked about.
+  const current = done ? undefined : (live ?? groups[0]?.phase);
+  return (
     <section className="story" aria-label="What happened">
-      <a className="skip" href="#plan">
-        Skip to the plan
-      </a>
-      <h2 className="lbl">
-        What happened
-        <span className="lbl-note">
-          {request.finished ? "oldest first" : "newest first"}
-        </span>
-      </h2>
-      <ol className="moments">
-        {runs(ordered, taskOf).map((run) => {
-          const task = taskOf(run[0]);
-          const head = run[0] as MessageView;
-          // Keyed by its oldest message, so a block stays open as newer ones arrive.
-          const oldest = (request.finished ? head : run.at(-1)) as MessageView;
-          return task && run.length > 1 ? (
-            <Group
-              key={oldest.id}
-              ms={run}
-              task={task}
-              request={request}
-              onOpenPart={onOpenPart}
-            />
-          ) : (
-            <Moment
-              key={head.id}
-              m={head}
-              task={task}
-              onOpenPart={onOpenPart}
-            />
+      {groups.length === 0 ? (
+        <>
+          <div className="sect">
+            <h2>What happened</h2>
+            <span>{done ? "oldest first" : "newest first"}</span>
+          </div>
+          <Moments
+            request={request}
+            ms={ms}
+            newestFirst={!done}
+            onOpenPart={onOpenPart}
+          />
+        </>
+      ) : (
+        groups.map(({ phase, ms }) => {
+          const newest = phase === current;
+          return (
+            <section
+              key={phase.id}
+              id={`phase-${phase.id}`}
+              className="story-phase"
+              aria-label={phase.title}
+            >
+              <div className="sect">
+                <h2>{phase.title}</h2>
+                <span>
+                  what happened, {newest ? "newest first" : "oldest first"}
+                </span>
+              </div>
+              <Moments
+                request={request}
+                ms={ms}
+                newestFirst={newest}
+                onOpenPart={onOpenPart}
+              />
+            </section>
           );
-        })}
-      </ol>
+        })
+      )}
     </section>
   );
 }

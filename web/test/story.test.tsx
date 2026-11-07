@@ -24,7 +24,11 @@ import {
   verdictOf,
 } from "../src/story";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // The Story or Map choice is kept per viewer; each test starts fresh.
+  localStorage.clear();
+});
 beforeEach(() => {
   vi.stubGlobal(
     "fetch",
@@ -419,38 +423,44 @@ describe("story helpers", () => {
 });
 
 describe("request page, story first", () => {
-  it("opens with the request and Claude's opening line", () => {
+  it("opens with the request, and Claude's opening line leads the story", () => {
     show(session(request()));
     expect(
       screen.getByRole("heading", { level: 1, name: "Yes please go ahead" }),
     ).toBeTruthy();
-    const open = screen.getByRole("group", { name: "Claude's opening line" });
-    expect(open.textContent).toContain("Approved, so I'm starting.");
-    expect(open.textContent).toContain(`Claude, ${clock(at(6))}`);
-    // The opening line is not repeated in the timeline.
-    expect(storyTexts().some((t) => t.includes("Approved"))).toBe(false);
+    // Once done the story reads oldest first, so the opening line comes first, with its time.
+    const first = within(story()).getAllByRole("listitem")[0] as HTMLElement;
+    expect(first.textContent).toContain("Approved, so I'm starting.");
+    expect(first.textContent).toContain(clock(at(6)));
+    expect(storyTexts().filter((t) => t.includes("Approved"))).toHaveLength(1);
   });
 
-  it("the summary band says status, tasks, sent back, helpers and duration", () => {
+  it("the facts say when it was asked, tasks, helpers and sent back; the plan says how long", () => {
     show(session(request()), [ev(5), ev(30)]);
+    expect(within(screen.getByRole("banner")).getByText("Done")).toBeTruthy();
     const band = screen.getByRole("group", { name: "Summary" });
     const t = band.textContent ?? "";
-    expect(within(band).getByText("Done")).toBeTruthy();
+    expect(t).toContain(`Asked at ${clock(at(5))}`);
     expect(t).toContain("3 tasks");
     expect(t).toContain("1 sent back after review");
     expect(t).toContain("4 helpers");
-    expect(t).toContain("25 m");
+    const plan = screen.getByRole("complementary", { name: "Plan" });
+    expect(plan.querySelector(".spine-h")?.textContent).toContain(
+      "25 m in all",
+    );
   });
 
-  it("the band says Running and Needs you, and skips zero counts", () => {
+  it("the bar says Running or Waiting, and the facts skip zero counts", () => {
     const running = request({
       finished: false,
       tally: { helpers: 0, files: 0, commands: 0 },
       parts: [],
+      agents: [],
     });
     show(session(running));
-    let band = screen.getByRole("group", { name: "Summary" });
-    expect(within(band).getByText("Running")).toBeTruthy();
+    const bar = () => within(screen.getByRole("banner"));
+    expect(bar().getByText("Running")).toBeTruthy();
+    const band = screen.getByRole("group", { name: "Summary" });
     expect(band.textContent).not.toContain("helpers");
     expect(band.textContent).not.toContain("sent back");
     cleanup();
@@ -459,13 +469,14 @@ describe("request page, story first", () => {
         needsYou: { reason: "permission", text: "Allow Bash?", since: at(9) },
       }),
     );
-    band = screen.getByRole("group", { name: "Summary" });
-    expect(within(band).getByText("Needs you")).toBeTruthy();
+    expect(bar().getByText("Waiting")).toBeTruthy();
+    expect(bar().getByRole("link", { name: /Permission needed/ })).toBeTruthy();
   });
 
   it("the timeline runs oldest first once done", () => {
     show(session(request()));
     expect(storyTexts().map((t) => t.slice(0, 12))).toEqual([
+      "Approved, so",
       "One builder ",
       "The review f",
       "I also added",
@@ -480,13 +491,14 @@ describe("request page, story first", () => {
       "I also added",
       "The review f",
       "One builder ",
+      "Approved, so",
     ]);
   });
 
   it("each moment has its time, task chip and badge", async () => {
     show(session(request()));
     const items = within(story()).getAllByRole("listitem");
-    const [decision, problem, plan, done] = items as HTMLElement[];
+    const [, decision, problem, plan, done] = items as HTMLElement[];
     expect(within(decision as HTMLElement).getByText("Decision")).toBeTruthy();
     expect(
       within(problem as HTMLElement).getByText("Problem found"),
@@ -496,9 +508,11 @@ describe("request page, story first", () => {
     expect(
       within(problem as HTMLElement).getByText(clock(at(13))),
     ).toBeTruthy();
+    // The chip names the task in its own words; the plan number is its title.
     const chip = within(problem as HTMLElement).getByRole("button", {
-      name: "Task 1: Lit plate tokens",
+      name: "Lit plate tokens",
     });
+    expect(chip.title).toBe("Task 1: Lit plate tokens");
     expect(within(decision as HTMLElement).queryByRole("button")).toBeNull();
     await userEvent.click(chip);
     expect(location.pathname).toBe("/s/s1/r/r1/p/task%3A1");
@@ -533,12 +547,10 @@ describe("request page, story first", () => {
       ),
     );
     const items = within(story()).getAllByRole("listitem");
-    expect(items).toHaveLength(3);
-    const [block, alone, single] = items as HTMLElement[];
+    expect(items).toHaveLength(4);
+    const [, block, alone, single] = items as HTMLElement[];
     const b = within(block as HTMLElement);
-    expect(
-      b.getByRole("button", { name: "Task 1: Lit plate tokens" }),
-    ).toBeTruthy();
+    expect(b.getByRole("button", { name: "Lit plate tokens" })).toBeTruthy();
     // The block's outcome line is the task's.
     expect(block?.querySelector(".group-out")?.textContent).toBe(
       "Done after 1 fix: the colours were weak",
@@ -578,11 +590,11 @@ describe("request page, story first", () => {
     ];
     show(session(request({ messages: run })));
     const items = within(story()).getAllByRole("listitem");
-    expect(items).toHaveLength(2);
-    expect(items[0]?.textContent).toContain("3 messages");
+    expect(items).toHaveLength(3);
+    expect(items[1]?.textContent).toContain("3 messages");
     expect(
-      within(items[1] as HTMLElement).getByRole("button", {
-        name: "Task 2: HeroMoney",
+      within(items[2] as HTMLElement).getByRole("button", {
+        name: "HeroMoney",
       }),
     ).toBeTruthy();
   });
@@ -608,9 +620,9 @@ describe("request page, story first", () => {
 
   it("renders Markdown in messages as formatted text", () => {
     show(session(request()));
-    const first = within(story()).getAllByRole("listitem")[0] as HTMLElement;
-    expect(first.querySelector("strong")?.textContent).toBe("not");
-    expect(first.textContent).not.toContain("**");
+    const second = within(story()).getAllByRole("listitem")[1] as HTMLElement;
+    expect(second.querySelector("strong")?.textContent).toBe("not");
+    expect(second.textContent).not.toContain("**");
   });
 
   it("folds a long message after 4 lines", async () => {
@@ -632,29 +644,31 @@ describe("request page, story first", () => {
     ).toBeTruthy();
   });
 
-  it("plan rows carry how each task ended", () => {
+  it("the plan marks each task's state and opens its page, where it ended is told", () => {
     show(session(request()));
-    const plan = screen.getByRole("region", { name: "Plan" });
-    expect(
-      within(plan).getByText(/Task 1 is done and verified\. I confirmed/),
-    ).toBeTruthy();
-    expect(within(plan).getByText("Done, with concerns")).toBeTruthy();
+    const plan = screen.getByRole("complementary", { name: "Plan" });
+    const row = within(plan).getByRole("button", { name: /Lit plate tokens/ });
+    expect(row.className).toBe("task done");
+    expect(row.querySelector(".glyph.done")).toBeTruthy();
   });
 
-  it("the map stays below the story", () => {
+  it("the map is a view beside the story, one click away", async () => {
     show(session(request()));
-    const map = screen.getByRole("region", { name: "Map" });
+    const toggle = screen.getByRole("group", { name: "View" });
     expect(
-      story().compareDocumentPosition(map) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+      within(toggle)
+        .getByRole("button", { name: "Story" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    await userEvent.click(within(toggle).getByRole("button", { name: "Map" }));
+    expect(screen.getByRole("region", { name: "Map" })).toBeTruthy();
   });
 
-  it("a request with no messages keeps today's screen and draws no story", () => {
+  it("a request with no messages shows the map and draws no story", () => {
     show(session(request({ messages: [], finished: false })));
     expect(screen.queryByRole("region", { name: "What happened" })).toBeNull();
-    expect(
-      screen.queryByRole("group", { name: "Claude's opening line" }),
-    ).toBeNull();
+    expect(screen.queryByRole("group", { name: "View" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Map" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Now" })).toBeTruthy();
     expect(screen.getByRole("group", { name: "Summary" })).toBeTruthy();
     cleanup();
@@ -664,12 +678,9 @@ describe("request page, story first", () => {
     expect(screen.queryByRole("region", { name: "What happened" })).toBeNull();
   });
 
-  it("a request with only an opening line shows it and no story", () => {
+  it("a request with only an opening line shows it as the story", () => {
     show(session(request({ messages: [msg("m0", 6, "On it.")] })));
-    expect(
-      screen.getByRole("group", { name: "Claude's opening line" }).textContent,
-    ).toContain("On it.");
-    expect(screen.queryByRole("region", { name: "What happened" })).toBeNull();
+    expect(storyTexts()).toEqual(["On it."]);
   });
 
   it("an inferred now from a command reads as its description and opens as a terminal block", async () => {
@@ -736,7 +747,7 @@ describe("request page, story first", () => {
     expect(now.textContent).toContain("4 helpers");
   });
 
-  it("a command with no description reads in full, not cut at 60 characters", () => {
+  it("a command with no description never shows raw: it reads as running a command", () => {
     const long = `tail -3 /private/tmp/claude-501/${"x".repeat(80)}/pw.out`;
     show(
       session(
@@ -760,7 +771,9 @@ describe("request page, story first", () => {
         },
       ],
     );
-    expect(screen.getByText(`Running ${long}`)).toBeTruthy();
+    const now = screen.getByRole("region", { name: "Now" });
+    expect(within(now).getByText("Running a command")).toBeTruthy();
+    expect(now.textContent).not.toContain("tail -3");
   });
 
   it("a recapped request is labelled Recap by Claude", () => {
@@ -851,7 +864,8 @@ describe("round 3", () => {
     expect(
       within(story()).getByRole("button", { name: "Show fewer" }),
     ).toBeTruthy();
-    expect(story().querySelectorAll(".story-text")).toHaveLength(5);
+    // The opening line, then the block's five.
+    expect(story().querySelectorAll(".story-text")).toHaveLength(6);
   });
 
   it("N more keeps focus, says it is expanded, and folds back", async () => {
@@ -868,20 +882,22 @@ describe("round 3", () => {
     expect(document.activeElement).toBe(btn);
     expect(btn.getAttribute("aria-expanded")).toBe("true");
     expect(btn.textContent).toBe("Show fewer");
-    expect(story().querySelectorAll(".story-text")).toHaveLength(4);
+    // The opening line, then the block's four, then its first and last.
+    expect(story().querySelectorAll(".story-text")).toHaveLength(5);
     await userEvent.click(btn);
-    expect(story().querySelectorAll(".story-text")).toHaveLength(2);
+    expect(story().querySelectorAll(".story-text")).toHaveLength(3);
   });
 
-  it("the story has a skip link to the plan", () => {
+  it("the page's first stop skips past the plan to the content", () => {
     show(session(request()));
-    const skip = within(story()).getByRole("link", {
-      name: "Skip to the plan",
+    const skip = within(screen.getByRole("banner")).getByRole("link", {
+      name: "Skip to the content",
     });
-    expect(skip.getAttribute("href")).toBe("#plan");
+    expect(skip.getAttribute("href")).toBe("#main");
     expect(document.getElementById("plan")?.getAttribute("aria-label")).toBe(
       "Plan",
     );
+    expect(within(story()).queryByRole("link", { name: /Skip/ })).toBeNull();
   });
 
   it("a deep link to a request not loaded yet shows the skeleton, not the newest", () => {
@@ -927,8 +943,8 @@ describe("round 3", () => {
       },
     });
     show(session(open), [ev(5), stop]);
-    let band = screen.getByRole("group", { name: "Summary" });
-    expect(within(band).getByText("Done")).toBeTruthy();
+    const bar = () => within(screen.getByRole("banner"));
+    expect(bar().getByText("Done")).toBeTruthy();
     cleanup();
     show(
       session(
@@ -936,8 +952,7 @@ describe("round 3", () => {
       ),
       [ev(5), stop],
     );
-    band = screen.getByRole("group", { name: "Summary" });
-    expect(within(band).getByText("Running")).toBeTruthy();
+    expect(bar().getByText("Running")).toBeTruthy();
   });
 
   it("in a finished request, unfinished tasks read as left open, not running", () => {
@@ -974,17 +989,18 @@ describe("round 3", () => {
       ],
     });
     show(session(req));
-    const plan = screen.getByRole("region", { name: "Plan" });
+    const plan = screen.getByRole("complementary", { name: "Plan" });
     const row = within(plan)
-      .getByText("Task 2: HeroMoney")
+      .getByText("HeroMoney")
       .closest(".task") as HTMLElement;
     expect(row.className).toContain("open");
     expect(row.className).not.toContain("now");
-    expect(row.querySelector(".task-out")?.textContent).toMatch(/^Left open/);
-    expect(document.querySelector(".phase-seg.now")).toBeNull();
-    expect(document.querySelector(".phase-seg.open")).toBeTruthy();
-    // A one-task finished phase shows its task, not "1 task, all done" under "1 / 1".
-    expect(within(plan).queryByText("1 task, all done")).toBeNull();
-    expect(within(plan).getByText("Task 1: Lit plate tokens")).toBeTruthy();
+    expect(row.textContent).toContain("left open");
+    expect(plan.querySelector(".ph.now")).toBeNull();
+    expect(plan.querySelector(".ph.open")).toBeTruthy();
+    // The bar marks the task left open, not running.
+    expect(document.querySelector(".seg.now")).toBeNull();
+    expect(document.querySelector(".seg.open")).toBeTruthy();
+    expect(within(plan).getByText("Lit plate tokens")).toBeTruthy();
   });
 });

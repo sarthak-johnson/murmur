@@ -208,7 +208,8 @@ describe("cli", () => {
     expect(await run(["on", path.join(repo, "src")], {})).toBe(
       `Murmur is on for ${real}. Run /murmur:login to connect.`,
     );
-    queued(path.join(repo, "src"), "a");
+    // Hooks see the real path, as Claude Code reports it (macOS /var is /private/var).
+    queued(path.join(real, "src"), "a");
     queued(other, "b");
     expect(await run(["off", repo], {})).toBe(
       `Murmur is off for ${real}. Its unsent events were deleted, and nothing more from it is sent.`,

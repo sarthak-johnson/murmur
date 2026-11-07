@@ -18,13 +18,13 @@ const MORE_W = 64;
 const EMPTY = "The map appears when Claude describes the parts of this work.";
 
 // ponytail: text width is estimated per character class (no layout engine in
-// tests); measure with canvas measureText if truncation looks off in real fonts.
+// tests), set a little wide for Geist; measure with canvas measureText if it drifts.
 const charW = (c: string) =>
   /[A-Z MWmw@%]/.test(c) && c !== " "
-    ? 0.68
+    ? 0.72
     : /[ il.,:;'|!()[\]]/.test(c)
-      ? 0.3
-      : 0.52;
+      ? 0.32
+      : 0.58;
 export const textWidth = (text: string, font: number) =>
   [...text].reduce((w, c) => w + charW(c) * font, 0);
 
@@ -47,9 +47,10 @@ function cutAtWord(text: string, px: number, font: number): string {
   if (textWidth(text, font) <= px) return text;
   let out = text;
   while (out && textWidth(`${out}…`, font) > px) out = out.slice(0, -1);
+  // Ends at a word or a dash; only one long word is cut inside.
   const whole = /[\s-]/.test(text.charAt(out.length));
   const word = Math.max(out.lastIndexOf(" "), out.lastIndexOf("-"));
-  if (!whole && word > out.length / 2) out = out.slice(0, word);
+  if (!whole && word > 0) out = out.slice(0, word);
   return `${out.trimEnd().replace(/[,;:-]$/, "")}…`;
 }
 
@@ -231,7 +232,7 @@ export function MapView(props: {
         (1 - t) ** 2 * sx + 2 * (1 - t) * t * cx + t * t * ex,
         (1 - t) ** 2 * sy + 2 * (1 - t) * t * cy + t * t * ey,
       ];
-      const lw = textWidth(l.label, 10.5) + 8;
+      const lw = textWidth(l.label, 12) + 8;
       // On the curve first, then further outside or inside it.
       const spots = [0, 16, -16, 32, -32, 48, -48].flatMap((shift) =>
         [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8].map((t) => {
@@ -454,7 +455,7 @@ function Chips(props: {
       key: id,
       w: CHIP_W,
       text,
-      label: truncate(text, CHIP_W - 16, 10.5),
+      label: truncate(text, CHIP_W - 16, 12),
     };
   });
   if (running.length > 2) {
