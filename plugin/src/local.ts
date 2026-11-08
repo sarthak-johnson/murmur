@@ -287,7 +287,7 @@ export interface RefreshState {
   /** The request last asked about, and when. */
   request?: string;
   tried?: string;
-  /** For that request, when the last answer's events are timed, and the task statuses it set. */
+  /** For that request, when the last answer's events are timed, and every task status then. */
   at?: string;
   tasks?: Record<string, string>;
 }

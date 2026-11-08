@@ -21921,7 +21921,11 @@ ${reportsInput(own2)}`
       request: req.id,
       tried: iso,
       at: iso,
-      tasks: Object.fromEntries(answer.data.tasks.map((x) => [x.id, x.status]))
+      // Every status the plan has now, not only this answer's, which may leave one out.
+      tasks: Object.fromEntries([
+        ...st.statuses,
+        ...answer.data.tasks.map((x) => [x.id, x.status])
+      ])
     }
   });
   log(`murmur refresh: ${req.id} ok (${secs} s${costOf(r)})`);

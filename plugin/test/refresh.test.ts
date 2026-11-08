@@ -331,6 +331,29 @@ describe("live plan refresh", () => {
     expect(req?.phases[0]?.tasks.map((x) => x.status)).toEqual(["done", "now"]);
   });
 
+  it("a later answer that leaves a task out keeps what an earlier one said of it", async () => {
+    // Seen on the author's session: the second answer named t2 only, and the third said
+    // t1's outcome again because t1 read as not started.
+    write(reports(5, 6, 7));
+    fake(ANSWER);
+    await runRefresh(SID, { env: env(), now: at(10), ...quiet });
+    fake({ tasks: [ANSWER.tasks[1]], parts: [] });
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(41), ...quiet })).ok,
+    ).toBe(1);
+    fake(ANSWER);
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(72), ...quiet })).ok,
+    ).toBe(1);
+    expect(fs.readFileSync(`${dir}/stdin.txt`, "utf8")).toMatch(
+      /"id":"t1","title":"Task 1: header","part":"head","status":"done"/,
+    );
+    const req = onServer(at(72));
+    expect(req?.parts[0]?.steps.map((s) => s.text)).toEqual([
+      "Header built and reviewed.",
+    ]);
+  });
+
   it.each([
     [
       "a task the plan does not have",
