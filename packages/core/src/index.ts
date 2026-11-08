@@ -7,4 +7,4 @@ export { assumptionKey, isRisky } from "./view/flags.js";
 export * from "./view/reduce.js";
 export { relPath } from "./view/requests.js";
 export * from "./view/types.js";
-export { briefOf } from "./view/words.js";
+export { briefOf, parseNotification } from "./view/words.js";
