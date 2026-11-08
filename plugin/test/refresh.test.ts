@@ -5,7 +5,9 @@ import { MAP_TOOL, type MurmurEvent, NARRATE_TOOL, reduce } from "@murmur/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { readBackfill } from "../src/backfill.js";
 import {
+  clearCredentials,
   queueDir,
+  readRefresh,
   readSession,
   setPaused,
   setProjectState,
@@ -13,7 +15,7 @@ import {
   writeCredentials,
   writeSession,
 } from "../src/local.js";
-import { runRefresh } from "../src/recap.js";
+import { runRecap, runRefresh } from "../src/recap.js";
 
 const SID = "44444444-2222-4333-8444-555555555555";
 const T0 = Date.parse("2026-11-07T09:00:00.000Z");
@@ -256,7 +258,7 @@ describe("live plan refresh", () => {
     expect(head?.steps.map((s) => s.text)).toEqual([
       "Header built and reviewed.",
     ]);
-    expect(readSession(SID).refresh).toMatchObject({
+    expect(readRefresh(SID)).toMatchObject({
       request: req?.id,
       tried: t(10),
     });
@@ -267,8 +269,7 @@ describe("live plan refresh", () => {
     fake(ANSWER);
     await runRefresh(SID, { env: env(), now: at(10), ...quiet });
     const first = queued().map((e) => e.id);
-    const { refresh: _, ...rest } = readSession(SID);
-    writeSession(SID, rest);
+    fs.rmSync(path.join(dir, "murmur", "sessions", `${SID}.refresh.json`));
     fs.rmSync(queueDir(), { recursive: true });
     await runRefresh(SID, { env: env(), now: at(10), ...quiet });
     expect(queued().map((e) => e.id)).toEqual(first);
@@ -320,9 +321,9 @@ describe("live plan refresh", () => {
       (await runRefresh(SID, { env: env(), now: at(41), ...quiet })).ok,
     ).toBe(1);
     expect(calls()).toHaveLength(2);
-    // The plan as it stood went in: t1 done from the first refresh.
-    expect(fs.readFileSync(`${dir}/stdin.txt`, "utf8")).toMatch(
-      /"id":"t1","title":"Task 1: header","part":"head","status":"done"/,
+    // t1 is done since the first refresh, so it is not asked about again.
+    expect(fs.readFileSync(`${dir}/stdin.txt`, "utf8")).not.toContain(
+      '"id":"t1"',
     );
     const req = onServer(at(41));
     expect(req?.parts[0]?.steps.map((s) => s.text)).toEqual([
@@ -337,16 +338,18 @@ describe("live plan refresh", () => {
     write(reports(5, 6, 7));
     fake(ANSWER);
     await runRefresh(SID, { env: env(), now: at(10), ...quiet });
+    write(reports(5, 6, 7, 20));
     fake({ tasks: [ANSWER.tasks[1]], parts: [] });
     expect(
       (await runRefresh(SID, { env: env(), now: at(41), ...quiet })).ok,
     ).toBe(1);
+    write(reports(5, 6, 7, 20, 50));
     fake(ANSWER);
     expect(
       (await runRefresh(SID, { env: env(), now: at(72), ...quiet })).ok,
     ).toBe(1);
-    expect(fs.readFileSync(`${dir}/stdin.txt`, "utf8")).toMatch(
-      /"id":"t1","title":"Task 1: header","part":"head","status":"done"/,
+    expect(fs.readFileSync(`${dir}/stdin.txt`, "utf8")).not.toContain(
+      '"id":"t1"',
     );
     const req = onServer(at(72));
     expect(req?.parts[0]?.steps.map((s) => s.text)).toEqual([
@@ -416,7 +419,7 @@ describe("live plan refresh", () => {
         (await runRefresh(SID, { env: env(extra), now: at(10), ...quiet })).ran,
       ).toBe(0);
     expect(calls()).toEqual([]);
-    expect(readSession(SID).refresh).toBeUndefined();
+    expect(readRefresh(SID)).toBeUndefined();
   });
 
   it("asks nothing once the project is off or the session paused", async () => {
@@ -441,5 +444,209 @@ describe("live plan refresh", () => {
       (await runRefresh(SID, { env: env(), now: at(40), ...quiet })).ran,
     ).toBe(0);
     expect(calls()).toEqual([]);
+  });
+});
+
+const steps = (now: Date, part: string) =>
+  onServer(now)
+    ?.parts.find((p) => p.id === part)
+    ?.steps.map((x) => `${x.status}: ${x.text}`);
+const statuses = (now: Date) =>
+  onServer(now)?.phases[0]?.tasks.map((x) => `${x.id} ${x.status}`);
+
+describe("review fixes", () => {
+  it("a task Claude marked done stays done; done tasks are not asked about; a step only when a status moves forward", async () => {
+    write([...narrate("toolu_n2", 4.5, "t1", "done"), ...reports(5, 6, 7)]);
+    fake({
+      tasks: [
+        { id: "t1", status: "running", ended: "Header still being fixed." },
+        { id: "t2", status: "running", ended: "Chart going." },
+      ],
+      parts: [],
+    });
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(10), ...quiet })).ok,
+    ).toBe(1);
+    expect(fs.readFileSync(`${dir}/stdin.txt`, "utf8")).not.toContain(
+      '"id":"t1"',
+    );
+    expect(statuses(at(10))).toEqual(["t1 done", "t2 now"]);
+    expect(steps(at(10), "head")).toEqual([]);
+    expect(steps(at(10), "chart")).toEqual(["running: Chart going."]);
+
+    // Running again is no news; failed moves it on.
+    write([
+      ...narrate("toolu_n2", 4.5, "t1", "done"),
+      ...reports(5, 6, 7, 30, 31, 32),
+    ]);
+    fake({
+      tasks: [{ id: "t2", status: "failed", ended: "Chart blocked on data." }],
+      parts: [],
+    });
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(45), ...quiet })).ok,
+    ).toBe(1);
+    expect(statuses(at(45))).toEqual(["t1 done", "t2 failed"]);
+    expect(steps(at(45), "chart")).toEqual([
+      "running: Chart going.",
+      "failed: Chart blocked on data.",
+    ]);
+  });
+
+  it("failed is settled: a plan with every task done or failed is not asked about", async () => {
+    write([
+      ...narrate("toolu_n2", 4.5, "t1", "done"),
+      ...narrate("toolu_n3", 4.6, "t2", "blocked"),
+      ...reports(5, 6, 7),
+    ]);
+    fake(ANSWER);
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(40), ...quiet })).ran,
+    ).toBe(0);
+  });
+
+  it("Claude's blocked, read as failed, is no news for an answer that says failed", async () => {
+    write([...narrate("toolu_n2", 4.5, "t2", "blocked"), ...reports(5, 6, 7)]);
+    fake({
+      tasks: [
+        { id: "t1", status: "done", ended: "Header done." },
+        { id: "t2", status: "failed", ended: "Chart blocked on data." },
+      ],
+      parts: [],
+    });
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(10), ...quiet })).ok,
+    ).toBe(1);
+    expect(steps(at(10), "chart")).toEqual([]);
+    expect(steps(at(10), "head")).toEqual(["done: Header done."]);
+  });
+
+  it("keeps the newest of Claude's messages when a long request does not fit", async () => {
+    const long = Array.from({ length: 60 }, (_, i) =>
+      text(5 + i * 0.1, `Message ${i}: ${"x".repeat(1500)}`),
+    );
+    write([
+      ...long,
+      text(20, "Task 2 is done, the chart passed review."),
+      ...reports(21, 22, 23),
+    ]);
+    fake({ tasks: [], parts: [] });
+    await runRefresh(SID, { env: env(), now: at(30), ...quiet });
+    const stdin = fs.readFileSync(`${dir}/stdin.txt`, "utf8");
+    expect(stdin.length).toBeLessThanOrEqual(61_000);
+    expect(stdin).toContain("Task 2 is done, the chart passed review.");
+    expect(stdin).toContain("[earlier messages left out]");
+    expect(stdin).not.toContain("Message 0:");
+  });
+
+  it.each([
+    ["paused", () => setPaused(cwd, true, SID)],
+    ["logged out", () => clearCredentials()],
+    ["turned off", () => setProjectState(cwd, "off")],
+  ])(
+    "%s during the ask: nothing is queued, one line logged",
+    async (_, change) => {
+      write(reports(5, 6, 7));
+      fake(ANSWER, "sleep 0.5");
+      const logged: string[] = [];
+      const running = runRefresh(SID, {
+        env: env(),
+        now: at(10),
+        log: (l) => logged.push(l),
+      });
+      await new Promise((ok) => setTimeout(ok, 200));
+      change();
+      expect(await running).toEqual({ ran: 1, ok: 0 });
+      expect(queued()).toEqual([]);
+      expect(logged).toHaveLength(1);
+    },
+  );
+
+  it("the recap too: paused during its ask, nothing is queued", async () => {
+    write(reports(5, 6, 7), { mapped: false });
+    const events = readBackfill({
+      sessionId: SID,
+      machineId: "m1",
+      cwd,
+      transcriptPath: transcript,
+      cutoff: t(30),
+    });
+    const recap = {
+      map: { ...MAP, phases: [], parts: [] },
+      parts: [],
+      tasks: [],
+    };
+    fake(recap, "sleep 0.5");
+    const logged: string[] = [];
+    const running = runRecap(SID, events, {
+      env: env(),
+      log: (l) => logged.push(l),
+    });
+    await new Promise((ok) => setTimeout(ok, 200));
+    setPaused(cwd, true, SID);
+    expect(await running).toEqual({ ran: 1, ok: 0 });
+    expect(queued()).toEqual([]);
+    expect(logged).toHaveLength(1);
+  });
+
+  it("asks at most once every 30 minutes per session, whatever the request", async () => {
+    write(reports(5, 6, 7));
+    fake(ANSWER);
+    await runRefresh(SID, { env: env(), now: at(10), ...quiet });
+    // A new request, mapped, with three reports.
+    write([
+      ...reports(5, 6, 7),
+      {
+        type: "user",
+        uuid: "prompt2",
+        timestamp: t(15),
+        origin: { kind: "human" },
+        message: { content: "Now the footer" },
+      },
+      ...call("toolu_map2", 16, MAP_TOOL, MAP),
+      ...reports(17, 18, 19),
+    ]);
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(25), ...quiet })).ran,
+    ).toBe(0);
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(41), ...quiet })).ok,
+    ).toBe(1);
+  });
+
+  it("asks again only when something new came since the last ask", async () => {
+    write(reports(5, 6, 7));
+    fake(ANSWER);
+    await runRefresh(SID, { env: env(), now: at(10), ...quiet });
+    // Stale by time (t2 still running), but nothing new since minute 10.
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(41), ...quiet })).ran,
+    ).toBe(0);
+    write([...reports(5, 6, 7), text(42, "Chart is nearly there.")]);
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(47), ...quiet })).ok,
+    ).toBe(1);
+  });
+
+  it("its state survives the hook rewriting the whole session file", async () => {
+    write(reports(5, 6, 7));
+    fake(ANSWER);
+    // The hook read the session file before the refresh and writes it back after.
+    const before = readSession(SID);
+    await runRefresh(SID, { env: env(), now: at(10), ...quiet });
+    writeSession(SID, before);
+    write(reports(5, 6, 7, 11, 12, 13));
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(16), ...quiet })).ran,
+    ).toBe(0);
+    expect(calls()).toHaveLength(1);
+  });
+
+  it("leaves Claude's now as it was, rather than as fresh as the refresh", async () => {
+    write(reports(5, 6, 7));
+    const before = onServer(at(10))?.now;
+    fake(ANSWER);
+    await runRefresh(SID, { env: env(), now: at(10), ...quiet });
+    expect(onServer(at(10))?.now).toEqual(before);
   });
 });

@@ -20048,7 +20048,9 @@ function applyPlan(req, events) {
       else delete req.recap;
     }
     const note = NarrateInput.safeParse(input2(e, NARRATE_TOOL));
-    if (note.success) {
+    if (note.success && e.payload.refresh === true)
+      applyNarrate(req, e, note.data, false);
+    else if (note.success) {
       last = applyNarrate(req, e, note.data);
       trace.narrated.push({ ...last, i, e, n: note.data });
     }
@@ -20105,13 +20107,15 @@ function applyMap(req, map2) {
     return part;
   });
 }
-function applyNarrate(req, e, n) {
+function applyNarrate(req, e, n, setsNow = true) {
   const task = req.phases.flatMap((ph) => ph.tasks).find((t) => t.id === n.task);
   const partId = n.part ?? task?.part;
   const part = req.parts.find((p) => p.id === partId);
   const agentId = str(e.payload.agent_id);
-  req.now = { text: n.now, why: n.why, ts: e.ts };
-  if (part) req.now.part = part.id;
+  if (setsNow) {
+    req.now = { text: n.now, why: n.why, ts: e.ts };
+    if (part) req.now.part = part.id;
+  }
   if (task && n.taskStatus) task.status = TASK_STATUS[n.taskStatus];
   if (task && n.taskStatus === "blocked") task.problem = n.now;
   if (task && agentId) addOnce(task.agents, agentId);
@@ -21191,6 +21195,18 @@ function clearProjectPause(cwd) {
   setPaused(cwd, false);
 }
 var sessionFile = (sessionId) => import_node_path.default.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
+var refreshFile = (sessionId) => sessionFile(sessionId).replace(/\.json$/, ".refresh.json");
+function readRefresh(sessionId) {
+  const r = readJson(
+    refreshFile(sessionId),
+    null
+  );
+  if (r && typeof r.checked === "string") return r;
+  return readSession(sessionId).refresh;
+}
+function writeRefresh(sessionId, r) {
+  writeJson(refreshFile(sessionId), r);
+}
 var NO_NARRATION = {
   mapped: false,
   tasks: [],
@@ -21447,7 +21463,7 @@ Answer with one JSON object and nothing else, in exactly this shape:
 }
 Rules: a part is one piece of the work (a task, a fix, a screen), not a folder. "map.parts" lists every part, and every task's "part" and every entry of "parts" uses one of those ids. Every task in "map" has one entry in "tasks". Keep the person's own names for things ("Task 1: ..."). Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
 var time3 = (ts) => ts.slice(11, 16);
-function recapInput(req, cwd, calls = [], instructions = INSTRUCTIONS) {
+function recapInput(req, cwd, calls = [], instructions = INSTRUCTIONS, newest = false) {
   const used = /* @__PURE__ */ new Set();
   const helpers = calls.map((c, i) => {
     const input3 = c.payload.tool_input ?? {};
@@ -21484,18 +21500,23 @@ ${helpers.join("\n") || "none"}`,
 ${[...new Set(files)].join("\n") || "none"}`,
     "\n## Claude's messages, in order\n"
   ].join("\n");
-  let out = head.slice(0, MAX_INPUT);
-  for (const m of req.messages ?? []) {
+  const out = head.slice(0, MAX_INPUT);
+  const lines = (req.messages ?? []).map((m) => {
     const text3 = m.text.length > MESSAGE_MAX ? `${m.text.slice(0, MESSAGE_MAX)}\u2026` : m.text;
-    const line = `[${time3(m.ts)}] ${text3}
+    return `[${time3(m.ts)}] ${text3}
 `;
-    if (out.length + line.length > MAX_INPUT) {
-      out += "[later messages left out]\n";
-      break;
-    }
-    out += line;
+  });
+  if (newest) lines.reverse();
+  let room = MAX_INPUT - out.length;
+  const kept = [];
+  for (const line of lines) {
+    if (line.length > room) break;
+    kept.push(line);
+    room -= line.length;
   }
-  return out;
+  if (newest) kept.reverse();
+  const cut3 = kept.length < lines.length;
+  return newest ? `${out}${cut3 ? "[earlier messages left out]\n" : ""}${kept.join("")}` : `${out}${kept.join("")}${cut3 ? "[later messages left out]\n" : ""}`;
 }
 function ask(input3, env, timeoutMs) {
   const t0 = Date.now();
@@ -21503,10 +21524,10 @@ function ask(input3, env, timeoutMs) {
   const { MURMUR_ALLOW_HEADLESS: _, ...rest } = env;
   return new Promise((resolve) => {
     let out = "";
-    let settled = false;
+    let settled2 = false;
     const finish = (r) => {
-      if (settled) return;
-      settled = true;
+      if (settled2) return;
+      settled2 = true;
       clearTimeout(timer);
       resolve(r);
     };
@@ -21610,7 +21631,7 @@ function recapEvents(req, recap, helperIds, base, paths = /* @__PURE__ */ new Ma
   return out;
 }
 var cut2 = (s) => s.slice(0, 200);
-function emitter(base, key, at) {
+function emitter(base, key, at, mark = {}) {
   const out = [];
   const add = (tool, input3, extra = {}) => {
     const k = out.length + 1;
@@ -21622,6 +21643,7 @@ function emitter(base, key, at) {
       tool_input: input3,
       tool_use_id: `${key}:${k}`,
       recap: true,
+      ...mark,
       ...extra
     };
     out.push(
@@ -21656,6 +21678,7 @@ function detailNarrate(title, { id, files, ...detail }, paths) {
     } : {}
   };
 }
+var stillSending = (sessionId, cwd, token) => token !== void 0 && readCredentials()?.token === token && sending(sessionId, cwd);
 function sending(sessionId, cwd) {
   const s = readSession(sessionId);
   const at = s.cwd ?? cwd;
@@ -21677,6 +21700,7 @@ async function runRecap(sessionId, events, {
   const last = view.requests.at(-1);
   const queue = view.requests.filter((r) => r.planInferred && !(lastOpen && r === last)).reverse().slice(0, MAX_REQUESTS).filter((r) => !done.has(r.id));
   const byId = new Map(events.map((e) => [e.id, e]));
+  const token = readCredentials()?.token;
   const calls = callsByRequest(events, new Set(view.requests.map((r) => r.id)));
   const paths = changedPaths(events);
   let ok = 0;
@@ -21695,6 +21719,12 @@ async function runRecap(sessionId, events, {
         const reason = r.ok ? refused("a recap", recap) : r.why;
         log(
           `murmur recap: ${req.id} kept the inferred view: ${reason} (${secs} s)`
+        );
+        continue;
+      }
+      if (!stillSending(sessionId, view.cwd, token)) {
+        log(
+          `murmur recap: ${req.id} not sent: Murmur stopped sending (${secs} s)`
         );
         continue;
       }
@@ -21748,6 +21778,9 @@ function changedPaths(events) {
   }
   return out;
 }
+var RANK = { running: 1, failed: 2, done: 3 };
+var settled = (s) => s === "done" || s === "failed";
+var forward = (from, to) => (RANK[to] ?? 0) > (from === void 0 ? 0 : RANK[from] ?? 0);
 function reportOf2(e) {
   if (e.hook === "UserPromptSubmit") {
     const p = e.payload.prompt;
@@ -21774,44 +21807,47 @@ function reportsInput(events) {
   return lines.join("\n") || "none";
 }
 function planState(events, prior) {
-  const st = { statuses: /* @__PURE__ */ new Map(), changed: NaN, reports: 0 };
-  const set2 = (task, status2, ts) => {
-    if (st.statuses.get(task) === status2) return;
+  const st = {
+    statuses: /* @__PURE__ */ new Map(),
+    changed: NaN,
+    reports: 0,
+    latest: NaN
+  };
+  const set2 = (task, said2, ts) => {
+    const status2 = said2 === "blocked" ? "failed" : said2;
+    const was = st.statuses.get(task);
+    if (was === status2 || was === "done") return;
     st.statuses.set(task, status2);
     st.changed = Date.parse(ts);
     st.reports = 0;
   };
   let pending = prior?.at && prior.tasks ? prior : void 0;
+  const overlay = () => {
+    for (const [id, s] of Object.entries(pending?.tasks ?? {}))
+      set2(id, s, pending?.at);
+    pending = void 0;
+  };
   for (const e of events) {
-    if (pending && e.ts > pending.at) {
-      for (const [id, s] of Object.entries(pending.tasks ?? {}))
-        set2(id, s, pending.at);
-      pending = void 0;
-    }
+    if (pending && e.ts > pending.at) overlay();
     const input3 = e.hook === "PostToolUse" ? e.payload.tool_input : void 0;
     if (e.payload.tool_name === MAP_TOOL && MapInput.safeParse(input3).success) {
       if (Number.isNaN(st.changed)) st.changed = Date.parse(e.ts);
       continue;
     }
     const n = e.payload.tool_name === NARRATE_TOOL ? NarrateInput.safeParse(input3) : void 0;
+    const report = n?.success ? void 0 : reportOf2(e);
+    if (n?.success || report !== void 0 || e.hook === "AssistantText")
+      st.latest = Date.parse(e.ts);
     if (n?.success) {
-      const { now, why, part, task, taskStatus } = n.data;
-      st.last = {
-        now,
-        why,
-        ...part ? { part } : {},
-        ...task ? { task } : {}
-      };
+      const { task, taskStatus } = n.data;
       if (task && taskStatus) set2(task, taskStatus, e.ts);
-    } else if (reportOf2(e) !== void 0) st.reports++;
+    } else if (report !== void 0) st.reports++;
   }
-  if (pending)
-    for (const [id, s] of Object.entries(pending.tasks ?? {}))
-      set2(id, s, pending.at);
+  if (pending) overlay();
   return st;
 }
 var REFRESH_INSTRUCTIONS = `You bring the plan of one request in a Claude Code session up to date for Murmur, a page that shows a coding session as a story to the person who asked for it.
-Claude drew this plan itself at the start, but did not always say when a task moved on. Below is the plan as Murmur shows it now, with each task's status, then the person's request, what the helpers reported, the helpers Claude started (H1, H2, ... with what each was asked), the files changed, and Claude's own messages in order.
+Claude drew this plan itself at the start, but did not always say when a task moved on. Below is the plan as Murmur shows it now, with each open task's status, then the person's request, what the helpers reported, the helpers Claude started (H1, H2, ... with what each was asked), the files changed, and Claude's own messages in order.
 Answer with one JSON object and nothing else, in exactly this shape:
 {
   "tasks": [{ "id": "<task id from the plan>", "status": "done" | "failed" | "running", "ended": "one line on how it ended, or where it stands" }],
@@ -21824,7 +21860,7 @@ Answer with one JSON object and nothing else, in exactly this shape:
     "files": [{ "path": "<copied exactly from the file list>", "role": "what it does" }]
   }]
 }
-Rules: use only the task and part ids in the plan, exactly as written; never add, rename or drop one. Give one entry in "tasks" for every task that has started. A task is "done" only when the material shows it finished (a helper reported it done, Claude said so, a commit or review passed); "running" while it is under way; "failed" when it was given up or is blocked. Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
+Rules: use only the task and part ids in the plan, exactly as written; never add, rename or drop one. The tasks under "done" are finished: say nothing of them. Give one entry in "tasks" for every task in the plan that has started. A task is "done" only when the material shows it finished (a helper reported it done, Claude said so, a commit or review passed); "running" while it is under way; "failed" when it was given up or is blocked. Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
 async function runRefresh(sessionId, {
   env = process.env,
   now = /* @__PURE__ */ new Date(),
@@ -21841,9 +21877,11 @@ async function runRefresh(sessionId, {
   const iso = now.toISOString();
   if (s.backfill !== "done" || !s.transcriptPath || !s.cwd || !creds || !sending(sessionId, s.cwd))
     return none;
-  const prior = s.refresh;
+  const prior = readRefresh(sessionId);
   if (prior && t - Date.parse(prior.checked) < CHECK_MS) return none;
-  updateSession(sessionId, { refresh: { ...prior, checked: iso } });
+  if (prior?.tried && t - Date.parse(prior.tried) < REFRESH_EVERY_MS)
+    return none;
+  writeRefresh(sessionId, { ...prior, checked: iso });
   const events = readBackfill({
     sessionId,
     machineId: creds.machineId,
@@ -21855,27 +21893,37 @@ async function runRefresh(sessionId, {
   const req = view.requests.at(-1);
   if (!req || req.planInferred || req.recap) return none;
   const mine = prior?.request === req.id ? prior : void 0;
-  if (mine?.tried && t - Date.parse(mine.tried) < REFRESH_EVERY_MS) return none;
   const own2 = events.filter((e) => e.ts >= req.startedAt);
   const st = planState(own2, mine);
   const tasks = req.phases.flatMap((ph) => ph.tasks);
-  const stale = tasks.some((x) => st.statuses.get(x.id) !== "done") && (st.reports >= STALE_REPORTS || t - st.changed >= STALE_MS);
+  const news = !prior?.tried || st.latest > Date.parse(prior.tried);
+  const stale = news && tasks.some((x) => !settled(st.statuses.get(x.id))) && (st.reports >= STALE_REPORTS || t - st.changed >= STALE_MS);
   if (!stale) return none;
-  updateSession(sessionId, {
-    refresh: { ...mine, checked: iso, request: req.id, tried: iso }
+  writeRefresh(sessionId, {
+    ...mine,
+    checked: iso,
+    request: req.id,
+    tried: iso
   });
+  const done = (id) => st.statuses.get(id) === "done";
   const plan = {
     goal: req.goal,
-    phases: req.phases.map((ph) => ({
-      id: ph.id,
-      title: ph.title,
-      tasks: ph.tasks.map((x) => ({
-        id: x.id,
-        title: x.title,
-        part: x.part,
-        status: st.statuses.get(x.id) ?? "not started"
-      }))
-    })),
+    done: tasks.filter((x) => done(x.id)).map((x) => x.title),
+    phases: req.phases.flatMap((ph) => {
+      const open2 = ph.tasks.filter((x) => !done(x.id));
+      return open2.length ? [
+        {
+          id: ph.id,
+          title: ph.title,
+          tasks: open2.map((x) => ({
+            id: x.id,
+            title: x.title,
+            part: x.part,
+            status: st.statuses.get(x.id) ?? "not started"
+          }))
+        }
+      ] : [];
+    }),
     parts: req.parts.map((p) => ({ id: p.id, title: p.title }))
   };
   const calls = callsByRequest(events, /* @__PURE__ */ new Set([req.id])).get(req.id) ?? [];
@@ -21889,7 +21937,8 @@ async function runRefresh(sessionId, {
 ${JSON.stringify(plan)}
 
 ## Helper reports, in order
-${reportsInput(own2)}`
+${reportsInput(own2)}`,
+    true
   );
   const r = await ask(input3, env, timeoutMs);
   const secs = (r.ms / 1e3).toFixed(1);
@@ -21901,41 +21950,45 @@ ${reportsInput(own2)}`
   const reason = !r.ok ? r.why : !answer?.success ? refused("a refresh", answer) : [
     ...answer.data.tasks.map((x) => `task:${x.id}`),
     ...answer.data.parts.map((p) => `part:${p.id}`)
-  ].find((id) => !ids.has(id)) ? "it names an id the plan does not have" : void 0;
+  ].find((id) => !ids.has(id)) ? "it names an id the plan does not have" : (
+    // Paused, off or logged out while it was asked.
+    !stillSending(sessionId, s.cwd, creds.token) ? "Murmur stopped sending" : void 0
+  );
   if (reason || !answer?.success) {
     log(`murmur refresh: ${req.id} kept the plan: ${reason} (${secs} s)`);
     return { ran: 1, ok: 0 };
   }
+  const moved = answer.data.tasks.filter(
+    (x) => forward(st.statuses.get(x.id), x.status)
+  );
   for (const e of refreshEvents(
     req,
-    answer.data,
-    st,
+    { ...answer.data, tasks: moved },
     events.find((e2) => e2.id === req.id),
     changedPaths(events),
     t
   ))
     enqueue(e);
-  updateSession(sessionId, {
-    refresh: {
-      checked: iso,
-      request: req.id,
-      tried: iso,
-      at: iso,
-      // Every status the plan has now, not only this answer's, which may leave one out.
-      tasks: Object.fromEntries([
-        ...st.statuses,
-        ...answer.data.tasks.map((x) => [x.id, x.status])
-      ])
-    }
+  writeRefresh(sessionId, {
+    checked: iso,
+    request: req.id,
+    tried: iso,
+    at: iso,
+    // Every status the plan has now, not only this answer's, which may leave one out.
+    tasks: Object.fromEntries([
+      ...st.statuses,
+      ...moved.map((x) => [x.id, x.status])
+    ])
   });
   log(`murmur refresh: ${req.id} ok (${secs} s${costOf(r)})`);
   return { ran: 1, ok: 1 };
 }
-function refreshEvents(req, r, st, base, paths, at) {
+function refreshEvents(req, r, base, paths, at) {
   const { out, add } = emitter(
     base,
     `murmur-refresh:${req.id}:${new Date(at).toISOString()}`,
-    at
+    at,
+    { refresh: true }
   );
   for (const p of r.parts) {
     const part = req.parts.find((x) => x.id === p.id);
@@ -21950,17 +22003,14 @@ function refreshEvents(req, r, st, base, paths, at) {
     );
   }
   const tasks = req.phases.flatMap((ph) => ph.tasks);
-  for (const x of r.tasks) {
-    const news = st.statuses.get(x.id) !== x.status;
+  for (const x of r.tasks)
     add(NARRATE_TOOL, {
       now: x.ended,
       why: "",
       task: x.id,
       taskStatus: x.status,
-      ...news && tasks.find((y) => y.id === x.id)?.part ? { step: { text: x.ended, status: x.status } } : {}
+      ...tasks.find((y) => y.id === x.id)?.part ? { step: { text: x.ended, status: x.status } } : {}
     });
-  }
-  if (st.last) add(NARRATE_TOOL, st.last);
   return out;
 }
 
@@ -22447,8 +22497,10 @@ async function main() {
     const id = process.argv[flushAt + 1];
     if (id) catchUpText(id);
     if (creds) await flush(creds);
-    if (id && REFRESH && (await runRefresh(id)).ok && creds)
-      await flush(creds, { budgetMs: 3e4 });
+    if (id && REFRESH && (await runRefresh(id)).ok) {
+      const now = readCredentials();
+      if (now) await flush(now, { budgetMs: 3e4 });
+    }
     return;
   }
   if (BACKFILL >= 0) {

@@ -269,9 +269,12 @@ async function main(): Promise<void> {
     const id = process.argv[flushAt + 1];
     if (id) catchUpText(id);
     if (creds) await flush(creds);
-    // After a Stop: the latest request's plan, when Claude stopped keeping it true.
-    if (id && REFRESH && (await runRefresh(id)).ok && creds)
-      await flush(creds, { budgetMs: 30_000 });
+    // After a Stop: the latest request's plan, when Claude stopped keeping it true. Sent
+    // with the login there is now, not the one this child started with.
+    if (id && REFRESH && (await runRefresh(id)).ok) {
+      const now = readCredentials();
+      if (now) await flush(now, { budgetMs: 30_000 });
+    }
     return;
   }
   if (BACKFILL >= 0) {

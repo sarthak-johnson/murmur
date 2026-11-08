@@ -15,12 +15,14 @@
  *
  * The refresh keeps a plan Claude drew itself true when Claude stops narrating it. In the
  * detached child a Stop spawns, it reads the transcript and, when the latest request has
- * a map from Claude that is stale (a task not done, and since the last task status change
- * 3 helper reports or 20 minutes), asks the same `claude -p` the same way for each task's
- * status and part detail by the map's own ids, and queues them as `narrate` events marked
- * `recap: true`. An answer naming an id the map lacks is refused. At most once every 30
- * minutes per request; a child looks at most every 5 minutes per session, so one runs at
- * a time. Same switches as the recap.
+ * a map from Claude that is stale (a task neither done nor failed, something new since the
+ * last ask, and since the last task status change 3 helper reports or 20 minutes), asks the
+ * same `claude -p` the same way about the tasks not done, by the map's own ids, and queues
+ * the answer as `narrate` events marked `recap: true` and `refresh: true` (core never lets
+ * them move "now"). An answer naming an id the map lacks is refused; one that would move a
+ * task back (a done one, or failed to running) is dropped. At most one ask every 30
+ * minutes per session; a child looks at most every 5 minutes, so one runs at a time. Same
+ * switches as the recap, checked again before anything is queued.
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import os from "node:os";
@@ -47,9 +49,11 @@ import {
   isRevoked,
   type RefreshState,
   readCredentials,
+  readRefresh,
   readSession,
   sessionProjectState,
   updateSession,
+  writeRefresh,
 } from "./local.js";
 import { enqueue } from "./upload.js";
 
@@ -148,6 +152,8 @@ export function recapInput(
   cwd: string,
   calls: MurmurEvent[] = [],
   instructions = INSTRUCTIONS,
+  /** Keep the newest messages when they do not all fit (the refresh), not the oldest. */
+  newest = false,
 ): string {
   const used = new Set<string>();
   const helpers = calls.map((c, i) => {
@@ -181,18 +187,25 @@ export function recapInput(
     `\n## Files changed\n${[...new Set(files)].join("\n") || "none"}`,
     "\n## Claude's messages, in order\n",
   ].join("\n");
-  let out = head.slice(0, MAX_INPUT);
-  for (const m of req.messages ?? []) {
+  const out = head.slice(0, MAX_INPUT);
+  const lines = (req.messages ?? []).map((m) => {
     const text =
       m.text.length > MESSAGE_MAX ? `${m.text.slice(0, MESSAGE_MAX)}…` : m.text;
-    const line = `[${time(m.ts)}] ${text}\n`;
-    if (out.length + line.length > MAX_INPUT) {
-      out += "[later messages left out]\n";
-      break;
-    }
-    out += line;
+    return `[${time(m.ts)}] ${text}\n`;
+  });
+  if (newest) lines.reverse();
+  let room = MAX_INPUT - out.length;
+  const kept: string[] = [];
+  for (const line of lines) {
+    if (line.length > room) break;
+    kept.push(line);
+    room -= line.length;
   }
-  return out;
+  if (newest) kept.reverse();
+  const cut = kept.length < lines.length;
+  return newest
+    ? `${out}${cut ? "[earlier messages left out]\n" : ""}${kept.join("")}`
+    : `${out}${kept.join("")}${cut ? "[later messages left out]\n" : ""}`;
 }
 
 type Answer =
@@ -356,7 +369,12 @@ const cut = (s: string) => s.slice(0, 200);
  * Queues nothing itself: builds hook events for Murmur's own tool calls, marked
  * `recap: true`, a millisecond apart from `at`, ids from `key` and their order.
  */
-function emitter(base: MurmurEvent, key: string, at: number) {
+function emitter(
+  base: MurmurEvent,
+  key: string,
+  at: number,
+  mark: Record<string, unknown> = {},
+) {
   const out: MurmurEvent[] = [];
   const add = (
     tool: string,
@@ -372,6 +390,7 @@ function emitter(base: MurmurEvent, key: string, at: number) {
       tool_input: input,
       tool_use_id: `${key}:${k}`,
       recap: true,
+      ...mark,
       ...extra,
     };
     out.push(
@@ -417,6 +436,12 @@ function detailNarrate(
   };
 }
 
+/** `sending`, and still the login it started with. */
+const stillSending = (sessionId: string, cwd: string, token?: string) =>
+  token !== undefined &&
+  readCredentials()?.token === token &&
+  sending(sessionId, cwd);
+
 /** Whether Murmur would send for this session now: logged in, on, not paused. */
 function sending(sessionId: string, cwd: string): boolean {
   const s = readSession(sessionId);
@@ -459,6 +484,7 @@ export async function runRecap(
     .slice(0, MAX_REQUESTS)
     .filter((r) => !done.has(r.id));
   const byId = new Map(events.map((e) => [e.id, e]));
+  const token = readCredentials()?.token;
   const calls = callsByRequest(events, new Set(view.requests.map((r) => r.id)));
   const paths = changedPaths(events);
   let ok = 0;
@@ -479,6 +505,13 @@ export async function runRecap(
         const reason = r.ok ? refused("a recap", recap) : r.why;
         log(
           `murmur recap: ${req.id} kept the inferred view: ${reason} (${secs} s)`,
+        );
+        continue;
+      }
+      // Paused, off or logged out while it was asked: the answer is not sent.
+      if (!stillSending(sessionId, view.cwd, token)) {
+        log(
+          `murmur recap: ${req.id} not sent: Murmur stopped sending (${secs} s)`,
         );
         continue;
       }
@@ -553,15 +586,21 @@ function changedPaths(events: MurmurEvent[]): Map<string, string> {
 
 /** Where the plan of a request stands, from its own events and the last refresh's answer. */
 interface PlanState {
-  /** Each task's status as Murmur last heard it (narrate's words), or none yet. */
+  /** Each task's status as Murmur last heard it (running, failed or done), or none yet. */
   statuses: Map<string, string>;
   /** When a task's status last changed, else when the map came. */
   changed: number;
   /** Helper reports since then. */
   reports: number;
-  /** The latest narrate, so a refresh leaves the request's "now" where Claude put it. */
-  last?: { now: string; why: string; part?: string; task?: string };
+  /** When the newest report, message or narrate came. */
+  latest: number;
 }
+
+// Claude's own "blocked" reads as failed; a status only moves forward, and done stays.
+const RANK: Record<string, number> = { running: 1, failed: 2, done: 3 };
+const settled = (s: string | undefined) => s === "done" || s === "failed";
+const forward = (from: string | undefined, to: string) =>
+  (RANK[to] ?? 0) > (from === undefined ? 0 : (RANK[from] ?? 0));
 
 /** A helper's final report's text, from a task notification or a foreground result. */
 function reportOf(e: MurmurEvent): string | undefined {
@@ -604,20 +643,28 @@ function reportsInput(events: MurmurEvent[]): string {
 
 /** The plan state over a request's events (in time order), with `prior`'s statuses at its time. */
 function planState(events: MurmurEvent[], prior?: RefreshState): PlanState {
-  const st: PlanState = { statuses: new Map(), changed: NaN, reports: 0 };
-  const set = (task: string, status: string, ts: string) => {
-    if (st.statuses.get(task) === status) return;
+  const st: PlanState = {
+    statuses: new Map(),
+    changed: NaN,
+    reports: 0,
+    latest: NaN,
+  };
+  const set = (task: string, said: string, ts: string) => {
+    const status = said === "blocked" ? "failed" : said;
+    const was = st.statuses.get(task);
+    if (was === status || was === "done") return;
     st.statuses.set(task, status);
     st.changed = Date.parse(ts);
     st.reports = 0;
   };
   let pending = prior?.at && prior.tasks ? prior : undefined;
+  const overlay = () => {
+    for (const [id, s] of Object.entries(pending?.tasks ?? {}))
+      set(id, s, pending?.at as string);
+    pending = undefined;
+  };
   for (const e of events) {
-    if (pending && e.ts > (pending.at as string)) {
-      for (const [id, s] of Object.entries(pending.tasks ?? {}))
-        set(id, s, pending.at as string);
-      pending = undefined;
-    }
+    if (pending && e.ts > (pending.at as string)) overlay();
     const input = e.hook === "PostToolUse" ? e.payload.tool_input : undefined;
     if (e.payload.tool_name === MAP_TOOL && MapInput.safeParse(input).success) {
       if (Number.isNaN(st.changed)) st.changed = Date.parse(e.ts);
@@ -627,25 +674,20 @@ function planState(events: MurmurEvent[], prior?: RefreshState): PlanState {
       e.payload.tool_name === NARRATE_TOOL
         ? NarrateInput.safeParse(input)
         : undefined;
+    const report = n?.success ? undefined : reportOf(e);
+    if (n?.success || report !== undefined || e.hook === "AssistantText")
+      st.latest = Date.parse(e.ts);
     if (n?.success) {
-      const { now, why, part, task, taskStatus } = n.data;
-      st.last = {
-        now,
-        why,
-        ...(part ? { part } : {}),
-        ...(task ? { task } : {}),
-      };
+      const { task, taskStatus } = n.data;
       if (task && taskStatus) set(task, taskStatus, e.ts);
-    } else if (reportOf(e) !== undefined) st.reports++;
+    } else if (report !== undefined) st.reports++;
   }
-  if (pending)
-    for (const [id, s] of Object.entries(pending.tasks ?? {}))
-      set(id, s, pending.at as string);
+  if (pending) overlay();
   return st;
 }
 
 const REFRESH_INSTRUCTIONS = `You bring the plan of one request in a Claude Code session up to date for Murmur, a page that shows a coding session as a story to the person who asked for it.
-Claude drew this plan itself at the start, but did not always say when a task moved on. Below is the plan as Murmur shows it now, with each task's status, then the person's request, what the helpers reported, the helpers Claude started (H1, H2, ... with what each was asked), the files changed, and Claude's own messages in order.
+Claude drew this plan itself at the start, but did not always say when a task moved on. Below is the plan as Murmur shows it now, with each open task's status, then the person's request, what the helpers reported, the helpers Claude started (H1, H2, ... with what each was asked), the files changed, and Claude's own messages in order.
 Answer with one JSON object and nothing else, in exactly this shape:
 {
   "tasks": [{ "id": "<task id from the plan>", "status": "done" | "failed" | "running", "ended": "one line on how it ended, or where it stands" }],
@@ -658,7 +700,7 @@ Answer with one JSON object and nothing else, in exactly this shape:
     "files": [{ "path": "<copied exactly from the file list>", "role": "what it does" }]
   }]
 }
-Rules: use only the task and part ids in the plan, exactly as written; never add, rename or drop one. Give one entry in "tasks" for every task that has started. A task is "done" only when the material shows it finished (a helper reported it done, Claude said so, a commit or review passed); "running" while it is under way; "failed" when it was given up or is blocked. Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
+Rules: use only the task and part ids in the plan, exactly as written; never add, rename or drop one. The tasks under "done" are finished: say nothing of them. Give one entry in "tasks" for every task in the plan that has started. A task is "done" only when the material shows it finished (a helper reported it done, Claude said so, a commit or review passed); "running" while it is under way; "failed" when it was given up or is blocked. Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
 
 export interface RefreshOptions {
   env?: NodeJS.ProcessEnv;
@@ -670,9 +712,10 @@ export interface RefreshOptions {
 
 /**
  * In the detached child after a Stop: refreshes the plan of the session's latest request
- * when Claude mapped it, a task is not done, and since the last task status change 3
- * helper reports came or 20 minutes passed. Reads the transcript (never in the hook).
- * Returns whether it asked and whether the answer was queued.
+ * when Claude mapped it, a task is neither done nor failed, something new came since the
+ * last ask, and since the last task status change 3 helper reports came or 20 minutes
+ * passed. Reads the transcript (never in the hook). Returns whether it asked and whether
+ * the answer was queued.
  */
 export async function runRefresh(
   sessionId: string,
@@ -702,10 +745,13 @@ export async function runRefresh(
     !sending(sessionId, s.cwd)
   )
     return none;
-  const prior = s.refresh;
-  // One look per 5 minutes per session, marked before the read, so one runs at a time.
+  const prior = readRefresh(sessionId);
+  // One look per 5 minutes per session, marked before the read, so one runs at a time;
+  // one ask per 30 minutes per session, whatever the request.
   if (prior && t - Date.parse(prior.checked) < CHECK_MS) return none;
-  updateSession(sessionId, { refresh: { ...prior, checked: iso } });
+  if (prior?.tried && t - Date.parse(prior.tried) < REFRESH_EVERY_MS)
+    return none;
+  writeRefresh(sessionId, { ...prior, checked: iso });
 
   const events = readBackfill({
     sessionId,
@@ -719,31 +765,45 @@ export async function runRefresh(
   // Claude's own map only; a request with none is the recap's.
   if (!req || req.planInferred || req.recap) return none;
   const mine = prior?.request === req.id ? prior : undefined;
-  if (mine?.tried && t - Date.parse(mine.tried) < REFRESH_EVERY_MS) return none;
   const own = events.filter((e) => e.ts >= req.startedAt);
   const st = planState(own, mine);
   const tasks = req.phases.flatMap((ph) => ph.tasks);
+  const news = !prior?.tried || st.latest > Date.parse(prior.tried);
   const stale =
-    tasks.some((x) => st.statuses.get(x.id) !== "done") &&
+    news &&
+    tasks.some((x) => !settled(st.statuses.get(x.id))) &&
     (st.reports >= STALE_REPORTS || t - st.changed >= STALE_MS);
   if (!stale) return none;
 
   // Marked before it is asked: whatever comes back, not again for 30 minutes.
-  updateSession(sessionId, {
-    refresh: { ...mine, checked: iso, request: req.id, tried: iso },
+  writeRefresh(sessionId, {
+    ...mine,
+    checked: iso,
+    request: req.id,
+    tried: iso,
   });
+  const done = (id: string) => st.statuses.get(id) === "done";
+  // Only what is still open is asked about.
   const plan = {
     goal: req.goal,
-    phases: req.phases.map((ph) => ({
-      id: ph.id,
-      title: ph.title,
-      tasks: ph.tasks.map((x) => ({
-        id: x.id,
-        title: x.title,
-        part: x.part,
-        status: st.statuses.get(x.id) ?? "not started",
-      })),
-    })),
+    done: tasks.filter((x) => done(x.id)).map((x) => x.title),
+    phases: req.phases.flatMap((ph) => {
+      const open = ph.tasks.filter((x) => !done(x.id));
+      return open.length
+        ? [
+            {
+              id: ph.id,
+              title: ph.title,
+              tasks: open.map((x) => ({
+                id: x.id,
+                title: x.title,
+                part: x.part,
+                status: st.statuses.get(x.id) ?? "not started",
+              })),
+            },
+          ]
+        : [];
+    }),
     parts: req.parts.map((p) => ({ id: p.id, title: p.title })),
   };
   const calls = callsByRequest(events, new Set([req.id])).get(req.id) ?? [];
@@ -752,6 +812,7 @@ export async function runRefresh(
     view.cwd,
     calls,
     `${REFRESH_INSTRUCTIONS}\n\n## The plan now\n${JSON.stringify(plan)}\n\n## Helper reports, in order\n${reportsInput(own)}`,
+    true,
   );
   const r = await ask(input, env, timeoutMs);
   const secs = (r.ms / 1000).toFixed(1);
@@ -769,46 +830,49 @@ export async function runRefresh(
             ...answer.data.parts.map((p) => `part:${p.id}`),
           ].find((id) => !ids.has(id))
         ? "it names an id the plan does not have"
-        : undefined;
+        : // Paused, off or logged out while it was asked.
+          !stillSending(sessionId, s.cwd, creds.token)
+          ? "Murmur stopped sending"
+          : undefined;
   if (reason || !answer?.success) {
     log(`murmur refresh: ${req.id} kept the plan: ${reason} (${secs} s)`);
     return { ran: 1, ok: 0 };
   }
+  // A status only moves forward: what is done stays done, failed never goes back to running.
+  const moved = answer.data.tasks.filter((x) =>
+    forward(st.statuses.get(x.id), x.status),
+  );
   for (const e of refreshEvents(
     req,
-    answer.data,
-    st,
+    { ...answer.data, tasks: moved },
     events.find((e) => e.id === req.id) as MurmurEvent,
     changedPaths(events),
     t,
   ))
     enqueue(e);
-  updateSession(sessionId, {
-    refresh: {
-      checked: iso,
-      request: req.id,
-      tried: iso,
-      at: iso,
-      // Every status the plan has now, not only this answer's, which may leave one out.
-      tasks: Object.fromEntries([
-        ...st.statuses,
-        ...answer.data.tasks.map((x) => [x.id, x.status] as const),
-      ]),
-    },
+  writeRefresh(sessionId, {
+    checked: iso,
+    request: req.id,
+    tried: iso,
+    at: iso,
+    // Every status the plan has now, not only this answer's, which may leave one out.
+    tasks: Object.fromEntries([
+      ...st.statuses,
+      ...moved.map((x) => [x.id, x.status] as const),
+    ]),
   });
   log(`murmur refresh: ${req.id} ok (${secs} s${costOf(r)})`);
   return { ran: 1, ok: 1 };
 }
 
 /**
- * A refresh as narrate events at its own time: each part's detail (an aim only where the
- * part has none), each task's status, with its line as a step on its part when the status
- * is news, then Claude's latest narrate again, so what is happening now stays Claude's.
+ * A refresh as narrate events at its own time, marked `refresh: true` so they never move
+ * "now": each part's detail (an aim only where the part has none), then each task that
+ * moved forward, with its line as a step on its part.
  */
 function refreshEvents(
   req: RequestView,
   r: RefreshInput,
-  st: PlanState,
   base: MurmurEvent,
   paths: Map<string, string>,
   at: number,
@@ -817,6 +881,7 @@ function refreshEvents(
     base,
     `murmur-refresh:${req.id}:${new Date(at).toISOString()}`,
     at,
+    { refresh: true },
   );
   for (const p of r.parts) {
     const part = req.parts.find((x) => x.id === p.id);
@@ -831,18 +896,15 @@ function refreshEvents(
     );
   }
   const tasks = req.phases.flatMap((ph) => ph.tasks);
-  for (const x of r.tasks) {
-    const news = st.statuses.get(x.id) !== x.status;
+  for (const x of r.tasks)
     add(NARRATE_TOOL, {
       now: x.ended,
       why: "",
       task: x.id,
       taskStatus: x.status,
-      ...(news && tasks.find((y) => y.id === x.id)?.part
+      ...(tasks.find((y) => y.id === x.id)?.part
         ? { step: { text: x.ended, status: x.status } }
         : {}),
     });
-  }
-  if (st.last) add(NARRATE_TOOL, st.last);
   return out;
 }
