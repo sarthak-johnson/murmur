@@ -116,3 +116,75 @@ No new outcome steps were added: every status matched what the plan already had.
 - The hook's Stop block (`trackNarration`) does not see refresh narrates, so it can still ask Claude once per request to narrate tasks the refresh already marked done.
 - The restored "now" narrate carries the refresh's time, so an idle session's "now" shows Claude's last narrate as of the refresh.
 - The 4 automatic refreshes and the test builds overlapped in time: two mutation builds were live in `plugin/dist` for a few seconds each; even then the run has hooks off (`disableAllHooks`, `--safe-mode`), and nothing from it reached the server.
+
+## Review fixes
+
+From an Opus review of the refresh.
+Each fix has a test that failed first for the reason named.
+No real refresh was run again.
+
+### Commits
+
+- `6ebe9ab` fix(core): a refresh's narrate never moves now
+- `3317996` fix(plugin): review fixes for the live plan refresh
+- `ecc84bd` fix(web): a run label wider than estimated is cut with an ellipsis
+
+### What changed
+
+1. A task stays done.
+   Once Claude or a refresh has set a task done, nothing the refresh hears moves it back.
+   Only open tasks go in the plan the model sees (done ones are listed by title under `done`, with "say nothing of them"); an answer about a done task is dropped.
+   An answer is kept only when it moves a status forward (none, running, failed, done), and only then is its line a step, so a task never gains a step for being said again.
+2. The newest of Claude's messages are kept.
+   `recapInput` takes a `newest` flag: the refresh keeps messages newest-first up to the 60,000 characters and says `[earlier messages left out]`; the recap still keeps the oldest.
+3. Pausing, turning off or logging out during the ask stops the upload.
+   Right before anything is queued, the refresh and the recap check `sending()` again and that the login is the one they started with (`stillSending`); otherwise they log one line and queue nothing.
+   The child's second flush reads the credentials again.
+4. One ask per 30 minutes per session, whatever the request (`tried` is per session now).
+5. No ask without something new: a report, a message or a narrate after the last ask.
+   `failed` is settled, like `done`: a plan whose open tasks are all failed is not asked about.
+6. The refresh state lives in `sessions/<id>.refresh.json` (`readRefresh`, `writeRefresh`), so the hook's whole-file rewrites of the session file cannot drop it.
+   A `refresh` field left in a session file by the first version is read when there is no file yet, so the author's session keeps what its refreshes said.
+7. Smaller items:
+   - Claude's last narrate is no longer sent again. Instead every refresh narrate carries `refresh: true`, and core applies it (statuses, steps, detail) without making it the latest narrate, so "now" and the part later changes go to stay where Claude put them, with Claude's own time.
+   - Claude's `blocked` reads as `failed`, so an answer of `failed` is no news and adds no step.
+8. `.run-label` gets `overflow: hidden; text-overflow: ellipsis; white-space: nowrap` (one rule in `web/src/theme.css`).
+   A label inside its bar is a flex item, so it is now cut at the bar's width.
+   A label placed beside its bar (`.run.out`) is absolutely positioned with no width limit, so this rule does not cut it; its room is still only what the layout estimated.
+
+### Tests, RED then GREEN
+
+| Suite | RED | GREEN |
+| --- | --- | --- |
+| core `infer.test.ts`, a refresh's narrate (2 tests) | 2 failed: "now" was the refresh's text, and a later edit went to the refresh's part | passed |
+| plugin `refresh.test.ts`, review fixes (12 tests) | with `readRefresh` stubbed to the old location, all 12 failed on their assertions: t1 asked about and moved back, a plan of done and failed asked about, a step for blocked then failed, the newest message missing, 3 events queued after pause, logout and off, a recap queued after pause, a second request asked within 30 minutes, an ask with nothing new, the state lost to a rewrite, "now" moved to the refresh | 12 passed |
+| plugin `refresh.test.ts`, existing tests changed for the new rules (3 tests) | failed: t1 still in the plan after it was done, and no `.refresh.json` file | passed |
+| web `runLabel.test.ts` (1 test) | failed: no `.run-label` rule | passed |
+
+The existing tests that changed: "at most once every 30 minutes" and "a later answer that leaves a task out" now expect t1 out of the plan once it is done, and the second of them adds a report between asks (asking needs something new); "the same refresh twice" deletes the `.refresh.json` file to start again.
+jsdom has no layout, so the CSS test checks the rule itself.
+
+Totals: core 245, plugin 188, server 92, web 273, all passing.
+
+### Checks
+
+Each run on its own after the last code commit:
+
+| Check | Exit code |
+| --- | --- |
+| `pnpm -s lint` | 0 |
+| `pnpm -s typecheck` | 0 |
+| `pnpm -s test` | 0 |
+| `pnpm -s build:plugin` | 0 (no diff in `plugin/dist`) |
+| `pnpm --filter @murmur/web -s build` | 0 |
+
+### Cost now
+
+At most 2 asks an hour per session.
+At the measured $0.1246 per ask, 5 sessions cost at most about $1.25 an hour ($1.40 at the dearest ask seen so far, $0.14), and less whenever nothing new comes or every open task is settled.
+The one-time recap of an imported session is apart from this.
+
+### Left
+
+- A task with no part has no step to carry its outcome line, and the refresh no longer sets "now", so for such a task only its status shows.
+- The duplicate outcome steps already on the author's session (from the 12:26 refresh) are still there.
