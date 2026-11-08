@@ -12,26 +12,40 @@
  * on and the session not paused. The last request is left alone when the import started
  * inside it (`lastOpen`), since live narration may still come. `MURMUR_RECAP=0` turns it
  * off; a headless run, or the recap's own run (`MURMUR_RECAP_RUN=1`), never recaps.
+ *
+ * The refresh keeps a plan Claude drew itself true when Claude stops narrating it. In the
+ * detached child a Stop spawns, it reads the transcript and, when the latest request has
+ * a map from Claude that is stale (a task not done, and since the last task status change
+ * 3 helper reports or 20 minutes), asks the same `claude -p` the same way for each task's
+ * status and part detail by the map's own ids, and queues them as `narrate` events marked
+ * `recap: true`. An answer naming an id the map lacks is refused. At most once every 30
+ * minutes per request; a child looks at most every 5 minutes per session, so one runs at
+ * a time. Same switches as the recap.
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import os from "node:os";
 import {
   briefOf,
   MAP_TOOL,
+  MapInput,
   type MurmurEvent,
   NARRATE_TOOL,
+  NarrateInput,
+  parseNotification,
   type RecapInput as Recap,
   RecapInput,
+  RefreshInput,
   type RequestView,
   reduce,
   relPath,
   scrubEvent,
 } from "@murmur/core";
-import { stableId } from "./backfill.js";
+import { readBackfill, stableId } from "./backfill.js";
 import {
   isHeadless,
   isPaused,
   isRevoked,
+  type RefreshState,
   readCredentials,
   readSession,
   sessionProjectState,
@@ -47,6 +61,12 @@ const MAX_REQUESTS = 5;
 // Under the backfill child's 4 minutes: its uploads, then asks that may take 60 s each.
 const BUDGET_MS = 150_000;
 const TEXT_MAX = 300;
+const MINUTE = 60_000;
+// A child looks this often at most per session; longer than a refresh can run.
+const CHECK_MS = 5 * MINUTE;
+const REFRESH_EVERY_MS = 30 * MINUTE;
+const STALE_MS = 20 * MINUTE;
+const STALE_REPORTS = 3;
 
 export interface RecapOptions {
   env?: NodeJS.ProcessEnv;
@@ -127,6 +147,7 @@ export function recapInput(
   req: RequestView,
   cwd: string,
   calls: MurmurEvent[] = [],
+  instructions = INSTRUCTIONS,
 ): string {
   const used = new Set<string>();
   const helpers = calls.map((c, i) => {
@@ -153,7 +174,7 @@ export function recapInput(
     (f) => `${f.path} (+${f.added} -${f.removed}${f.isNew ? ", new" : ""})`,
   );
   const head = [
-    INSTRUCTIONS,
+    instructions,
     `\nProject folder: ${cwd}`,
     `\n## Request (${req.startedAt})\n${req.prompt.slice(0, 4000)}`,
     `\n## Helpers\n${helpers.join("\n") || "none"}`,
@@ -175,7 +196,7 @@ export function recapInput(
 }
 
 type Answer =
-  | { ok: true; recap: Recap; cost?: number }
+  | { ok: true; json: unknown; cost?: number }
   | { ok: false; why: string };
 type Ask = Answer & { ms: number };
 
@@ -238,7 +259,7 @@ function ask(
   });
 }
 
-/** `claude -p --output-format json` output (one result, or every message with it) as a recap. */
+/** `claude -p --output-format json` output (one result, or every message with it) as the answer's JSON. */
 function parse(stdout: string): Answer {
   let res: Record<string, unknown> | undefined;
   try {
@@ -262,20 +283,20 @@ function parse(stdout: string): Answer {
   } catch {
     return { ok: false, why: "the answer is not JSON" };
   }
-  const recap = RecapInput.safeParse(json);
-  if (!recap.success)
-    return {
-      ok: false,
-      why: `the answer is not a recap (${recap.error.issues[0]?.path.join(".")})`,
-    };
   const cost =
     typeof res.total_cost_usd === "number" ? res.total_cost_usd : undefined;
-  return {
-    ok: true,
-    recap: recap.data,
-    ...(cost === undefined ? {} : { cost }),
-  };
+  return { ok: true, json, ...(cost === undefined ? {} : { cost }) };
 }
+
+/** What the ask cost, as `claude -p` reported it, for the log line. */
+const costOf = (r: Ask) =>
+  r.ok && r.cost !== undefined ? `, $${r.cost.toFixed(4)}` : "";
+
+/** Why a zod check refused the answer, for the one log line. */
+const refused = (
+  what: string,
+  r: { error?: { issues: { path: PropertyKey[] }[] } } | undefined,
+) => `the answer is not ${what} (${r?.error?.issues[0]?.path.join(".")})`;
 
 /**
  * The recap as hook events: the map, each part's detail, its steps, its helpers (a
@@ -290,70 +311,26 @@ export function recapEvents(
   base: MurmurEvent,
   paths: Map<string, string> = new Map(),
 ): MurmurEvent[] {
-  const out: MurmurEvent[] = [];
-  const at = Date.parse(req.startedAt);
-  const add = (
-    tool: string,
-    input: unknown,
-    extra: Record<string, unknown> = {},
-  ) => {
-    const k = out.length + 1;
-    const payload = {
-      hook_event_name: "PostToolUse",
-      session_id: base.sessionId,
-      cwd: base.cwd,
-      tool_name: tool,
-      tool_input: input,
-      tool_use_id: `murmur-recap:${req.id}:${k}`,
-      recap: true,
-      ...extra,
-    };
-    out.push(
-      scrubEvent({
-        id: stableId(base.sessionId, "PostToolUse", payload) as string,
-        sessionId: base.sessionId,
-        machineId: base.machineId,
-        cwd: base.cwd,
-        // A millisecond apart just after the prompt, in order, before what Claude did.
-        ts: new Date(at + k).toISOString(),
-        hook: "PostToolUse",
-        payload,
-      }),
-    );
-  };
-  const cut = (s: string) => s.slice(0, 200);
+  // A millisecond apart just after the prompt, in order, before what Claude did.
+  const { out, add } = emitter(
+    base,
+    `murmur-recap:${req.id}`,
+    Date.parse(req.startedAt),
+  );
   add(MAP_TOOL, recap.map);
   const tasks = recap.map.phases.flatMap((ph) => ph.tasks);
   for (const p of recap.parts) {
     const title = recap.map.parts.find((x) => x.id === p.id)?.title ?? p.id;
-    const { id, steps, helpers, files, ...detail } = p;
-    add(NARRATE_TOOL, {
-      now: cut(title),
-      why: "",
-      part: id,
-      ...detail,
-      // Named by the path it was changed at, so it matches whatever cwd reads it.
-      ...(files
-        ? {
-            files: files.map((f) => {
-              // Too long for narrate's 300: the shown path, so the detail still holds.
-              const full = paths.get(f.path);
-              return {
-                ...f,
-                path: full && full.length <= TEXT_MAX ? full : f.path,
-              };
-            }),
-          }
-        : {}),
-    });
+    const { steps, helpers, ...detail } = p;
+    add(NARRATE_TOOL, detailNarrate(title, detail, paths));
     for (const step of steps ?? [])
-      add(NARRATE_TOOL, { now: cut(step.text), why: "", part: id, step });
+      add(NARRATE_TOOL, { now: cut(step.text), why: "", part: p.id, step });
     for (const h of helpers ?? []) {
       const agentId = helperIds[Number(/^H(\d+)$/.exec(h)?.[1]) - 1];
       if (agentId)
         add(
           NARRATE_TOOL,
-          { now: cut(title), why: "", part: id },
+          { now: cut(title), why: "", part: p.id },
           { agent_id: agentId },
         );
     }
@@ -371,6 +348,86 @@ export function recapEvents(
   }
   add(NARRATE_TOOL, { now: cut(recap.map.goal), why: "" });
   return out;
+}
+
+const cut = (s: string) => s.slice(0, 200);
+
+/**
+ * Queues nothing itself: builds hook events for Murmur's own tool calls, marked
+ * `recap: true`, a millisecond apart from `at`, ids from `key` and their order.
+ */
+function emitter(base: MurmurEvent, key: string, at: number) {
+  const out: MurmurEvent[] = [];
+  const add = (
+    tool: string,
+    input: unknown,
+    extra: Record<string, unknown> = {},
+  ) => {
+    const k = out.length + 1;
+    const payload = {
+      hook_event_name: "PostToolUse",
+      session_id: base.sessionId,
+      cwd: base.cwd,
+      tool_name: tool,
+      tool_input: input,
+      tool_use_id: `${key}:${k}`,
+      recap: true,
+      ...extra,
+    };
+    out.push(
+      scrubEvent({
+        id: stableId(base.sessionId, "PostToolUse", payload) as string,
+        sessionId: base.sessionId,
+        machineId: base.machineId,
+        cwd: base.cwd,
+        ts: new Date(at + k).toISOString(),
+        hook: "PostToolUse",
+        payload,
+      }),
+    );
+  };
+  return { out, add };
+}
+
+type Detail = RefreshInput["parts"][number];
+/** A part's detail as one narrate, its files named by the path they were changed at. */
+function detailNarrate(
+  title: string,
+  { id, files, ...detail }: Detail,
+  paths: Map<string, string>,
+) {
+  return {
+    now: cut(title),
+    why: "",
+    part: id,
+    ...detail,
+    // Named by the path it was changed at, so it matches whatever cwd reads it.
+    ...(files
+      ? {
+          files: files.map((f) => {
+            // Too long for narrate's 300: the shown path, so the detail still holds.
+            const full = paths.get(f.path);
+            return {
+              ...f,
+              path: full && full.length <= TEXT_MAX ? full : f.path,
+            };
+          }),
+        }
+      : {}),
+  };
+}
+
+/** Whether Murmur would send for this session now: logged in, on, not paused. */
+function sending(sessionId: string, cwd: string): boolean {
+  const s = readSession(sessionId);
+  const at = s.cwd ?? cwd;
+  return (
+    readCredentials() !== null &&
+    !isRevoked() &&
+    sessionProjectState(at, sessionId) === "on" &&
+    !isPaused(at, sessionId) &&
+    !(s.project !== undefined && isPaused(s.project))
+  );
 }
 
 /** Recaps each imported request of `events` with no valid map, once. Returns how many it asked and how many came back valid. */
@@ -401,18 +458,6 @@ export async function runRecap(
     .reverse()
     .slice(0, MAX_REQUESTS)
     .filter((r) => !done.has(r.id));
-  // Asked only while Murmur would send: logged in, on, not paused.
-  const sending = () => {
-    const s = readSession(sessionId);
-    const cwd = s.cwd ?? view.cwd;
-    return (
-      readCredentials() !== null &&
-      !isRevoked() &&
-      sessionProjectState(cwd, sessionId) === "on" &&
-      !isPaused(cwd, sessionId) &&
-      !(s.project !== undefined && isPaused(s.project))
-    );
-  };
   const byId = new Map(events.map((e) => [e.id, e]));
   const calls = callsByRequest(events, new Set(view.requests.map((r) => r.id)));
   const paths = changedPaths(events);
@@ -420,7 +465,8 @@ export async function runRecap(
   let ran = 0;
   const worker = async () => {
     for (let req = queue.shift(); req; req = queue.shift()) {
-      if (Date.now() - t0 > budgetMs || !sending()) return;
+      // Asked only while Murmur would send.
+      if (Date.now() - t0 > budgetMs || !sending(sessionId, view.cwd)) return;
       // Marked just before it is asked: a run that dies here never asks it again.
       const s = readSession(sessionId);
       updateSession(sessionId, { recapped: [...(s.recapped ?? []), req.id] });
@@ -428,9 +474,11 @@ export async function runRecap(
       const mine = calls.get(req.id) ?? [];
       const r = await ask(recapInput(req, view.cwd, mine), env, timeoutMs);
       const secs = (r.ms / 1000).toFixed(1);
-      if (!r.ok) {
+      const recap = r.ok ? RecapInput.safeParse(r.json) : undefined;
+      if (!recap?.success) {
+        const reason = r.ok ? refused("a recap", recap) : r.why;
         log(
-          `murmur recap: ${req.id} kept the inferred view: ${r.why} (${secs} s)`,
+          `murmur recap: ${req.id} kept the inferred view: ${reason} (${secs} s)`,
         );
         continue;
       }
@@ -443,16 +491,14 @@ export async function runRecap(
       });
       for (const e of recapEvents(
         req,
-        r.recap,
+        recap.data,
         helperIds,
         byId.get(req.id) as MurmurEvent,
         paths,
       ))
         enqueue(e);
       ok++;
-      log(
-        `murmur recap: ${req.id} ok (${secs} s${r.cost === undefined ? "" : `, $${r.cost.toFixed(4)}`})`,
-      );
+      log(`murmur recap: ${req.id} ok (${secs} s${costOf(r)})`);
     }
   };
   await Promise.all(Array.from({ length: PARALLEL }, worker));
@@ -502,5 +548,297 @@ function changedPaths(events: MurmurEvent[]): Map<string, string> {
     for (const f of Array.isArray(diff?.files) ? diff.files : [])
       add((f as Record<string, unknown> | null)?.filePath, e.cwd);
   }
+  return out;
+}
+
+/** Where the plan of a request stands, from its own events and the last refresh's answer. */
+interface PlanState {
+  /** Each task's status as Murmur last heard it (narrate's words), or none yet. */
+  statuses: Map<string, string>;
+  /** When a task's status last changed, else when the map came. */
+  changed: number;
+  /** Helper reports since then. */
+  reports: number;
+  /** The latest narrate, so a refresh leaves the request's "now" where Claude put it. */
+  last?: { now: string; why: string; part?: string; task?: string };
+}
+
+/** A helper's final report's text, from a task notification or a foreground result. */
+function reportOf(e: MurmurEvent): string | undefined {
+  if (e.hook === "UserPromptSubmit") {
+    const p = e.payload.prompt;
+    const n = typeof p === "string" ? parseNotification(p, e.ts) : undefined;
+    return n && !n.report.interim
+      ? n.report.text || n.report.summary
+      : undefined;
+  }
+  const res = (e.payload.tool_response ?? {}) as Record<string, unknown>;
+  if (
+    e.hook !== "PostToolUse" ||
+    e.payload.tool_name !== "Agent" ||
+    e.payload.agent_id ||
+    res.status === "async_launched" ||
+    res.isAsync === true
+  )
+    return undefined;
+  const content = Array.isArray(res.content) ? res.content : [];
+  return content
+    .map((b: { text?: unknown }) => (typeof b?.text === "string" ? b.text : ""))
+    .join("\n");
+}
+
+/** The request's helper reports, newest kept, each cut, about 25,000 characters in all. */
+function reportsInput(events: MurmurEvent[]): string {
+  const lines: string[] = [];
+  let size = 0;
+  for (const e of events.toReversed()) {
+    const text = reportOf(e);
+    if (text === undefined) continue;
+    const line = `[${time(e.ts)}] ${text.length > 1500 ? `${text.slice(0, 1500)}…` : text}`;
+    if (size + line.length > 25_000) break;
+    lines.unshift(line);
+    size += line.length;
+  }
+  return lines.join("\n") || "none";
+}
+
+/** The plan state over a request's events (in time order), with `prior`'s statuses at its time. */
+function planState(events: MurmurEvent[], prior?: RefreshState): PlanState {
+  const st: PlanState = { statuses: new Map(), changed: NaN, reports: 0 };
+  const set = (task: string, status: string, ts: string) => {
+    if (st.statuses.get(task) === status) return;
+    st.statuses.set(task, status);
+    st.changed = Date.parse(ts);
+    st.reports = 0;
+  };
+  let pending = prior?.at && prior.tasks ? prior : undefined;
+  for (const e of events) {
+    if (pending && e.ts > (pending.at as string)) {
+      for (const [id, s] of Object.entries(pending.tasks ?? {}))
+        set(id, s, pending.at as string);
+      pending = undefined;
+    }
+    const input = e.hook === "PostToolUse" ? e.payload.tool_input : undefined;
+    if (e.payload.tool_name === MAP_TOOL && MapInput.safeParse(input).success) {
+      if (Number.isNaN(st.changed)) st.changed = Date.parse(e.ts);
+      continue;
+    }
+    const n =
+      e.payload.tool_name === NARRATE_TOOL
+        ? NarrateInput.safeParse(input)
+        : undefined;
+    if (n?.success) {
+      const { now, why, part, task, taskStatus } = n.data;
+      st.last = {
+        now,
+        why,
+        ...(part ? { part } : {}),
+        ...(task ? { task } : {}),
+      };
+      if (task && taskStatus) set(task, taskStatus, e.ts);
+    } else if (reportOf(e) !== undefined) st.reports++;
+  }
+  if (pending)
+    for (const [id, s] of Object.entries(pending.tasks ?? {}))
+      set(id, s, pending.at as string);
+  return st;
+}
+
+const REFRESH_INSTRUCTIONS = `You bring the plan of one request in a Claude Code session up to date for Murmur, a page that shows a coding session as a story to the person who asked for it.
+Claude drew this plan itself at the start, but did not always say when a task moved on. Below is the plan as Murmur shows it now, with each task's status, then the person's request, what the helpers reported, the helpers Claude started (H1, H2, ... with what each was asked), the files changed, and Claude's own messages in order.
+Answer with one JSON object and nothing else, in exactly this shape:
+{
+  "tasks": [{ "id": "<task id from the plan>", "status": "done" | "failed" | "running", "ended": "one line on how it ended, or where it stands" }],
+  "parts": [{
+    "id": "<part id from the plan>",
+    "aim": { "aim": "what this part is for", "doneWhen": "how we know it is done" },
+    "choices": [{ "choice": "...", "reason": "...", "assumption": false }],
+    "checks": [{ "check": "...", "status": "pass" | "fail" | "untried" }],
+    "words": [{ "term": "a word the person may not know", "meaning": "plain meaning" }],
+    "files": [{ "path": "<copied exactly from the file list>", "role": "what it does" }]
+  }]
+}
+Rules: use only the task and part ids in the plan, exactly as written; never add, rename or drop one. Give one entry in "tasks" for every task that has started. A task is "done" only when the material shows it finished (a helper reported it done, Claude said so, a commit or review passed); "running" while it is under way; "failed" when it was given up or is blocked. Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
+
+export interface RefreshOptions {
+  env?: NodeJS.ProcessEnv;
+  /** The time it runs at: what "stale" and the refresh's event times count from. */
+  now?: Date;
+  timeoutMs?: number;
+  log?: (line: string) => void;
+}
+
+/**
+ * In the detached child after a Stop: refreshes the plan of the session's latest request
+ * when Claude mapped it, a task is not done, and since the last task status change 3
+ * helper reports came or 20 minutes passed. Reads the transcript (never in the hook).
+ * Returns whether it asked and whether the answer was queued.
+ */
+export async function runRefresh(
+  sessionId: string,
+  {
+    env = process.env,
+    now = new Date(),
+    timeoutMs = TIMEOUT_MS,
+    log = (l) => process.stderr.write(`${l}\n`),
+  }: RefreshOptions = {},
+): Promise<{ ran: number; ok: number }> {
+  const none = { ran: 0, ok: 0 };
+  if (
+    env.MURMUR_RECAP === "0" ||
+    env.MURMUR_RECAP_RUN === "1" ||
+    isHeadless(env)
+  )
+    return none;
+  const s = readSession(sessionId);
+  const creds = readCredentials();
+  const t = now.getTime();
+  const iso = now.toISOString();
+  if (
+    s.backfill !== "done" ||
+    !s.transcriptPath ||
+    !s.cwd ||
+    !creds ||
+    !sending(sessionId, s.cwd)
+  )
+    return none;
+  const prior = s.refresh;
+  // One look per 5 minutes per session, marked before the read, so one runs at a time.
+  if (prior && t - Date.parse(prior.checked) < CHECK_MS) return none;
+  updateSession(sessionId, { refresh: { ...prior, checked: iso } });
+
+  const events = readBackfill({
+    sessionId,
+    machineId: creds.machineId,
+    cwd: s.cwd,
+    transcriptPath: s.transcriptPath,
+    cutoff: iso,
+  });
+  const view = reduce(events);
+  const req = view.requests.at(-1);
+  // Claude's own map only; a request with none is the recap's.
+  if (!req || req.planInferred || req.recap) return none;
+  const mine = prior?.request === req.id ? prior : undefined;
+  if (mine?.tried && t - Date.parse(mine.tried) < REFRESH_EVERY_MS) return none;
+  const own = events.filter((e) => e.ts >= req.startedAt);
+  const st = planState(own, mine);
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  const stale =
+    tasks.some((x) => st.statuses.get(x.id) !== "done") &&
+    (st.reports >= STALE_REPORTS || t - st.changed >= STALE_MS);
+  if (!stale) return none;
+
+  // Marked before it is asked: whatever comes back, not again for 30 minutes.
+  updateSession(sessionId, {
+    refresh: { ...mine, checked: iso, request: req.id, tried: iso },
+  });
+  const plan = {
+    goal: req.goal,
+    phases: req.phases.map((ph) => ({
+      id: ph.id,
+      title: ph.title,
+      tasks: ph.tasks.map((x) => ({
+        id: x.id,
+        title: x.title,
+        part: x.part,
+        status: st.statuses.get(x.id) ?? "not started",
+      })),
+    })),
+    parts: req.parts.map((p) => ({ id: p.id, title: p.title })),
+  };
+  const calls = callsByRequest(events, new Set([req.id])).get(req.id) ?? [];
+  const input = recapInput(
+    req,
+    view.cwd,
+    calls,
+    `${REFRESH_INSTRUCTIONS}\n\n## The plan now\n${JSON.stringify(plan)}\n\n## Helper reports, in order\n${reportsInput(own)}`,
+  );
+  const r = await ask(input, env, timeoutMs);
+  const secs = (r.ms / 1000).toFixed(1);
+  const answer = r.ok ? RefreshInput.safeParse(r.json) : undefined;
+  const ids = new Set([
+    ...tasks.map((x) => `task:${x.id}`),
+    ...req.parts.map((p) => `part:${p.id}`),
+  ]);
+  const reason = !r.ok
+    ? r.why
+    : !answer?.success
+      ? refused("a refresh", answer)
+      : [
+            ...answer.data.tasks.map((x) => `task:${x.id}`),
+            ...answer.data.parts.map((p) => `part:${p.id}`),
+          ].find((id) => !ids.has(id))
+        ? "it names an id the plan does not have"
+        : undefined;
+  if (reason || !answer?.success) {
+    log(`murmur refresh: ${req.id} kept the plan: ${reason} (${secs} s)`);
+    return { ran: 1, ok: 0 };
+  }
+  for (const e of refreshEvents(
+    req,
+    answer.data,
+    st,
+    events.find((e) => e.id === req.id) as MurmurEvent,
+    changedPaths(events),
+    t,
+  ))
+    enqueue(e);
+  updateSession(sessionId, {
+    refresh: {
+      checked: iso,
+      request: req.id,
+      tried: iso,
+      at: iso,
+      tasks: Object.fromEntries(answer.data.tasks.map((x) => [x.id, x.status])),
+    },
+  });
+  log(`murmur refresh: ${req.id} ok (${secs} s${costOf(r)})`);
+  return { ran: 1, ok: 1 };
+}
+
+/**
+ * A refresh as narrate events at its own time: each part's detail (an aim only where the
+ * part has none), each task's status, with its line as a step on its part when the status
+ * is news, then Claude's latest narrate again, so what is happening now stays Claude's.
+ */
+function refreshEvents(
+  req: RequestView,
+  r: RefreshInput,
+  st: PlanState,
+  base: MurmurEvent,
+  paths: Map<string, string>,
+  at: number,
+): MurmurEvent[] {
+  const { out, add } = emitter(
+    base,
+    `murmur-refresh:${req.id}:${new Date(at).toISOString()}`,
+    at,
+  );
+  for (const p of r.parts) {
+    const part = req.parts.find((x) => x.id === p.id);
+    const { aim, ...detail } = p;
+    add(
+      NARRATE_TOOL,
+      detailNarrate(
+        part?.title ?? p.id,
+        { ...detail, ...(aim && !part?.aim ? { aim } : {}) },
+        paths,
+      ),
+    );
+  }
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  for (const x of r.tasks) {
+    const news = st.statuses.get(x.id) !== x.status;
+    add(NARRATE_TOOL, {
+      now: x.ended,
+      why: "",
+      task: x.id,
+      taskStatus: x.status,
+      ...(news && tasks.find((y) => y.id === x.id)?.part
+        ? { step: { text: x.ended, status: x.status } }
+        : {}),
+    });
+  }
+  if (st.last) add(NARRATE_TOOL, st.last);
   return out;
 }

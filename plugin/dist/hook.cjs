@@ -19856,30 +19856,36 @@ var NarrateInput = external_exports.object({
   ).optional(),
   words: list(external_exports.object({ term: text, meaning: text })).optional()
 });
+var PartDetail = NarrateInput.pick({
+  aim: true,
+  choices: true,
+  checks: true,
+  words: true,
+  files: true
+}).extend({ id: text });
+var TaskEnd = external_exports.object({ id: text, status, ended: external_exports.string().max(200) });
+var unique = (ids) => new Set(ids).size === ids.length;
 var RecapInput = external_exports.object({
   map: MapInput,
   parts: list(
-    NarrateInput.pick({
-      aim: true,
-      choices: true,
-      checks: true,
-      words: true,
-      files: true
-    }).extend({
-      id: text,
+    PartDetail.extend({
       steps: list(external_exports.object({ text, status })).optional(),
       helpers: external_exports.array(text).max(40).optional()
     })
   ),
-  tasks: external_exports.array(external_exports.object({ id: text, status, ended: external_exports.string().max(200) })).max(100)
+  tasks: external_exports.array(TaskEnd).max(100)
 }).refine(({ map: map2, parts }) => {
   const ids = new Set(map2.parts.map((p) => p.id));
   const tasks = map2.phases.flatMap((ph) => ph.tasks);
   return tasks.every((t) => t.part === void 0 || ids.has(t.part)) && parts.every((p) => ids.has(p.id));
-}, "every part a task or detail names is in the map").refine(({ map: map2, parts, tasks }) => {
-  const once = (ids) => new Set(ids).size === ids.length;
-  return once(map2.parts.map((p) => p.id)) && once(map2.phases.flatMap((ph) => ph.tasks.map((t) => t.id))) && once(parts.map((p) => p.id)) && once(tasks.map((t) => t.id));
-}, "part and task ids are unique");
+}, "every part a task or detail names is in the map").refine(
+  ({ map: map2, parts, tasks }) => unique(map2.parts.map((p) => p.id)) && unique(map2.phases.flatMap((ph) => ph.tasks.map((t) => t.id))) && unique(parts.map((p) => p.id)) && unique(tasks.map((t) => t.id)),
+  "part and task ids are unique"
+);
+var RefreshInput = external_exports.object({ tasks: external_exports.array(TaskEnd).max(100), parts: list(PartDetail) }).refine(
+  ({ parts, tasks }) => unique(parts.map((p) => p.id)) && unique(tasks.map((t) => t.id)),
+  "part and task ids are unique"
+);
 
 // ../packages/core/src/scrub.ts
 var MAX_STRING = 262144;
@@ -19946,16 +19952,16 @@ var isEnvFile = (o) => [o.file_path, o.filePath].some(
 function walk(v, env = false, max = MAX_STRING) {
   if (typeof v === "string") {
     const limit = max + CUT - MAX_STRING;
-    let cut2 = v.length > limit ? v.slice(0, limit) : v;
-    if (cut2.length < v.length) {
-      let i = cut2.length;
-      while (i > 0 && i > cut2.length - 1024 && !/\s/.test(cut2[i - 1]))
+    let cut3 = v.length > limit ? v.slice(0, limit) : v;
+    if (cut3.length < v.length) {
+      let i = cut3.length;
+      while (i > 0 && i > cut3.length - 1024 && !/\s/.test(cut3[i - 1]))
         i--;
-      cut2 = cut2.slice(0, i);
+      cut3 = cut3.slice(0, i);
     }
-    const s = scrubString(env ? cut2.replace(ANY_ASSIGN, `$1${R}`) : cut2);
+    const s = scrubString(env ? cut3.replace(ANY_ASSIGN, `$1${R}`) : cut3);
     const over = Math.max(0, s.length - max);
-    const n = v.length - cut2.length + over;
+    const n = v.length - cut3.length + over;
     return n > 0 ? `${s.slice(0, max)}\u2026[truncated ${n} chars]` : s;
   }
   if (Array.isArray(v)) return v.map((x) => walk(x, env, max));
@@ -21386,6 +21392,11 @@ var MESSAGE_MAX = 3e3;
 var MAX_REQUESTS = 5;
 var BUDGET_MS = 15e4;
 var TEXT_MAX = 300;
+var MINUTE = 6e4;
+var CHECK_MS = 5 * MINUTE;
+var REFRESH_EVERY_MS = 30 * MINUTE;
+var STALE_MS = 20 * MINUTE;
+var STALE_REPORTS = 3;
 function lastRequestOpen(trigger) {
   return !(trigger === "UserPromptSubmit" || trigger?.startsWith("SessionStart:") && trigger !== "SessionStart:compact");
 }
@@ -21436,7 +21447,7 @@ Answer with one JSON object and nothing else, in exactly this shape:
 }
 Rules: a part is one piece of the work (a task, a fix, a screen), not a folder. "map.parts" lists every part, and every task's "part" and every entry of "parts" uses one of those ids. Every task in "map" has one entry in "tasks". Keep the person's own names for things ("Task 1: ..."). Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
 var time3 = (ts) => ts.slice(11, 16);
-function recapInput(req, cwd, calls = []) {
+function recapInput(req, cwd, calls = [], instructions = INSTRUCTIONS) {
   const used = /* @__PURE__ */ new Set();
   const helpers = calls.map((c, i) => {
     const input3 = c.payload.tool_input ?? {};
@@ -21459,7 +21470,7 @@ function recapInput(req, cwd, calls = []) {
     (f) => `${f.path} (+${f.added} -${f.removed}${f.isNew ? ", new" : ""})`
   );
   const head = [
-    INSTRUCTIONS,
+    instructions,
     `
 Project folder: ${cwd}`,
     `
@@ -21555,77 +21566,31 @@ function parse3(stdout) {
   } catch {
     return { ok: false, why: "the answer is not JSON" };
   }
-  const recap = RecapInput.safeParse(json2);
-  if (!recap.success)
-    return {
-      ok: false,
-      why: `the answer is not a recap (${recap.error.issues[0]?.path.join(".")})`
-    };
   const cost = typeof res.total_cost_usd === "number" ? res.total_cost_usd : void 0;
-  return {
-    ok: true,
-    recap: recap.data,
-    ...cost === void 0 ? {} : { cost }
-  };
+  return { ok: true, json: json2, ...cost === void 0 ? {} : { cost } };
 }
+var costOf = (r) => r.ok && r.cost !== void 0 ? `, $${r.cost.toFixed(4)}` : "";
+var refused = (what, r) => `the answer is not ${what} (${r?.error?.issues[0]?.path.join(".")})`;
 function recapEvents(req, recap, helperIds, base, paths = /* @__PURE__ */ new Map()) {
-  const out = [];
-  const at = Date.parse(req.startedAt);
-  const add = (tool, input3, extra = {}) => {
-    const k = out.length + 1;
-    const payload = {
-      hook_event_name: "PostToolUse",
-      session_id: base.sessionId,
-      cwd: base.cwd,
-      tool_name: tool,
-      tool_input: input3,
-      tool_use_id: `murmur-recap:${req.id}:${k}`,
-      recap: true,
-      ...extra
-    };
-    out.push(
-      scrubEvent({
-        id: stableId(base.sessionId, "PostToolUse", payload),
-        sessionId: base.sessionId,
-        machineId: base.machineId,
-        cwd: base.cwd,
-        // A millisecond apart just after the prompt, in order, before what Claude did.
-        ts: new Date(at + k).toISOString(),
-        hook: "PostToolUse",
-        payload
-      })
-    );
-  };
-  const cut2 = (s) => s.slice(0, 200);
+  const { out, add } = emitter(
+    base,
+    `murmur-recap:${req.id}`,
+    Date.parse(req.startedAt)
+  );
   add(MAP_TOOL, recap.map);
   const tasks = recap.map.phases.flatMap((ph) => ph.tasks);
   for (const p of recap.parts) {
     const title = recap.map.parts.find((x) => x.id === p.id)?.title ?? p.id;
-    const { id, steps, helpers, files, ...detail } = p;
-    add(NARRATE_TOOL, {
-      now: cut2(title),
-      why: "",
-      part: id,
-      ...detail,
-      // Named by the path it was changed at, so it matches whatever cwd reads it.
-      ...files ? {
-        files: files.map((f) => {
-          const full = paths.get(f.path);
-          return {
-            ...f,
-            path: full && full.length <= TEXT_MAX ? full : f.path
-          };
-        })
-      } : {}
-    });
+    const { steps, helpers, ...detail } = p;
+    add(NARRATE_TOOL, detailNarrate(title, detail, paths));
     for (const step of steps ?? [])
-      add(NARRATE_TOOL, { now: cut2(step.text), why: "", part: id, step });
+      add(NARRATE_TOOL, { now: cut2(step.text), why: "", part: p.id, step });
     for (const h of helpers ?? []) {
       const agentId = helperIds[Number(/^H(\d+)$/.exec(h)?.[1]) - 1];
       if (agentId)
         add(
           NARRATE_TOOL,
-          { now: cut2(title), why: "", part: id },
+          { now: cut2(title), why: "", part: p.id },
           { agent_id: agentId }
         );
     }
@@ -21644,6 +21609,58 @@ function recapEvents(req, recap, helperIds, base, paths = /* @__PURE__ */ new Ma
   add(NARRATE_TOOL, { now: cut2(recap.map.goal), why: "" });
   return out;
 }
+var cut2 = (s) => s.slice(0, 200);
+function emitter(base, key, at) {
+  const out = [];
+  const add = (tool, input3, extra = {}) => {
+    const k = out.length + 1;
+    const payload = {
+      hook_event_name: "PostToolUse",
+      session_id: base.sessionId,
+      cwd: base.cwd,
+      tool_name: tool,
+      tool_input: input3,
+      tool_use_id: `${key}:${k}`,
+      recap: true,
+      ...extra
+    };
+    out.push(
+      scrubEvent({
+        id: stableId(base.sessionId, "PostToolUse", payload),
+        sessionId: base.sessionId,
+        machineId: base.machineId,
+        cwd: base.cwd,
+        ts: new Date(at + k).toISOString(),
+        hook: "PostToolUse",
+        payload
+      })
+    );
+  };
+  return { out, add };
+}
+function detailNarrate(title, { id, files, ...detail }, paths) {
+  return {
+    now: cut2(title),
+    why: "",
+    part: id,
+    ...detail,
+    // Named by the path it was changed at, so it matches whatever cwd reads it.
+    ...files ? {
+      files: files.map((f) => {
+        const full = paths.get(f.path);
+        return {
+          ...f,
+          path: full && full.length <= TEXT_MAX ? full : f.path
+        };
+      })
+    } : {}
+  };
+}
+function sending(sessionId, cwd) {
+  const s = readSession(sessionId);
+  const at = s.cwd ?? cwd;
+  return readCredentials() !== null && !isRevoked() && sessionProjectState(at, sessionId) === "on" && !isPaused(at, sessionId) && !(s.project !== void 0 && isPaused(s.project));
+}
 async function runRecap(sessionId, events, {
   env = process.env,
   timeoutMs = TIMEOUT_MS,
@@ -21659,11 +21676,6 @@ async function runRecap(sessionId, events, {
   const done = new Set(readSession(sessionId).recapped ?? []);
   const last = view.requests.at(-1);
   const queue = view.requests.filter((r) => r.planInferred && !(lastOpen && r === last)).reverse().slice(0, MAX_REQUESTS).filter((r) => !done.has(r.id));
-  const sending = () => {
-    const s = readSession(sessionId);
-    const cwd = s.cwd ?? view.cwd;
-    return readCredentials() !== null && !isRevoked() && sessionProjectState(cwd, sessionId) === "on" && !isPaused(cwd, sessionId) && !(s.project !== void 0 && isPaused(s.project));
-  };
   const byId = new Map(events.map((e) => [e.id, e]));
   const calls = callsByRequest(events, new Set(view.requests.map((r) => r.id)));
   const paths = changedPaths(events);
@@ -21671,16 +21683,18 @@ async function runRecap(sessionId, events, {
   let ran = 0;
   const worker = async () => {
     for (let req = queue.shift(); req; req = queue.shift()) {
-      if (Date.now() - t0 > budgetMs || !sending()) return;
+      if (Date.now() - t0 > budgetMs || !sending(sessionId, view.cwd)) return;
       const s = readSession(sessionId);
       updateSession(sessionId, { recapped: [...s.recapped ?? [], req.id] });
       ran++;
       const mine = calls.get(req.id) ?? [];
       const r = await ask(recapInput(req, view.cwd, mine), env, timeoutMs);
       const secs = (r.ms / 1e3).toFixed(1);
-      if (!r.ok) {
+      const recap = r.ok ? RecapInput.safeParse(r.json) : void 0;
+      if (!recap?.success) {
+        const reason = r.ok ? refused("a recap", recap) : r.why;
         log(
-          `murmur recap: ${req.id} kept the inferred view: ${r.why} (${secs} s)`
+          `murmur recap: ${req.id} kept the inferred view: ${reason} (${secs} s)`
         );
         continue;
       }
@@ -21692,16 +21706,14 @@ async function runRecap(sessionId, events, {
       });
       for (const e of recapEvents(
         req,
-        r.recap,
+        recap.data,
         helperIds,
         byId.get(req.id),
         paths
       ))
         enqueue(e);
       ok++;
-      log(
-        `murmur recap: ${req.id} ok (${secs} s${r.cost === void 0 ? "" : `, $${r.cost.toFixed(4)}`})`
-      );
+      log(`murmur recap: ${req.id} ok (${secs} s${costOf(r)})`);
     }
   };
   await Promise.all(Array.from({ length: PARALLEL }, worker));
@@ -21736,13 +21748,224 @@ function changedPaths(events) {
   }
   return out;
 }
+function reportOf2(e) {
+  if (e.hook === "UserPromptSubmit") {
+    const p = e.payload.prompt;
+    const n = typeof p === "string" ? parseNotification(p, e.ts) : void 0;
+    return n && !n.report.interim ? n.report.text || n.report.summary : void 0;
+  }
+  const res = e.payload.tool_response ?? {};
+  if (e.hook !== "PostToolUse" || e.payload.tool_name !== "Agent" || e.payload.agent_id || res.status === "async_launched" || res.isAsync === true)
+    return void 0;
+  const content = Array.isArray(res.content) ? res.content : [];
+  return content.map((b) => typeof b?.text === "string" ? b.text : "").join("\n");
+}
+function reportsInput(events) {
+  const lines = [];
+  let size = 0;
+  for (const e of events.toReversed()) {
+    const text3 = reportOf2(e);
+    if (text3 === void 0) continue;
+    const line = `[${time3(e.ts)}] ${text3.length > 1500 ? `${text3.slice(0, 1500)}\u2026` : text3}`;
+    if (size + line.length > 25e3) break;
+    lines.unshift(line);
+    size += line.length;
+  }
+  return lines.join("\n") || "none";
+}
+function planState(events, prior) {
+  const st = { statuses: /* @__PURE__ */ new Map(), changed: NaN, reports: 0 };
+  const set2 = (task, status2, ts) => {
+    if (st.statuses.get(task) === status2) return;
+    st.statuses.set(task, status2);
+    st.changed = Date.parse(ts);
+    st.reports = 0;
+  };
+  let pending = prior?.at && prior.tasks ? prior : void 0;
+  for (const e of events) {
+    if (pending && e.ts > pending.at) {
+      for (const [id, s] of Object.entries(pending.tasks ?? {}))
+        set2(id, s, pending.at);
+      pending = void 0;
+    }
+    const input3 = e.hook === "PostToolUse" ? e.payload.tool_input : void 0;
+    if (e.payload.tool_name === MAP_TOOL && MapInput.safeParse(input3).success) {
+      if (Number.isNaN(st.changed)) st.changed = Date.parse(e.ts);
+      continue;
+    }
+    const n = e.payload.tool_name === NARRATE_TOOL ? NarrateInput.safeParse(input3) : void 0;
+    if (n?.success) {
+      const { now, why, part, task, taskStatus } = n.data;
+      st.last = {
+        now,
+        why,
+        ...part ? { part } : {},
+        ...task ? { task } : {}
+      };
+      if (task && taskStatus) set2(task, taskStatus, e.ts);
+    } else if (reportOf2(e) !== void 0) st.reports++;
+  }
+  if (pending)
+    for (const [id, s] of Object.entries(pending.tasks ?? {}))
+      set2(id, s, pending.at);
+  return st;
+}
+var REFRESH_INSTRUCTIONS = `You bring the plan of one request in a Claude Code session up to date for Murmur, a page that shows a coding session as a story to the person who asked for it.
+Claude drew this plan itself at the start, but did not always say when a task moved on. Below is the plan as Murmur shows it now, with each task's status, then the person's request, what the helpers reported, the helpers Claude started (H1, H2, ... with what each was asked), the files changed, and Claude's own messages in order.
+Answer with one JSON object and nothing else, in exactly this shape:
+{
+  "tasks": [{ "id": "<task id from the plan>", "status": "done" | "failed" | "running", "ended": "one line on how it ended, or where it stands" }],
+  "parts": [{
+    "id": "<part id from the plan>",
+    "aim": { "aim": "what this part is for", "doneWhen": "how we know it is done" },
+    "choices": [{ "choice": "...", "reason": "...", "assumption": false }],
+    "checks": [{ "check": "...", "status": "pass" | "fail" | "untried" }],
+    "words": [{ "term": "a word the person may not know", "meaning": "plain meaning" }],
+    "files": [{ "path": "<copied exactly from the file list>", "role": "what it does" }]
+  }]
+}
+Rules: use only the task and part ids in the plan, exactly as written; never add, rename or drop one. Give one entry in "tasks" for every task that has started. A task is "done" only when the material shows it finished (a helper reported it done, Claude said so, a commit or review passed); "running" while it is under way; "failed" when it was given up or is blocked. Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
+async function runRefresh(sessionId, {
+  env = process.env,
+  now = /* @__PURE__ */ new Date(),
+  timeoutMs = TIMEOUT_MS,
+  log = (l) => process.stderr.write(`${l}
+`)
+} = {}) {
+  const none = { ran: 0, ok: 0 };
+  if (env.MURMUR_RECAP === "0" || env.MURMUR_RECAP_RUN === "1" || isHeadless(env))
+    return none;
+  const s = readSession(sessionId);
+  const creds = readCredentials();
+  const t = now.getTime();
+  const iso = now.toISOString();
+  if (s.backfill !== "done" || !s.transcriptPath || !s.cwd || !creds || !sending(sessionId, s.cwd))
+    return none;
+  const prior = s.refresh;
+  if (prior && t - Date.parse(prior.checked) < CHECK_MS) return none;
+  updateSession(sessionId, { refresh: { ...prior, checked: iso } });
+  const events = readBackfill({
+    sessionId,
+    machineId: creds.machineId,
+    cwd: s.cwd,
+    transcriptPath: s.transcriptPath,
+    cutoff: iso
+  });
+  const view = reduce(events);
+  const req = view.requests.at(-1);
+  if (!req || req.planInferred || req.recap) return none;
+  const mine = prior?.request === req.id ? prior : void 0;
+  if (mine?.tried && t - Date.parse(mine.tried) < REFRESH_EVERY_MS) return none;
+  const own2 = events.filter((e) => e.ts >= req.startedAt);
+  const st = planState(own2, mine);
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  const stale = tasks.some((x) => st.statuses.get(x.id) !== "done") && (st.reports >= STALE_REPORTS || t - st.changed >= STALE_MS);
+  if (!stale) return none;
+  updateSession(sessionId, {
+    refresh: { ...mine, checked: iso, request: req.id, tried: iso }
+  });
+  const plan = {
+    goal: req.goal,
+    phases: req.phases.map((ph) => ({
+      id: ph.id,
+      title: ph.title,
+      tasks: ph.tasks.map((x) => ({
+        id: x.id,
+        title: x.title,
+        part: x.part,
+        status: st.statuses.get(x.id) ?? "not started"
+      }))
+    })),
+    parts: req.parts.map((p) => ({ id: p.id, title: p.title }))
+  };
+  const calls = callsByRequest(events, /* @__PURE__ */ new Set([req.id])).get(req.id) ?? [];
+  const input3 = recapInput(
+    req,
+    view.cwd,
+    calls,
+    `${REFRESH_INSTRUCTIONS}
+
+## The plan now
+${JSON.stringify(plan)}
+
+## Helper reports, in order
+${reportsInput(own2)}`
+  );
+  const r = await ask(input3, env, timeoutMs);
+  const secs = (r.ms / 1e3).toFixed(1);
+  const answer = r.ok ? RefreshInput.safeParse(r.json) : void 0;
+  const ids = /* @__PURE__ */ new Set([
+    ...tasks.map((x) => `task:${x.id}`),
+    ...req.parts.map((p) => `part:${p.id}`)
+  ]);
+  const reason = !r.ok ? r.why : !answer?.success ? refused("a refresh", answer) : [
+    ...answer.data.tasks.map((x) => `task:${x.id}`),
+    ...answer.data.parts.map((p) => `part:${p.id}`)
+  ].find((id) => !ids.has(id)) ? "it names an id the plan does not have" : void 0;
+  if (reason || !answer?.success) {
+    log(`murmur refresh: ${req.id} kept the plan: ${reason} (${secs} s)`);
+    return { ran: 1, ok: 0 };
+  }
+  for (const e of refreshEvents(
+    req,
+    answer.data,
+    st,
+    events.find((e2) => e2.id === req.id),
+    changedPaths(events),
+    t
+  ))
+    enqueue(e);
+  updateSession(sessionId, {
+    refresh: {
+      checked: iso,
+      request: req.id,
+      tried: iso,
+      at: iso,
+      tasks: Object.fromEntries(answer.data.tasks.map((x) => [x.id, x.status]))
+    }
+  });
+  log(`murmur refresh: ${req.id} ok (${secs} s${costOf(r)})`);
+  return { ran: 1, ok: 1 };
+}
+function refreshEvents(req, r, st, base, paths, at) {
+  const { out, add } = emitter(
+    base,
+    `murmur-refresh:${req.id}:${new Date(at).toISOString()}`,
+    at
+  );
+  for (const p of r.parts) {
+    const part = req.parts.find((x) => x.id === p.id);
+    const { aim, ...detail } = p;
+    add(
+      NARRATE_TOOL,
+      detailNarrate(
+        part?.title ?? p.id,
+        { ...detail, ...aim && !part?.aim ? { aim } : {} },
+        paths
+      )
+    );
+  }
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  for (const x of r.tasks) {
+    const news = st.statuses.get(x.id) !== x.status;
+    add(NARRATE_TOOL, {
+      now: x.ended,
+      why: "",
+      task: x.id,
+      taskStatus: x.status,
+      ...news && tasks.find((y) => y.id === x.id)?.part ? { step: { text: x.ended, status: x.status } } : {}
+    });
+  }
+  if (st.last) add(NARRATE_TOOL, st.last);
+  return out;
+}
 
 // src/backfill.ts
 var MAX_EVENTS2 = 1e4;
 var MAX_BYTES2 = 4e7;
 var TAIL_BYTES = 512e6;
 var CHUNK = 1 << 20;
-var STALE_MS = 10 * 6e4;
+var STALE_MS2 = 10 * 6e4;
 function uuidFrom(key) {
   const h = (0, import_node_crypto.createHash)("sha1").update(key).digest("hex");
   const variant = (Number.parseInt(h[16], 16) & 3 | 8).toString(16);
@@ -21834,7 +22057,7 @@ function promptText(content) {
 }
 function backfillStale(s, now) {
   if (s.backfill !== "pending" && s.backfill !== "running") return false;
-  return !(now - Date.parse(s.runningSince ?? s.cutoff ?? "") <= STALE_MS);
+  return !(now - Date.parse(s.runningSince ?? s.cutoff ?? "") <= STALE_MS2);
 }
 function entryEvent(b, e, index, hook, fields) {
   const cwd = str6(e.cwd) ?? b.cwd;
@@ -22212,6 +22435,7 @@ function trackNarration(sessionId, hook, p, prompt) {
   return out;
 }
 var BACKFILL = process.argv.indexOf("--backfill");
+var REFRESH = process.argv.includes("--refresh");
 async function main() {
   const creds = readCredentials();
   const flushAt = process.argv.indexOf("--flush");
@@ -22219,6 +22443,8 @@ async function main() {
     const id = process.argv[flushAt + 1];
     if (id) catchUpText(id);
     if (creds) await flush(creds);
+    if (id && REFRESH && (await runRefresh(id)).ok && creds)
+      await flush(creds, { budgetMs: 3e4 });
     return;
   }
   if (BACKFILL >= 0) {
@@ -22240,7 +22466,11 @@ async function main() {
   if (!event || !creds) return;
   enqueue(event);
   if (backfill || SYNC_HOOKS.has(event.hook)) {
-    const args = backfill ? ["--backfill", backfill] : ["--flush", event.sessionId];
+    const args = backfill ? ["--backfill", backfill] : [
+      "--flush",
+      event.sessionId,
+      ...event.hook === "Stop" && !stdout ? ["--refresh"] : []
+    ];
     (0, import_node_child_process2.spawn)(process.execPath, [process.argv[1], ...args], {
       detached: true,
       stdio: "ignore",
@@ -22256,7 +22486,7 @@ if (/[\\/]hook\.(c?js|ts)$/.test(process.argv[1] ?? "")) {
   process.on("uncaughtException", done);
   process.stdout.on("error", () => {
   });
-  setTimeout(done, BACKFILL >= 0 ? 24e4 : 5e3).unref();
+  setTimeout(done, BACKFILL >= 0 || REFRESH ? 24e4 : 5e3).unref();
   main().then(done, done);
 }
 // Annotate the CommonJS export names for ESM import in node:

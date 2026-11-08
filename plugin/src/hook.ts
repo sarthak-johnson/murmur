@@ -36,6 +36,7 @@ import {
   updateSession,
   writeSession,
 } from "./local.js";
+import { runRefresh } from "./recap.js";
 import { enqueue, flush } from "./upload.js";
 
 const askLine = (cwd: string) =>
@@ -258,6 +259,7 @@ function trackNarration(
 }
 
 const BACKFILL = process.argv.indexOf("--backfill");
+const REFRESH = process.argv.includes("--refresh");
 
 async function main(): Promise<void> {
   const creds = readCredentials();
@@ -267,6 +269,9 @@ async function main(): Promise<void> {
     const id = process.argv[flushAt + 1];
     if (id) catchUpText(id);
     if (creds) await flush(creds);
+    // After a Stop: the latest request's plan, when Claude stopped keeping it true.
+    if (id && REFRESH && (await runRefresh(id)).ok && creds)
+      await flush(creds, { budgetMs: 30_000 });
     return;
   }
   if (BACKFILL >= 0) {
@@ -290,9 +295,14 @@ async function main(): Promise<void> {
   // Synchronous hooks never wait on the network: their upload runs in a detached
   // process, as does a backfill, which flushes this event too.
   if (backfill || SYNC_HOOKS.has(event.hook)) {
+    // A Stop that lets Claude finish may also refresh the plan; the child decides.
     const args = backfill
       ? ["--backfill", backfill]
-      : ["--flush", event.sessionId];
+      : [
+          "--flush",
+          event.sessionId,
+          ...(event.hook === "Stop" && !stdout ? ["--refresh"] : []),
+        ];
     spawn(process.execPath, [process.argv[1] as string, ...args], {
       detached: true,
       stdio: "ignore",
@@ -305,11 +315,11 @@ async function main(): Promise<void> {
 const SYNC_HOOKS = new Set(["SessionStart", "Stop", "UserPromptSubmit"]);
 
 // Never block or fail Claude: always exit 0, and within 5 s whatever happens. A
-// backfill runs detached, so it gets 4 minutes: its uploads and the recap's runs.
+// backfill or a refresh runs detached, so it gets 4 minutes: its uploads and its asks.
 if (/[\\/]hook\.(c?js|ts)$/.test(process.argv[1] ?? "")) {
   const done = () => process.exit(0);
   process.on("uncaughtException", done);
   process.stdout.on("error", () => {});
-  setTimeout(done, BACKFILL >= 0 ? 240_000 : 5000).unref();
+  setTimeout(done, BACKFILL >= 0 || REFRESH ? 240_000 : 5000).unref();
   main().then(done, done);
 }

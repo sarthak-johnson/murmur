@@ -446,6 +446,159 @@ JSON
     expect(state.recapped).toHaveLength(1);
   });
 
+  it("Stop's child refreshes a stale plan with the user's claude, and that run itself sends nothing", async () => {
+    const posted: {
+      sessionId: string;
+      payload: { recap?: boolean; tool_name?: string };
+    }[] = [];
+    const server = await listen((req, res) => {
+      let body = "";
+      req.on("data", (c) => {
+        body += c;
+      });
+      req.on("end", () => {
+        posted.push(...JSON.parse(body).events);
+        res.setHeader("Content-Type", "application/json");
+        res.end("{}");
+      });
+    });
+    const dir = env.MURMUR_HOME as string;
+    fs.mkdirSync(path.join(dir, "sessions"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "credentials.json"),
+      JSON.stringify({ server, token: "t", machineId: "m1" }),
+    );
+    expect((await murmur("on", repo)).code).toBe(0);
+    // A request Claude mapped half an hour ago, then three helper reports and no narrate.
+    const ago = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+    const map = {
+      kind: "feature",
+      goal: "Agent page",
+      phases: [
+        {
+          id: "p1",
+          title: "Build",
+          tasks: [{ id: "t1", title: "Header", part: "head" }],
+        },
+      ],
+      parts: [{ id: "head", title: "Header" }],
+    };
+    const lines = [
+      {
+        type: "user",
+        uuid: "u1",
+        timestamp: ago(30),
+        origin: { kind: "human" },
+        message: { content: "Build the agent page" },
+      },
+      {
+        type: "assistant",
+        uuid: "u2",
+        timestamp: ago(29),
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_map",
+              name: "mcp__plugin_murmur_murmur__map",
+              input: map,
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        uuid: "u3",
+        timestamp: ago(29),
+        message: {
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_map", content: "ok" },
+          ],
+        },
+      },
+      ...[3, 2, 1].map((m) => ({
+        type: "user",
+        uuid: `r${m}`,
+        timestamp: ago(m),
+        origin: { kind: "task-notification" },
+        message: {
+          content: `<task-notification><tool-use-id>toolu_a</tool-use-id><status>completed</status><summary>Agent "B" finished</summary><result>Status: DONE</result></task-notification>`,
+        },
+      })),
+    ];
+    const transcript = path.join(home, "s2.jsonl");
+    fs.writeFileSync(
+      transcript,
+      `${lines.map((l) => JSON.stringify({ cwd: repo, ...l })).join("\n")}\n`,
+    );
+    fs.writeFileSync(
+      path.join(dir, "sessions", "s2.json"),
+      JSON.stringify({
+        backfill: "done",
+        project: repo,
+        transcriptPath: transcript,
+        cwd: repo,
+        textOffset: fs.statSync(transcript).size,
+      }),
+    );
+    // A fake claude that runs the plugin's hook with the env it was given, as the recap test's.
+    const bin = path.join(home, "bin");
+    fs.mkdirSync(bin);
+    const answer = JSON.stringify([
+      {
+        type: "result",
+        is_error: false,
+        result: JSON.stringify({
+          tasks: [{ id: "t1", status: "done", ended: "Header built." }],
+          parts: [],
+        }),
+      },
+    ]);
+    fs.writeFileSync(
+      path.join(bin, "claude"),
+      `#!/bin/sh
+cat > /dev/null
+echo '{"hook_event_name":"UserPromptSubmit","session_id":"refresh-run","cwd":"${repo}","prompt":"refresh"}' | "${process.execPath}" "${root}/dist/hook.cjs" > /dev/null
+cat <<'JSON'
+${answer}
+JSON
+`,
+    );
+    fs.chmodSync(path.join(bin, "claude"), 0o755);
+    const { MURMUR_RECAP: _, ...rest } = env;
+    env = rest;
+    const t0 = Date.now();
+    const r = runHook(
+      "Stop",
+      {
+        hook_event_name: "Stop",
+        session_id: "s2",
+        cwd: repo,
+        transcript_path: transcript,
+      },
+      {
+        PATH: `${bin}:${process.env.PATH}`,
+        CLAUDE_CODE_ENTRYPOINT: "claude-vscode",
+        MURMUR_ALLOW_HEADLESS: "1",
+      },
+    );
+    expect(Date.now() - t0).toBeLessThan(1500);
+    expect(r.status).toBe(0);
+    for (let i = 0; i < 200 && !posted.some((e) => e.payload.recap); i++)
+      await new Promise((ok) => setTimeout(ok, 50));
+    const refresh = posted.filter((e) => e.payload.recap);
+    expect(refresh.length).toBeGreaterThan(0);
+    expect(
+      refresh.every(
+        (e) => e.payload.tool_name === "mcp__plugin_murmur_murmur__narrate",
+      ),
+    ).toBe(true);
+    // Nothing from the refresh run's own session.
+    expect(posted.map((e) => e.sessionId).filter((id) => id !== "s2")).toEqual(
+      [],
+    );
+  });
+
   it("bin/murmur login leaves a poller that stores the token", async () => {
     let polls = 0;
     const server = await listen((req, res) => {

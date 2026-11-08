@@ -270,6 +270,8 @@ export interface SessionState extends Narration {
   textOffset?: number;
   /** Imported requests (by id) the recap already asked about, whatever came back. */
   recapped?: string[];
+  /** The live plan's refresh (recap.ts `runRefresh`). */
+  refresh?: RefreshState;
   /** The narration instruction reached Claude in this session. */
   instructed?: boolean;
   /**
@@ -277,6 +279,17 @@ export interface SessionState extends Narration {
    * ran in it. Its events follow this project's state, wherever the session moves.
    */
   project?: string;
+}
+/** Where the refresh of a session's live plan stands. */
+export interface RefreshState {
+  /** When a child last looked; none looks again within 5 minutes, so one runs at a time. */
+  checked: string;
+  /** The request last asked about, and when. */
+  request?: string;
+  tried?: string;
+  /** For that request, when the last answer's events are timed, and the task statuses it set. */
+  at?: string;
+  tasks?: Record<string, string>;
 }
 const sessionFile = (sessionId: string) =>
   path.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
