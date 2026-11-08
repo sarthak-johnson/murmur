@@ -2265,6 +2265,12 @@ button.task-chip:hover {
 .run.out {
   padding: 0;
 }
+/* A label wider than the layout's estimate is cut, never spills onto its neighbour. */
+.run-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .run.out .run-label {
   position: absolute;
   left: calc(100% + 6px);
