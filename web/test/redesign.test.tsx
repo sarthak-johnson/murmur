@@ -908,8 +908,8 @@ describe("task page", () => {
       ["Fixed", "run plain"],
     ]);
     expect(bars(1)).toEqual([["Sent back", "run bad"]]);
-    // A one-minute recheck is too short for its word: it sits beside the bar.
-    expect(bars(2)).toEqual([["Passed", "run good out flip"]]);
+    // A one-minute recheck is too short for its word: it sits after the bar.
+    expect(bars(2)).toEqual([["Passed", "run good out"]]);
     // Bars sit on the axis by time: the axis runs 09:10 to 09:24 in 2 minute ticks.
     const review = within(timeline())
       .getAllByRole("listitem")[1]

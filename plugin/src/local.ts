@@ -270,6 +270,8 @@ export interface SessionState extends Narration {
   textOffset?: number;
   /** Imported requests (by id) the recap already asked about, whatever came back. */
   recapped?: string[];
+  /** Where the refresh state was kept before it had its own file (`readRefresh`). */
+  refresh?: RefreshState;
   /** The narration instruction reached Claude in this session. */
   instructed?: boolean;
   /**
@@ -278,8 +280,37 @@ export interface SessionState extends Narration {
    */
   project?: string;
 }
+/**
+ * Where the refresh of a session's live plan stands (recap.ts `runRefresh`), in
+ * sessions/<id>.refresh.json, so the hook's whole-file rewrites of the session file
+ * never drop it.
+ */
+export interface RefreshState {
+  /** When a child last looked; none looks again within 5 minutes, so one runs at a time. */
+  checked: string;
+  /** When the session was last asked about (any request, at most once per 30 minutes), and which request. */
+  tried?: string;
+  request?: string;
+  /** For that request, when the last answer's events are timed, and every task status then. */
+  at?: string;
+  tasks?: Record<string, string>;
+}
 const sessionFile = (sessionId: string) =>
   path.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
+const refreshFile = (sessionId: string) =>
+  sessionFile(sessionId).replace(/\.json$/, ".refresh.json");
+export function readRefresh(sessionId: string): RefreshState | undefined {
+  const r = readJson<Partial<RefreshState> | null>(
+    refreshFile(sessionId),
+    null,
+  );
+  if (r && typeof r.checked === "string") return r as RefreshState;
+  // Kept in the session file before it had its own.
+  return readSession(sessionId).refresh;
+}
+export function writeRefresh(sessionId: string, r: RefreshState): void {
+  writeJson(refreshFile(sessionId), r);
+}
 export const NO_NARRATION: Narration = {
   mapped: false,
   tasks: [],

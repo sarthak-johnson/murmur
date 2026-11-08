@@ -243,8 +243,9 @@ function PartBody(props: {
     .flatMap((p) => p.tasks)
     .find((t) => t.part === part.id && t.problem)?.problem;
   const helpers = partAgents(request, part);
+  const lanes = helperLanes(part, helpers, events);
   const judged = new Map(
-    helperLanes(part, helpers, events).map((l) => {
+    lanes.map((l) => {
       const tone = l.runs.at(-1)?.tone;
       return [l.a.id, tone === "good" ? ("done" as const) : tone];
     }),
@@ -266,6 +267,8 @@ function PartBody(props: {
   const times = [
     ...(request.recap ? [] : part.steps.map((s) => s.ts)),
     ...helpers.flatMap((a) => [a.startedAt, a.endedAt, a.report?.ts]),
+    // A helper sent back works on past its first stop.
+    ...lanes.flatMap((l) => l.runs.flatMap((r) => (r.running ? [] : [r.to]))),
   ]
     .filter(valid)
     .sort();

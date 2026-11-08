@@ -7,6 +7,9 @@
  *   names it; otherwise `todo`. (The latest narrate never overrides `done`.)
  * - Phase: `now` if any task in it is now or failed; `done` if it has tasks and all are done; else `todo`.
  * A narrate naming a task but no part lands on that task's part.
+ * A refresh's narrate (`refresh: true`, the plugin's catch-up of a plan Claude drew) sets
+ * statuses, steps and detail like any other, but is never the latest narrate: "now", and
+ * the part later changes go to, stay where Claude put them.
  * A repeated `map` takes the new order and titles, keeps the detail of ids seen before, and drops vanished ids.
  */
 import type { MurmurEvent } from "../events.js";
@@ -97,7 +100,9 @@ export function applyPlan(req: RequestView, events: MurmurEvent[]): Trace {
       else delete req.recap;
     }
     const note = NarrateInput.safeParse(input(e, NARRATE_TOOL));
-    if (note.success) {
+    if (note.success && e.payload.refresh === true)
+      applyNarrate(req, e, note.data, false);
+    else if (note.success) {
       last = applyNarrate(req, e, note.data);
       trace.narrated.push({ ...last, i, e, n: note.data });
     }
@@ -160,6 +165,7 @@ function applyNarrate(
   req: RequestView,
   e: MurmurEvent,
   n: NarrateInput,
+  setsNow = true,
 ): Named {
   const task = req.phases
     .flatMap((ph) => ph.tasks)
@@ -169,8 +175,10 @@ function applyNarrate(
   const part = req.parts.find((p) => p.id === partId);
   // Set when a subagent calls narrate itself.
   const agentId = str(e.payload.agent_id);
-  req.now = { text: n.now, why: n.why, ts: e.ts };
-  if (part) req.now.part = part.id;
+  if (setsNow) {
+    req.now = { text: n.now, why: n.why, ts: e.ts };
+    if (part) req.now.part = part.id;
+  }
   if (task && n.taskStatus) task.status = TASK_STATUS[n.taskStatus];
   if (task && n.taskStatus === "blocked") task.problem = n.now;
   if (task && agentId) addOnce(task.agents, agentId);

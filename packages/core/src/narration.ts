@@ -85,6 +85,18 @@ export const NarrateInput = z.object({
 });
 export type NarrateInput = z.infer<typeof NarrateInput>;
 
+/** Part detail as `narrate` carries it, by part id: what a recap or a refresh says of a part. */
+const PartDetail = NarrateInput.pick({
+  aim: true,
+  choices: true,
+  checks: true,
+  words: true,
+  files: true,
+}).extend({ id: text });
+/** One task's status and one line on how it ended or stands. */
+const TaskEnd = z.object({ id: text, status, ended: z.string().max(200) });
+const unique = (ids: string[]) => new Set(ids).size === ids.length;
+
 /**
  * What the recap asks the user's own Claude for, about one imported request it never
  * mapped: the `map` input, each part's detail as `narrate` carries it (plus its steps,
@@ -97,21 +109,12 @@ export const RecapInput = z
   .object({
     map: MapInput,
     parts: list(
-      NarrateInput.pick({
-        aim: true,
-        choices: true,
-        checks: true,
-        words: true,
-        files: true,
-      }).extend({
-        id: text,
+      PartDetail.extend({
         steps: list(z.object({ text, status })).optional(),
         helpers: z.array(text).max(40).optional(),
       }),
     ),
-    tasks: z
-      .array(z.object({ id: text, status, ended: z.string().max(200) }))
-      .max(100),
+    tasks: z.array(TaskEnd).max(100),
   })
   // A recap that names a part its map lacks would draw tasks and detail on nothing.
   .refine(({ map, parts }) => {
@@ -123,13 +126,27 @@ export const RecapInput = z
     );
   }, "every part a task or detail names is in the map")
   // Two parts or tasks with one id would merge into one, or one would vanish.
-  .refine(({ map, parts, tasks }) => {
-    const once = (ids: string[]) => new Set(ids).size === ids.length;
-    return (
-      once(map.parts.map((p) => p.id)) &&
-      once(map.phases.flatMap((ph) => ph.tasks.map((t) => t.id))) &&
-      once(parts.map((p) => p.id)) &&
-      once(tasks.map((t) => t.id))
-    );
-  }, "part and task ids are unique");
+  .refine(
+    ({ map, parts, tasks }) =>
+      unique(map.parts.map((p) => p.id)) &&
+      unique(map.phases.flatMap((ph) => ph.tasks.map((t) => t.id))) &&
+      unique(parts.map((p) => p.id)) &&
+      unique(tasks.map((t) => t.id)),
+    "part and task ids are unique",
+  );
 export type RecapInput = z.infer<typeof RecapInput>;
+
+/**
+ * What a refresh asks the user's own Claude for, about a request Claude mapped itself
+ * but stopped narrating: each task's status and one line on how it ended or stands, and
+ * part detail, by the ids of the request's map as it stands (the plugin refuses an id
+ * that map lacks). No map: the request keeps the one Claude drew.
+ */
+export const RefreshInput = z
+  .object({ tasks: z.array(TaskEnd).max(100), parts: list(PartDetail) })
+  .refine(
+    ({ parts, tasks }) =>
+      unique(parts.map((p) => p.id)) && unique(tasks.map((t) => t.id)),
+    "part and task ids are unique",
+  );
+export type RefreshInput = z.infer<typeof RefreshInput>;

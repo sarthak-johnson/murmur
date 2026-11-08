@@ -3,8 +3,9 @@
  * failed, amber only "needs you". Helpers get their own quiet hues, never a status one.
  * One thing glows: the live phase. Greys are a warm ramp (s1 canvas to s9), text a
  * four-step ladder (t1 to t4), each step above 4.5:1 on the surfaces it sits on.
- * Type: Geist for the interface, Geist Mono for code, times and numbers, Newsreader for
- * Claude's own words and page titles. Spacing is on a 4 px grid.
+ * Type: Geist for everything people read, Claude's words and titles too; Geist Mono for
+ * code, times and numbers. Hierarchy is size and weight alone: titles 600, Claude's
+ * words 400 with room between lines. Spacing is on a 4 px grid.
  */
 :root {
   color-scheme: dark;
@@ -48,7 +49,6 @@
   --faint: var(--t4);
   --agent: #a29de8;
   --font-ui: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-read: "Newsreader", "Iowan Old Style", Georgia, serif;
   --font-code: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --radius: 10px;
   --radius-l: 12px;
@@ -717,7 +717,7 @@ label {
 /* A long reading text, set for reading. */
 .reading {
   max-width: 72ch;
-  font: 15.5px / 1.65 var(--font-read);
+  font: 400 15px / 24px var(--font-ui);
   color: var(--text-2);
 }
 .fold-body.folded {
@@ -888,7 +888,7 @@ button.link.more {
 }
 .ev-brief {
   max-width: 72ch;
-  font: 15.5px / 1.6 var(--font-read);
+  font: 400 15px / 24px var(--font-ui);
   color: var(--text-2);
 }
 .ev-report {
@@ -1116,8 +1116,8 @@ svg.g {
   align-items: center;
   gap: 10px;
   color: var(--t1);
-  font: 500 21px / 1 var(--font-read);
-  letter-spacing: -0.01em;
+  font: 600 18px / 1 var(--font-ui);
+  letter-spacing: -0.02em;
   text-decoration: none;
 }
 a.brand:hover,
@@ -1452,7 +1452,8 @@ a.brand:focus-visible {
 .ph h3 {
   margin: 0;
   color: var(--t1);
-  font: 500 18px / 24px var(--font-read);
+  font: 600 16px / 22px var(--font-ui);
+  letter-spacing: -0.01em;
 }
 .ph a {
   color: inherit;
@@ -1648,8 +1649,8 @@ button.lt-in:hover {
   max-width: 860px;
   margin: 0;
   color: var(--t1);
-  font: 500 30px / 38px var(--font-read);
-  letter-spacing: -0.012em;
+  font: 600 28px / 36px var(--font-ui);
+  letter-spacing: -0.02em;
   overflow-wrap: break-word;
   text-wrap: pretty;
 }
@@ -1727,7 +1728,7 @@ button.lt-in:hover {
   max-width: 64ch;
   margin: 8px 0 0;
   color: var(--t1);
-  font: 400 21px / 31px var(--font-read);
+  font: 400 18px / 28px var(--font-ui);
 }
 .items {
   list-style: none;
@@ -1792,7 +1793,7 @@ button.lt-in:hover {
 .qq b {
   display: block;
   color: var(--t1);
-  font: 500 17px / 23px var(--font-read);
+  font: 600 16px / 23px var(--font-ui);
 }
 .qq p {
   margin: 3px 0 0;
@@ -1889,7 +1890,8 @@ button.lt-in:hover {
 .sect h2 {
   margin: 0;
   color: var(--t1);
-  font: 500 20px / 26px var(--font-read);
+  font: 600 18px / 26px var(--font-ui);
+  letter-spacing: -0.01em;
 }
 .sect span {
   color: var(--t3);
@@ -1942,7 +1944,7 @@ button.task-chip:hover {
 .story-text {
   max-width: 680px;
   color: var(--t1);
-  font: 400 18px / 28px var(--font-read);
+  font: 400 16px / 26px var(--font-ui);
 }
 .group-n {
   color: var(--t3);
@@ -2057,8 +2059,8 @@ button.task-chip:hover {
 .pd-title {
   margin: 0;
   color: var(--t1);
-  font: 500 42px / 48px var(--font-read);
-  letter-spacing: -0.018em;
+  font: 600 38px / 46px var(--font-ui);
+  letter-spacing: -0.025em;
   overflow-wrap: break-word;
 }
 .verdict {
@@ -2092,10 +2094,11 @@ button.task-chip:hover {
 .deck-text {
   margin: 0;
   color: var(--t2);
-  font: 400 21px / 31px var(--font-read);
+  font: 400 18px / 28px var(--font-ui);
 }
+/* No margin of its own: the space before it is the gap, and it vanishes when the tag
+   wraps to a line of its own, so the tag then lines up with the text above. */
 .deck .source {
-  margin-left: 4px;
   color: var(--t4);
   font: 500 12px var(--font-ui);
   white-space: nowrap;
@@ -2130,7 +2133,8 @@ button.task-chip:hover {
 .hh {
   margin: 0 0 10px;
   color: var(--t1);
-  font: 500 20px / 26px var(--font-read);
+  font: 600 18px / 26px var(--font-ui);
+  letter-spacing: -0.01em;
 }
 .hh .lbl-count {
   margin-left: 8px;
@@ -2145,7 +2149,7 @@ button.task-chip:hover {
 .mh {
   margin: 0 0 4px;
   color: var(--t1);
-  font: 500 17px / 24px var(--font-read);
+  font: 600 16px / 24px var(--font-ui);
 }
 
 /* How it went: one lane per helper on a shared time axis */
@@ -2199,12 +2203,47 @@ button.task-chip:hover {
   font-size: 13px;
   font-weight: 400;
 }
+.ticks span.from {
+  transform: none;
+}
+/* A long idle stretch cut out of the axis: a slashed mark above, a hatched band below. */
+.ticks .break {
+  height: 18px;
+  transform: none;
+}
+.ticks .break::before {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 5px;
+  height: 11px;
+  border-right: 1.5px solid var(--t4);
+  border-left: 1.5px solid var(--t4);
+  content: "";
+  transform: translateX(-50%) skewX(-24deg);
+}
 .tr {
   position: relative;
   height: 42px;
-  background-image: linear-gradient(90deg, var(--s4) 1px, transparent 1px);
-  background-size: var(--step, 100%) 100%;
   box-shadow: inset 0 -1px 0 var(--s4);
+}
+.tr .gl {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--s4);
+}
+.tr .gap {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    -60deg,
+    transparent 0 5px,
+    var(--s4) 5px 6px
+  );
+  opacity: 0.7;
 }
 .lane:last-child .tr {
   box-shadow: none;
@@ -2225,6 +2264,12 @@ button.task-chip:hover {
 }
 .run.out {
   padding: 0;
+}
+/* A label wider than the layout's estimate is cut, never spills onto its neighbour. */
+.run-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .run.out .run-label {
   position: absolute;
@@ -2360,13 +2405,13 @@ button.task-chip:hover {
   max-width: 640px;
   margin: 2px 0 0;
   color: var(--t1);
-  font: 400 17px / 27px var(--font-read);
+  font: 400 16px / 26px var(--font-ui);
 }
 .step-lead + .step-text {
   margin-top: 6px;
   color: var(--t2);
-  font-size: 16px;
-  line-height: 25px;
+  font-size: 15px;
+  line-height: 24px;
 }
 .step-acts {
   display: flex;

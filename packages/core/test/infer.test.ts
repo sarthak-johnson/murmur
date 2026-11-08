@@ -157,3 +157,42 @@ describe("now without narrate", () => {
     }
   });
 });
+
+describe("a refresh's narrate (recap: true, refresh: true)", () => {
+  const refresh = (n: number, input: unknown) => {
+    const e = narrateCall(n, input);
+    return { ...e, payload: { ...e.payload, recap: true, refresh: true } };
+  };
+  const events = [
+    prompt(0, "Add price alerts"),
+    mapCall(1, MAP),
+    narrateCall(2, note({ part: "api", task: "2.1", taskStatus: "running" })),
+    refresh(3, {
+      now: "Table made",
+      why: "",
+      task: "1.1",
+      taskStatus: "done",
+      step: { text: "Table made", status: "done" },
+    }),
+  ];
+
+  test("sets statuses and steps but leaves now where Claude put it", () => {
+    const r = req(...events);
+    expect(r?.now).toMatchObject({
+      text: "Writing the save endpoint",
+      ts: at(2, "Stop").ts,
+    });
+    expect(r?.phases[0]?.tasks[0]?.status).toBe("done");
+    expect(
+      r?.parts.find((p) => p.id === "db")?.steps.map((s) => s.text),
+    ).toEqual(["Table made"]);
+  });
+
+  test("a change after it goes to the part Claude last named", () => {
+    const r = req(...events, edit(4, "src/api.ts", ["+a"]));
+    expect(
+      r?.parts.find((p) => p.id === "api")?.files.map((f) => f.path),
+    ).toEqual(["src/api.ts"]);
+    expect(r?.parts.find((p) => p.id === "db")?.files).toEqual([]);
+  });
+});
