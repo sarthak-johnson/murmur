@@ -188,3 +188,72 @@ The one-time recap of an imported session is apart from this.
 
 - A task with no part has no step to carry its outcome line, and the refresh no longer sets "now", so for such a task only its status shows.
 - The duplicate outcome steps already on the author's session (from the 12:26 refresh) are still there.
+
+## Finished requests
+
+Found on the author's session: the refresh looked only at the latest request, so once he moved on, the previous request kept its stale plan for good.
+"Start Phase 2 of the Lit plate redesign" (`6a4a8307-...`) was 4 of 5 after the refresh, then read 0 of 5 again after a re-import deleted the refresh's events, and it was no longer the latest request.
+Branch `fix/refresh-finished-requests`, from main with PR #13 and PR #14.
+No real refresh was run.
+
+### Commit
+
+- `81b7e3d` fix(plugin): the refresh catches up finished requests too
+
+### What changed
+
+- **Candidates.** `pickRequest` walks the requests newest first and takes the first that qualifies.
+  Only plans Claude drew count (not inferred, not a recap).
+  The latest request qualifies by today's rules: an open task (not done or failed), something new since its own last ask, and 3 reports or 20 minutes since its last status change.
+  A finished request (a later one exists) qualifies with an open task, something new since its last ask (or none yet), and no final refresh yet.
+- **One final refresh.** A finished request is marked `final` before it is asked, so it is never asked again, whatever comes back.
+  Its events are timed just after its own last event, so core draws them on that request and not on the next; the latest request's are still timed at the refresh.
+- **Order and cost.** Still one ask per run, under the per-session 30-minute cap: the latest when stale, else the newest stale finished request; older ones catch up one per 30 minutes.
+- **State.** `sessions/<id>.refresh.json` keeps `checked` and `tried` for the session, and `requests: { <id>: { tried, final, at, tasks } }`.
+  The first version's one-request state (`request`, `at`, `tasks`, in that file or in the session file) is still read, as that request's entry.
+- **Imports.** `runBackfill` forgets every refresh when it starts (`clearRefresh`), since an import gives the server none of their events.
+  At its end it runs one refresh pass, when at least 75 s of the child's time is left, then flushes what it queued.
+  `runBackfill` takes an `env` (default `process.env`) and passes it to the recap and the refresh.
+
+### Tests, RED then GREEN
+
+| Suite | RED | GREEN |
+| --- | --- | --- |
+| plugin `refresh.test.ts`, finished requests (4 tests) | 4 failed: a finished stale request was never asked about (so no final refresh, and "never a second" saw no first), the finished request never caught up after the latest, the backfill ran no refresh | passed |
+| plugin `refresh.test.ts`, guards (5 tests) | passed by design: a final refresh that failed is not tried again, and headless, `MURMUR_RECAP=0`, off and paused never ask | passed |
+| plugin `refresh.test.ts`, the first version's state (1 test) | written after the code; it fails when `requestsOf` ignores the old shape | passed |
+
+The tests cover:
+- a finished stale request gets one final refresh, drawn inside that request (its events fall before the next prompt, and the next request's statuses are untouched);
+- never a second, even with something new;
+- the latest wins when stale, with one ask per run;
+- the 30-minute cap holds across requests, and the finished request catches up after it;
+- headless, off and paused runs never ask about a finished request;
+- a re-import forgets a `final` mark and the backfill child asks once.
+
+One existing test changed: the state it reads is now per request.
+
+Totals: core 245, plugin 198 (188 before), server 92, web 273, all passing.
+
+### Checks
+
+Each run on its own after the last code change:
+
+| Check | Exit code |
+| --- | --- |
+| `pnpm -s lint` | 0 |
+| `pnpm -s typecheck` | 0 |
+| `pnpm -s test` | 0 |
+| `pnpm -s build:plugin` | 0 (no diff in `plugin/dist`) |
+| `pnpm --filter @murmur/web -s build` | 0 |
+
+### Cost
+
+Unchanged: at most 2 asks an hour per session, about $1.25 an hour for 5 sessions at the measured $0.1246.
+A history import adds at most one ask, since it forgets the 30-minute mark along with the rest.
+Catching up a session's old requests costs one ask per stale finished request, one per 30 minutes.
+
+### Left
+
+- A backfill retried after its child died also forgets the refresh state, so a request may be asked once more (marked `ponytail:` in `backfill.ts`).
+- A finished request whose next prompt came within about 40 ms of its last event would spill refresh events into the next request (marked `ponytail:` in `recap.ts`).
