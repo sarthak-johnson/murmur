@@ -1,5 +1,7 @@
 import type {
+  AgentRole,
   AgentView,
+  MessageView,
   MurmurEvent,
   PartView,
   RequestView,
@@ -15,19 +17,32 @@ import {
   modelOf,
   type Run,
 } from "../session";
-import { clock, duration, firstSentence, verdictOf } from "../story";
+import { clock, duration, firstSentence, moment, verdictOf } from "../story";
 
 type Tone = "plain" | "bad" | "good" | "now";
 const ROLE: Record<HelperKind, string> = {
-  build: "builder",
-  review: "reviewer",
-  recheck: "recheck",
+  build: "Builder",
+  review: "Reviewer",
+  recheck: "Recheck",
 };
+/** What a run did, for its round's marker: a resumed builder's later run is a fix. */
+const DID: Partial<Record<AgentRole, string>> = {
+  build: "build",
+  fix: "fix",
+  review: "review",
+  recheck: "recheck",
+  plan: "plan",
+  research: "research",
+};
+/** A round marker's words in px, for 13 px Geist. */
+const markPx = (text: string) => text.length * 7 + 12;
+/** Claude's dots closer than this are one: the later one stays, unless it says less. */
+const DOT = 12;
 const MIN = 60_000;
 const STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 240, 480, 720, 1440, 2880];
 const MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
-/** A bar's words in px, estimated for 12 px semibold Geist; a bar adds 8 px a side. */
-const textPx = (text: string) => text.length * 7;
+/** A bar's words in px, estimated for 13 px semibold Geist; a bar adds 8 px a side. */
+const textPx = (text: string) => text.length * 7.4;
 const labelPx = (text: string) => 16 + textPx(text);
 /** An axis time in px, for 13 px Geist Mono, with room to breathe. */
 const tickPx = (text: string) => text.length * 7.8 + 10;
@@ -65,6 +80,37 @@ export interface Lane {
   a: AgentView;
   kind: HelperKind | undefined;
   runs: (Run & { label: string; tone: Tone })[];
+  /** A lane of many helpers of one role: how many. */
+  count?: number;
+}
+
+const RUNS: Record<HelperKind | "other", string> = {
+  build: "builds",
+  review: "reviews",
+  recheck: "rechecks",
+  other: "runs",
+};
+
+/** Past this many helpers, one lane per role: a lane each would be taller than the page. */
+const MANY = 10;
+
+/** The lanes merged by role, builders first, each run keeping its own verdict. */
+function byRole(lanes: Lane[]): Lane[] {
+  const order: (HelperKind | undefined)[] = [
+    "build",
+    "review",
+    "recheck",
+    undefined,
+  ];
+  return order.flatMap((kind) => {
+    const of = lanes.filter((l) => l.kind === kind);
+    const first = of[0];
+    if (!first) return [];
+    const runs = of
+      .flatMap((l) => l.runs)
+      .sort((a, b) => a.from.localeCompare(b.from));
+    return [{ a: first.a, kind, runs, count: of.length }];
+  });
 }
 
 /**
@@ -96,6 +142,10 @@ export function helperLanes(
         "plain",
       ];
     if (kind === "review" || kind === "recheck") {
+      // Core read the verdict from the record ("Sent back", "Passed"): it wins.
+      const said = part.steps.findLast((s) => s.agentId === a.id)?.text;
+      if (/^sent back\b/i.test(said ?? "")) return ["Sent back", "bad"];
+      if (/^passed\b/i.test(said ?? "")) return ["Passed", "good"];
       const fixedAfter = all.some(
         (o) =>
           o.a !== a &&
@@ -116,6 +166,74 @@ export function helperLanes(
       return { ...r, label, tone };
     }),
   }));
+}
+
+/**
+ * The rounds of work on the task, from each helper's `round`: a round starts at its first
+ * helper's start, or earlier where a helper of the round before was resumed (sent back),
+ * and is named by what its runs did in time order. None when it all took one round.
+ */
+export function roundMarks(
+  lanes: Lane[],
+): { n: number; from: string; words: string[] }[] {
+  // Rounds of different subjects ("Task 19", "Task 20") are not one story.
+  const subjects = new Set(lanes.flatMap((l) => l.a.subject ?? []));
+  const ns = [
+    ...new Set(lanes.flatMap((l) => (l.a.round ? [l.a.round] : []))),
+  ].sort((a, b) => a - b);
+  if (ns.length < 2 || subjects.size !== 1) return [];
+  const rounds = ns.map((n) => ({ n, from: "", words: [] as string[] }));
+  const runs = lanes
+    .flatMap((l) =>
+      l.a.round
+        ? l.runs.map((r, i) => {
+            // A helper's later run is the next round's, as far as rounds go.
+            const k = Math.min(
+              ns.indexOf(l.a.round as number) + i,
+              ns.length - 1,
+            );
+            const role = l.a.role ?? "other";
+            const did =
+              i > 0 && (role === "build" || role === "fix") ? "fix" : DID[role];
+            return { from: r.from, k, did };
+          })
+        : [],
+    )
+    .sort((a, b) => a.from.localeCompare(b.from));
+  for (const { from, k, did } of runs) {
+    const r = rounds[k] as (typeof rounds)[number];
+    if (!r.from || from < r.from) r.from = from;
+    if (did && !r.words.includes(did)) r.words.push(did);
+  }
+  return rounds.filter((r) => r.from);
+}
+
+const listed = (words: string[]) =>
+  words.length < 2
+    ? (words[0] ?? "")
+    : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
+
+/** Claude's messages about the task: naming one of its tasks, or right after its helpers' reports. */
+export function claudeSaid(
+  req: RequestView,
+  part: PartView,
+  helpers: AgentView[],
+): MessageView[] {
+  const tasks = new Set([
+    part.id,
+    ...req.phases
+      .flatMap((p) => p.tasks.filter((t) => t.part === part.id))
+      .map((t) => t.id),
+  ]);
+  const ids = new Set(helpers.map((a) => a.id));
+  // Core's steps from the record name the messages about it by id.
+  const named = new Set(part.steps.flatMap((s) => s.eventIds));
+  return (req.messages ?? []).filter(
+    (m) =>
+      (m.task && tasks.has(m.task)) ||
+      (m.agent && ids.has(m.agent)) ||
+      named.has(m.id),
+  );
 }
 
 export interface Bar {
@@ -275,7 +393,7 @@ export function layoutTimeline(
   }
 
   const bars = lanes.map((lane) => {
-    const said = named?.get(lane.a.id);
+    const said = lane.count ? undefined : named?.get(lane.a.id);
     const groups: Lane["runs"][] = [];
     const span = (g: Lane["runs"]) =>
       at((g.at(-1) as Run).to) - at((g[0] as Run).from);
@@ -311,7 +429,12 @@ export function layoutTimeline(
     return groups.map((g, i): Bar => {
       const [x, r] = boxes[i] as Box;
       const w = r - x;
-      let text = nameOf(g);
+      // A role lane's merged bar holds many helpers' runs: counted, coloured only when they agree.
+      const mixed = !!lane.count && g.length > 1;
+      let text = mixed
+        ? `${g.length} ${RUNS[lane.kind ?? "other"]}`
+        : nameOf(g);
+      const tones = new Set(g.map((run) => run.tone));
       // The plan's words name a lone first run when they fit, before its short name.
       const fit = Math.floor((w - 16) / 7);
       if (
@@ -325,7 +448,10 @@ export function layoutTimeline(
       const bar: Bar = {
         x,
         w,
-        tone: (g.at(-1) as Lane["runs"][number]).tone,
+        tone:
+          mixed && tones.size > 1
+            ? "plain"
+            : (g.at(-1) as Lane["runs"][number]).tone,
         text,
         runs: g.length,
         title: `${text}: ${said ?? lane.a.description}, ${g
@@ -388,57 +514,144 @@ export function Timeline(props: {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const lanes = helperLanes(part, helpers, events);
-  if (!lanes.length) return null;
-  const end = closing(request, part);
-  const layout = layoutTimeline(lanes, track, end?.ts ? [end.ts] : [], named);
+  const each = helperLanes(part, helpers, events);
+  if (!each.length) return null;
+  const lanes = each.length > MANY ? byRole(each) : each;
+  const said = claudeSaid(request, part, helpers).filter(
+    (m) => !Number.isNaN(Date.parse(m.ts)),
+  );
+  const end = said.length ? undefined : closing(request, part);
+  const layout = layoutTimeline(
+    lanes,
+    track,
+    said.length ? said.map((m) => m.ts) : end?.ts ? [end.ts] : [],
+    named,
+  );
   const x = (px: number) => pct(px / track);
-  const lines = layout.ticks.map((tk) => (
-    <i key={tk.x} className="gl" style={{ left: x(tk.x) }} />
-  ));
+  const marks = roundMarks(each).map((m) => ({ ...m, x: layout.at(m.from) }));
+  const lines = [
+    ...layout.ticks.map((tk) => (
+      <i key={tk.x} className="gl" style={{ left: x(tk.x) }} />
+    )),
+    ...marks
+      .slice(1)
+      .map((m) => (
+        <i key={`r${m.n}`} className="rl" style={{ left: x(m.x) }} />
+      )),
+  ];
   const gaps = layout.breaks.map((g) => (
     <i key={g.x} className="gap" style={{ left: x(g.x), width: x(g.w) }} />
   ));
   const endAt = end?.ts
     ? layout.at(end.ts)
     : Math.max(...layout.bars.flat().map((b) => b.x + b.w));
+  // Claude's dots: a message's moment colours it; dots too close to tell apart are one.
+  const dots: {
+    x: number;
+    tone: "plain" | "bad" | "good";
+    label: string;
+    id: string;
+  }[] = [];
+  for (const m of said) {
+    const mark = moment(m.text);
+    // Green only for the word that closed it: a "done" before more work was not the end.
+    const tone =
+      mark === "problem"
+        ? "bad"
+        : mark === "done" && m === said.at(-1)
+          ? "good"
+          : "plain";
+    const dot = {
+      x: layout.at(m.ts),
+      tone,
+      label: `${clock(m.ts)}: ${cutWords(firstSentence(plainText(m.text)), 140)}`,
+      id: m.id,
+    } as const;
+    const prev = dots.at(-1);
+    if (prev && dot.x - prev.x < DOT) {
+      if (tone !== "plain" || prev.tone === "plain")
+        dots[dots.length - 1] = dot;
+    } else dots.push(dot);
+  }
+  const axis = (
+    <div className="axis" aria-hidden="true">
+      <div />
+      <div className="ticks">
+        {layout.ticks.map((tk) => (
+          <span
+            key={tk.x}
+            className={`num${tk.from ? " from" : ""}`}
+            style={{ left: x(tk.x) }}
+          >
+            {tk.text}
+          </span>
+        ))}
+        {layout.breaks.map((g) => (
+          <span
+            key={g.x}
+            className="break"
+            style={{ left: x(g.x), width: x(g.w) }}
+            title={`${duration(new Date(0).toISOString(), new Date(g.skipped * MIN).toISOString())} with no work`}
+          />
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div className="rec">
-      <div className="axis" aria-hidden="true">
-        <div />
-        <div className="ticks">
-          {layout.ticks.map((tk) => (
-            <span
-              key={tk.x}
-              className={`num${tk.from ? " from" : ""}`}
-              style={{ left: x(tk.x) }}
-            >
-              {tk.text}
-            </span>
-          ))}
-          {layout.breaks.map((g) => (
-            <span
-              key={g.x}
-              className="break"
-              style={{ left: x(g.x), width: x(g.w) }}
-              title={`${duration(new Date(0).toISOString(), new Date(g.skipped * MIN).toISOString())} with no work`}
-            />
-          ))}
+      {marks.length > 0 && (
+        <div className="rounds" aria-hidden="true">
+          <div />
+          <div className="rd-track">
+            {marks.map((m, i) => {
+              const full = `Round ${m.n} · ${listed(m.words)}`;
+              const room = (marks[i + 1]?.x ?? track + SPILL) - m.x;
+              // Too little room after its line: the words sit before it, clear of the last.
+              const last = marks[i - 1];
+              const before = m.x - (last ? last.x + markPx("Round 9") : 0);
+              const flip = markPx(full) > room && markPx(full) <= before;
+              const text =
+                markPx(full) <= room || flip
+                  ? full
+                  : markPx(`Round ${m.n}`) <= room
+                    ? `Round ${m.n}`
+                    : "";
+              return (
+                <span
+                  key={m.n}
+                  className={`rd${i === marks.length - 1 ? " last" : ""}${flip ? " flip" : ""}`}
+                  style={{ left: x(m.x) }}
+                  title={full}
+                >
+                  {text}
+                </span>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
       <ul className="lanes" aria-label="Timeline" ref={lanesRef}>
         {lanes.map((lane, n) => {
           const k = request.agents.indexOf(lane.a) + 1;
           const model = modelOf(lane.a, events);
-          const role = [model, lane.kind ? ROLE[lane.kind] : ""]
-            .filter(Boolean)
-            .join(", ");
+          const name = lane.count
+            ? lane.kind
+              ? `${ROLE[lane.kind]}s`
+              : "Other helpers"
+            : lane.kind
+              ? ROLE[lane.kind]
+              : `Agent ${k}`;
+          const sub = lane.count
+            ? `${lane.count} ${lane.count === 1 ? "helper" : "helpers"}`
+            : [lane.kind ? `Agent ${k}` : "", model]
+                .filter(Boolean)
+                .join(" · ");
           return (
             <li key={lane.a.id} className="lane">
               <span className="lane-name">
-                <b>Agent {k}</b>
-                {role && <span>{role}</span>}
+                <b>{name}</b>
+                {sub && <span>{sub}</span>}
               </span>
               <span className="tr">
                 {lines}
@@ -469,26 +682,44 @@ export function Timeline(props: {
             </li>
           );
         })}
-        {end && (
+        {(said.length > 0 || end) && (
           <li className="lane">
             <span className="lane-name">
               <b>Claude</b>
+              {said.length > 0 && (
+                <span>
+                  {said.length} {said.length === 1 ? "message" : "messages"}
+                </span>
+              )}
             </span>
             <span className="tr">
               {lines}
               {gaps}
-              <span
-                className="close"
-                style={{ right: x(track - endAt) }}
-                title={end.text}
-              >
-                {cutWords(end.text, 64)}
-                {part.status === "done" && <Glyph status="done" />}
-              </span>
+              {dots.map((d) => (
+                <span
+                  key={d.id}
+                  role="img"
+                  className={`cdot ${d.tone}`}
+                  style={{ left: x(d.x) }}
+                  aria-label={d.label}
+                  title={d.label}
+                />
+              ))}
+              {end && (
+                <span
+                  className="close"
+                  style={{ right: x(track - endAt) }}
+                  title={end.text}
+                >
+                  {cutWords(end.text, 64)}
+                  {part.status === "done" && <Glyph status="done" />}
+                </span>
+              )}
             </span>
           </li>
         )}
       </ul>
+      {axis}
     </div>
   );
 }

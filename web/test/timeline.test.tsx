@@ -256,6 +256,8 @@ describe("the task page over a long day", () => {
     words: [],
     agents: ["h1"],
     failures: 0,
+    // Core's span runs to the helper's last stop, past its first.
+    span: { start: iso(0), end: iso(560) },
   };
   const helper = agent("h1", { startedAt: iso(0), endedAt: iso(30) });
   const send = (id: string, min: number): MurmurEvent => ({
@@ -308,9 +310,11 @@ describe("the task page over a long day", () => {
     );
   });
 
-  it("the band runs to the helper's last run, not its first stop", () => {
+  it("the band reads core's span, to the helper's last run, with how long it took", () => {
     show();
     const band = screen.getByText((_, el) => Boolean(el?.matches(".fact.num")));
-    expect(band.textContent).toBe(`${clock(iso(0))} to ${clock(iso(560))}`);
+    expect(band.textContent).toBe(
+      `${clock(iso(0))} to ${clock(iso(560))}, 9 h 20 m`,
+    );
   });
 });

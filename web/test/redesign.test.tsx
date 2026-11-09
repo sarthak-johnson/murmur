@@ -876,10 +876,10 @@ describe("task page", () => {
     expect(
       lanes.map((l) => l.querySelector(".lane-name")?.textContent),
     ).toEqual([
-      "Agent 1Sonnet, builder",
-      "Agent 2Opus, reviewer",
-      "Agent 3Sonnet, recheck",
-      "Claude",
+      "BuilderAgent 1 · Sonnet",
+      "ReviewerAgent 2 · Opus",
+      "RecheckAgent 3 · Sonnet",
+      "Claude1 message",
     ]);
     const ticks = [...document.querySelectorAll(".axis span")].map(
       (s) => s.textContent,
@@ -927,12 +927,16 @@ describe("task page", () => {
     ]);
   });
 
-  it("Claude's lane ends with its own closing step", () => {
+  it("Claude's lane carries its message about the task as a dot", () => {
     showTask();
     const claude = within(timeline()).getAllByRole(
       "listitem",
     )[3] as HTMLElement;
-    expect(claude.textContent).toContain("Task 3 is done after one fix.");
+    const dot = claude.querySelector(".cdot") as HTMLElement;
+    expect(dot.getAttribute("aria-label")).toContain(
+      "Task 3 is done after one fix.",
+    );
+    expect(dot.className).toBe("cdot good");
   });
 
   it("groups files by what they do, tests on their own", () => {
