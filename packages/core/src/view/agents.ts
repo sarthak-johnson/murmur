@@ -98,9 +98,11 @@ function tiesOf(
 ): { task?: TaskView | undefined; at?: PartView | undefined } {
   const tasks = req.phases.flatMap((ph) => ph.tasks);
   const named = itemOf(description);
-  // A range ("Tasks 13-14") may hold the named task, so only a lone other task is another.
+  // A range ("Tasks 13-14") may hold a lone task, so only two lone tasks can differ.
+  const lone = (s: string | undefined) =>
+    !!s && /^(?:Task \d+[a-z]?|B\d+)$/.test(s);
   const other = (s: string | undefined) =>
-    !!named && !!s && s !== named && /^(?:Task \d+[a-z]?|B\d+)$/.test(s);
+    lone(named) && lone(s) && s !== named;
   const mine = named
     ? tasks.find((t) => subjectOfWork(req, t) === named)
     : undefined;

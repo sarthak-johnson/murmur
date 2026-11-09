@@ -215,3 +215,33 @@ test("a helper named for a task joins that task, not the one Claude was on", () 
   expect(a("a43")?.part).toBeUndefined();
   expect(a("aplain")?.part).toBe("parts");
 });
+
+test("a helper named for a pair of tasks still joins the one of them Claude was on", () => {
+  const map = {
+    kind: "feature",
+    goal: "My Agents",
+    phases: [
+      {
+        id: "1",
+        title: "Cards",
+        tasks: [
+          { id: "t13", title: "Task 13: book plate", part: "book" },
+          { id: "t14", title: "Task 14: agent cards", part: "cards" },
+        ],
+      },
+    ],
+    parts: [
+      { id: "book", title: "Book plate", phase: "1" },
+      { id: "cards", title: "Agent cards", phase: "1" },
+    ],
+  };
+  const [req] = reduce([
+    prompt(1, "build the cards"),
+    mapCall(2, map),
+    narrateCall(3, note({ task: "t13", taskStatus: "running" })),
+    agentCall(4, "Review Tasks 13-14 agent cards"),
+    start(5, "a1"),
+  ]).requests;
+  expect(req?.phases[0]?.tasks[0]?.agents).toEqual(["a1"]);
+  expect(req?.parts.find((p) => p.id === "book")?.agents).toEqual(["a1"]);
+});
