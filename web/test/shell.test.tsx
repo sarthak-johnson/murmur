@@ -198,7 +198,6 @@ function show(
   const props = {
     sessionId: "s1",
     view,
-    viewAt: () => null,
     status: "live" as const,
     lastLooked: null,
     events: p.events ?? [],
@@ -431,7 +430,6 @@ describe("the rail", () => {
       const view = session();
       const props = {
         sessionId: "s1",
-        viewAt: () => null,
         status: "live" as const,
         lastLooked: null,
         requestId: "r1",

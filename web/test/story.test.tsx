@@ -3,6 +3,7 @@ import type {
   MessageView,
   MurmurEvent,
   PartView,
+  PhaseView,
   RequestView,
   SessionView,
 } from "@murmur/core";
@@ -224,7 +225,6 @@ function show(view: SessionView, events: MurmurEvent[] = []) {
     <Live
       sessionId="s1"
       view={view}
-      viewAt={() => null}
       events={events}
       status="live"
       lastLooked={null}
@@ -435,18 +435,22 @@ describe("request page, story first", () => {
     expect(storyTexts().filter((t) => t.includes("Approved"))).toHaveLength(1);
   });
 
-  it("the facts say when it was asked, tasks, helpers and sent back; the plan says how long", () => {
+  it("the facts say when it was asked, tasks, helpers and sent back; the track says how long", () => {
     show(session(request()), [ev(5), ev(30)]);
     expect(within(screen.getByRole("banner")).getByText("Done")).toBeTruthy();
+    expect(document.querySelector(".over")?.textContent).toContain(
+      `asked Fri 6 Nov, ${clock(at(5))}`,
+    );
     const band = screen.getByRole("group", { name: "Summary" });
     const t = band.textContent ?? "";
-    expect(t).toContain(`Asked at ${clock(at(5))}`);
     expect(t).toContain("3 tasks");
     expect(t).toContain("1 sent back after review");
     expect(t).toContain("4 helpers");
-    const plan = screen.getByRole("complementary", { name: "Plan" });
-    expect(plan.querySelector(".spine-h")?.textContent).toContain(
-      "25 m in all",
+    expect(t).toContain("3 files");
+    expect(t).toContain("12 commands");
+    const track = screen.getByRole("region", { name: "Phase track" });
+    expect(track.querySelector(".trk-foot")?.textContent).toContain(
+      "Took: 25 m",
     );
   });
 
@@ -484,8 +488,16 @@ describe("request page, story first", () => {
     ]);
   });
 
-  it("the timeline runs newest first while the request runs", () => {
-    show(session(request({ finished: false })));
+  it("the live phase runs newest first while the request runs", () => {
+    const [phase] = request().phases;
+    show(
+      session(
+        request({
+          finished: false,
+          phases: [{ ...(phase as PhaseView), status: "now" }],
+        }),
+      ),
+    );
     expect(storyTexts().map((t) => t.slice(0, 12))).toEqual([
       "Task 1 is do",
       "I also added",
@@ -518,88 +530,79 @@ describe("request page, story first", () => {
     expect(location.pathname).toBe("/s/s1/r/r1/p/task%3A1");
   });
 
-  it("groups consecutive messages about one task into a block with its outcome", async () => {
+  it("folds consecutive messages about one task into one row that opens in place", async () => {
     const run = [
       msg("m0", 6, "Starting."),
       msg("m1", 8, "Task 1 is being built on Sonnet.", { task: "task:1" }),
       msg("m2", 9, "Task 1 is in review.", { task: "task:1" }),
-      msg("m3", 10, "The review found one real problem.", { task: "task:1" }),
-      msg("m4", 11, "Task 1 is done and verified.", { task: "task:1" }),
+      msg("m3", 10, "Task 1 is done and verified.", { task: "task:1" }),
+      msg("m4", 11, "The review found one real problem.", { task: "task:1" }),
       msg("m5", 12, "Waiting on the tracker."),
       msg("m6", 13, "Task 2 is built.", { task: "task:2" }),
     ];
-    const base = request();
-    show(
-      session(
-        request({
-          messages: run,
-          recap: true,
-          planInferred: false,
-          parts: base.parts.map((p) =>
-            p.id === "task:1"
-              ? {
-                  ...p,
-                  steps: [step("Done after 1 fix: the colours were weak")],
-                }
-              : p,
-          ),
-        }),
-      ),
-    );
-    const items = within(story()).getAllByRole("listitem");
-    expect(items).toHaveLength(4);
-    const [, block, alone, single] = items as HTMLElement[];
+    show(session(request({ messages: run })));
+    const rows = [...story().querySelectorAll(".st-phase > ol > li")];
+    expect(rows.map((r) => r.className.split(" ")[0])).toEqual([
+      "st-msg",
+      "st-run",
+      "st-msg",
+      "st-msg",
+      "st-msg",
+    ]);
+    const [, block, problem, alone, single] = rows as HTMLElement[];
     const b = within(block as HTMLElement);
-    expect(b.getByRole("button", { name: "Lit plate tokens" })).toBeTruthy();
-    // The block's outcome line is the task's.
-    expect(block?.querySelector(".group-out")?.textContent).toBe(
-      "Done after 1 fix: the colours were weak",
+    const open = b.getByRole("button");
+    expect(open.textContent).toBe(
+      "Task 1 · Lit plate tokensTask 1 is done and verified.2 m · 3 helpers · 3 messages",
     );
-    // First and last visible, the middle behind "2 more".
-    const texts = () =>
+    await userEvent.click(open);
+    expect(
       [...(block as HTMLElement).querySelectorAll(".story-text")].map(
         (e) => e.textContent,
-      );
-    expect(texts()).toEqual([
-      "Task 1 is being built on Sonnet.",
-      "Task 1 is done and verified.",
-    ]);
-    await userEvent.click(b.getByRole("button", { name: "2 more" }));
-    expect(texts()).toEqual([
+      ),
+    ).toEqual([
       "Task 1 is being built on Sonnet.",
       "Task 1 is in review.",
-      "The review found one real problem.",
       "Task 1 is done and verified.",
     ]);
-    expect(b.getByText("Problem found")).toBeTruthy();
-    // A message linked to no task stands alone; a one-message task is a plain moment.
+    // A problem found stands alone, with its badge and task chip.
+    expect(
+      within(problem as HTMLElement).getByText("Problem found"),
+    ).toBeTruthy();
+    expect(
+      within(problem as HTMLElement).getByRole("button", {
+        name: "Lit plate tokens",
+      }),
+    ).toBeTruthy();
+    // A message linked to no task stands alone; a one-message task is a plain message.
     expect(alone?.querySelector(".task-chip")).toBeNull();
     expect(single?.textContent).toContain("Task 2 is built.");
-    expect(single?.querySelector(".group-out")).toBeNull();
+    expect(single?.className).toContain("st-msg");
   });
 
   it("a message linked only to a helper belongs to that helper's task", () => {
     const run = [
       msg("m0", 6, "Starting."),
       msg("m1", 8, "Task 1 is in review.", { task: "task:1" }),
-      // a2 reviewed Task 1 (its part lists a2): this report message joins the block.
-      msg("m2", 9, "The review found one real problem.", { agent: "a2" }),
+      // a2 reviewed Task 1 (its part lists a2): this report message joins the run.
+      msg("m2", 9, "The reviewer asked for one change.", { agent: "a2" }),
       msg("m3", 10, "Task 1 is done.", { task: "task:1" }),
       // a4 is Task 2's helper; a lone message still shows its task chip.
       msg("m4", 11, "Built it with one note.", { agent: "a4" }),
     ];
     show(session(request({ messages: run })));
-    const items = within(story()).getAllByRole("listitem");
-    expect(items).toHaveLength(3);
-    expect(items[1]?.textContent).toContain("3 messages");
+    const rows = [...story().querySelectorAll(".st-phase > ol > li")];
+    expect(rows).toHaveLength(3);
+    expect(rows[1]?.textContent).toContain("3 messages");
     expect(
-      within(items[2] as HTMLElement).getByRole("button", {
+      within(rows[2] as HTMLElement).getByRole("button", {
         name: "HeroMoney",
       }),
     ).toBeTruthy();
   });
 
-  it("a block runs newest first while the request runs", () => {
+  it("a run keeps its messages oldest first inside, while the live section runs newest first", async () => {
+    const [phase] = request().phases;
     const run = [
       msg("m0", 6, "Starting."),
       msg("m1", 8, "Task 1 is being built.", { task: "task:1" }),
@@ -607,15 +610,27 @@ describe("request page, story first", () => {
       msg("m3", 10, "Task 1 is done.", { task: "task:1" }),
       msg("m4", 11, "Waiting."),
     ];
-    show(session(request({ finished: false, messages: run })));
-    const items = within(story()).getAllByRole("listitem");
-    expect(items[0]?.textContent).toContain("Waiting.");
+    show(
+      session(
+        request({
+          finished: false,
+          phases: [{ ...(phase as PhaseView), status: "now" }],
+          messages: run,
+        }),
+      ),
+    );
+    const rows = [...story().querySelectorAll(".st-phase > ol > li")];
+    expect(rows[0]?.textContent).toContain("Waiting.");
+    await userEvent.click(within(rows[1] as HTMLElement).getByRole("button"));
     const texts = [
-      ...(items[1] as HTMLElement).querySelectorAll(".story-text"),
+      ...(rows[1] as HTMLElement).querySelectorAll(".story-text"),
     ].map((e) => e.textContent);
-    expect(texts).toEqual(["Task 1 is done.", "Task 1 is being built."]);
-    // The outcome line would only repeat the newest message shown, so it is left out.
-    expect(items[1]?.querySelector(".group-out")).toBeNull();
+    expect(texts).toEqual([
+      "Task 1 is being built.",
+      "Task 1 is in review.",
+      "Task 1 is done.",
+    ]);
+    expect(rows[2]?.textContent).toContain("Starting.");
   });
 
   it("renders Markdown in messages as formatted text", () => {
@@ -625,17 +640,23 @@ describe("request page, story first", () => {
     expect(second.textContent).not.toContain("**");
   });
 
-  it("folds a long message after 4 lines", async () => {
-    const long = Array.from({ length: 7 }, (_, i) => `Point ${i}.`).join(
+  it("folds a long message after 8 lines, never a short one", async () => {
+    const long = Array.from({ length: 12 }, (_, i) => `Point ${i}.`).join(
+      "\n\n",
+    );
+    const short = Array.from({ length: 5 }, (_, i) => `Point ${i}.`).join(
       "\n\n",
     );
     show(
       session(
         request({
-          messages: [msg("m0", 6, "Starting."), msg("m1", 8, long)],
+          messages: [msg("m0", 6, short), msg("m1", 8, long)],
         }),
       ),
     );
+    expect(
+      within(story()).getAllByRole("button", { name: "Show more" }),
+    ).toHaveLength(1);
     await userEvent.click(
       within(story()).getByRole("button", { name: "Show more" }),
     );
@@ -644,12 +665,15 @@ describe("request page, story first", () => {
     ).toBeTruthy();
   });
 
-  it("the plan marks each task's state and opens its page, where it ended is told", () => {
+  it("the track marks each task's state and opens its page", () => {
     show(session(request()));
-    const plan = screen.getByRole("complementary", { name: "Plan" });
-    const row = within(plan).getByRole("button", { name: /Lit plate tokens/ });
-    expect(row.className).toBe("task done");
-    expect(row.querySelector(".glyph.done")).toBeTruthy();
+    const track = screen.getByRole("region", { name: "Phase track" });
+    const link = within(track).getByRole("link", {
+      name: "Lit plate tokens, done",
+    });
+    expect(link.closest(".st")?.className).toBe("st done");
+    expect(link.querySelector(".mk.done")).toBeTruthy();
+    expect(link.getAttribute("href")).toBe("/s/s1/r/r1/p/task%3A1");
   });
 
   it("the map is a tab beside the story, one click away", async () => {
@@ -667,10 +691,10 @@ describe("request page, story first", () => {
     expect(location.pathname).toMatch(/\/flow$/);
   });
 
-  it("a request with no messages shows the map and draws no story", () => {
+  it("a request with no messages draws no story, and the map stays on its tab", () => {
     show(session(request({ messages: [], finished: false })));
     expect(screen.queryByRole("region", { name: "What happened" })).toBeNull();
-    expect(screen.getByRole("region", { name: "Map" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Map" })).toBeNull();
     expect(screen.getByRole("region", { name: "Now" })).toBeTruthy();
     expect(screen.getByRole("group", { name: "Summary" })).toBeTruthy();
     cleanup();
@@ -778,13 +802,15 @@ describe("request page, story first", () => {
     expect(now.textContent).not.toContain("tail -3");
   });
 
-  it("a recapped request is labelled Recap by Claude", () => {
+  it("a recapped request is labelled recap by Claude", () => {
     show(
       session(
         request({ recap: true, planInferred: false, kindInferred: false }),
       ),
     );
-    expect(screen.getAllByText("Recap by Claude").length).toBeGreaterThan(0);
+    expect(document.querySelector(".over")?.textContent).toContain(
+      "recap by Claude",
+    );
     expect(screen.queryByText("inferred")).toBeNull();
   });
 });
@@ -841,7 +867,7 @@ describe("round 3", () => {
     expect(sentBack(req)).toBe(1);
   });
 
-  it("an opened block stays open while new messages arrive", async () => {
+  it("an opened run stays open while new messages arrive", async () => {
     const run = (n: number) => [
       msg("m0", 6, "Starting."),
       ...Array.from({ length: n }, (_, i) =>
@@ -852,7 +878,6 @@ describe("round 3", () => {
       <Live
         sessionId="s1"
         view={session(request({ finished: false, messages: run(n) }))}
-        viewAt={() => null}
         events={[]}
         status="live"
         lastLooked={null}
@@ -860,17 +885,19 @@ describe("round 3", () => {
     );
     const { rerender } = render(live(4));
     await userEvent.click(
-      within(story()).getByRole("button", { name: "2 more" }),
+      within(story()).getByRole("button", { name: /4 messages/ }),
     );
     rerender(live(5));
     expect(
-      within(story()).getByRole("button", { name: "Show fewer" }),
-    ).toBeTruthy();
-    // The opening line, then the block's five.
+      within(story())
+        .getByRole("button", { name: /5 messages/ })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+    // The opening line, then the run's five.
     expect(story().querySelectorAll(".story-text")).toHaveLength(6);
   });
 
-  it("N more keeps focus, says it is expanded, and folds back", async () => {
+  it("a run's row keeps focus, says it is expanded, and folds back", async () => {
     const run = [
       msg("m0", 6, "Starting."),
       ...[0, 1, 2, 3].map((i) =>
@@ -878,27 +905,24 @@ describe("round 3", () => {
       ),
     ];
     show(session(request({ messages: run })));
-    const btn = within(story()).getByRole("button", { name: "2 more" });
+    const btn = within(story()).getByRole("button", { name: /4 messages/ });
     expect(btn.getAttribute("aria-expanded")).toBe("false");
+    expect(story().querySelectorAll(".story-text")).toHaveLength(1);
     await userEvent.click(btn);
     expect(document.activeElement).toBe(btn);
     expect(btn.getAttribute("aria-expanded")).toBe("true");
-    expect(btn.textContent).toBe("Show fewer");
-    // The opening line, then the block's four, then its first and last.
     expect(story().querySelectorAll(".story-text")).toHaveLength(5);
     await userEvent.click(btn);
-    expect(story().querySelectorAll(".story-text")).toHaveLength(3);
+    expect(story().querySelectorAll(".story-text")).toHaveLength(1);
   });
 
-  it("the page's first stop skips past the plan to the content", () => {
+  it("the page's first stop skips to the content", () => {
     show(session(request()));
     // The first link on the page, before the rail.
     const skip = screen.getAllByRole("link")[0] as HTMLElement;
     expect(skip.textContent).toBe("Skip to the content");
     expect(skip.getAttribute("href")).toBe("#main");
-    expect(document.getElementById("plan")?.getAttribute("aria-label")).toBe(
-      "Plan",
-    );
+    expect(document.getElementById("plan")).toBeNull();
     expect(within(story()).queryByRole("link", { name: /Skip/ })).toBeNull();
   });
 
@@ -909,7 +933,6 @@ describe("round 3", () => {
         sessionId="s1"
         requestId="r-later"
         view={view}
-        viewAt={() => null}
         events={[]}
         status="loading"
         lastLooked={null}
@@ -923,7 +946,6 @@ describe("round 3", () => {
         sessionId="s1"
         requestId="r-later"
         view={view}
-        viewAt={() => null}
         events={[]}
         status="live"
         lastLooked={null}
@@ -991,18 +1013,16 @@ describe("round 3", () => {
       ],
     });
     show(session(req));
-    const plan = screen.getByRole("complementary", { name: "Plan" });
-    const row = within(plan)
+    const track = screen.getByRole("region", { name: "Phase track" });
+    const station = within(track)
       .getByText("HeroMoney")
-      .closest(".task") as HTMLElement;
-    expect(row.className).toContain("open");
-    expect(row.className).not.toContain("now");
-    expect(row.textContent).toContain("left open");
-    expect(plan.querySelector(".ph.now")).toBeNull();
-    expect(plan.querySelector(".ph.open")).toBeTruthy();
-    // The bar marks the task left open, not running.
-    expect(document.querySelector(".seg.now")).toBeNull();
-    expect(document.querySelector(".seg.open")).toBeTruthy();
-    expect(within(plan).getByText("Lit plate tokens")).toBeTruthy();
+      .closest(".st") as HTMLElement;
+    expect(station.className).toBe("st open");
+    expect(station.textContent).toContain("left open");
+    expect(
+      [...track.querySelectorAll(".trk-seg")].map((s) => s.className),
+    ).toEqual(["trk-seg done", "trk-seg open"]);
+    expect(track.querySelector(".st.now")).toBeNull();
+    expect(within(track).getByText("Lit plate tokens")).toBeTruthy();
   });
 });

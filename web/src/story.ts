@@ -265,3 +265,27 @@ export function outcome(req: RequestView, task: TaskView): string | undefined {
     .at(-1);
   return verdictOf(reported?.report)?.label;
 }
+
+/** Fix rounds in a request: each subject's rounds past its first, counted once. */
+export function fixRoundCount(req: RequestView): number {
+  const pairs = new Set(
+    req.agents.flatMap((a) =>
+      a.subject && (a.round ?? 1) > 1 ? [`${a.subject}#${a.round}`] : [],
+    ),
+  );
+  return pairs.size;
+}
+
+/** "1,219". */
+export const thousands = (n: number) => n.toLocaleString("en-US");
+
+/** "1 helper", "3 helpers". */
+export const nOf = (n: number, one: string, many = `${one}s`) =>
+  `${n} ${n === 1 ? one : many}`;
+
+/** "Task 39", "Tasks 4-5", "Bug B1": the plan number a task's title starts with. */
+export function taskNumber(title: string): string | undefined {
+  return /^(?:(?:tasks?|bug|step)\s+[A-Z]?\d+[a-z]?(?:\s*[-–,&]\s*\d+)*)/i
+    .exec(title.trim())?.[0]
+    .replace(/–/g, "-");
+}

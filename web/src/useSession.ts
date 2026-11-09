@@ -10,7 +10,6 @@ const byCursor = (a: MurmurEvent, b: MurmurEvent) =>
 /** Loads a session's events, follows them live and reduces them to a view. */
 export function useSession(sessionId: string): {
   view: SessionView | null;
-  viewAt(ts: string): SessionView | null;
   status: SessionStatus;
   events: MurmurEvent[];
 } {
@@ -101,18 +100,6 @@ export function useSession(sessionId: string): {
 
   // ponytail: full recompute per batch; make reduce incremental if sessions pass ~20k events
   const view = useMemo(() => (events ? reduce(events) : null), [events]);
-  const viewAt = useMemo(() => {
-    const cache = new Map<string, SessionView>();
-    return (ts: string) => {
-      if (!events) return null;
-      let v = cache.get(ts);
-      if (!v) {
-        v = reduce(events.filter((e) => e.ts <= ts));
-        cache.set(ts, v);
-      }
-      return v;
-    };
-  }, [events]);
 
-  return { view, viewAt, status, events: events ?? [] };
+  return { view, status, events: events ?? [] };
 }

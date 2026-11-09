@@ -247,7 +247,6 @@ function show(
   p: {
     events?: MurmurEvent[];
     lastLooked?: string | null;
-    before?: SessionView | null;
     requestId?: string;
     partId?: string;
     tab?: Tab;
@@ -260,7 +259,6 @@ function show(
       {...(p.partId ? { partId: p.partId } : {})}
       {...(p.tab ? { tab: p.tab } : {})}
       view={view}
-      viewAt={() => p.before ?? null}
       events={p.events ?? []}
       status="live"
       lastLooked={p.lastLooked ?? null}
@@ -271,7 +269,7 @@ function show(
 const bar = () => screen.getByRole("banner");
 
 describe("top bar", () => {
-  it("while running: Running, the now line, and phase n of m with a bar of tasks under the title", () => {
+  it("while running: Running, the now line, and the phase track under the brief", () => {
     show(session(request()));
     const b = within(bar());
     expect(b.getByText("Running")).toBeTruthy();
@@ -280,18 +278,16 @@ describe("top bar", () => {
         "Two builders are running their checks",
       ),
     ).toBeTruthy();
-    const progress = within(screen.getByRole("main")).getByRole("group", {
-      name: "Progress",
-    });
-    expect(progress.textContent).toContain("Phase 2 of 2");
-    expect(progress.textContent).toContain("2/5");
-    const segs = [...progress.querySelectorAll(".seg")].map((s) => s.className);
-    expect(segs).toEqual([
-      "seg done",
-      "seg done",
-      "seg now",
-      "seg now",
-      "seg todo",
+    const track = screen.getByRole("region", { name: "Phase track" });
+    expect(
+      [...track.querySelectorAll(".trk-seg")].map((s) => s.className),
+    ).toEqual(["trk-seg done", "trk-seg now"]);
+    expect([...track.querySelectorAll(".st")].map((s) => s.className)).toEqual([
+      "st done",
+      "st done",
+      "st now",
+      "st now",
+      "st todo",
     ]);
     // No amber chip while nobody waits on you.
     expect(b.queryByText(/waiting on you/)).toBeNull();
@@ -424,19 +420,22 @@ describe("requests in the rail", () => {
   });
 });
 
-describe("plan column", () => {
-  const plan = () => screen.getByRole("complementary", { name: "Plan" });
+describe("phase track", () => {
+  const track = () => screen.getByRole("region", { name: "Phase track" });
+  const segs = () => [...track().querySelectorAll(".trk-seg")] as HTMLElement[];
 
-  it("lists phases as a timeline with their done counts and short task names", () => {
+  it("lists phases with their done counts and short task names", () => {
     show(session(request()));
-    const phases = within(plan()).getAllByRole("listitem", { name: /Phase/ });
-    expect(phases.map((p) => p.className)).toEqual(["ph done", "ph now"]);
-    const [first, second] = phases as HTMLElement[];
-    expect(first?.textContent).toContain(
-      `2 of 2 done, ${clock(at(2))} to ${clock(at(14))}`,
+    expect(segs().map((p) => p.className)).toEqual([
+      "trk-seg done",
+      "trk-seg now",
+    ]);
+    const [first, second] = segs();
+    expect(first?.querySelector(".trk-s")?.textContent).toBe(
+      `2 of 2 done · ${clock(at(2))} to ${clock(at(14))}`,
     );
-    expect(second?.textContent).toContain(
-      `0 of 3 done, started ${clock(at(30))}`,
+    expect(second?.querySelector(".trk-s")?.textContent).toBe(
+      `0 of 3 done · started ${clock(at(30))}`,
     );
     // "Task 1:" and "Bug B1:" are dropped, the task's own words kept.
     expect(
@@ -445,15 +444,16 @@ describe("plan column", () => {
     expect(within(second as HTMLElement).getByText("Times drift")).toBeTruthy();
   });
 
-  it("marks the live phase as where it is, and only that one", () => {
+  it("only the live phase's tasks read as in progress", () => {
     show(session(request()));
-    const here = plan().querySelectorAll(".here");
-    expect(here).toHaveLength(1);
-    expect(here[0]?.closest(".ph")?.className).toBe("ph now");
-    expect(within(plan()).getByText("You are here")).toBeTruthy();
+    const live = [...track().querySelectorAll(".st.now")];
+    expect(live).toHaveLength(2);
+    expect(
+      live.every((s) => s.closest(".trk-seg")?.className === "trk-seg now"),
+    ).toBe(true);
   });
 
-  it("shows the live phase's running helpers with task, agent, model and time", () => {
+  it("shows the running helpers in the side with their model and time", () => {
     vi.useFakeTimers({ now: new Date(at(51)), toFake: ["Date"] });
     show(session(request()), {
       events: [
@@ -461,10 +461,13 @@ describe("plan column", () => {
         agentCall("c4", 31, "Brief for a4", "sonnet"),
       ],
     });
-    const cards = within(plan()).getAllByRole("listitem", { name: /Agent/ });
-    expect(cards.map((c) => c.textContent)).toEqual([
-      "Reminder listAgent 3, Opus21 m",
-      "Times driftAgent 4, Sonnet20 m",
+    const helpers = screen.getByRole("region", { name: "Helpers" });
+    const running = [...helpers.querySelectorAll(".hl-row")].filter((r) =>
+      r.querySelector(".mk.running"),
+    );
+    expect(running.map((r) => r.querySelector(".hl-s")?.textContent)).toEqual([
+      "Opus · running 21 m · no report yet",
+      "Sonnet · running 20 m · no report yet",
     ]);
   });
 
@@ -480,44 +483,48 @@ describe("plan column", () => {
         }),
       ),
     );
-    expect(plan().querySelector(".here")).toBeNull();
-    const phases = within(plan()).getAllByRole("listitem", { name: /Phase/ });
-    expect(phases[1]?.className).toBe("ph open");
-    expect(phases[1]?.textContent).toContain("left open");
+    expect(track().querySelector(".st.now")).toBeNull();
+    expect(segs()[1]?.className).toBe("trk-seg open");
+    expect(segs()[1]?.querySelector(".trk-s")?.textContent).toContain(
+      "left open",
+    );
     expect(
-      within(plan()).queryAllByRole("listitem", { name: /Agent/ }),
-    ).toEqual([]);
+      screen
+        .getByRole("region", { name: "Helpers" })
+        .querySelector(".mk.running"),
+    ).toBeNull();
   });
 
-  it("with two phases running, the one with the latest work is where it is", () => {
+  it("with two phases running, the live one is where the work is", () => {
     const req = request();
     const [p1, p2] = req.phases as [PhaseView, PhaseView];
     // Phase 1 was never marked done, but the work moved on to phase 2.
     show(session({ ...req, phases: [{ ...p1, status: "now" }, p2] }));
-    const here = screen
-      .getByRole("complementary", { name: "Plan" })
-      .querySelector(".here");
-    expect(here?.closest(".ph")?.getAttribute("aria-label")).toBe(
-      "Phase 2: the screen",
-    );
+    const live = [...track().querySelectorAll(".st.now")];
+    expect(
+      live.map(
+        (s) => s.closest(".trk-seg")?.querySelector(".trk-n")?.textContent,
+      ),
+    ).toEqual(["Phase 2: the screen", "Phase 2: the screen"]);
   });
 
-  it("once Claude stopped, nothing in the plan reads as running", () => {
+  it("once Claude stopped, nothing on the track reads as running", () => {
     const req = request({
       agents: request().agents.map((a) => ({ ...a, status: "done" as const })),
     });
     show(session(req), { events: [ev("s", 45, "Stop")] });
     expect(within(bar()).getByText("Done")).toBeTruthy();
-    const p = plan();
-    expect(p.querySelector(".here")).toBeNull();
-    expect(p.querySelector(".glyph.now")).toBeNull();
-    expect(p.querySelector(".ph.open .sub")?.textContent).toBe("0 of 3 done");
+    expect(track().querySelector(".st.now")).toBeNull();
+    expect(track().querySelector(".trk-seg.open .trk-s")?.textContent).toBe(
+      "0 of 3 done · left open",
+    );
+    expect(track().querySelector(".trk-foot")?.textContent).toContain("Took:");
   });
 
-  it("a task opens its page, and the breadcrumb marks it there", async () => {
+  it("a station opens its task's page, and the breadcrumb marks it there", async () => {
     show(session(request()));
     await userEvent.click(
-      within(plan()).getByRole("button", { name: /Schedule maths/ }),
+      within(track()).getByRole("link", { name: /Schedule maths/ }),
     );
     expect(location.pathname).toBe("/s/s1/r/r2/p/maths");
     cleanup();
@@ -529,32 +536,8 @@ describe("plan column", () => {
   });
 });
 
-describe("since you last looked", () => {
-  const earlier = () =>
-    session(
-      request({
-        phases: request().phases.map((ph) =>
-          ph.id === "p1"
-            ? {
-                ...ph,
-                status: "now" as const,
-                tasks: ph.tasks.map((t) =>
-                  t.id === "t2" ? { ...t, status: "now" as const } : t,
-                ),
-              }
-            : {
-                ...ph,
-                status: "todo" as const,
-                tasks: ph.tasks.map((t) => ({ ...t, status: "todo" as const })),
-              },
-        ),
-        agents: request().agents.slice(0, 2),
-        messages: request().messages?.slice(0, 2) ?? [],
-      }),
-    );
-
-  it("is one sentence and bullets built from what happened since", () => {
-    vi.useFakeTimers({ now: new Date(at(50)), toFake: ["Date"] });
+describe("new since you last looked, inside the brief", () => {
+  it("marks the key moments after the last look, and counts them", () => {
     show(
       session(
         request({
@@ -571,73 +554,35 @@ describe("since you last looked", () => {
           ],
         }),
       ),
-      { lastLooked: at(10), before: earlier() },
+      { lastLooked: at(10) },
     );
-    const brief = screen.getByRole("region", { name: "Since you last looked" });
-    expect(brief.textContent).toContain(`at ${clock(at(10))}`);
-    expect(brief.querySelector(".lead")?.textContent).toBe(
-      `Phase 1: groundwork is finished. Phase 2: the screen started at ${clock(at(30))}.`,
-    );
-    const items = [...brief.querySelectorAll(".it")];
-    expect(items.map((i) => i.className)).toEqual([
-      "it done",
-      "it bad",
-      "it now",
+    const moments = screen.getByRole("region", { name: "Key moments" });
+    expect(
+      [...moments.querySelectorAll(".km-row")].map((r) => [
+        r.querySelector("time")?.textContent,
+        r.className,
+      ]),
+    ).toEqual([
+      [clock(at(8)), "km-row"],
+      [clock(at(14)), "km-row new"],
+      [clock(at(33)), "km-row new"],
     ]);
-    expect(items[0]?.textContent).toBe("1 task done: Schedule maths");
-    expect(items[1]?.textContent).toBe(
-      "1 problem found: The review found two problems in the reminder list.",
+    expect(moments.querySelector(".badge.new")?.textContent).toBe(
+      `2 new since ${clock(at(10))}`,
     );
-    expect(items[2]?.textContent).toBe(
-      "2 helpers started on Reminder list and Times drift",
-    );
-  });
-
-  it("stays still while new work arrives, so the story below never moves", () => {
-    const live = (r: RequestView) => (
-      <Live
-        sessionId="s1"
-        view={session(r)}
-        viewAt={() => earlier()}
-        events={[]}
-        status="live"
-        lastLooked={at(10)}
-      />
-    );
-    const { rerender } = render(live(request()));
-    const text = () =>
-      screen.getByRole("region", { name: "Since you last looked" }).textContent;
-    const first = text();
-    rerender(
-      live(
-        request({
-          agents: [
-            ...request().agents,
-            helper("a5", { status: "running", startedAt: at(45) }),
-          ],
-        }),
-      ),
-    );
-    expect(text()).toBe(first);
-  });
-
-  it("is hidden when nothing changed, and on a first visit", () => {
-    show(session(request()), {
-      lastLooked: at(50),
-      before: session(request()),
-    });
     expect(
       screen.queryByRole("region", { name: "Since you last looked" }),
     ).toBeNull();
-    cleanup();
-    show(session(request()), { lastLooked: null, before: earlier() });
-    expect(
-      screen.queryByRole("region", { name: "Since you last looked" }),
-    ).toBeNull();
+  });
+
+  it("marks nothing new on a first visit", () => {
+    show(session(request()), { lastLooked: null });
+    const moments = screen.getByRole("region", { name: "Key moments" });
+    expect(moments.querySelector(".new")).toBeNull();
   });
 });
 
-describe("needs your call", () => {
+describe("waiting on you", () => {
   it("lists an AskUserQuestion call's questions, the wait, and where to answer", () => {
     vi.useFakeTimers({ now: new Date(at(52)), toFake: ["Date"] });
     const ask = ev("q1", 40, "PreToolUse", {
@@ -653,14 +598,11 @@ describe("needs your call", () => {
       },
     });
     show(session(request()), { events: [ask] });
-    const call = screen.getByRole("region", { name: "Needs your call" });
-    expect(
-      within(call).getByText("Remind in the morning or the evening?"),
-    ).toBeTruthy();
+    const call = screen.getByRole("region", { name: "Waiting on you" });
+    expect(call.textContent).toContain("Remind in the morning or the evening?");
     expect(call.textContent).toContain("Morning or Evening");
-    expect(call.textContent).toContain("waiting 12 m");
+    expect(call.textContent).toContain(`since ${clock(at(40))}, 12 m`);
     expect(call.textContent).toContain("Answer in the terminal");
-    expect(call.textContent).toContain(`Asked ${clock(at(40))}`);
   });
 
   it("else takes the questions from Claude's last message once it stopped", () => {
@@ -676,10 +618,8 @@ describe("needs your call", () => {
       ],
     });
     show(session(req), { events: [ev("s", 45, "Stop")] });
-    const call = screen.getByRole("region", { name: "Needs your call" });
-    expect(
-      [...call.querySelectorAll(".qq b")].map((q) => q.textContent),
-    ).toEqual([
+    const call = screen.getByRole("region", { name: "Waiting on you" });
+    expect([...call.querySelectorAll("li")].map((q) => q.textContent)).toEqual([
       "Should I default snooze to ten minutes?",
       "And may I drop the old list view?",
     ]);
@@ -691,25 +631,24 @@ describe("needs your call", () => {
 
   it("is not drawn when Claude waits on no one", () => {
     show(session(request()));
-    expect(
-      screen.queryByRole("region", { name: "Needs your call" }),
-    ).toBeNull();
+    expect(screen.queryByRole("region", { name: "Waiting on you" })).toBeNull();
   });
 });
 
 describe("story by phase", () => {
   const story = () => screen.getByRole("region", { name: "What happened" });
 
-  it("groups Claude's words under their phase: the live one newest first, on top", () => {
+  it("groups Claude's words under their phase, in plan order: the live one newest first", () => {
     show(session(request()));
-    const groups = within(story()).getAllByRole("region");
+    const groups = [...story().querySelectorAll(".st-phase")] as HTMLElement[];
     expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual([
-      "Phase 2: the screen",
       "Phase 1: groundwork",
+      "Phase 2: the screen",
     ]);
-    const [live, done] = groups as HTMLElement[];
-    expect(live?.textContent).toContain("newest first");
-    expect(done?.textContent).toContain("oldest first");
+    const [done, live] = groups;
+    expect(live?.querySelector(".st-meta")?.textContent).toContain(
+      "newest first",
+    );
     const texts = (g: HTMLElement) =>
       [...g.querySelectorAll(".story-text")].map((t) => t.textContent);
     expect(texts(live as HTMLElement)).toEqual([
@@ -1042,25 +981,21 @@ describe("review fixes: words", () => {
     expect(list(["A", "B", "C"])).toBe("A, B and C");
   });
 
-  it("work sent back reads as sent back for fixes", () => {
-    vi.useFakeTimers({ now: new Date(at(50)), toFake: ["Date"] });
+  it("work sent back is a fixing moment, in grey not amber", () => {
     show(
       session(
         request({
           messages: [
             ...(request().messages ?? []),
             msg("m5", 33, "Sending it back to the builder with two fixes."),
-            msg("m6", 34, "Sent it back to the same builder."),
           ],
         }),
       ),
-      { lastLooked: at(31), before: session(request()) },
     );
-    const brief = screen.getByRole("region", { name: "Since you last looked" });
-    expect(brief.textContent).toContain("2 sent back for fixes:");
-    expect(brief.querySelector(".lead")?.textContent).toBe(
-      "2 sent back for fixes.",
-    );
+    const moments = screen.getByRole("region", { name: "Key moments" });
+    const row = [...moments.querySelectorAll(".km-row")].at(-1) as HTMLElement;
+    expect(row.textContent).toContain("Fixing");
+    expect(row.querySelector(".mk.fix")).toBeTruthy();
   });
 
   it("a finished request never says helpers are still running", () => {
@@ -1131,30 +1066,15 @@ describe("review fixes: words", () => {
       tool_input: { questions: [{ question: "Morning or evening?" }] },
     });
     show(session(request()), { events: [ask] });
-    const call = screen.getByRole("region", { name: "Needs your call" });
+    const call = screen.getByRole("region", { name: "Waiting on you" });
     expect(within(call).queryByRole("button")).toBeNull();
-    expect(call.querySelector(".where")?.textContent).toBe(
+    expect(call.querySelector(".rb-where")?.textContent).toBe(
       "Answer in the terminal",
     );
   });
 });
 
 describe("review fixes: stillness and order", () => {
-  const before = () =>
-    session(
-      request({
-        phases: request().phases.map((ph) =>
-          ph.id === "p1"
-            ? {
-                ...ph,
-                tasks: ph.tasks.map((t) =>
-                  t.id === "t2" ? { ...t, status: "now" as const } : t,
-                ),
-              }
-            : ph,
-        ),
-      }),
-    );
   const live = (
     r: RequestView,
     status: "live" | "reconnecting",
@@ -1163,37 +1083,22 @@ describe("review fixes: stillness and order", () => {
     <Live
       sessionId="s1"
       view={session(r)}
-      viewAt={() => before()}
       events={events}
       status={status}
       lastLooked={at(10)}
     />
   );
-  const briefText = () =>
-    screen.queryByRole("region", { name: "Since you last looked" })
-      ?.textContent;
 
-  it("the catch-up survives a reconnect unchanged", () => {
+  it("the key moments survive a reconnect unchanged", () => {
+    const moments = () =>
+      screen.getByRole("region", { name: "Key moments" }).textContent;
     const { rerender } = render(live(request(), "live"));
-    const first = briefText();
-    expect(first).toContain("1 task done");
+    const first = moments();
     rerender(live(request(), "reconnecting"));
-    expect(briefText()).toBe(first);
-    rerender(
-      live(
-        request({
-          agents: [
-            ...request().agents,
-            helper("a5", { status: "running", startedAt: at(45) }),
-          ],
-        }),
-        "live",
-      ),
-    );
-    expect(briefText()).toBe(first);
+    expect(moments()).toBe(first);
   });
 
-  it("the catch-up stops saying a question waits once it is answered", () => {
+  it("the wait goes once the question is answered", () => {
     const ask = ev("q1", 40, "PreToolUse", {
       tool_name: "AskUserQuestion",
       tool_use_id: "toolu_q",
@@ -1204,21 +1109,14 @@ describe("review fixes: stillness and order", () => {
       tool_use_id: "toolu_q",
     });
     const { rerender } = render(live(request(), "live", [ask]));
-    const lead = () =>
-      screen
-        .getByRole("region", { name: "Since you last looked" })
-        .querySelector(".lead")?.textContent;
-    expect(lead()).toContain("a question is waiting for you");
+    expect(screen.getByRole("region", { name: "Waiting on you" })).toBeTruthy();
     rerender(live(request(), "live", [ask, answer]));
-    expect(lead()).not.toContain("waiting for you");
-    expect(lead()).toContain("1 task is done");
+    expect(screen.queryByRole("region", { name: "Waiting on you" })).toBeNull();
   });
 
-  it("a helper starting or ending never changes the plan's boxes", () => {
-    const boxes = () =>
-      [...(document.querySelector(".ph.now .tl")?.children ?? [])].map(
-        (li) => li.className,
-      );
+  it("a helper starting or ending never changes the track's stations", () => {
+    const stations = () =>
+      [...document.querySelectorAll(".trk-st > li")].map((li) => li.className);
     const agents = (running: boolean) =>
       request().agents.map((a) =>
         a.id === "a3" ? { ...a, status: running ? "running" : "done" } : a,
@@ -1226,13 +1124,13 @@ describe("review fixes: stillness and order", () => {
     const { rerender } = render(
       live(request({ agents: agents(true) }), "live"),
     );
-    const busy = boxes();
+    const busy = stations();
+    expect(busy).toHaveLength(5);
     rerender(live(request({ agents: agents(false) }), "live"));
-    expect(boxes()).toEqual(busy);
-    expect(busy.every((c) => c.split(" ").includes("lt"))).toBe(true);
+    expect(stations()).toEqual(busy);
   });
 
-  it("a second helper on a task keeps its card to one short line", () => {
+  it("a second helper on a task gets its own short line in the side", () => {
     vi.useFakeTimers({ now: new Date(at(30)), toFake: ["Date"] });
     const agents = [
       ...request().agents,
@@ -1243,8 +1141,17 @@ describe("review fixes: stillness and order", () => {
       p.id === "list" ? { ...p, agents: [...p.agents, "a5"] } : p,
     );
     render(live(r, "live"));
-    const card = screen.getByRole("listitem", { name: "Agent 3" });
-    expect(card.textContent).toBe("Reminder listAgent 3 +1<1 m");
+    const rows = [
+      ...screen
+        .getByRole("region", { name: "Helpers" })
+        .querySelectorAll(".hl-row"),
+    ];
+    const a5 = rows.find(
+      (r) => r.querySelector(".hl-n")?.textContent === "a5",
+    ) as HTMLElement;
+    expect(a5.querySelector(".hl-s")?.textContent).toBe(
+      "running under a minute · no report yet",
+    );
   });
 
   it("the first stop on the page skips to the content", () => {
@@ -1280,7 +1187,6 @@ describe("review fixes: stillness and order", () => {
         sessionId="s1"
         requestId="r1"
         view={two}
-        viewAt={() => null}
         events={[]}
         status="live"
         lastLooked={null}

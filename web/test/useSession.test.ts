@@ -81,7 +81,6 @@ describe("useSession", () => {
     expect(before).not.toBeNull();
     act(() => FakeES.all[0]?.push([B, A]));
     expect(result.current.view).not.toEqual(before);
-    expect(result.current.viewAt(A.ts)).toEqual(before);
   });
 
   it("pages through hasMore before opening the stream", async () => {
@@ -122,9 +121,7 @@ describe("useSession", () => {
     events.mockResolvedValueOnce({ events: [B], hasMore: false });
     await ready(0);
     expect(events).toHaveBeenLastCalledWith("s1", A.ts, "a");
-    expect(result.current.viewAt(B.ts)).not.toEqual(
-      result.current.viewAt(A.ts),
-    );
+    expect(result.current.events.map((e) => e.id)).toEqual(["a", "b"]);
   });
 
   it("a catch-up failure after the stream dropped does not retry twice", async () => {
