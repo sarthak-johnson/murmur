@@ -782,8 +782,8 @@ function defineLazy(object2, key, getter) {
     configurable: true
   });
 }
-function objectClone(obj8) {
-  return Object.create(Object.getPrototypeOf(obj8), Object.getOwnPropertyDescriptors(obj8));
+function objectClone(obj9) {
+  return Object.create(Object.getPrototypeOf(obj9), Object.getOwnPropertyDescriptors(obj9));
 }
 function assignProp(target, prop, value) {
   Object.defineProperty(target, prop, {
@@ -854,10 +854,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj8, path4) {
+function getElementAtPath(obj9, path4) {
   if (!path4)
-    return obj8;
-  return path4.reduce((acc, key) => acc?.[key], obj8);
+    return obj9;
+  return path4.reduce((acc, key) => acc?.[key], obj9);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -872,14 +872,14 @@ function promiseAllObject(promisesObj) {
 }
 function randomString(length = 10) {
   const chars = "abcdefghijklmnopqrstuvwxyz";
-  let str7 = "";
+  let str8 = "";
   for (let i = 0; i < length; i++) {
-    str7 += chars[Math.floor(Math.random() * chars.length)];
+    str8 += chars[Math.floor(Math.random() * chars.length)];
   }
-  return str7;
+  return str8;
 }
-function esc(str7) {
-  return JSON.stringify(str7);
+function esc(str8) {
+  return JSON.stringify(str8);
 }
 function slugify(input3) {
   return input3.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -993,8 +993,8 @@ var primitiveTypes = /* @__PURE__ */ new Set([
   "symbol",
   "undefined"
 ]);
-function escapeRegex(str7) {
-  return str7.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escapeRegex(str8) {
+  return str8.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function clone(inst, def, params) {
   const cl = new inst._zod.constr(def ?? inst._zod.def);
@@ -1260,13 +1260,13 @@ function getSizableOrigin(input3) {
   return "unknown";
 }
 var highSurrogate = /[\uD800-\uDBFF]/;
-function codePointLength(str7) {
-  const units = str7.length;
-  if (!highSurrogate.test(str7))
+function codePointLength(str8) {
+  const units = str8.length;
+  if (!highSurrogate.test(str8))
     return units;
   let count = units;
   for (let i = 0; i < units - 1; i++) {
-    if ((str7.charCodeAt(i) & 64512) === 55296 && (str7.charCodeAt(i + 1) & 64512) === 56320) {
+    if ((str8.charCodeAt(i) & 64512) === 55296 && (str8.charCodeAt(i + 1) & 64512) === 56320) {
       count--;
       i++;
     }
@@ -1293,9 +1293,9 @@ function parsedType(data) {
       if (Array.isArray(data)) {
         return "array";
       }
-      const obj8 = data;
-      if (obj8 && Object.getPrototypeOf(obj8) !== Object.prototype && "constructor" in obj8 && obj8.constructor) {
-        return obj8.constructor.name;
+      const obj9 = data;
+      if (obj9 && Object.getPrototypeOf(obj9) !== Object.prototype && "constructor" in obj9 && obj9.constructor) {
+        return obj9.constructor.name;
       }
     }
   }
@@ -1313,8 +1313,8 @@ function issue(...args) {
   }
   return { ...iss };
 }
-function cleanEnum(obj8) {
-  return Object.entries(obj8).filter(([k, _]) => {
+function cleanEnum(obj9) {
+  return Object.entries(obj9).filter(([k, _]) => {
     return Number.isNaN(Number.parseInt(k, 10));
   }).map((el) => el[1]);
 }
@@ -1639,15 +1639,15 @@ var $ZodError = $constructor("$ZodError", initializer);
 var $ZodRealError = $constructor("$ZodError", initializer, void 0, {
   Parent: Error
 });
-function node(obj8, key, make) {
-  if (!Object.prototype.hasOwnProperty.call(obj8, key)) {
+function node(obj9, key, make) {
+  if (!Object.prototype.hasOwnProperty.call(obj9, key)) {
     if (key === "__proto__") {
-      Object.defineProperty(obj8, key, { value: make(), writable: true, enumerable: true, configurable: true });
+      Object.defineProperty(obj9, key, { value: make(), writable: true, enumerable: true, configurable: true });
     } else {
-      obj8[key] = make();
+      obj9[key] = make();
     }
   }
-  return obj8[key];
+  return obj9[key];
 }
 function flattenError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = {};
@@ -19807,6 +19807,8 @@ var status = external_exports.preprocess(said, external_exports.enum(["running",
 var MapInput = external_exports.object({
   kind: external_exports.enum(["feature", "bug", "refactor", "question"]),
   goal: text,
+  // The request in 2 to 4 words, for a list of requests ("Restyle the app").
+  short: external_exports.string().max(60).optional(),
   phases: list(
     external_exports.object({
       id: text,
@@ -20066,6 +20068,8 @@ function applyMap(req, map2) {
   req.kind = map2.kind;
   req.kindInferred = false;
   req.goal = map2.goal;
+  if (map2.short?.trim()) req.short = map2.short.trim();
+  else delete req.short;
   req.planInferred = false;
   req.phases = map2.phases.map((ph) => ({
     id: ph.id,
@@ -20439,6 +20443,66 @@ function applyFlags(req, events, { before, narrated }, followed = false) {
   }
 }
 
+// ../packages/core/src/view/moments.ts
+var SUBJECT = String.raw`\b(?:tasks?|phase)\b[^.;:!?]*?`;
+var RULES = [
+  // A review or test that found a problem, or something that failed.
+  [
+    "problem",
+    // Not a guess ("means one failed", "might have failed", "if it failed") or a
+    // negation ("none of the tests failed", "the review found no problems").
+    /\breview(?:er)? found\b(?!\s+(?:no|nothing|none|zero)\b)|\bfound (?:a|an|one|two|three|\d+|some|real)\b[^.;:]*\bproblems?\b|(?<!\b(?:none|nothing|no|zero|0|never|not|means|meaning|might|may|maybe|could|would|if|or|whether)\b(?:\s[\w'-]+){0,3}\s)\bfailed\b/i
+  ],
+  // Something sent back.
+  [
+    "fixing",
+    /\bsen(?:d|ding|t) (?:it |them |this |that )?back\b|\bback to the (?:same )?builder\b/i
+  ],
+  // A task or phase that is done or passed.
+  [
+    "done",
+    new RegExp(
+      `${SUBJECT}\\b(?:is|are|was|were)\\s+(?:now\\s+)?(?:done|finished|complete)\\b|\\b(?:tasks?|phase)\\s+[\\w-]+(?:\\s+and\\s+[\\w-]+)?\\s+passed\\b`,
+      "i"
+    )
+  ],
+  // An explicit change of plan, or a choice with its reason ("X, not Y: because").
+  [
+    "decision",
+    /\b(?:I|I'm|I'll|I've|we|we'll|we're)\b[^.;]*\b(?:instead of|rather than)\b|\bI(?:'ve| have)? decided\b|\bchanged? (?:the |my |our )?plan\b|,\s*not\s+\w+(?:\s+\w+)?\s*[:;]/i
+  ],
+  ["plan", /\badded an? (?:\w+ )?task\b/i]
+];
+function plainText(text3) {
+  return text3.replace(/```[\s\S]*?```/g, " ").replace(/`([^`]*)`/g, "$1").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/(\*\*|__)(.+?)\1/g, "$2").replace(/(^|\W)[*_]([^*_\n]+)[*_](?=\W|$)/g, "$1$2").replace(/^\s*(#{1,6}|>|[-*+]|\d+[.)])\s+/gm, "").replace(/\s+/g, " ").trim();
+}
+function sentences(plain2) {
+  const out = [];
+  let from = 0;
+  for (const m of plain2.matchAll(/[.!?](?=\s|$)/g)) {
+    if (/\b(?:e\.g|i\.e|vs|cf|approx|incl|etc)$/i.test(plain2.slice(0, m.index)))
+      continue;
+    out.push(plain2.slice(from, m.index + 1).trim());
+    from = m.index + 1;
+  }
+  const rest = plain2.slice(from).trim();
+  if (rest) out.push(rest);
+  return out;
+}
+function firstSentence(text3) {
+  return sentences(plainText(text3))[0] ?? "";
+}
+function moment(text3) {
+  const first = firstSentence(text3);
+  return RULES.find(([, re]) => re.test(first))?.[0];
+}
+function cutWords(s, max) {
+  if (s.length <= max) return s;
+  const head = s.slice(0, max - 1);
+  const space = head.lastIndexOf(" ");
+  return `${(space > 0 ? head.slice(0, space) : head).trimEnd()}\u2026`;
+}
+
 // ../packages/core/src/view/agents.ts
 var str3 = (v) => typeof v === "string" ? v : "";
 var obj3 = (v) => v && typeof v === "object" ? v : {};
@@ -20496,9 +20560,110 @@ function applyAgents(req, events, { before, narrated }, known) {
   return started;
 }
 
+// ../packages/core/src/view/rounds.ts
+var ITEM = /\b(?:tasks?\s+(\d+[a-z]?(?:\s*[-–]\s*\d+[a-z]?)?)|(?:bug\s+b?|b)(\d+))\b/i;
+var PHASE = /\bphase\s+(\d+)\b/i;
+function itemOf(text3) {
+  const m = ITEM.exec(text3);
+  if (!m) return void 0;
+  if (m[2]) return `B${m[2]}`;
+  const id = m[1].replace(/\s*[-–]\s*/, "-").toLowerCase();
+  return `${id.includes("-") ? "Tasks" : "Task"} ${id}`;
+}
+function subjectOf(text3) {
+  const phase = PHASE.exec(text3)?.[1];
+  return itemOf(text3) ?? (phase ? `Phase ${phase}` : void 0);
+}
+function roleOf(description) {
+  const d = description.trim();
+  if (/\bre-?(?:review|check)/i.test(d)) return "recheck";
+  if (/^fix\b|\bfix(?:es)? rounds?\b/i.test(d)) return "fix";
+  if (/\breview/i.test(d)) return "review";
+  if (/\bplan\b/i.test(d)) return "plan";
+  if (/^(?:implement|build|write|add|draft|create|make|port)\b/i.test(d))
+    return "build";
+  if (/^(?:research|investigate|explore|find|inventory|audit|survey)\b/i.test(d))
+    return "research";
+  return "other";
+}
+var ROUND = /\brounds?\s+(\d+)(?:\s*[-–]\s*(\d+))?/i;
+function applyRounds(reqs, agents) {
+  const latest = /* @__PURE__ */ new Map();
+  const last = /* @__PURE__ */ new Map();
+  const reviewed = /* @__PURE__ */ new Set();
+  const ordered = [...agents.values()].sort(
+    (a, b) => a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0
+  );
+  for (const a of ordered) {
+    a.role = roleOf(a.description);
+    const s = subjectOf(a.description);
+    if (!s) continue;
+    a.subject = s;
+    const prev = Math.max(latest.get(s) ?? 0, 1);
+    const n = ROUND.exec(a.description);
+    const named = n ? Number(n[2] ?? n[1]) + 1 : void 0;
+    const again = /\bround/i.test(a.description);
+    a.round = named ?? (a.role === "recheck" ? last.get(s) === "fix" ? prev : prev + 1 : a.role === "fix" && (reviewed.has(s) || again) ? prev + 1 : prev);
+    latest.set(s, Math.max(latest.get(s) ?? 0, a.round));
+    last.set(s, a.role);
+    if (a.role === "review" || a.role === "recheck") reviewed.add(s);
+  }
+  for (const req of reqs) {
+    const counts = {
+      build: 0,
+      review: 0,
+      recheck: 0,
+      fix: 0,
+      other: 0
+    };
+    const back = /* @__PURE__ */ new Set();
+    for (const a of req.agents) {
+      const role = a.role ?? "other";
+      if (role in counts) counts[role]++;
+      else counts.other++;
+      if (a.subject && (a.round ?? 0) > 1) back.add(a.subject);
+    }
+    req.helperCounts = counts;
+    req.sentBack = [...back];
+    const tasks = req.phases.flatMap((ph) => ph.tasks);
+    for (const t of tasks) {
+      const n = roundsOf(helpersOf(req, t));
+      if (n !== void 0) t.rounds = n;
+    }
+    for (const p of req.parts) {
+      const n = roundsOf(helpersOf(req, void 0, p));
+      if (n !== void 0) p.rounds = n;
+    }
+  }
+}
+var roundsOf = (helpers) => {
+  const rounds = helpers.flatMap((a) => a.round ? [a.round] : []);
+  return rounds.length ? Math.max(...rounds) - 1 : void 0;
+};
+function subjectOfWork(req, task, part) {
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  const p = part ?? req.parts.find((x) => x.id === task?.part);
+  const own2 = part ? tasks.filter((t) => t.part === part.id) : [];
+  return task && subjectOf(task.title) || p && subjectOf(p.title) || (own2.length === 1 ? subjectOf(own2[0].title) : void 0);
+}
+function helpersOf(req, task, part, every = false) {
+  const s = subjectOfWork(req, task, part);
+  if (s && !every) return req.agents.filter((a) => a.subject === s);
+  const ids = /* @__PURE__ */ new Set([
+    ...task?.agents ?? [],
+    ...part?.agents ?? [],
+    ...task && !part ? req.parts.find((x) => x.id === task.part)?.agents ?? [] : []
+  ]);
+  const tied = req.agents.filter(
+    (a) => ids.has(a.id) || s !== void 0 && a.subject === s
+  );
+  if (every) return tied;
+  const subjects = new Set(tied.flatMap((a) => a.subject ? [a.subject] : []));
+  return subjects.size <= 1 ? tied : [];
+}
+
 // ../packages/core/src/view/history.ts
 var MAX_FOLDERS = 6;
-var ID = /\b(?:tasks?\s+(\d+(?:\s*[-–]\s*\d+)?)|(?:bug\s+b?|b)(\d+))\b/i;
 var VERB = /^(implement|build|draft|write|fix|add|research|investigate|re-?review|review)\b[\s:]*/i;
 var QUIET_MS = 6e5;
 var REVIEW = /^(re-?)?review\b/i;
@@ -20516,16 +20681,11 @@ var obj4 = (v) => v && typeof v === "object" ? v : {};
 var isTool = (e, hook, name) => e.hook === hook && e.payload.tool_name === name;
 var describe3 = (e) => str4(obj4(e.payload.tool_input).description).trim();
 function subject(description) {
-  const m = ID.exec(description);
-  if (!m) return void 0;
-  return m[1] ? `task:${m[1].replace(/\s*[-–]\s*/, "-")}` : `item:B${m[2]}`;
+  const id = itemOf(description);
+  if (!id) return void 0;
+  return id.startsWith("B") ? `item:${id}` : `task:${id.replace(/^Tasks? /, "")}`;
 }
-function titleOf(description) {
-  const t = description.replace(VERB, "") || description || "A helper";
-  return t.charAt(0).toUpperCase() + t.slice(1);
-}
-function inferHistory(reqs, events, agents, started) {
-  const all = events.flat();
+function quiet(all) {
   const lastAt = /* @__PURE__ */ new Map();
   for (const e of all) {
     const id = str4(e.payload.agent_id);
@@ -20534,6 +20694,15 @@ function inferHistory(reqs, events, agents, started) {
   const latest = Date.parse(all.at(-1)?.ts ?? "");
   const endAt = all.findLast((e) => e.hook === "SessionEnd")?.ts ?? "";
   const over = (since) => endAt > since || latest - Date.parse(since) > QUIET_MS;
+  return { lastAt, over };
+}
+function titleOf(description) {
+  const t = description.replace(VERB, "") || description || "A helper";
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+function inferHistory(reqs, events, agents, started) {
+  const all = events.flat();
+  const { lastAt, over } = quiet(all);
   const failed = /* @__PURE__ */ new Set();
   const returned = /* @__PURE__ */ new Set();
   for (const e of all) {
@@ -20763,7 +20932,11 @@ function applyInference(req, events) {
     }
   ];
 }
-var TOOL_HOOKS = /* @__PURE__ */ new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure"]);
+var TOOL_HOOKS = /* @__PURE__ */ new Set([
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure"
+]);
 var QUIET = /* @__PURE__ */ new Set([
   MAP_TOOL,
   NARRATE_TOOL,
@@ -20772,18 +20945,54 @@ var QUIET = /* @__PURE__ */ new Set([
   "TaskGet"
 ]);
 var basename = (v) => typeof v === "string" && v ? v.split("/").filter(Boolean).at(-1) : void 0;
+var PHRASE = {
+  Grep: "Searching the code",
+  Glob: "Searching the code",
+  Monitor: "Watching a background job",
+  TaskOutput: "Watching a background job",
+  BashOutput: "Watching a background job",
+  TaskStop: "Stopping a background job",
+  KillShell: "Stopping a background job",
+  SendMessage: "Messaging a helper",
+  WebSearch: "Searching the web",
+  WebFetch: "Reading a web page",
+  Skill: "Using a skill",
+  AskUserQuestion: "Asking you a question",
+  TodoWrite: "Updating the task list",
+  TaskCreate: "Updating the task list",
+  TaskUpdate: "Updating the task list",
+  Artifact: "Publishing a page",
+  ArtifactData: "Updating a page",
+  NotebookEdit: "Editing a notebook"
+};
+var BROWSER = /chrome|playwright|browser|puppeteer/i;
 function toolText(p) {
   const name = String(p.tool_name);
   const input3 = obj5(p.tool_input);
   const file2 = basename(input3.file_path);
-  const command = typeof input3.command === "string" ? input3.command.replace(/\s+/g, " ").trim().slice(0, 60) : "";
   const description = text2(input3.description);
-  if ((name === "Edit" || name === "Write") && file2) return `Editing ${file2}`;
-  if (name === "Read" && file2) return `Reading ${file2}`;
-  if (name === "Bash" && command) return `Running ${command}`;
+  if ((name === "Edit" || name === "Write") && file2)
+    return { text: `Editing ${file2}` };
+  if (name === "Read" && file2) return { text: `Reading ${file2}` };
   if (name === "Agent" && description)
-    return `Started a helper: ${description}`;
-  return `Using ${name}`;
+    return { text: `Starting a helper: ${description}` };
+  if (name.toLowerCase() === "bash") {
+    const command = typeof input3.command === "string" ? input3.command.trim() : "";
+    return {
+      text: description ?? "Running a command",
+      ...command ? { detail: command } : {}
+    };
+  }
+  const phrase = PHRASE[name];
+  if (phrase) return { text: phrase, detail: name };
+  const server = /^mcp__(.+?)__/.exec(name)?.[1];
+  if (server) {
+    if (BROWSER.test(server))
+      return { text: "Looking at the browser", detail: name };
+    const plain2 = server.replace(/^plugin_([^_]+)_.*$/, "$1").replace(/^claude_ai_/, "").replace(/_/g, " ");
+    return { text: `Using ${plain2}`, detail: name };
+  }
+  return { text: `Using ${name}`, detail: name };
 }
 function inferNow(req, events, trace) {
   let tool = -1;
@@ -20797,7 +21006,7 @@ function inferNow(req, events, trace) {
   if (last < 0 || (trace.narrated.at(-1)?.i ?? -1) > tool) return;
   const e = events[last];
   req.now = {
-    text: stop > tool ? "Finished this request" : toolText(e.payload),
+    ...stop > tool ? { text: "Finished this request" } : toolText(e.payload),
     why: "",
     ts: e.ts,
     inferred: true
@@ -20913,9 +21122,9 @@ function messagesOf(req, events, reportAt) {
   }
   return out;
 }
-var SUBJECT = /\b(?:tasks?\s+(\d+)(?:\s*(?:[-–]|and|&)\s*(\d+))?|(?:bug\s+b?|b)(\d+))\b/gi;
+var SUBJECT2 = /\b(?:tasks?\s+(\d+)(?:\s*(?:[-–]|and|&)\s*(\d+))?|(?:bug\s+b?|b)(\d+))\b/gi;
 function subjectsOf(text3) {
-  return [...text3.matchAll(SUBJECT)].map((m) => {
+  return [...text3.matchAll(SUBJECT2)].map((m) => {
     if (m[3]) return { kind: "item", id: Number(m[3]) };
     const from = Number(m[1]);
     const to = m[2] ? Number(m[2]) : from;
@@ -20974,6 +21183,485 @@ function cutAtSentence(s, max) {
   return `${head.slice(0, head.lastIndexOf(" ")).trimEnd()}\u2026`;
 }
 
+// ../packages/core/src/view/journey.ts
+var HOUR_MS = 36e5;
+var PHASE2 = /\bphase\s+(\d+)\b/gi;
+var DECIDES = /\b(?:styles?|looks?|designs?|themes?|plans?|approv\w*)\b/i;
+var APPROVES = /\b(?:go ahead|let'?s (?:build|do|go|ship|start)\b|yes,? please|ship it|approved?|go for it|sounds good|lgtm)\b/i;
+function keysOf(req) {
+  const plan = req.phases.flatMap((ph) => [
+    ph.title,
+    ...ph.tasks.map((t) => t.title)
+  ]);
+  const phases = new Set(
+    [req.goal, ...plan].flatMap(
+      (t) => [...t.matchAll(PHASE2)].map((m) => m[1])
+    )
+  );
+  const items = /* @__PURE__ */ new Set();
+  for (const s of [...plan, ...req.parts.map((p) => p.title)].flatMap(
+    subjectsOf
+  )) {
+    if (s.kind === "item") items.add(`B${s.id}`);
+    else
+      for (let n = s.from; n <= Math.min(s.to, s.from + 50); n++)
+        items.add(`T${n}`);
+  }
+  for (const a of req.agents) {
+    const id = itemOf(a.description);
+    const n = /^Tasks? (\d+)/.exec(id ?? "")?.[1];
+    if (id?.startsWith("B")) items.add(id);
+    else if (n) items.add(`T${n}`);
+  }
+  return { phases, items };
+}
+var meets = (a, b) => [...a].some((x) => b.has(x));
+function chaptersOf(reqs) {
+  const groups = [];
+  for (const req of reqs) {
+    const k = keysOf(req);
+    const g = groups.at(-1);
+    const keyless = !k.phases.size && !k.items.size;
+    const joins = g && (k.phases.size && g.keys.phases.size ? meets(k.phases, g.keys.phases) : meets(k.items, g.keys.items) || keyless && !g.keys.phases.size && !g.keys.items.size && g.reqs.at(-1)?.kind === req.kind);
+    if (g && joins) {
+      g.reqs.push(req);
+      for (const p of k.phases) g.keys.phases.add(p);
+      for (const i of k.items) g.keys.items.add(i);
+    } else groups.push({ reqs: [req], keys: k });
+  }
+  return groups.map(({ reqs: rs, keys }) => {
+    const states = rs.map((r) => r.state ?? "done");
+    return {
+      title: titleOf2(rs, keys),
+      requestIds: rs.map((r) => r.id),
+      state: states.includes("waiting") ? "waiting" : states.includes("running") ? "running" : states.at(-1) ?? "done"
+    };
+  });
+}
+function titleOf2(rs, keys) {
+  const nums = [...keys.phases].map(Number).sort((a, b) => a - b);
+  if (nums.length === 1) {
+    const titles = rs.flatMap((r) => r.phases.map((ph) => ph.title));
+    const own2 = titles.filter(
+      (t) => new RegExp(`^phase\\s+${nums[0]}\\b`, "i").test(t)
+    );
+    return own2.find((t) => t.includes(":")) ?? own2[0] ?? `Phase ${nums[0]}`;
+  }
+  if (nums.length === 2) return `Phases ${nums[0]} and ${nums[1]}`;
+  if (nums.length > 2) return `Phases ${nums[0]} to ${nums.at(-1)}`;
+  return rs[0]?.short ?? "";
+}
+function pausesOf(reqs, lists) {
+  const out = [];
+  const gap = (from, to) => Date.parse(to) - Date.parse(from) > HOUR_MS;
+  lists.forEach((list2, i) => {
+    const after = reqs[i]?.id ?? "";
+    const ms = list2.map((e) => Date.parse(e.ts));
+    for (let k = 1; k < list2.length; k++)
+      if (ms[k] - ms[k - 1] > HOUR_MS)
+        out.push({
+          after,
+          from: list2[k - 1].ts,
+          to: list2[k].ts,
+          inside: true
+        });
+    const from = list2.at(-1)?.ts;
+    const to = lists[i + 1]?.[0]?.ts;
+    if (from && to && gap(from, to))
+      out.push({ after, from, to, inside: false });
+  });
+  return out;
+}
+function decisionsOf(reqs) {
+  const out = [];
+  for (const req of reqs) {
+    if (APPROVES.test(req.prompt))
+      out.push({
+        ts: req.startedAt,
+        requestId: req.id,
+        text: cutWords(firstSentence(req.prompt), 120),
+        by: "user"
+      });
+    for (const m of req.messages ?? []) {
+      const first = firstSentence(m.text);
+      if (moment(m.text) === "decision" && DECIDES.test(first))
+        out.push({
+          ts: m.ts,
+          requestId: req.id,
+          text: cutWords(first, 140),
+          by: "claude"
+        });
+    }
+  }
+  return out;
+}
+function journeyOf(reqs, lists) {
+  const pauses = pausesOf(reqs, lists);
+  const files = new Set(
+    reqs.flatMap(
+      (r) => [...r.parts.flatMap((p) => p.files), ...r.looseFiles].map((f) => f.path)
+    )
+  );
+  const sum = (key) => reqs.reduce((n, r) => n + r.tally[key], 0);
+  return {
+    chapters: chaptersOf(reqs),
+    pauses,
+    decisions: decisionsOf(reqs),
+    totals: {
+      helpers: sum("helpers"),
+      files: files.size,
+      commands: sum("commands"),
+      sentBack: new Set(reqs.flatMap((r) => r.sentBack ?? [])).size,
+      pauses: pauses.length
+    }
+  };
+}
+
+// ../packages/core/src/view/shape.ts
+var str6 = (v) => typeof v === "string" ? v : "";
+var obj7 = (v) => v && typeof v === "object" ? v : {};
+var real = (e) => e.payload.recap !== true;
+var byTs = (a, b) => a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0;
+function applyShape(req, events, trace, ctx) {
+  const live2 = trace.narrated.filter((x) => real(x.e));
+  if (!req.short) {
+    const short = shortOf(req.goal);
+    if (short) req.short = short;
+  }
+  const beyond = beyondOf(req, events, trace);
+  if (beyond) req.beyond = beyond;
+  placeMessages(req, live2, events, beyond);
+  req.state = stateOf(req, events, live2, ctx);
+  const outcome = outcomeOf(req.messages ?? []);
+  if (outcome) req.outcome = outcome;
+  if (req.state === "waiting") {
+    const asked = waitingOf(req, events);
+    if (asked.length) req.waiting = asked;
+  }
+  const at = new Map(events.map((e) => [e.id, e]));
+  const starts = new Map(
+    events.filter((e) => e.hook === "SubagentStart").map((e) => [str6(e.payload.agent_id), e.id])
+  );
+  for (const part of req.parts) fillPart(req, part, at, starts, live2, ctx);
+  for (const f of req.parts.flatMap((p) => p.files))
+    if (!f.role) {
+      f.role = groupOf(f.path);
+      f.roleInferred = true;
+    }
+}
+var STOP = new Set(
+  "a an the to of and or for with in on at by from into as is my our your its their this that these those every all some each then".split(
+    " "
+  )
+);
+var FILLER = /^(?:start|begin|continue|resume|keep|finish|carry on|proceed with|go on with)\s+/i;
+var SHORT_MAX = 32;
+function shortOf(goal) {
+  const plain2 = goal.replace(/\s*\([^)]*\)/g, "");
+  let s = (plain2.split(/,|:|\s[-–]\s|\sand then\s/i)[0] ?? "").trim();
+  const filler = FILLER.exec(s);
+  const rest = filler ? s.slice(filler[0].length).split(/\s+/) : [];
+  if (rest.length >= 2 && !STOP.has(rest[0].toLowerCase()))
+    s = rest.join(" ");
+  let out = "";
+  for (const w of s.split(/\s+/)) {
+    const next = out ? `${out} ${w}` : w;
+    if (next.length > SHORT_MAX) break;
+    out = next;
+  }
+  const words = (out || s.slice(0, SHORT_MAX)).split(" ");
+  while (words.length > 1 && STOP.has(words.at(-1).toLowerCase()))
+    words.pop();
+  const t = words.join(" ").replace(/[.;]+$/, "");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+function doneAt(req, events, trace) {
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  if (!tasks.length || req.recap || tasks.some((t) => t.status !== "done"))
+    return void 0;
+  if (req.planInferred)
+    return req.phases[0]?.id === "tasks" ? events.findLast((e) => e.hook === "TaskCompleted")?.ts : void 0;
+  const status2 = new Map(tasks.map((t) => [t.id, "todo"]));
+  let at;
+  for (const x of trace.narrated) {
+    if (!x.task || !status2.has(x.task) || !x.n.taskStatus) continue;
+    status2.set(x.task, x.n.taskStatus);
+    const all = [...status2.values()].every((s) => s === "done");
+    if (!all) at = void 0;
+    else at ??= x.e.ts;
+  }
+  return at;
+}
+function beyondOf(req, events, trace) {
+  const since = doneAt(req, events, trace);
+  if (!since) return void 0;
+  const after = events.filter((e) => e.ts > since);
+  const work = after.some(
+    (e) => e.hook === "SubagentStart" || TOOL_HOOKS.has(e.hook) && !QUIET.has(str6(e.payload.tool_name))
+  );
+  if (!work) return void 0;
+  const busy = new Set(after.map((e) => str6(e.payload.agent_id)));
+  const agents = req.agents.filter(
+    (a) => a.startedAt > since || busy.has(a.id) && (!a.endedAt || a.endedAt > since)
+  );
+  const rounds = new Set(
+    agents.flatMap(
+      (a) => a.subject && (a.round ?? 0) > 1 ? [`${a.subject}\0${a.round}`] : []
+    )
+  );
+  return {
+    since,
+    agents: agents.map((a) => a.id),
+    messages: (req.messages ?? []).filter((m) => m.ts > since).map((m) => m.id),
+    rounds: rounds.size
+  };
+}
+function placeMessages(req, live2, events, beyond) {
+  const msgs = req.messages ?? [];
+  const tsOf = new Map(events.map((e) => [e.id, e.ts]));
+  const windows = [];
+  for (const ph of req.phases) {
+    const times = ph.tasks.flatMap((t) => {
+      const part = req.parts.find((p) => p.id === t.part);
+      return [
+        ...live2.filter(
+          (x) => x.task === t.id || !x.task && x.part !== void 0 && x.part === t.part
+        ).map((x) => x.e.ts),
+        ...helpersOf(req, t).flatMap(
+          (a) => [a.startedAt, a.endedAt ?? [], a.report?.ts ?? []].flat()
+        ),
+        ...(part?.files ?? []).flatMap(
+          (f) => f.eventIds.flatMap((id) => tsOf.get(id) ?? [])
+        )
+      ];
+    }).sort();
+    const [start, end] = [times[0], times.at(-1)];
+    if (start && end) windows.push({ id: ph.id, start, end });
+  }
+  const begun = [...windows].sort(
+    (a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0
+  );
+  const span = (w) => Date.parse(w.end) - Date.parse(w.start);
+  const phaseOf = new Map(
+    req.phases.flatMap((ph) => ph.tasks.map((t) => [t.id, ph.id]))
+  );
+  for (const m of msgs) {
+    delete m.phase;
+    if (beyond && m.ts > beyond.since) continue;
+    const holding = windows.filter((w) => w.start <= m.ts && m.ts <= w.end).sort((a, b) => span(a) - span(b))[0];
+    const phase = m.task && phaseOf.get(m.task) || holding?.id || begun.findLast((w) => w.start <= m.ts)?.id || req.phases[0]?.id;
+    if (phase) m.phase = phase;
+  }
+}
+var isFailed = (s) => s === "failed" || s === "blocked";
+function stateOf(req, events, live2, ctx) {
+  if (ctx.waiting) return "waiting";
+  const last = events.findLast(
+    (e) => !e.payload.agent_id && e.hook !== "Notification"
+  );
+  const ended = ["Stop", "StopFailure", "SessionEnd"].includes(
+    last?.hook ?? ""
+  );
+  if (!ctx.later && !ended || req.agents.some(ctx.live)) return "running";
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  if (ctx.later && tasks.some((t) => t.status !== "done")) return "left-open";
+  if (last?.hook === "StopFailure") return "failed";
+  const call = events.findLast(
+    (e) => e.hook === "PreToolUse" && e.payload.tool_name === "Agent"
+  );
+  const use = str6(call?.payload.tool_use_id);
+  const callFailed = events.find(
+    (e) => use && e.hook === "PostToolUseFailure" && e.payload.tool_use_id === use
+  );
+  const report = req.agents.at(-1)?.report;
+  const step = live2.findLast((x) => x.n.step || x.n.taskStatus);
+  const failedAt = [
+    callFailed?.ts,
+    report && /failed|killed/.test(report.status) ? report.ts : void 0,
+    step && (step.n.step?.status === "failed" || isFailed(step.n.taskStatus)) ? step.e.ts : void 0
+  ].filter((t) => !!t).sort().at(-1);
+  if (!failedAt) return "done";
+  const passed = live2.some(
+    (x) => x.e.ts > failedAt && (x.n.step?.status === "done" || x.n.taskStatus === "done")
+  ) || req.agents.some(
+    (a) => a.report && a.report.ts > failedAt && a.report.status === "completed"
+  );
+  return passed ? "done" : "failed";
+}
+var OUTCOME_MAX = 240;
+function outcomeOf(msgs) {
+  const said2 = msgs.filter((m) => !/^\s*API Error\b/.test(m.text));
+  const pick2 = said2.findLast((m) => moment(m.text) === "done") ?? said2.at(-1);
+  const first = pick2 ? firstSentence(pick2.text) : "";
+  return first ? cutWords(first, OUTCOME_MAX) : void 0;
+}
+function waitingOf(req, events) {
+  const answered = new Set(
+    events.filter(
+      (e) => e.hook === "PostToolUse" || e.hook === "PostToolUseFailure"
+    ).map((e) => str6(e.payload.tool_use_id))
+  );
+  const ask2 = events.findLast(
+    (e) => e.hook === "PreToolUse" && e.payload.tool_name === "AskUserQuestion" && !answered.has(str6(e.payload.tool_use_id))
+  );
+  const questions = obj7(ask2?.payload.tool_input).questions;
+  if (Array.isArray(questions))
+    return questions.map((q) => str6(obj7(q).question)).filter(Boolean);
+  const text3 = req.messages?.at(-1)?.text ?? "";
+  return sentences(plainText(text3)).filter((s) => s.endsWith("?"));
+}
+var ABOUT_ACTING = /^(?:you are|you're|your (?:job|task|role)|you will|act as)\b/i;
+function aimOf(brief) {
+  const first = firstSentence(brief);
+  if (!ABOUT_ACTING.test(first))
+    return first ? cutWords(first, AIM_MAX) : void 0;
+  const colon = first.indexOf(": ");
+  const rest = colon < 0 ? "" : first.slice(colon + 2).trim();
+  return rest ? cutWords(rest.charAt(0).toUpperCase() + rest.slice(1), AIM_MAX) : void 0;
+}
+var SENT_BACK = /\b(?:needs?[ _-]?fix(?:es)?|changes[ _-]requested|not approved|rejected|blocking issues?)\b/i;
+var NUMBER = [
+  "no",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine"
+];
+var AIM_MAX = 300;
+function fillPart(req, part, at, starts, live2, ctx) {
+  const helpers = helpersOf(req, void 0, part, true);
+  const own2 = new Set(
+    req.phases.flatMap((ph) => ph.tasks).filter((t) => t.part === part.id).map((t) => t.id)
+  );
+  const subject2 = subjectOfWork(req, void 0, part);
+  const about = (req.messages ?? []).filter(
+    (m) => m.task && own2.has(m.task) || subject2 !== void 0 && itemOf(firstSentence(m.text)) === subject2
+  );
+  const notes = live2.filter((x) => x.part === part.id);
+  const runs = helpers.map(
+    (a, i) => helperStep(a, helpers.slice(i + 1), starts, ctx)
+  );
+  let filled = false;
+  if (!part.aim) {
+    const coherent = helpersOf(req, void 0, part);
+    const aimBy = (roles) => coherent.flatMap(
+      (a) => roles.includes(a.role ?? "") && a.brief ? aimOf(a.brief) ?? [] : []
+    )[0];
+    const aim = aimBy(["build", "fix", "plan", "research"]) ?? aimBy(["review", "recheck"]);
+    if (aim) {
+      part.aim = {
+        inferred: true,
+        aim,
+        doneWhen: doneWhenOf(part, coherent, starts, ctx, about)
+      };
+      filled = true;
+    }
+  }
+  if (!part.steps.length) {
+    const steps = [
+      ...runs,
+      ...notes.map((x) => ({
+        ts: x.e.ts,
+        text: x.n.now,
+        status: isFailed(x.n.taskStatus) ? "failed" : "done",
+        ...str6(x.e.payload.agent_id) ? { agentId: str6(x.e.payload.agent_id) } : {},
+        eventIds: [x.e.id]
+      })),
+      ...about.map((m) => ({
+        ts: m.ts,
+        text: cutWords(firstSentence(m.text), AIM_MAX),
+        status: "done",
+        eventIds: [m.id]
+      }))
+    ].sort(byTs);
+    const lastStep = steps.at(-1);
+    if (lastStep && part.status === "now" && notes.some((x) => x.e.id === lastStep.eventIds[0]))
+      lastStep.status = "running";
+    if (steps.length) {
+      part.steps = steps;
+      filled = true;
+    }
+  }
+  if (filled) part.inferred = true;
+  const times = [
+    ...helpers.flatMap(
+      (a) => [a.startedAt, a.endedAt ?? [], a.report?.ts ?? []].flat()
+    ),
+    ...part.steps.flatMap((s) => {
+      const e = at.get(s.eventIds[0] ?? "");
+      return !e || real(e) ? [s.ts] : [];
+    }),
+    ...part.files.flatMap(
+      (f) => f.eventIds.flatMap((id) => at.get(id)?.ts ?? [])
+    ),
+    ...about.map((m) => m.ts),
+    ...notes.map((x) => x.e.ts)
+  ].sort();
+  const start = times[0];
+  if (start) {
+    const underWay = helpers.some(ctx.live) || part.status === "now" && (req.state === "running" || req.state === "waiting");
+    part.span = underWay ? { start } : { start, end: times.at(-1) };
+  }
+}
+function helperStep(a, after, starts, ctx) {
+  const running = ctx.live(a);
+  const r = a.report;
+  const failed = !!r && /failed|killed/.test(r.status);
+  const backed = after.some(
+    (b) => b.subject === a.subject && (b.round ?? 0) > (a.round ?? 0) && (b.role === "fix" || b.role === "recheck")
+  ) || SENT_BACK.test(`${r?.verdict ?? ""} ${r?.text.slice(0, 300) ?? ""}`);
+  const review = a.role === "review" || a.role === "recheck";
+  const text3 = review ? running ? a.role === "review" ? "Reviewing" : "Re-reviewing" : backed ? "Sent back" : r ? "Passed" : a.role === "review" ? "Reviewed" : "Re-reviewed" : a.role === "build" ? running ? "Building" : "Built" : a.role === "fix" ? running ? "Fixing" : "Fixed" : a.role === "plan" ? "Planned" : a.role === "research" ? "Researched" : a.description || "A helper";
+  const startEvent = starts.get(a.id);
+  return {
+    ts: a.startedAt,
+    text: text3,
+    status: failed ? "failed" : running ? "running" : "done",
+    agentId: a.id,
+    eventIds: startEvent ? [startEvent] : []
+  };
+}
+function doneWhenOf(part, helpers, starts, ctx, about) {
+  const said2 = about.findLast((m) => moment(m.text) === "done");
+  if (said2) return cutWords(firstSentence(said2.text), AIM_MAX);
+  const i = helpers.reduce(
+    (best, a2, k) => a2.report && (best < 0 || a2.report.ts >= (helpers[best]?.report?.ts ?? "")) ? k : best,
+    -1
+  );
+  const a = helpers[i];
+  if (!a?.report) return "";
+  if (helperStep(a, helpers.slice(i + 1), starts, ctx).text === "Passed") {
+    const n = part.rounds ?? 0;
+    return n ? `Passed review after ${NUMBER[n] ?? n} fix round${n === 1 ? "" : "s"}` : "Passed review";
+  }
+  const v = a.report.verdict;
+  if (v) {
+    const words = v.replace(/_with_/i, ", with ").replace(/[_-]+/g, " ");
+    return `Reported ${words.toLowerCase()}`;
+  }
+  return a.report.status === "failed" ? "Failed" : a.report.status === "killed" ? "Stopped" : "";
+}
+function groupOf(path4) {
+  const p = path4.toLowerCase();
+  if (/(?:^|\/)(?:__tests__|__mocks__|tests?|spec|e2e)\/|\.(?:test|spec)\.[a-z0-9]+$/.test(
+    p
+  ))
+    return "tests";
+  if (/\.(?:css|scss|sass|less|styl|pcss)$/.test(p)) return "styles";
+  if (/\.(?:md|mdx|markdown|txt|rst|adoc)$/.test(p) || /(?:^|\/)docs?\//.test(p))
+    return "docs";
+  if (/(?:^|\/)(?:package\.json|tsconfig[^/]*\.json|[^/]*\.config\.[a-z]+|\.[^/]*rc(?:\.[a-z]+)?|[^/]*\.(?:ya?ml|toml|ini|lock)|\.env[^/]*|dockerfile|makefile)$/.test(
+    p
+  ))
+    return "config";
+  return "source";
+}
+
 // ../packages/core/src/view/reduce.ts
 function reduce(events) {
   const sorted = sortEvents(events);
@@ -20981,9 +21669,11 @@ function reduce(events) {
   const started = /* @__PURE__ */ new Map();
   const ended = sorted.some((e) => e.hook === "SessionEnd");
   const split = splitRequests(sorted);
+  const traces = [];
   const requests = split.map(({ start, rest }, i, all) => {
     const req = newRequest(start);
     const trace = applyPlan(req, rest);
+    traces.push(trace);
     applyInference(req, rest);
     inferNow(req, rest, trace);
     applyFiles(req, rest, trace);
@@ -20996,6 +21686,18 @@ function reduce(events) {
   const lists = split.map((s) => [s.start, ...s.rest]);
   inferHistory(requests, lists, agents, started);
   applyWords(requests, lists, agents, started);
+  applyRounds(requests, agents);
+  const needs = needsYou(sorted);
+  const { lastAt, over } = quiet(sorted);
+  const live2 = (a) => a.status === "running" && !over(lastAt.get(a.id) ?? a.startedAt);
+  const asking = needs ? requests.findLastIndex((r) => r.startedAt <= needs.since) : -1;
+  requests.forEach((req, i) => {
+    applyShape(req, lists[i] ?? [], traces[i], {
+      later: i < requests.length - 1,
+      waiting: i === asking,
+      live: live2
+    });
+  });
   const first = sorted[0];
   return {
     sessionId: first?.sessionId ?? "",
@@ -21005,7 +21707,8 @@ function reduce(events) {
     lastEventAt: sorted.at(-1)?.ts ?? "",
     ended,
     requests,
-    needsYou: needsYou(sorted)
+    needsYou: needs,
+    journey: journeyOf(requests, lists)
   };
 }
 var cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
@@ -21114,10 +21817,10 @@ function worktreeMain(root) {
   const home = import_node_path.default.resolve(import_node_os.default.homedir());
   if (import_node_path.default.basename(worktrees) !== "worktrees" || import_node_path.default.basename(dotGit) !== ".git" || main2 === home || import_node_path.default.dirname(main2) === main2 || !isDir(dotGit))
     return void 0;
-  const real = realpath(main2);
-  if (real === realpath(home)) return void 0;
+  const real2 = realpath(main2);
+  if (real2 === realpath(home)) return void 0;
   for (let d = root; import_node_path.default.dirname(d) !== d; d = import_node_path.default.dirname(d))
-    if (realpath(d) === real) return d;
+    if (realpath(d) === real2) return d;
   return main2;
 }
 function isDir(p) {
@@ -21451,6 +22154,7 @@ Answer with one JSON object and nothing else, in exactly this shape:
   "map": {
     "kind": "feature" | "bug" | "refactor" | "question",
     "goal": "the request in a few plain words",
+    "short": "the request in 2 to 4 words, like a title",
     "phases": [{ "id": "p1", "title": "...", "tasks": [{ "id": "t1", "title": "...", "part": "<part id>" }] }],
     "parts": [{ "id": "<short id>", "title": "...", "phase": "p1", "links": [{ "to": "<part id>", "label": "uses" }] }]
   },
@@ -22044,7 +22748,10 @@ function refreshEvents(req, r, base, paths, at) {
       NARRATE_TOOL,
       detailNarrate(
         part?.title ?? p.id,
-        { ...detail, ...aim && !part?.aim ? { aim } : {} },
+        {
+          ...detail,
+          ...aim && (!part?.aim || part.aim.inferred) ? { aim } : {}
+        },
         paths
       )
     );
@@ -22077,8 +22784,8 @@ function stableId(sessionId, hook, p) {
   const key = TOOL_HOOKS2.has(hook) ? p.tool_use_id : hook === "SubagentStart" || hook === "SubagentStop" ? p.agent_id : void 0;
   return typeof key === "string" && key ? uuidFrom(`murmur:${sessionId}:${hook}:${key}`) : void 0;
 }
-var obj7 = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : void 0;
-var str6 = (v) => typeof v === "string" && v ? v : void 0;
+var obj8 = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : void 0;
+var str7 = (v) => typeof v === "string" && v ? v : void 0;
 function* readLines(file2, tailBytes, at, upTo) {
   let fd;
   try {
@@ -22100,7 +22807,7 @@ function* readLines(file2, tailBytes, at, upTo) {
     let rest = Buffer.alloc(0);
     const parse4 = (line) => {
       try {
-        return obj7(JSON.parse(line.toString("utf8")));
+        return obj8(JSON.parse(line.toString("utf8")));
       } catch {
         return void 0;
       }
@@ -22135,7 +22842,7 @@ function* readLines(file2, tailBytes, at, upTo) {
 }
 function readMeta(file2) {
   try {
-    return obj7(JSON.parse(import_node_fs3.default.readFileSync(file2, "utf8"))) ?? {};
+    return obj8(JSON.parse(import_node_fs3.default.readFileSync(file2, "utf8"))) ?? {};
   } catch {
     return {};
   }
@@ -22151,7 +22858,7 @@ function promptText(content) {
   }
   if (!Array.isArray(content)) return void 0;
   const text3 = content.flatMap((b) => {
-    const block = obj7(b);
+    const block = obj8(b);
     return block?.type === "text" && typeof block.text === "string" ? [block.text] : [];
   }).join("\n");
   return text3 || void 0;
@@ -22161,7 +22868,7 @@ function backfillStale(s, now) {
   return !(now - Date.parse(s.runningSince ?? s.cutoff ?? "") <= STALE_MS2);
 }
 function entryEvent(b, e, index, hook, fields) {
-  const cwd = str6(e.cwd) ?? b.cwd;
+  const cwd = str7(e.cwd) ?? b.cwd;
   const payload = {
     ...fields,
     hook_event_name: hook,
@@ -22179,12 +22886,12 @@ function entryEvent(b, e, index, hook, fields) {
   });
 }
 function textBlocks(e) {
-  const content = obj7(e.message)?.content;
+  const content = obj8(e.message)?.content;
   if (e.type !== "assistant" || e.isSidechain === true || !Array.isArray(content))
     return [];
   return content.flatMap((raw, i) => {
-    const block = obj7(raw);
-    const text3 = block?.type === "text" ? str6(block.text) : void 0;
+    const block = obj8(raw);
+    const text3 = block?.type === "text" ? str7(block.text) : void 0;
     return text3?.trim() ? [{ i, text: text3 }] : [];
   });
 }
@@ -22202,7 +22909,7 @@ function readBackfill(b, {
   };
   const usable = (e) => {
     const ts = typeof e.timestamp === "string" ? Date.parse(e.timestamp) : NaN;
-    return Boolean(str6(e.uuid)) && ts < cutoff;
+    return Boolean(str7(e.uuid)) && ts < cutoff;
   };
   const ended = /* @__PURE__ */ new Set();
   let newest;
@@ -22212,7 +22919,7 @@ function readBackfill(b, {
     let last;
     for (const e of list2) {
       if (textUntil !== void 0 && !agent.agent_id && !usable(e)) {
-        if (str6(e.uuid) && Date.parse(e.timestamp) >= cutoff)
+        if (str7(e.uuid) && Date.parse(e.timestamp) >= cutoff)
           for (const { i, text: text3 } of textBlocks(e))
             emit(e, i, "AssistantText", { text: text3 });
         continue;
@@ -22220,14 +22927,14 @@ function readBackfill(b, {
       if (!usable(e)) continue;
       first ??= e;
       last = e;
-      const content = obj7(e.message)?.content;
-      const kind = obj7(e.origin)?.kind;
+      const content = obj8(e.message)?.content;
+      const kind = obj8(e.origin)?.kind;
       if (e.type === "user" && (kind === "human" || kind === "task-notification") && !agent.agent_id) {
         const prompt = promptText(content);
         if (prompt) {
           emit(e, 0, "UserPromptSubmit", {
             prompt,
-            ...str6(e.promptId) ? { prompt_id: e.promptId } : {}
+            ...str7(e.promptId) ? { prompt_id: e.promptId } : {}
           });
           newest = { at: out.length - 1, text: prompt };
         }
@@ -22237,10 +22944,10 @@ function readBackfill(b, {
           emit(e, i, "AssistantText", { text: text3 });
       if (!Array.isArray(content)) continue;
       content.forEach((raw, i) => {
-        const block = obj7(raw);
+        const block = obj8(raw);
         if (!block) return;
         if (e.type === "assistant" && block.type === "tool_use") {
-          const id = str6(block.id);
+          const id = str7(block.id);
           if (!id) return;
           uses.set(id, block);
           emit(e, i, "PreToolUse", {
@@ -22250,10 +22957,10 @@ function readBackfill(b, {
             tool_use_id: id
           });
         } else if (e.type === "user" && block.type === "tool_result") {
-          const id = str6(block.tool_use_id);
+          const id = str7(block.tool_use_id);
           const use = id ? uses.get(id) : void 0;
           if (!use || !id) return;
-          if (obj7(e.toolUseResult)?.status !== "async_launched") ended.add(id);
+          if (obj8(e.toolUseResult)?.status !== "async_launched") ended.add(id);
           emit(
             e,
             i,
@@ -22299,7 +23006,7 @@ function readBackfill(b, {
     if (!first || !last) continue;
     emit(first, 0, "SubagentStart", agent);
     out.splice(at, 0, out.pop());
-    const call = str6(meta3.toolUseId);
+    const call = str7(meta3.toolUseId);
     if (meta3.finished === true || call && ended.has(call))
       emit(last, 0, "SubagentStop", agent);
   }
@@ -22379,7 +23086,7 @@ function catchUpText(sessionId, env = process.env) {
   const b = { sessionId, machineId: creds.machineId, cwd: s.cwd };
   let n = 0;
   for (const e of readLines(s.transcriptPath, 0, at)) {
-    if (!str6(e.uuid)) continue;
+    if (!str7(e.uuid)) continue;
     for (const { i, text: text3 } of textBlocks(e)) {
       enqueue(entryEvent(b, e, i, "AssistantText", { text: text3 }));
       n++;
@@ -22416,12 +23123,12 @@ function handleHook(payload, env, now) {
   if (typeof hook !== "string" || hook === "AssistantText" || !HOOK_NAMES.includes(hook))
     return NONE3;
   const sessionId = typeof payload.session_id === "string" && payload.session_id ? payload.session_id : env.CLAUDE_CODE_SESSION_ID;
-  const quiet = (r) => {
+  const quiet2 = (r) => {
     if (sessionId) skipText(sessionId, payload.transcript_path);
     return r;
   };
   if (env.MURMUR_RECAP_RUN === "1" || isHeadless(env) && env.MURMUR_ALLOW_HEADLESS !== "1")
-    return quiet(NONE3);
+    return quiet2(NONE3);
   if (typeof cwd !== "string" || !cwd) return NONE3;
   const start = hook === "SessionStart";
   if (start && payload.source === "startup") {
@@ -22430,19 +23137,19 @@ function handleHook(payload, env, now) {
   }
   const state = sessionProjectState(cwd, sessionId);
   if (state === void 0) {
-    if (!start) return quiet(NONE3);
+    if (!start) return quiet2(NONE3);
     setProjectState(cwd, "asked");
-    return quiet(show(askLine(cwd)));
+    return quiet2(show(askLine(cwd)));
   }
   if (state === "off") {
     if (sessionId && isNewSession(sessionId))
       updateSession(sessionId, { backfill: "done" });
-    return quiet(NONE3);
+    return quiet2(NONE3);
   }
-  if (state !== "on") return quiet(NONE3);
+  if (state !== "on") return quiet2(NONE3);
   const creds = readCredentials();
-  if (!creds) return quiet(start ? show(LOGIN_LINE) : NONE3);
-  if (isRevoked()) return quiet(start ? show(REVOKED_LINE) : NONE3);
+  if (!creds) return quiet2(start ? show(LOGIN_LINE) : NONE3);
+  if (isRevoked()) return quiet2(start ? show(REVOKED_LINE) : NONE3);
   if (!sessionId) return NONE3;
   const fresh = isNewSession(sessionId);
   const seen = readSession(sessionId);
@@ -22457,7 +23164,7 @@ function handleHook(payload, env, now) {
     });
   if (isPaused(cwd, sessionId) || isPaused(project)) {
     if (fresh) updateSession(sessionId, { backfill: "done" });
-    return quiet(NONE3);
+    return quiet2(NONE3);
   }
   const ts = now.toISOString();
   const event = scrubEvent({

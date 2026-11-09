@@ -1099,11 +1099,11 @@ var require_util = __commonJS({
       return false;
     }
     exports2.schemaHasRules = schemaHasRules;
-    function schemaHasRulesButRef(schema, RULES) {
+    function schemaHasRulesButRef(schema, RULES2) {
       if (typeof schema == "boolean")
         return !schema;
       for (const key in schema)
-        if (key !== "$ref" && RULES.all[key])
+        if (key !== "$ref" && RULES2.all[key])
           return true;
       return false;
     }
@@ -2497,17 +2497,17 @@ var require_validate = __commonJS({
     }
     function schemaKeywords(it, types, typeErrors, errsCount) {
       const { gen, schema, data, allErrors, opts, self } = it;
-      const { RULES } = self;
-      if (schema.$ref && (opts.ignoreKeywordsWithRef || !(0, util_1.schemaHasRulesButRef)(schema, RULES))) {
-        gen.block(() => keywordCode(it, "$ref", RULES.all.$ref.definition));
+      const { RULES: RULES2 } = self;
+      if (schema.$ref && (opts.ignoreKeywordsWithRef || !(0, util_1.schemaHasRulesButRef)(schema, RULES2))) {
+        gen.block(() => keywordCode(it, "$ref", RULES2.all.$ref.definition));
         return;
       }
       if (!opts.jtd)
         checkStrictTypes(it, types);
       gen.block(() => {
-        for (const group of RULES.rules)
+        for (const group of RULES2.rules)
           groupKeywords(group);
-        groupKeywords(RULES.post);
+        groupKeywords(RULES2.post);
       });
       function groupKeywords(group) {
         if (!(0, applicability_1.shouldUseGroup)(schema, group))
@@ -4662,10 +4662,10 @@ var require_core = __commonJS({
       }
       // Remove keyword
       removeKeyword(keyword) {
-        const { RULES } = this;
-        delete RULES.keywords[keyword];
-        delete RULES.all[keyword];
-        for (const group of RULES.rules) {
+        const { RULES: RULES2 } = this;
+        delete RULES2.keywords[keyword];
+        delete RULES2.all[keyword];
+        for (const group of RULES2.rules) {
           const i = group.rules.findIndex((rule) => rule.keyword === keyword);
           if (i >= 0)
             group.rules.splice(i, 1);
@@ -4833,9 +4833,9 @@ var require_core = __commonJS({
     }
     var KEYWORD_NAME = /^[a-z_$][a-z0-9_$:-]*$/i;
     function checkKeyword(keyword, def) {
-      const { RULES } = this;
+      const { RULES: RULES2 } = this;
       (0, util_1.eachItem)(keyword, (kwd) => {
-        if (RULES.keywords[kwd])
+        if (RULES2.keywords[kwd])
           throw new Error(`Keyword ${kwd} is already defined`);
         if (!KEYWORD_NAME.test(kwd))
           throw new Error(`Keyword ${kwd} has invalid name`);
@@ -4851,13 +4851,13 @@ var require_core = __commonJS({
       const post = definition === null || definition === void 0 ? void 0 : definition.post;
       if (dataType && post)
         throw new Error('keyword with "post" flag cannot have "type"');
-      const { RULES } = this;
-      let ruleGroup = post ? RULES.post : RULES.rules.find(({ type: t }) => t === dataType);
+      const { RULES: RULES2 } = this;
+      let ruleGroup = post ? RULES2.post : RULES2.rules.find(({ type: t }) => t === dataType);
       if (!ruleGroup) {
         ruleGroup = { type: dataType, rules: [] };
-        RULES.rules.push(ruleGroup);
+        RULES2.rules.push(ruleGroup);
       }
-      RULES.keywords[keyword] = true;
+      RULES2.keywords[keyword] = true;
       if (!definition)
         return;
       const rule = {
@@ -4872,7 +4872,7 @@ var require_core = __commonJS({
         addBeforeRule.call(this, ruleGroup, rule, definition.before);
       else
         ruleGroup.rules.push(rule);
-      RULES.all[keyword] = rule;
+      RULES2.all[keyword] = rule;
       (_a3 = definition.implements) === null || _a3 === void 0 ? void 0 : _a3.forEach((kwd) => this.addKeyword(kwd));
     }
     function addBeforeRule(ruleGroup, rule, before) {
@@ -36713,6 +36713,8 @@ var status = external_exports.preprocess(said, external_exports.enum(["running",
 var MapInput = external_exports.object({
   kind: external_exports.enum(["feature", "bug", "refactor", "question"]),
   goal: text,
+  // The request in 2 to 4 words, for a list of requests ("Restyle the app").
+  short: external_exports.string().max(60).optional(),
   phases: list(
     external_exports.object({
       id: text,
@@ -36796,6 +36798,44 @@ var RefreshInput = external_exports.object({ tasks: external_exports.array(TaskE
 // ../packages/core/src/scrub.ts
 var MAX_STRING = 262144;
 var CUT = MAX_STRING + 4096;
+
+// ../packages/core/src/view/moments.ts
+var SUBJECT = String.raw`\b(?:tasks?|phase)\b[^.;:!?]*?`;
+var RULES = [
+  // A review or test that found a problem, or something that failed.
+  [
+    "problem",
+    // Not a guess ("means one failed", "might have failed", "if it failed") or a
+    // negation ("none of the tests failed", "the review found no problems").
+    /\breview(?:er)? found\b(?!\s+(?:no|nothing|none|zero)\b)|\bfound (?:a|an|one|two|three|\d+|some|real)\b[^.;:]*\bproblems?\b|(?<!\b(?:none|nothing|no|zero|0|never|not|means|meaning|might|may|maybe|could|would|if|or|whether)\b(?:\s[\w'-]+){0,3}\s)\bfailed\b/i
+  ],
+  // Something sent back.
+  [
+    "fixing",
+    /\bsen(?:d|ding|t) (?:it |them |this |that )?back\b|\bback to the (?:same )?builder\b/i
+  ],
+  // A task or phase that is done or passed.
+  [
+    "done",
+    new RegExp(
+      `${SUBJECT}\\b(?:is|are|was|were)\\s+(?:now\\s+)?(?:done|finished|complete)\\b|\\b(?:tasks?|phase)\\s+[\\w-]+(?:\\s+and\\s+[\\w-]+)?\\s+passed\\b`,
+      "i"
+    )
+  ],
+  // An explicit change of plan, or a choice with its reason ("X, not Y: because").
+  [
+    "decision",
+    /\b(?:I|I'm|I'll|I've|we|we'll|we're)\b[^.;]*\b(?:instead of|rather than)\b|\bI(?:'ve| have)? decided\b|\bchanged? (?:the |my |our )?plan\b|,\s*not\s+\w+(?:\s+\w+)?\s*[:;]/i
+  ],
+  ["plan", /\badded an? (?:\w+ )?task\b/i]
+];
+
+// ../packages/core/src/view/shape.ts
+var STOP = new Set(
+  "a an the to of and or for with in on at by from into as is my our your its their this that these those every all some each then".split(
+    " "
+  )
+);
 
 // src/mcp.ts
 var noted = async () => ({

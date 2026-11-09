@@ -265,6 +265,29 @@ describe("live plan refresh", () => {
     });
   });
 
+  it("an aim Murmur read from the record gives way to Claude's", async () => {
+    write(reports(5, 6, 7));
+    // The builder's own transcript, so the helper (and its brief) is known.
+    const sub = path.join(dir, SID, "subagents");
+    fs.mkdirSync(sub, { recursive: true });
+    fs.writeFileSync(
+      path.join(sub, "agent-a1.jsonl"),
+      `${call("toolu_s1", 3.5, "Read", { file_path: "x" })
+        .map((l) => JSON.stringify({ cwd, ...l }))
+        .join("\n")}\n`,
+    );
+    expect(onServer(at(10))?.parts[0]?.aim).toMatchObject({
+      aim: "Build the header.",
+      inferred: true,
+    });
+    fake(ANSWER);
+    await runRefresh(SID, { env: env(), now: at(10), ...quiet });
+    expect(onServer(at(10))?.parts[0]?.aim).toEqual({
+      aim: "A header with the agent's name",
+      doneWhen: "It shows",
+    });
+  });
+
   it("the same refresh twice gives the same events", async () => {
     write(reports(5, 6, 7));
     fake(ANSWER);
@@ -448,10 +471,11 @@ describe("live plan refresh", () => {
   });
 });
 
-const steps = (now: Date, part: string) =>
-  onServer(now)
-    ?.parts.find((p) => p.id === part)
-    ?.steps.map((x) => `${x.status}: ${x.text}`);
+// The narrated steps: a part with none shows steps Murmur read from the record instead.
+const steps = (now: Date, part: string) => {
+  const p = onServer(now)?.parts.find((x) => x.id === part);
+  return p?.inferred ? [] : p?.steps.map((x) => `${x.status}: ${x.text}`);
+};
 const statuses = (now: Date) =>
   onServer(now)?.phases[0]?.tasks.map((x) => `${x.id} ${x.status}`);
 

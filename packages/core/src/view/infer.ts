@@ -72,9 +72,13 @@ export function applyInference(req: RequestView, events: MurmurEvent[]): void {
   ];
 }
 
-const TOOL_HOOKS = new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure"]);
+export const TOOL_HOOKS = new Set([
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure",
+]);
 // Tools that say nothing about the work keep the previous now.
-const QUIET = new Set([
+export const QUIET = new Set([
   MAP_TOOL,
   NARRATE_TOOL,
   "ToolSearch",
@@ -84,21 +88,69 @@ const QUIET = new Set([
 const basename = (v: unknown) =>
   typeof v === "string" && v ? v.split("/").filter(Boolean).at(-1) : undefined;
 
-function toolText(p: Record<string, unknown>): string {
+// Plain phrases for tools whose name says nothing to a person.
+const PHRASE: Record<string, string> = {
+  Grep: "Searching the code",
+  Glob: "Searching the code",
+  Monitor: "Watching a background job",
+  TaskOutput: "Watching a background job",
+  BashOutput: "Watching a background job",
+  TaskStop: "Stopping a background job",
+  KillShell: "Stopping a background job",
+  SendMessage: "Messaging a helper",
+  WebSearch: "Searching the web",
+  WebFetch: "Reading a web page",
+  Skill: "Using a skill",
+  AskUserQuestion: "Asking you a question",
+  TodoWrite: "Updating the task list",
+  TaskCreate: "Updating the task list",
+  TaskUpdate: "Updating the task list",
+  Artifact: "Publishing a page",
+  ArtifactData: "Updating a page",
+  NotebookEdit: "Editing a notebook",
+};
+const BROWSER = /chrome|playwright|browser|puppeteer/i;
+
+/**
+ * The latest tool call in plain words (spec 8: never raw): a command reads as its
+ * `description`, else "Running a command"; an MCP tool as "Looking at the browser" for
+ * browser servers, else "Using <server>"; the raw command or tool name stays in `detail`.
+ */
+function toolText(p: Record<string, unknown>): {
+  text: string;
+  detail?: string;
+} {
   const name = String(p.tool_name);
   const input = obj(p.tool_input);
   const file = basename(input.file_path);
-  const command =
-    typeof input.command === "string"
-      ? input.command.replace(/\s+/g, " ").trim().slice(0, 60)
-      : "";
   const description = text(input.description);
-  if ((name === "Edit" || name === "Write") && file) return `Editing ${file}`;
-  if (name === "Read" && file) return `Reading ${file}`;
-  if (name === "Bash" && command) return `Running ${command}`;
+  if ((name === "Edit" || name === "Write") && file)
+    return { text: `Editing ${file}` };
+  if (name === "Read" && file) return { text: `Reading ${file}` };
   if (name === "Agent" && description)
-    return `Started a helper: ${description}`;
-  return `Using ${name}`;
+    return { text: `Starting a helper: ${description}` };
+  if (name.toLowerCase() === "bash") {
+    const command =
+      typeof input.command === "string" ? input.command.trim() : "";
+    return {
+      text: description ?? "Running a command",
+      ...(command ? { detail: command } : {}),
+    };
+  }
+  const phrase = PHRASE[name];
+  if (phrase) return { text: phrase, detail: name };
+  const server = /^mcp__(.+?)__/.exec(name)?.[1];
+  if (server) {
+    if (BROWSER.test(server))
+      return { text: "Looking at the browser", detail: name };
+    // "plugin_claude-mem_mcp-search" is the claude-mem plugin; "claude_ai_Gmail" is Gmail.
+    const plain = server
+      .replace(/^plugin_([^_]+)_.*$/, "$1")
+      .replace(/^claude_ai_/, "")
+      .replace(/_/g, " ");
+    return { text: `Using ${plain}`, detail: name };
+  }
+  return { text: `Using ${name}`, detail: name };
 }
 
 /** Narrated now wins only when no tool call came after the latest narrate. */
@@ -118,7 +170,7 @@ export function inferNow(
   if (last < 0 || (trace.narrated.at(-1)?.i ?? -1) > tool) return;
   const e = events[last] as MurmurEvent;
   req.now = {
-    text: stop > tool ? "Finished this request" : toolText(e.payload),
+    ...(stop > tool ? { text: "Finished this request" } : toolText(e.payload)),
     why: "",
     ts: e.ts,
     inferred: true,
