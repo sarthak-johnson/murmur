@@ -165,6 +165,18 @@ describe("MapView", () => {
     expect(screen.getByText("+1 more")).toBeTruthy();
   });
 
+  it("fills the column but grows at most 1.35x, so text never balloons on wide screens", () => {
+    const req = request({ parts: [part({ id: "x", title: "Endpoint" })] });
+    const { container } = render(
+      <MapView request={req} onOpenPart={() => {}} />,
+    );
+    const svg = container.querySelector("svg") as SVGSVGElement;
+    const [, , w] = (svg.getAttribute("viewBox") ?? "").split(" ").map(Number);
+    expect(svg.getAttribute("width")).toBe("100%");
+    expect(svg.style.maxWidth).toBe(`${Math.round((w as number) * 1.35)}px`);
+    expect(svg.style.height).toBe("auto");
+  });
+
   it("shows chips only for helpers still running", () => {
     const req = request({
       agents: [
