@@ -146,7 +146,11 @@ function Helpers(props: {
         Helpers
         <span className="cnt num">
           {agents.length}
-          {running ? ` · ${running} running` : over ? " · all done" : ""}
+          {running
+            ? ` · ${running} running`
+            : over && !agents.some((a) => a.status === "running")
+              ? " · all done"
+              : ""}
         </span>
       </h2>
       <ul className="hl">
