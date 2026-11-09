@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { createApp } from "./app.js";
+import { purgeUnlisted } from "./auth.js";
 import { loadConfig } from "./config.js";
 import { openDb } from "./db/client.js";
 import { runRetention } from "./retention.js";
@@ -15,8 +16,14 @@ try {
   console.error((e as Error).message);
   process.exit(1);
 }
-const { config, port, host, databaseUrl } = loaded;
-const { db, close } = await openDb(databaseUrl);
+const { config, port, host, databaseUrl, dataDir, startupNote } = loaded;
+if (startupNote) console.log(startupNote);
+const { db, close } = await openDb(databaseUrl, dataDir);
+const signedOut = await purgeUnlisted(db, config, new Date());
+if (signedOut)
+  console.log(
+    `Signed out ${signedOut} user${signedOut === 1 ? "" : "s"} no longer on MURMUR_ALLOWED_LOGINS.`,
+  );
 const api = createApp({ db, now: () => new Date(), config });
 
 const dist =

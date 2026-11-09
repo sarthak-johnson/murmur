@@ -197,10 +197,88 @@ describe("loadConfig", () => {
     expect(() =>
       loadConfig({ ...prod, DATABASE_URL: "", GITHUB_CLIENT_SECRET: "" }),
     ).toThrow(
-      "Murmur cannot start in production without DATABASE_URL, GITHUB_CLIENT_SECRET.",
+      "Murmur cannot start in production without DATABASE_URL or MURMUR_DATA_DIR, GITHUB_CLIENT_SECRET.",
     );
     expect(() => loadConfig({ NODE_ENV: "production" })).toThrow(
-      "without DATABASE_URL, BASE_URL, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET.",
+      "without DATABASE_URL or MURMUR_DATA_DIR, BASE_URL, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET.",
     );
+  });
+  it("takes MURMUR_DATA_DIR in place of DATABASE_URL in production", () => {
+    const { DATABASE_URL: _, ...noDb } = prod;
+    const onDisk = loadConfig({ ...noDb, MURMUR_DATA_DIR: "/srv/murmur" });
+    expect(onDisk.dataDir).toBe("/srv/murmur");
+    expect(onDisk.databaseUrl).toBeUndefined();
+    expect(() => loadConfig({ ...noDb, MURMUR_DATA_DIR: "" })).toThrow(
+      "without DATABASE_URL or MURMUR_DATA_DIR.",
+    );
+    expect(loadConfig(base).dataDir).toBeUndefined();
+  });
+  it("binds to localhost in production behind a proxy, unless HOST is set", () => {
+    expect(loadConfig({ ...prod, TRUST_PROXY: "1" }).host).toBe("127.0.0.1");
+    expect(
+      loadConfig({ ...prod, TRUST_PROXY: "1", HOST: "0.0.0.0" }).host,
+    ).toBe("0.0.0.0");
+    expect(loadConfig(prod).host).toBeUndefined();
+    expect(loadConfig({ ...base, TRUST_PROXY: "1" }).host).toBeUndefined();
+  });
+  it("parses MURMUR_ALLOWED_LOGINS into lowercase logins and GitHub ids", () => {
+    const parse = (v: string) =>
+      loadConfig({ ...base, MURMUR_ALLOWED_LOGINS: v }).config.allowList;
+    expect(loadConfig(base).config.allowList).toBeUndefined();
+    expect(parse(" ")).toBeUndefined();
+    expect(parse("Ada, bob,,CHARLIE-9 ")).toEqual({
+      logins: ["ada", "bob", "charlie-9"],
+      ids: [],
+    });
+    // login:id matches the numeric GitHub id only, so a rename keeps access
+    // and someone who takes the old name gets none.
+    expect(parse("ada:583231, bob")).toEqual({
+      logins: ["bob"],
+      ids: [583231],
+    });
+    expect(() => parse("ada:12x")).toThrow(
+      'MURMUR_ALLOWED_LOGINS: "ada:12x" is not a GitHub login or login:id.',
+    );
+    expect(() => parse("ada bob")).toThrow(/"ada bob"/);
+  });
+  it("MURMUR_ALLOWED_LOGINS=* means anyone may sign in", () => {
+    expect(
+      loadConfig({ ...base, MURMUR_ALLOWED_LOGINS: "*" }).config.allowList,
+    ).toBeUndefined();
+    expect(
+      loadConfig({ ...base, MURMUR_ALLOWED_LOGINS: "ada,*" }).config.allowList,
+    ).toBeUndefined();
+    expect(
+      loadConfig({ ...prod, MURMUR_ALLOWED_LOGINS: "*" }).startupNote,
+    ).toMatch(/^Murmur is open/);
+  });
+  it("strips trailing slashes from BASE_URL", () => {
+    expect(loadConfig({ BASE_URL: "https://m.example//" }).config.baseUrl).toBe(
+      "https://m.example",
+    );
+  });
+  it("refuses DATABASE_URL and MURMUR_DATA_DIR together", () => {
+    expect(() =>
+      loadConfig({
+        ...base,
+        DATABASE_URL: "postgres://db",
+        MURMUR_DATA_DIR: "/d",
+      }),
+    ).toThrow("Set DATABASE_URL or MURMUR_DATA_DIR, not both.");
+  });
+  it("says at startup in production whether anyone may sign in", () => {
+    expect(loadConfig(base).startupNote).toBeUndefined();
+    expect(loadConfig(prod).startupNote).toBe(
+      "Murmur is open: anyone with a GitHub account can sign in. Set MURMUR_ALLOWED_LOGINS to make it invite-only.",
+    );
+    expect(
+      loadConfig({ ...prod, MURMUR_ALLOWED_LOGINS: "ada,bob" }).startupNote,
+    ).toBe("Murmur is invite-only: 2 GitHub logins may sign in.");
+    expect(
+      loadConfig({ ...prod, MURMUR_ALLOWED_LOGINS: "ada:1,bob" }).startupNote,
+    ).toBe("Murmur is invite-only: 2 GitHub logins may sign in.");
+    expect(
+      loadConfig({ ...prod, MURMUR_ALLOWED_LOGINS: "ada" }).startupNote,
+    ).toBe("Murmur is invite-only: 1 GitHub login may sign in.");
   });
 });

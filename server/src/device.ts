@@ -21,18 +21,24 @@ const display = (code: string) => `${code.slice(0, 4)}-${code.slice(4)}`;
 const TEN_MINUTES = 10 * 60 * 1000;
 const rateLimited = (c: Context) => c.json({ error: "rate_limited" }, 429);
 
+const LOOPBACK = /^(127\.|::1$|::ffff:127\.)/;
+
 function defaultClientIp(trustProxy: boolean) {
   return (c: Context): string | undefined => {
-    if (trustProxy) {
+    let socket: string | undefined;
+    try {
+      socket = getConnInfo(c).remote.address;
+    } catch {
+      // no Node socket, e.g. app.request in tests
+    }
+    // The trusted proxy runs on this machine (Tailscale Funnel); a request from anywhere
+    // else did not come through it, so its X-Forwarded-For is the client's own claim.
+    if (trustProxy && socket && LOOPBACK.test(socket)) {
       // The rightmost entry is the one the trusted proxy appended; earlier ones are client-sent.
       const last = c.req.header("x-forwarded-for")?.split(",").at(-1)?.trim();
       if (last) return last;
     }
-    try {
-      return getConnInfo(c).remote.address;
-    } catch {
-      return undefined; // no Node socket, e.g. app.request in tests
-    }
+    return socket;
   };
 }
 

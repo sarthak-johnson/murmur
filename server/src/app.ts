@@ -32,8 +32,10 @@ export interface Deps {
     githubClientSecret?: string;
     devLogin: boolean;
     cookieSecure: boolean;
-    /** Behind one trusted reverse proxy: take the client IP from the last X-Forwarded-For entry (the one the proxy appended). */
+    /** Behind one trusted reverse proxy on this machine: for requests from loopback, take the client IP from the last X-Forwarded-For entry (the one the proxy appended). */
     trustProxy?: boolean;
+    /** Who may sign in: lowercase GitHub logins, or GitHub ids. Unset means anyone may. */
+    allowList?: { logins: string[]; ids: number[] };
     /** SSE keep-alive comment interval. Defaults to 20 s. */
     ssePingMs?: number;
   };

@@ -1,8 +1,16 @@
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { afterEach, expect, test } from "vitest";
-import { users, webSessions } from "../src/db/schema.js";
-import { sameOrigin, testApp } from "./helpers.js";
+import { afterEach, describe, expect, test } from "vitest";
+import { purgeUnlisted } from "../src/auth.js";
+import { events, ingestTokens, users, webSessions } from "../src/db/schema.js";
+import {
+  BASE,
+  ev,
+  ingest,
+  linkMachine,
+  sameOrigin,
+  testApp,
+} from "./helpers.js";
 
 let t: Awaited<ReturnType<typeof testApp>> | undefined;
 afterEach(async () => {
@@ -255,4 +263,172 @@ test("/auth/github without GitHub configured goes back to the sign-in page", asy
   const res = await t.app.request("/auth/github");
   expect(res.status).toBe(302);
   expect(res.headers.get("location")).toBe("/");
+});
+
+describe("dev login is for this machine only", () => {
+  test.each([
+    ["http://localhost/auth/dev?login=ada", {}],
+    ["http://localhost:8787/auth/dev?login=ada", {}],
+    ["http://127.0.0.1:8787/auth/dev?login=ada", {}],
+    ["http://[::1]:8787/auth/dev?login=ada", {}],
+  ])("%s signs in", async (url, headers) => {
+    t = await testApp();
+    expect((await t.app.request(url, { headers })).status).toBe(302);
+  });
+
+  test.each([
+    ["https://my-mac.tail1234.ts.net/auth/dev?login=ada", {}],
+    ["http://192.168.1.5:8787/auth/dev?login=ada", {}],
+    [
+      "http://localhost:8787/auth/dev?login=ada",
+      { "X-Forwarded-For": "1.2.3.4" },
+    ],
+    ["http://localhost:8787/auth/dev?login=ada", { "X-Forwarded-Host": "x" }],
+    [
+      "http://localhost:8787/auth/dev?login=ada",
+      { "X-Forwarded-Proto": "https" },
+    ],
+    ["http://localhost:8787/auth/dev?login=ada", { Forwarded: "for=1.2.3.4" }],
+    ["http://localhost:8787/auth/dev?login=ada", { "X-Real-IP": "1.2.3.4" }],
+    [
+      "http://localhost:8787/auth/dev?login=ada",
+      { "Tailscale-Funnel-Request": "?1" },
+    ],
+    [
+      "http://localhost:8787/auth/dev?login=ada",
+      { "Tailscale-User-Login": "a@b" },
+    ],
+  ])("%s with %o is refused", async (url, headers) => {
+    t = await testApp();
+    const res = await t.app.request(url, { headers });
+    expect(res.status).toBe(404);
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(await t.db.select().from(users)).toHaveLength(0);
+    const options = await t.app.request(
+      url.replace(/\/auth\/dev.*/, "/auth/options"),
+      { headers },
+    );
+    expect(await options.json()).toEqual({ github: false, dev: false });
+  });
+});
+
+describe("allow-list", () => {
+  const fakeGithub = (login: string, id = 7) => ({
+    createAuthorizationURL: (state: string) =>
+      new URL(`https://github.example/authorize?state=${state}`),
+    validate: async () => ({ id, login, name: null, avatarUrl: null }),
+  });
+  const callback = (app: Awaited<ReturnType<typeof testApp>>["app"]) =>
+    app.request("/auth/github/callback?code=c&state=s", {
+      headers: { Cookie: "murmur_oauth_state=s" },
+    });
+  const list = (logins: string[], ids: number[] = []) => ({
+    allowList: { logins, ids },
+  });
+
+  test("a GitHub login not on the list gets the invite-only page, no user and no session", async () => {
+    t = await testApp({ config: list(["ada"]), github: fakeGithub("mallory") });
+    const res = await callback(t.app);
+    expect(res.status).toBe(403);
+    expect(res.headers.get("content-type")).toMatch(/^text\/html/);
+    expect(await res.text()).toContain(
+      "This Murmur is invite-only. Ask its owner to add your GitHub name.",
+    );
+    expect(
+      res.headers.getSetCookie().some((c) => c.startsWith("murmur_session=")),
+    ).toBe(false);
+    expect(await t.db.select().from(users)).toHaveLength(0);
+    expect(await t.db.select().from(webSessions)).toHaveLength(0);
+  });
+
+  test("the list is case-insensitive", async () => {
+    t = await testApp({ config: list(["ada"]), github: fakeGithub("AdA") });
+    const res = await callback(t.app);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/");
+    expect(await t.db.select().from(webSessions)).toHaveLength(1);
+  });
+
+  test("a login:id entry follows the GitHub id, not the name", async () => {
+    t = await testApp({
+      config: list([], [7]),
+      github: fakeGithub("ada-renamed", 7),
+    });
+    expect((await callback(t.app)).status).toBe(302);
+    await t.close();
+    t = await testApp({ config: list([], [7]), github: fakeGithub("ada", 8) });
+    expect((await callback(t.app)).status).toBe(403);
+  });
+
+  test("without a list anyone may sign in with GitHub", async () => {
+    t = await testApp({ github: fakeGithub("mallory") });
+    expect((await callback(t.app)).status).toBe(302);
+    expect(await t.db.select().from(users)).toHaveLength(1);
+  });
+
+  test("dev login follows the list too", async () => {
+    t = await testApp({ config: list(["ada"]) });
+    const no = await t.app.request("/auth/dev?login=%3Cb%3Emallory");
+    expect(no.status).toBe(403);
+    expect(await no.text()).toContain("&lt;b&gt;mallory");
+    expect(await t.db.select().from(users)).toHaveLength(0);
+    expect((await t.app.request("/auth/dev?login=ADA")).status).toBe(302);
+  });
+
+  test("at startup, users taken off the list lose every session, login and token, and keep their data", async () => {
+    t = await testApp();
+    const ada = await linkMachine(t, "Ada");
+    const bob = await linkMachine(t, "bob");
+    expect((await ingest(t, ada.token, [ev("s1")])).status).toBe(200);
+    // ada has a device login approved but not yet picked up by her CLI.
+    const start = await t.app.request("/api/device/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ machineName: "ada-air" }),
+    });
+    const { deviceCode, userCode } = (await start.json()) as {
+      deviceCode: string;
+      userCode: string;
+    };
+    await t.app.request("/api/device/approve", {
+      method: "POST",
+      headers: sameOrigin(ada.cookie),
+      body: JSON.stringify({ userCode }),
+    });
+
+    const config = { baseUrl: BASE, devLogin: false, cookieSecure: false };
+    expect(await purgeUnlisted(t.db, config, new Date())).toBe(0);
+    expect(
+      await purgeUnlisted(t.db, { ...config, ...list(["bob"]) }, new Date()),
+    ).toBe(1);
+
+    const me = (cookie: string) =>
+      t?.app.request("/api/me", { headers: { Cookie: cookie } });
+    expect((await me(ada.cookie))?.status).toBe(401);
+    expect((await me(bob.cookie))?.status).toBe(200);
+    const approve = await t.app.request("/api/device/approve", {
+      method: "POST",
+      headers: sameOrigin(ada.cookie),
+      body: JSON.stringify({ userCode: "BBBB-BBBB" }),
+    });
+    expect(approve.status).toBe(401);
+    const poll = await t.app.request("/api/device/poll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceCode }),
+    });
+    expect(poll.status).toBe(410);
+    expect((await ingest(t, ada.token, [ev("s1")])).status).toBe(401);
+    expect((await ingest(t, bob.token, [ev("s2")])).status).toBe(200);
+
+    expect(await t.db.select().from(users)).toHaveLength(2);
+    expect(
+      await t.db.select().from(events).where(eq(events.userId, ada.userId)),
+    ).toHaveLength(1);
+    const tokens = await t.db.select().from(ingestTokens);
+    expect(
+      tokens.find((r) => r.userId === ada.userId)?.revokedAt,
+    ).not.toBeNull();
+    expect(tokens.find((r) => r.userId === bob.userId)?.revokedAt).toBeNull();
+  });
 });

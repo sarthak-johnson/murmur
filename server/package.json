@@ -16,13 +16,13 @@
     "arctic": "3.7.0",
     "drizzle-orm": "0.45.4",
     "hono": "4.13.16",
-    "pg": "8.23.1"
+    "pg": "8.23.1",
+    "tsx": "4.23.15"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
     "@types/pg": "8.23.1",
     "drizzle-kit": "0.31.11",
-    "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vitest": "5.1.0"
   }

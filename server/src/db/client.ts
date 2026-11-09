@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle as drizzleNode } from "drizzle-orm/node-postgres";
@@ -20,8 +20,11 @@ export interface OpenedDb {
   close(): Promise<void>;
 }
 
-/** pg when url is set; else PGlite at ./.data/pglite; "memory://" is in-memory PGlite. */
-export async function openDb(url: string | undefined): Promise<OpenedDb> {
+/** pg when url is set; else PGlite on disk at dataDir (default ./.data/pglite); "memory://" is in-memory PGlite. */
+export async function openDb(
+  url: string | undefined,
+  dataDir = "./.data/pglite",
+): Promise<OpenedDb> {
   const migrationsFolder = process.env.MIGRATIONS_DIR || defaultMigrations;
   if (url && url !== "memory://") {
     const pool = new pg.Pool({ connectionString: url });
@@ -30,12 +33,12 @@ export async function openDb(url: string | undefined): Promise<OpenedDb> {
     await migrateNode(db, { migrationsFolder });
     return { db, close: () => pool.end() };
   }
-  let dataDir = "memory://";
+  // Owner-only: the database holds everyone's sessions.
   if (!url) {
-    dataDir = "./.data/pglite";
-    mkdirSync(dataDir, { recursive: true });
+    mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+    chmodSync(dataDir, 0o700); // mode only applies to folders mkdir creates
   }
-  const client = new PGlite(dataDir);
+  const client = new PGlite(url ? "memory://" : dataDir);
   const db = drizzleLite(client);
   await migrateLite(db, { migrationsFolder });
   return { db, close: () => client.close() };
