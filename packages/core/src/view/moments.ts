@@ -27,10 +27,11 @@ const RULES: [Moment, RegExp][] = [
       "i",
     ),
   ],
-  // An explicit change of plan, or a choice with its reason ("X, not Y: because").
+  // An explicit change of plan, or a choice: between options ("going with X", "we chose
+  // X", "switching to X") or with its reason ("X, not Y: because").
   [
     "decision",
-    /\b(?:I|I'm|I'll|I've|we|we'll|we're)\b[^.;]*\b(?:instead of|rather than)\b|\bI(?:'ve| have)? decided\b|\bchanged? (?:the |my |our )?plan\b|,\s*not\s+\w+(?:\s+\w+)?\s*[:;]/i,
+    /\b(?:I|I'm|I'll|I've|we|we'll|we're)\b[^.;]*\b(?:instead of|rather than|chose|switch(?:ed|ing)? to|decided to)\b|^(?:going with|switching to)\b|\bI(?:'ve| have)? decided\b|\bchanged? (?:the |my |our )?plan\b|,\s*not\s+\w+(?:\s+\w+)?\s*[:;]/i,
   ],
   ["plan", /\badded an? (?:\w+ )?task\b/i],
 ];
@@ -68,10 +69,17 @@ export function firstSentence(text: string): string {
   return sentences(plainText(text))[0] ?? "";
 }
 
+// A remark that something is meant to be so ("intentional, not a bug:") chooses nothing.
+const REMARK =
+  /\b(?:intentional(?:ly)?|on purpose|by design|not a (?:bug|mistake)|works? as (?:designed|intended)|as intended|expected behaviou?r)\b/i;
+
 /** The kind of moment a message is, or undefined when it is none of them. */
 export function moment(text: string): Moment | undefined {
   const first = firstSentence(text);
-  return RULES.find(([, re]) => re.test(first))?.[0];
+  return RULES.find(
+    ([mark, re]) =>
+      re.test(first) && !(mark === "decision" && REMARK.test(first)),
+  )?.[0];
 }
 
 /** At most `max` characters, cut at a word with "…" when it had to be cut. */

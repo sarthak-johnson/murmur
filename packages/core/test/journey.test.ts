@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { type MapInput, reduce } from "../src/index.js";
+import { moment } from "../src/view/moments.js";
 import { at, edit, mapCall, prompt, tool } from "./helpers.js";
 
 const ts = (n: number) =>
@@ -46,6 +47,15 @@ const view = reduce([
     plan("Start Phase 2: the page", "Build", "Task 2: page"),
   ),
   tool(4 * HOUR + 22, "Bash", { command: "pnpm test" }, "PreToolUse"),
+  // A review remark reads like "X, not Y:" but chooses nothing.
+  said(
+    4 * HOUR + 23,
+    "The wordmark style is intentional, not a bug: it's the brand mark.",
+  ),
+  said(4 * HOUR + 24, "The header looks odd but works as designed."),
+  said(4 * HOUR + 25, "Going with the second design: it reads better."),
+  said(4 * HOUR + 26, "We chose the warm theme over the cold one."),
+  said(4 * HOUR + 27, "I decided to change the plan's order."),
 ]);
 const ids = view.requests.map((r) => r.id);
 
@@ -92,7 +102,34 @@ describe("journey", () => {
         text: "I'll use the dark style instead of the light one.",
         by: "claude",
       },
+      {
+        ts: ts(4 * HOUR + 25),
+        requestId: ids[4],
+        text: "Going with the second design: it reads better.",
+        by: "claude",
+      },
+      {
+        ts: ts(4 * HOUR + 26),
+        requestId: ids[4],
+        text: "We chose the warm theme over the cold one.",
+        by: "claude",
+      },
+      {
+        ts: ts(4 * HOUR + 27),
+        requestId: ids[4],
+        text: "I decided to change the plan's order.",
+        by: "claude",
+      },
     ]);
+  });
+
+  test("a remark that something is intentional is no decision", () => {
+    expect(moment("The style is intentional, not a bug: it's the mark.")).toBe(
+      undefined,
+    );
+    expect(moment("That is by design, not a slip: see the plan.")).toBe(
+      undefined,
+    );
   });
 
   test("totals", () => {
