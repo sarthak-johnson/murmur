@@ -140,6 +140,9 @@ function edge(b: NodeBox, tx: number, ty: number): [number, number] {
   return [b.x + dx * t, b.y + dy * t];
 }
 
+/** The most the map scales up: about what a 1440-wide window gives it. */
+const MAX_SCALE = 1.35;
+
 export function MapView(props: {
   request: RequestView;
   highlight?: { partId?: string; phaseId?: string };
@@ -276,7 +279,13 @@ export function MapView(props: {
       {/* biome-ignore lint/a11y/useSemanticElements: the map is an SVG, not a form */}
       <svg
         viewBox={`0 0 ${width} ${height}`}
+        // Fills the column, but grows no more than MAX_SCALE past the size it was laid
+        // out for, so on a wide screen its text stays at reading size instead of 2x.
         width="100%"
+        style={{
+          maxWidth: `${Math.round(width * MAX_SCALE)}px`,
+          height: "auto",
+        }}
         role="group"
         aria-label="Map of the parts of this work"
       >

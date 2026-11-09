@@ -250,6 +250,7 @@ label {
 }
 .map svg {
   display: block;
+  margin-inline: auto;
   font-family: var(--font-ui);
 }
 .map-caption {
