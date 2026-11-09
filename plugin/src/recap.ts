@@ -23,6 +23,10 @@
  * task back (a done one, or failed to running) is dropped. At most one ask every 30
  * minutes per session; a child looks at most every 5 minutes, so one runs at a time. Same
  * switches as the recap, checked again before anything is queued.
+ * Earlier requests count too: when the latest is not stale, the newest finished request
+ * with a plan Claude drew, an open task and something new since its last ask gets one
+ * final refresh, drawn just after its last event, and never another. A history import
+ * forgets every refresh (the server has none of them) and runs one pass at its end.
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import os from "node:os";
@@ -48,6 +52,7 @@ import {
   isPaused,
   isRevoked,
   type RefreshState,
+  type RequestRefresh,
   readCredentials,
   readRefresh,
   readSession,
@@ -642,7 +647,7 @@ function reportsInput(events: MurmurEvent[]): string {
 }
 
 /** The plan state over a request's events (in time order), with `prior`'s statuses at its time. */
-function planState(events: MurmurEvent[], prior?: RefreshState): PlanState {
+function planState(events: MurmurEvent[], prior?: RequestRefresh): PlanState {
   const st: PlanState = {
     statuses: new Map(),
     changed: NaN,
@@ -702,6 +707,52 @@ Answer with one JSON object and nothing else, in exactly this shape:
 }
 Rules: use only the task and part ids in the plan, exactly as written; never add, rename or drop one. The tasks under "done" are finished: say nothing of them. Give one entry in "tasks" for every task in the plan that has started. A task is "done" only when the material shows it finished (a helper reported it done, Claude said so, a commit or review passed); "running" while it is under way; "failed" when it was given up or is blocked. Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
 
+/** Each request's refresh state, reading the one-request state of the first version too. */
+function requestsOf(r?: RefreshState): Record<string, RequestRefresh> {
+  if (r?.requests) return r.requests;
+  if (!r?.request) return {};
+  const { tried, at, tasks } = r;
+  return {
+    [r.request]: {
+      ...(tried ? { tried } : {}),
+      ...(at ? { at } : {}),
+      ...(tasks ? { tasks } : {}),
+    },
+  };
+}
+
+/**
+ * The one request to ask about, if any: the latest when it is stale by the live rules
+ * (an open task, something new since its last ask, and 3 reports or 20 minutes since its
+ * last status change), else the newest finished request with an open task, something
+ * new since its last ask and no final refresh yet. Only plans Claude drew count.
+ */
+function pickRequest(
+  requests: RequestView[],
+  events: MurmurEvent[],
+  per: Record<string, RequestRefresh>,
+  t: number,
+) {
+  for (let i = requests.length - 1; i >= 0; i--) {
+    const req = requests[i] as RequestView;
+    const next = requests[i + 1];
+    const mine = per[req.id];
+    if (req.planInferred || req.recap || (next && mine?.final)) continue;
+    const own = events.filter(
+      (e) => e.ts >= req.startedAt && (!next || e.ts < next.startedAt),
+    );
+    const st = planState(own, mine);
+    const open = req.phases.some((ph) =>
+      ph.tasks.some((x) => !settled(st.statuses.get(x.id))),
+    );
+    const news = !mine?.tried || st.latest > Date.parse(mine.tried);
+    const due =
+      !!next || st.reports >= STALE_REPORTS || t - st.changed >= STALE_MS;
+    if (open && news && due) return { req, own, st, finished: !!next };
+  }
+  return undefined;
+}
+
 export interface RefreshOptions {
   env?: NodeJS.ProcessEnv;
   /** The time it runs at: what "stale" and the refresh's event times count from. */
@@ -751,7 +802,12 @@ export async function runRefresh(
   if (prior && t - Date.parse(prior.checked) < CHECK_MS) return none;
   if (prior?.tried && t - Date.parse(prior.tried) < REFRESH_EVERY_MS)
     return none;
-  writeRefresh(sessionId, { ...prior, checked: iso });
+  const per = requestsOf(prior);
+  writeRefresh(sessionId, {
+    ...(prior?.tried ? { tried: prior.tried } : {}),
+    requests: per,
+    checked: iso,
+  });
 
   const events = readBackfill({
     sessionId,
@@ -761,26 +817,26 @@ export async function runRefresh(
     cutoff: iso,
   });
   const view = reduce(events);
-  const req = view.requests.at(-1);
-  // Claude's own map only; a request with none is the recap's.
-  if (!req || req.planInferred || req.recap) return none;
-  const mine = prior?.request === req.id ? prior : undefined;
-  const own = events.filter((e) => e.ts >= req.startedAt);
-  const st = planState(own, mine);
+  const pick = pickRequest(view.requests, events, per, t);
+  if (!pick) return none;
+  const { req, own, st, finished } = pick;
+  const mine = per[req.id];
   const tasks = req.phases.flatMap((ph) => ph.tasks);
-  const news = !prior?.tried || st.latest > Date.parse(prior.tried);
-  const stale =
-    news &&
-    tasks.some((x) => !settled(st.statuses.get(x.id))) &&
-    (st.reports >= STALE_REPORTS || t - st.changed >= STALE_MS);
-  if (!stale) return none;
+  // The latest request's answer is timed now; a finished one's just after its last
+  // event, so it draws on that request and not on the one after.
+  // ponytail: a request whose next prompt came within ~40 ms of its last event would
+  // spill refresh events into the next one; never seen, clamp if it ever is.
+  const atMs = finished ? Date.parse((own.at(-1) as MurmurEvent).ts) + 1 : t;
 
-  // Marked before it is asked: whatever comes back, not again for 30 minutes.
+  // Marked before it is asked: whatever comes back, not again for 30 minutes, and a
+  // finished request never again.
   writeRefresh(sessionId, {
-    ...mine,
     checked: iso,
-    request: req.id,
     tried: iso,
+    requests: {
+      ...per,
+      [req.id]: { ...mine, tried: iso, ...(finished ? { final: true } : {}) },
+    },
   });
   const done = (id: string) => st.statuses.get(id) === "done";
   // Only what is still open is asked about.
@@ -847,19 +903,26 @@ export async function runRefresh(
     { ...answer.data, tasks: moved },
     events.find((e) => e.id === req.id) as MurmurEvent,
     changedPaths(events),
-    t,
+    atMs,
   ))
     enqueue(e);
+  const after = readRefresh(sessionId);
   writeRefresh(sessionId, {
     checked: iso,
-    request: req.id,
     tried: iso,
-    at: iso,
-    // Every status the plan has now, not only this answer's, which may leave one out.
-    tasks: Object.fromEntries([
-      ...st.statuses,
-      ...moved.map((x) => [x.id, x.status] as const),
-    ]),
+    requests: {
+      ...requestsOf(after),
+      [req.id]: {
+        tried: iso,
+        ...(finished ? { final: true } : {}),
+        at: new Date(atMs).toISOString(),
+        // Every status the plan has now, not only this answer's, which may leave one out.
+        tasks: Object.fromEntries([
+          ...st.statuses,
+          ...moved.map((x) => [x.id, x.status] as const),
+        ]),
+      },
+    },
   });
   log(`murmur refresh: ${req.id} ok (${secs} s${costOf(r)})`);
   return { ran: 1, ok: 1 };

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { type HookName, type MurmurEvent, scrubEvent } from "@murmur/core";
 import {
+  clearRefresh,
   isHeadless,
   isPaused,
   isRevoked,
@@ -14,7 +15,7 @@ import {
   updateSession,
   writeSession,
 } from "./local.js";
-import { lastRequestOpen, runRecap } from "./recap.js";
+import { lastRequestOpen, runRecap, runRefresh } from "./recap.js";
 import { enqueue, type FlushOptions, flush } from "./upload.js";
 
 // A week-long session with whole diffs and Claude's messages is ~19,000 events and
@@ -427,7 +428,10 @@ export function readBackfill(
  */
 export async function runBackfill(
   sessionId: string,
-  opts: FlushOptions = {},
+  {
+    env = process.env,
+    ...opts
+  }: FlushOptions & { env?: NodeJS.ProcessEnv } = {},
 ): Promise<number> {
   // A little under the child's 4-minute exit timer (hook.ts).
   const deadline = Date.now() + 230_000;
@@ -439,6 +443,11 @@ export async function runBackfill(
     backfill: "running",
     runningSince: new Date().toISOString(),
   });
+  // An import (a re-import deletes the session first) gives the server no refresh
+  // events, so what the refresh said before is forgotten and may be said again.
+  // ponytail: a backfill retried after its child died forgets them too, so a request
+  // may be asked once more; key the reset on a real re-import if that ever costs much.
+  clearRefresh(sessionId);
   let events: MurmurEvent[] = [];
   // The live read starts where this read ends; Claude's text from the cutoff to here is
   // in this import, so nothing is read twice or missed.
@@ -474,10 +483,15 @@ export async function runBackfill(
   // time left to send.
   const left = () => deadline - Date.now();
   const recap = await runRecap(sessionId, events, {
+    env,
     lastOpen: lastRequestOpen(s.triggerHook),
     budgetMs: Math.min(150_000, left() - 70_000),
   });
   if (recap.ok && same())
+    await flush(creds, { budgetMs: Math.max(1000, left()), ...opts });
+  // Then one refresh pass, under the same caps, so a stale plan Claude drew in the
+  // history is caught up too; only when its ask (60 s) can end with time left to send.
+  if (left() > 75_000 && (await runRefresh(sessionId, { env })).ok && same())
     await flush(creds, { budgetMs: Math.max(1000, left()), ...opts });
   return events.length;
 }

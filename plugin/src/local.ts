@@ -288,10 +288,22 @@ export interface SessionState extends Narration {
 export interface RefreshState {
   /** When a child last looked; none looks again within 5 minutes, so one runs at a time. */
   checked: string;
-  /** When the session was last asked about (any request, at most once per 30 minutes), and which request. */
+  /** When the session was last asked about (any request, at most once per 30 minutes). */
   tried?: string;
+  /** Each request asked about, by request id. */
+  requests?: Record<string, RequestRefresh>;
+  /** Before per-request state: the one request last asked about, as `RequestRefresh`. */
   request?: string;
-  /** For that request, when the last answer's events are timed, and every task status then. */
+  at?: string;
+  tasks?: Record<string, string>;
+}
+/** What the refresh did for one request. */
+export interface RequestRefresh {
+  /** When it was last asked about. */
+  tried?: string;
+  /** Asked about once after a later request began: never again. */
+  final?: boolean;
+  /** When the last answer's events are timed, and every task status then. */
   at?: string;
   tasks?: Record<string, string>;
 }
@@ -310,6 +322,12 @@ export function readRefresh(sessionId: string): RefreshState | undefined {
 }
 export function writeRefresh(sessionId: string, r: RefreshState): void {
   writeJson(refreshFile(sessionId), r);
+}
+/** Forgets every refresh of a session: a history import gives the server none of them. */
+export function clearRefresh(sessionId: string): void {
+  fs.rmSync(path.join(murmurDir(), refreshFile(sessionId)), { force: true });
+  const { refresh: _, ...rest } = readSession(sessionId);
+  if (_) writeSession(sessionId, rest);
 }
 export const NO_NARRATION: Narration = {
   mapped: false,
