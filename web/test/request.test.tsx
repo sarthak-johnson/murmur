@@ -11,8 +11,13 @@ import type {
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Live } from "../src/pages/Session";
+import { Live as Page } from "../src/pages/Session";
 import { clock } from "../src/story";
+
+/** A request's own page: the newest request unless the test names one. */
+function Live(p: React.ComponentProps<typeof Page>) {
+  return <Page {...p} requestId={p.requestId ?? p.view?.requests.at(-1)?.id} />;
+}
 
 const at = (min: number) =>
   new Date(Date.UTC(2026, 10, 9, 15, min)).toISOString();
@@ -553,6 +558,14 @@ describe("the phase track", () => {
   it("is not drawn for a request with no plan", () => {
     show(session(running({ phases: [], beyond: undefined })));
     expect(noRegion("Phase track")).toBeNull();
+  });
+
+  it("the new mark's dot is not the class markdown gives short code", () => {
+    // Markdown marks a short code token `nw` (never wrap); a dot styled `.nw` once drew
+    // every such token as a 6 px box, its letters stacked down the margin.
+    const css = readFileSync("src/theme.css", "utf8");
+    expect(css).not.toMatch(/(^|[\s,}])\.nw\s*[,{]/m);
+    expect(css).toMatch(/code\.nw\s*{[^}]*white-space: nowrap/);
   });
 
   it("turns into a vertical list under 900 px, and draws once on first paint", () => {

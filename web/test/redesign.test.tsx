@@ -12,11 +12,16 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cutWords, list } from "../src/format";
-import { Live } from "../src/pages/Session";
+import { Live as Page } from "../src/pages/Session";
 import { PartDetail } from "../src/part/PartDetail";
 import type { Tab } from "../src/router";
 import { questionsIn } from "../src/session";
 import { clock } from "../src/story";
+
+/** A request's own page: the newest request unless the test names one. */
+function Live(p: React.ComponentProps<typeof Page>) {
+  return <Page {...p} requestId={p.requestId ?? p.view?.requests.at(-1)?.id} />;
+}
 
 afterEach(() => {
   cleanup();

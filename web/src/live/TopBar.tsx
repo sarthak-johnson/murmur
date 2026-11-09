@@ -13,7 +13,6 @@ import {
   nowLine,
   type RequestState,
   requestShort,
-  shortOf,
   shortTitle,
   type Waiting,
   waitingLabel,
@@ -261,11 +260,13 @@ export function crumbs(p: {
 }): Crumb[] {
   const { sessionId, view, request, part, onSession } = p;
   const folder = view.cwd.split("/").filter(Boolean).pop() ?? "Session";
-  const session = shortOf(view.title) || folder;
+  // Core's title is already the first prompt cut at a word; the full prompt on hover.
+  const session = view.title || folder;
+  const prompt = view.requests[0]?.prompt ?? view.title;
   if (onSession || !request)
     return [
       { label: "Sessions", href: "/" },
-      { label: session, title: view.title },
+      { label: session, title: prompt },
     ];
   const n = view.requests.indexOf(request) + 1;
   const req: Crumb = {
@@ -275,7 +276,7 @@ export function crumbs(p: {
   const top: Crumb = {
     label: session,
     href: sessionPath(sessionId),
-    title: view.title,
+    title: prompt,
   };
   if (!part) return [top, req];
   const base = requestPath(sessionId, request.id);

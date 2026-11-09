@@ -16,7 +16,12 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Live } from "../src/pages/Session";
+import { Live as Page } from "../src/pages/Session";
+
+/** A request's own page: the newest request unless the test names one. */
+function Live(p: React.ComponentProps<typeof Page>) {
+  return <Page {...p} requestId={p.requestId ?? p.view?.requests.at(-1)?.id} />;
+}
 
 const T0 = "2026-11-06T10:00:00Z";
 
@@ -576,14 +581,14 @@ describe("live screen", () => {
     expect(screen.queryByText(/Agent 1 ·|Agent 1:/)).toBeNull();
   });
 
-  it("the rail shows the last request by default", async () => {
+  it("the rail marks the request on screen as the page", async () => {
     show(session());
     const list = screen.getByRole("navigation", { name: "Requests" });
     const items = within(list).getAllByRole("link");
     expect(items[0]?.textContent).toContain("Fix the login bug");
     expect(items[0]?.getAttribute("aria-current")).toBeNull();
     expect(items[1]?.textContent).toContain("Price alerts");
-    expect(items[1]?.getAttribute("aria-current")).toBe("true");
+    expect(items[1]?.getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
       "Price alerts",
     );

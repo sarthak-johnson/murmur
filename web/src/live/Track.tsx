@@ -100,6 +100,7 @@ function Stations(props: { stations: Station[]; href(part: string): string }) {
                 href={href(s.part)}
                 title={s.title}
                 onClick={follow(href(s.part))}
+                data-morph=""
               >
                 {inner}
               </a>

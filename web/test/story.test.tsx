@@ -10,7 +10,7 @@ import type {
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Live } from "../src/pages/Session";
+import { Live as Page } from "../src/pages/Session";
 import {
   clock,
   commitsIn,
@@ -24,6 +24,11 @@ import {
   sentBack,
   verdictOf,
 } from "../src/story";
+
+/** A request's own page: the newest request unless the test names one. */
+function Live(p: React.ComponentProps<typeof Page>) {
+  return <Page {...p} requestId={p.requestId ?? p.view?.requests.at(-1)?.id} />;
+}
 
 afterEach(() => {
   cleanup();

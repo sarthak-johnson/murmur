@@ -270,7 +270,7 @@ export function RequestBrief(props: {
                     {m.text}
                     {m.new && (
                       <>
-                        <i className="nw" aria-hidden="true" />
+                        <i className="km-new" aria-hidden="true" />
                         <span className="sr-only">, new</span>
                       </>
                     )}

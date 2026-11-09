@@ -81,7 +81,7 @@ function session(s: Partial<SessionView> = {}): SessionView {
   return {
     sessionId: "s1",
     cwd: "/x/tradara",
-    title: "Bro we recently made Alphatake, and now the UI is mid",
+    title: "Bro we recently made Alphatake, and now…",
     startedAt: day(2),
     lastEventAt: day(9, 40),
     ended: false,
@@ -321,7 +321,8 @@ describe("the rail", () => {
     const view = session();
     const marks = view.requests.map((r) => requestMark(view, r, []).mark);
     expect(marks).toEqual(["done", "open", "failed", "running"]);
-    show(view);
+    // On a request's page; on the journey its running station pulses instead.
+    show(view, { requestId: "r1" });
     const rows = within(requests()).getAllByRole("link");
     expect(rows.map((r) => r.querySelector(".mk")?.className)).toEqual([
       "mk done",
@@ -388,13 +389,15 @@ describe("the rail", () => {
     expect(rows[2]?.className).toContain("cur");
   });
 
-  it("on the session page the newest request is the one shown", () => {
+  it("on the session page the session is the page, no request", () => {
     show(session());
     const rows = within(requests()).getAllByRole("link");
-    expect(rows[3]?.className).toContain("cur");
-    expect(rows[3]?.getAttribute("aria-current")).toBe("true");
+    expect(rows.some((r) => r.className.includes("cur"))).toBe(false);
+    expect(rows.some((r) => r.hasAttribute("aria-current"))).toBe(false);
+    const home = within(rail()).getByRole("link", { name: /Bro we recently/ });
+    expect(home.getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
-      "Restart the two stopped Phase 3 jobs and publish a new live tracker under the admin account",
+      "Bro we recently made Alphatake, and now…",
     );
     expect(location.pathname).toBe("/s/s1");
   });
@@ -469,14 +472,14 @@ describe("the breadcrumb", () => {
     show(session());
     expect(levels()).toEqual([
       { text: "Sessions", href: "/" },
-      { text: "Bro we recently made Alphatake", href: null },
+      { text: "Bro we recently made Alphatake, and now…", href: null },
     ]);
   });
 
   it("on a request: the session, then the request's number and short title", () => {
     show(session(), { requestId: "r3" });
     expect(levels()).toEqual([
-      { text: "Bro we recently made Alphatake", href: "/s/s1" },
+      { text: "Bro we recently made Alphatake, and now…", href: "/s/s1" },
       { text: "3 · Restyle the logged-in app to the…", href: null },
     ]);
     const here = crumbs()[1]?.querySelector("[aria-current]");
@@ -488,7 +491,7 @@ describe("the breadcrumb", () => {
   it("on a task: the session, the request, the phase and the task", () => {
     show(session(), { requestId: "r3", partId: "tokens" });
     expect(levels()).toEqual([
-      { text: "Bro we recently made Alphatake", href: "/s/s1" },
+      { text: "Bro we recently made Alphatake, and now…", href: "/s/s1" },
       { text: "3 · Restyle the logged-in app to the…", href: "/s/s1/r/r3" },
       { text: "Phase 0: foundation", href: "/s/s1/r/r3#phase-p0" },
       { text: "Task 1 · Lit plate tokens", href: null },

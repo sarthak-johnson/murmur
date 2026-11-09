@@ -5,7 +5,8 @@ import { applyFlags, needsYou } from "./flags.js";
 import { inferHistory, quiet } from "./history.js";
 import { applyInference, inferNow } from "./infer.js";
 import { journeyOf } from "./journey.js";
-import { applyPlan, cut, newRequest, type Trace } from "./requests.js";
+import { cutWords } from "./moments.js";
+import { applyPlan, newRequest, type Trace } from "./requests.js";
 import { applyRounds } from "./rounds.js";
 import { applyShape } from "./shape.js";
 import type { AgentView, SessionView } from "./types.js";
@@ -56,7 +57,12 @@ export function reduce(events: MurmurEvent[]): SessionView {
   return {
     sessionId: first?.sessionId ?? "",
     cwd: first?.cwd ?? "",
-    title: cut(requests[0]?.prompt ?? "", 80),
+    // Claude Code gives a session no name and Murmur invents none: the first prompt,
+    // cut at a word.
+    title: cutWords(
+      (requests[0]?.prompt ?? "").replace(/\s+/g, " ").trim(),
+      48,
+    ),
     startedAt: first?.ts ?? "",
     lastEventAt: sorted.at(-1)?.ts ?? "",
     ended,

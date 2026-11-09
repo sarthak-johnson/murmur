@@ -12,6 +12,15 @@ import {
   tool,
 } from "./helpers.js";
 
+test("the session's title is its first prompt cut at a word near 48 characters", () => {
+  const title = (text: string) => reduce([prompt(1, text)]).title;
+  expect(
+    title("Bro we recently made Alphatake, and now tradara.in UI is mid ngl"),
+  ).toBe("Bro we recently made Alphatake, and now…");
+  expect(title("  Fix the\n\nlogin  bug ")).toBe("Fix the login bug");
+  expect(title("x".repeat(60))).toBe(`${"x".repeat(47)}…`);
+});
+
 test("splits requests on each prompt", () => {
   const long = "a".repeat(100);
   const view = reduce([
@@ -28,7 +37,7 @@ test("splits requests on each prompt", () => {
   expect(view).toMatchObject({
     sessionId: "s1",
     cwd: "/p",
-    title: "a".repeat(80),
+    title: `${"a".repeat(47)}…`,
     startedAt: "2026-11-06T00:00:00.000Z",
     lastEventAt: "2026-11-06T00:00:04.000Z",
     ended: false,

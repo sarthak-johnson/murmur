@@ -62,28 +62,88 @@ export const partPath = (
 ) => `${requestPath(sessionId, requestId)}/p/${enc(partId)}`;
 
 type Transitioning = Document & {
-  startViewTransition?(update: () => void): unknown;
+  startViewTransition?(update: () => void): { finished: Promise<unknown> };
 };
 
+/** While set on <html>, only `.vt-src` carries the title's transition name (theme.css). */
+const MORPH = "vt-morph";
+const SRC = "vt-src";
+
+let named: Element | null = null;
+
+/** Names `el` the morphing card for one snapshot; `null` takes the name back. */
+function mark(el: Element | null) {
+  for (const old of document.querySelectorAll(`.${SRC}`))
+    old.classList.remove(SRC);
+  document.documentElement.classList.toggle(MORPH, !!el);
+  el?.classList.add(SRC);
+  named = el;
+}
+
 /**
- * Moves to a path. Where the browser has View Transitions the change runs inside one, so
- * the request title morphs and the page rises (theme.css); elsewhere it is instant.
+ * Takes the name back from `el` only: a transition skipped by a quicker click still runs
+ * its update, and must not unname the card that click named.
  */
-export function navigate(path: string): void {
+const unmark = (el: Element | null) => named === el && mark(null);
+
+/**
+ * While set on <html>, the morph keeps both pictures at their own size (theme.css): the
+ * source was a wide track's station, whose dot would otherwise blow up to the title's size.
+ */
+const DOT = "vt-dot";
+let latest: object | null = null;
+
+/** Marks the morph as a dot's (or not) until the newest transition has run. */
+function dot(el: Element | null) {
+  document.documentElement.classList.toggle(DOT, !!el?.closest(".trk-st"));
+}
+
+/** Runs `update` as a transition, the dot mark kept until the newest one has run. */
+function transition(doc: Transitioning, update: () => void) {
+  const t = doc.startViewTransition?.(update);
+  if (!t) return;
+  latest = t;
+  return t.finished.finally(
+    () => latest === t && document.documentElement.classList.remove(DOT),
+  );
+}
+
+/** Set while navigate's own popstate runs, so useRoute starts no second transition. */
+let moving = false;
+
+/**
+ * Moves to a path. Where the browser has View Transitions the change runs inside one: a
+ * clicked card marked `data-morph` (a station, a rail row, a track station) grows into the
+ * next page's title, and the page rises (theme.css); elsewhere it is instant.
+ */
+export function navigate(path: string, from?: Element | null): void {
   // Another page starts at its top, as a real link would; a hash within the page scrolls itself.
   const another = new URL(path, location.href).pathname !== location.pathname;
   const go = () => {
+    // Back lands where the reader was: the scroll stays with the entry it leaves.
+    history.replaceState({ y: window.scrollY }, "");
     if (another) window.scrollTo(0, 0);
     history.pushState(null, "", path);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    moving = true;
+    try {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    } finally {
+      moving = false;
+    }
   };
   const doc = document as Transitioning;
   if (typeof doc.startViewTransition !== "function") {
     go();
     return;
   }
+  const src = from?.closest("[data-morph]") ?? null;
+  mark(src);
+  dot(src);
   // The DOM must be the new page when the callback returns, so React renders at once.
-  doc.startViewTransition(() => flushSync(go));
+  transition(doc, () => {
+    unmark(src);
+    flushSync(go);
+  });
 }
 
 /** A link's click as an in-app move; a modified click still opens a new tab. */
@@ -92,16 +152,64 @@ export function follow(path: string) {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)
       return;
     e.preventDefault();
-    navigate(path);
+    navigate(path, e.currentTarget as Element);
   };
 }
 
-export function useRoute(): Route {
-  const [route, setRoute] = useState(() =>
-    matchRoute(location.pathname + location.search),
+/**
+ * The card linking to `path` (its `href`, or the path in `data-morph` for a card that is
+ * not itself the link): the main column's first one on screen, else its last, else the
+ * rail's. Called once the page has its scroll back.
+ */
+function cardFor(path: string): Element | null {
+  const all = [...document.querySelectorAll("[data-morph]")].filter(
+    (el) => (el.getAttribute("data-morph") || el.getAttribute("href")) === path,
   );
+  const main = all.filter((el) => el.closest("main"));
+  const shown = (el: Element) => {
+    const r = el.getBoundingClientRect();
+    return r.bottom > 0 && r.top < window.innerHeight;
+  };
+  return main.find(shown) ?? main.at(-1) ?? all[0] ?? null;
+}
+
+/**
+ * The scroll an entry was left at, once its page is drawn; another page with none kept
+ * (one the browser's back left) starts at its top, a hash within the page scrolls itself.
+ */
+function restore(another: boolean) {
+  const y = (history.state as { y?: unknown } | null)?.y;
+  if (typeof y === "number") window.scrollTo(0, y);
+  else if (another) window.scrollTo(0, 0);
+}
+
+const here = () => location.pathname + location.search;
+
+export function useRoute(): Route {
+  const [route, setRoute] = useState(() => matchRoute(here()));
   useEffect(() => {
-    const on = () => setRoute(matchRoute(location.pathname + location.search));
+    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+    let shown = location.pathname;
+    const on = () => {
+      const left = shown;
+      shown = location.pathname;
+      const show = () => setRoute(matchRoute(here()));
+      const doc = document as Transitioning;
+      if (moving) return show();
+      if (typeof doc.startViewTransition !== "function") {
+        flushSync(show);
+        return restore(left !== shown);
+      }
+      // Back or forward: the same path reversed, the title shrinking into its card.
+      let card: Element | null = null;
+      transition(doc, () => {
+        flushSync(show);
+        restore(left !== shown);
+        card = left === shown ? null : cardFor(left);
+        mark(card);
+        dot(card);
+      })?.finally(() => unmark(card));
+    };
     window.addEventListener("popstate", on);
     return () => window.removeEventListener("popstate", on);
   }, []);

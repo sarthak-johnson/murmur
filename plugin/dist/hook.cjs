@@ -20466,10 +20466,11 @@ var RULES = [
       "i"
     )
   ],
-  // An explicit change of plan, or a choice with its reason ("X, not Y: because").
+  // An explicit change of plan, or a choice: between options ("going with X", "we chose
+  // X", "switching to X") or with its reason ("X, not Y: because").
   [
     "decision",
-    /\b(?:I|I'm|I'll|I've|we|we'll|we're)\b[^.;]*\b(?:instead of|rather than)\b|\bI(?:'ve| have)? decided\b|\bchanged? (?:the |my |our )?plan\b|,\s*not\s+\w+(?:\s+\w+)?\s*[:;]/i
+    /\b(?:I|I'm|I'll|I've|we|we'll|we're)\b[^.;]*\b(?:instead of|rather than|chose|switch(?:ed|ing)? to|decided to)\b|^(?:going with|switching to)\b|\bI(?:'ve| have)? decided\b|\bchanged? (?:the |my |our )?plan\b|,\s*not\s+\w+(?:\s+\w+)?\s*[:;]/i
   ],
   ["plan", /\badded an? (?:\w+ )?task\b/i]
 ];
@@ -20492,9 +20493,12 @@ function sentences(plain2) {
 function firstSentence(text3) {
   return sentences(plainText(text3))[0] ?? "";
 }
+var REMARK = /\b(?:intentional(?:ly)?|on purpose|by design|not a (?:bug|mistake)|works? as (?:designed|intended)|as intended|expected behaviou?r)\b/i;
 function moment(text3) {
   const first = firstSentence(text3);
-  return RULES.find(([, re]) => re.test(first))?.[0];
+  return RULES.find(
+    ([mark, re]) => re.test(first) && !(mark === "decision" && REMARK.test(first))
+  )?.[0];
 }
 function cutWords(s, max) {
   if (s.length <= max) return s;
@@ -21774,7 +21778,12 @@ function reduce(events) {
   return {
     sessionId: first?.sessionId ?? "",
     cwd: first?.cwd ?? "",
-    title: cut(requests[0]?.prompt ?? "", 80),
+    // Claude Code gives a session no name and Murmur invents none: the first prompt,
+    // cut at a word.
+    title: cutWords(
+      (requests[0]?.prompt ?? "").replace(/\s+/g, " ").trim(),
+      48
+    ),
     startedAt: first?.ts ?? "",
     lastEventAt: sorted.at(-1)?.ts ?? "",
     ended,

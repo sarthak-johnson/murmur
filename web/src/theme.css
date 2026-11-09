@@ -1602,25 +1602,39 @@ svg.g {
   color: var(--bad-text);
 }
 
-/* Moving between pages: the request title morphs, the page rises 8 px (View Transitions) */
-.main {
-  view-transition-name: page;
+/*
+ * Moving between pages (View Transitions): the page's title morphs into the next one's,
+ * the page rises 8 px. A clicked card (router.ts names it `.vt-src` while `vt-morph` is
+ * on <html>) takes the title's place, so the card grows into the header; back reverses it.
+ * The names themselves sit at the end of the file, after every title's own rule.
+ * The page is the root's snapshot, the viewport as seen, so a page scrolled down leaves
+ * from where it was; the rail and the top bar are layers of their own that stay put.
+ */
+.rail {
+  view-transition-name: rail;
 }
-.live-title {
-  view-transition-name: request-title;
+.top {
+  view-transition-name: top-bar;
 }
-::view-transition-old(root),
-::view-transition-new(root),
-::view-transition-group(page) {
+/* They change in place, at once: a crossfade of two lists would show both. */
+::view-transition-group(rail),
+::view-transition-group(top-bar),
+::view-transition-new(rail),
+::view-transition-new(top-bar) {
   animation: none;
 }
-::view-transition-old(page) {
+::view-transition-old(rail),
+::view-transition-old(top-bar) {
+  display: none;
+}
+::view-transition-old(root) {
   animation: 120ms ease-out both vt-out;
 }
-::view-transition-new(page) {
-  animation: 200ms cubic-bezier(0.2, 0.7, 0.2, 1) both vt-rise;
+/* The new page rises once the old has mostly gone, landing with the title at 260 ms. */
+::view-transition-new(root) {
+  animation: 200ms cubic-bezier(0.2, 0.7, 0.2, 1) 60ms both vt-rise;
 }
-::view-transition-group(request-title) {
+::view-transition-group(page-title) {
   animation-duration: 260ms;
   animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
@@ -1647,18 +1661,15 @@ svg.g {
       0 0 0 2px var(--s2),
       0 0 0 3.5px var(--now);
   }
-  ::view-transition-group(page),
-  ::view-transition-group(request-title) {
+  ::view-transition-group(page-title) {
     animation: none;
   }
   ::view-transition-old(root),
-  ::view-transition-old(page),
-  ::view-transition-old(request-title) {
+  ::view-transition-old(page-title) {
     animation: 150ms ease both vt-out;
   }
   ::view-transition-new(root),
-  ::view-transition-new(page),
-  ::view-transition-new(request-title) {
+  ::view-transition-new(page-title) {
     animation: 150ms ease both vt-in;
   }
 }
@@ -3433,7 +3444,11 @@ a.helper:focus-visible {
   height: 22px;
   margin-top: 4px;
 }
-.nw {
+/* A short code token (markdown.tsx) never breaks across lines, at its hyphens say. */
+code.nw {
+  white-space: nowrap;
+}
+.km-new {
   display: inline-block;
   width: 6px;
   height: 6px;
@@ -4462,5 +4477,576 @@ a.helper:focus-visible {
   .pd .lane {
     height: auto;
     min-height: 48px;
+  }
+}
+
+/* ── The session's journey: where it started and where it went ────────────── */
+.jr-title {
+  max-width: 920px;
+  margin: 0;
+  color: var(--t1);
+  font: 600 30px / 38px var(--font-ui);
+  letter-spacing: -0.015em;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+/* From here to here: the first prompt, a line, where it is now. */
+.jr-ends {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px minmax(0, 1fr);
+  margin-top: 26px;
+}
+.jr-end {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 20px 24px;
+  border-radius: 14px;
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--s6);
+  color: inherit;
+  text-decoration: none;
+  transition: box-shadow 150ms ease-out;
+}
+.jr-end:hover,
+.jr-end:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--s8);
+  text-decoration: none;
+}
+.jr-end.to.running {
+  box-shadow: inset 0 0 0 2px var(--now-line);
+}
+.jr-end.to.waiting {
+  box-shadow: inset 0 0 0 2px var(--need-line);
+}
+.jr-k {
+  color: var(--t4);
+  font: 500 13px / 18px var(--font-ui);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.jr-q {
+  color: var(--t1);
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 30px;
+  letter-spacing: -0.005em;
+  overflow-wrap: break-word;
+  quotes: "\201C" "\201D";
+}
+.jr-now {
+  color: var(--t1);
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 28px;
+  overflow-wrap: break-word;
+}
+.jr-end-meta {
+  margin-top: auto;
+  color: var(--t3);
+  font-size: 14px;
+  line-height: 20px;
+}
+.jr-need {
+  color: var(--need);
+  font-weight: 500;
+}
+.jr-join {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.jr-join::before {
+  content: "";
+  position: absolute;
+  top: calc(50% - 1px);
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--s6), var(--s8) 50%, var(--now-line));
+  transform-origin: left;
+  animation: jr-draw 900ms cubic-bezier(0.2, 0.7, 0.2, 1) 200ms both;
+}
+.jr-join-t {
+  position: relative;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--s1);
+  box-shadow: inset 0 0 0 1px var(--s6);
+  color: var(--t3);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+/* Totals */
+.jr-totals {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+  --i: 1;
+}
+.jr-tot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 14px 18px;
+  border-radius: 10px;
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--s6);
+}
+.jr-tot-v {
+  color: var(--t1);
+  font: 400 26px / 30px var(--font-code);
+}
+.jr-tot-l {
+  margin-top: 4px;
+  color: var(--t3);
+  font-size: 13px;
+  line-height: 18px;
+}
+/* Chapters: a segmented strip, each segment as wide as its requests, the live one lit */
+.jr-chapters {
+  margin: 34px 0 10px;
+}
+.jr-segs {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.jr-segi {
+  flex: var(--w) 1 0;
+  min-width: 132px;
+}
+.jr-seg {
+  position: relative;
+  display: block;
+  padding: 14px 4px 4px 0;
+  color: inherit;
+  text-decoration: none;
+}
+.jr-seg::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--done-line);
+  transform-origin: left;
+  animation: jr-draw 600ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--k, 0) * 120ms);
+}
+.jr-seg.open::before {
+  background: var(--s7);
+}
+.jr-seg.failed::before {
+  background: var(--bad-line);
+}
+.jr-seg.live::before {
+  background: linear-gradient(90deg, var(--done-line), var(--now));
+}
+.jr-seg-n {
+  display: block;
+  color: var(--t2);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  overflow-wrap: break-word;
+}
+.jr-seg-s {
+  display: block;
+  margin-top: 2px;
+  color: var(--t4);
+  font-size: 13px;
+  line-height: 18px;
+}
+.jr-seg:hover,
+.jr-seg:focus-visible {
+  text-decoration: none;
+}
+.jr-seg:hover .jr-seg-n,
+.jr-seg.live .jr-seg-n {
+  color: var(--t1);
+}
+/* The line: a vertical metro line, each request a station */
+.jr-line {
+  position: relative;
+  margin-top: 26px;
+}
+.jr-line::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 40px;
+  left: 131px;
+  width: 2px;
+  background: var(--s6);
+}
+.jr-chap {
+  margin-top: 26px;
+}
+.jr-chap:first-child {
+  margin-top: 0;
+}
+.jr-stops {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.jr-ch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin: 0 0 8px 152px;
+}
+.jr-ch h2 {
+  margin: 0;
+  color: var(--t1);
+  font: 600 20px / 28px var(--font-ui);
+  letter-spacing: -0.01em;
+}
+.jr-ch-meta {
+  color: var(--t4);
+  font: 400 13px / 20px var(--font-code);
+}
+.jr-st {
+  position: relative;
+  display: grid;
+  grid-template-columns: 112px 40px minmax(0, 1fr);
+  align-items: start;
+  padding: 7px 0;
+}
+.jr-when {
+  padding: 13px 14px 0 0;
+  color: var(--t4);
+  font: 400 13px / 18px var(--font-code);
+  text-align: right;
+}
+.jr-day {
+  display: block;
+  color: var(--t3);
+  font-weight: 500;
+}
+.jr-dot {
+  display: flex;
+  justify-content: center;
+  padding-top: 16px;
+}
+.jr-dot .mk.done {
+  background: var(--done);
+  color: var(--s1);
+}
+.jr-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 24px;
+  padding: 14px 18px 14px 20px;
+  border-radius: 14px;
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--s6);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    box-shadow 150ms ease-out,
+    transform 150ms ease-out;
+}
+.jr-card:hover,
+.jr-card:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--s8);
+  text-decoration: none;
+  transform: translateX(2px);
+}
+.jr-card.running {
+  box-shadow: inset 0 0 0 1px var(--now-line);
+}
+.jr-card.waiting {
+  box-shadow: inset 0 0 0 1px var(--need-line);
+}
+.jr-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.jr-card-head .label-chip {
+  height: 24px;
+}
+.jr-card-ttl {
+  min-width: 0;
+  color: var(--t1);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+  overflow-wrap: break-word;
+}
+.jr-out {
+  grid-column: 1;
+  color: var(--t3);
+  font-size: 15px;
+  line-height: 22px;
+  overflow-wrap: break-word;
+}
+.jr-live {
+  color: var(--now);
+  font-weight: 500;
+}
+.jr-figs {
+  display: flex;
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  gap: 18px;
+  white-space: nowrap;
+}
+.jr-fig {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.jr-fig-v {
+  color: var(--t2);
+  font: 400 15px / 20px var(--font-code);
+}
+.jr-fig-l {
+  color: var(--t4);
+  font-size: 13px;
+  line-height: 16px;
+}
+.jr-quiet {
+  grid-column: 1 / -1;
+  color: var(--t4);
+  font-size: 14px;
+  line-height: 20px;
+}
+.jr-load {
+  position: relative;
+  grid-column: 1 / -1;
+  height: 4px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--s4);
+}
+.jr-load i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 2px;
+  background: var(--s8);
+}
+.jr-load i.now {
+  background: var(--now);
+}
+/* Beats on the line: a pause as a dashed stretch, a decision as a pill */
+.jr-pause {
+  position: relative;
+  padding: 14px 0 14px 152px;
+  color: var(--t4);
+  font-size: 14px;
+  line-height: 20px;
+}
+.jr-pause::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 131px;
+  width: 2px;
+  background: repeating-linear-gradient(
+    180deg,
+    var(--s8) 0 4px,
+    var(--s1) 4px 9px
+  );
+}
+.jr-dec {
+  padding: 2px 0 6px 158px;
+}
+.jr-dec-txt {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 14px;
+  background: var(--s3);
+  box-shadow: inset 0 0 0 1px var(--s6);
+  color: var(--t2);
+  font-size: 14px;
+  line-height: 20px;
+}
+.jr-dec-g {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  margin-top: 4px;
+  fill: none;
+  stroke: var(--done);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Entrances run once, on load; a station arriving live rises alone. */
+.jr-in {
+  animation: jr-rise 240ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+@keyframes jr-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes jr-draw {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes jr-draw-down {
+  from {
+    transform: scaleY(0);
+  }
+}
+@media (max-width: 899px) {
+  .jr-title {
+    font-size: 26px;
+    line-height: 33px;
+  }
+  .jr-ends {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .jr-join {
+    height: 44px;
+  }
+  .jr-join::before {
+    top: 0;
+    bottom: 0;
+    left: calc(50% - 1px);
+    width: 2px;
+    height: auto;
+    background: linear-gradient(
+      180deg,
+      var(--s6),
+      var(--s8) 50%,
+      var(--now-line)
+    );
+    transform-origin: top;
+    animation-name: jr-draw-down;
+  }
+  .jr-totals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .jr-segs {
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .jr-segi {
+    flex: var(--w) 0 auto;
+    min-width: 150px;
+    scroll-snap-align: start;
+  }
+  .jr-line::before {
+    left: 11px;
+  }
+  /* The pause sits 34 px in, so its dashes go back to the line at 11 px. */
+  .jr-pause::before {
+    left: -23px;
+  }
+  .jr-tot:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+  .jr-ch,
+  .jr-pause,
+  .jr-dec {
+    margin-left: 34px;
+    padding-left: 0;
+  }
+  .jr-st {
+    grid-template-columns: 24px minmax(0, 1fr);
+    column-gap: 10px;
+  }
+  .jr-when {
+    display: flex;
+    grid-column: 2;
+    gap: 8px;
+    padding: 0 0 4px;
+    text-align: left;
+  }
+  .jr-day {
+    display: inline;
+  }
+  .jr-dot {
+    grid-row: 2;
+    grid-column: 1;
+  }
+  .jr-card {
+    grid-column: 2;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px 16px;
+  }
+  .jr-figs {
+    grid-row: auto;
+    grid-column: 1;
+    margin-top: 6px;
+  }
+  .jr-fig {
+    align-items: flex-start;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jr-in {
+    animation: fade-in 150ms ease both;
+  }
+  .jr-seg::before,
+  .jr-join::before {
+    animation: none;
+  }
+  .jr-end,
+  .jr-card {
+    transition: none;
+  }
+  .jr-card:hover,
+  .jr-card:focus-visible {
+    transform: none;
+  }
+}
+
+/* The title every page morphs through (see "Moving between pages" above). */
+.live-title,
+.pd .pd-title,
+.jr-title,
+.vt-morph .vt-src {
+  view-transition-name: page-title;
+}
+.vt-morph .live-title,
+.vt-morph .pd .pd-title,
+.vt-morph .jr-title {
+  view-transition-name: none;
+}
+/* A wide track's station is a box of no size (its mark and caption sit on the track), so
+   its dot is what the title grows out of and shrinks back into. A dot stretched to the
+   title's size is a blur, so with `vt-dot` (router.ts) both pictures keep their own size
+   while the title moves between the station and the header, the dot fading as it goes. */
+@media (min-width: 900px) {
+  .vt-morph .trk-st .vt-src {
+    view-transition-name: none;
+  }
+  .vt-morph .trk-st .vt-src .mk {
+    view-transition-name: page-title;
+  }
+  .vt-dot::view-transition-old(page-title),
+  .vt-dot::view-transition-new(page-title) {
+    inline-size: auto;
+    block-size: auto;
   }
 }
