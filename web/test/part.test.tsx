@@ -132,15 +132,7 @@ const full = part({
 });
 
 function show(p: PartView, r = request([p])) {
-  return render(
-    <PartDetail
-      sessionId="s1"
-      request={r}
-      part={p}
-      events={events}
-      onBack={() => {}}
-    />,
-  );
+  return render(<PartDetail request={r} part={p} events={events} />);
 }
 
 const at = (min: number) =>
@@ -267,15 +259,7 @@ function task1(over: { agents?: Partial<AgentView>[] } = {}) {
 }
 
 function showTask1(t = task1()) {
-  return render(
-    <PartDetail
-      sessionId="s1"
-      request={t.r}
-      part={t.p}
-      events={t.calls}
-      onBack={() => {}}
-    />,
-  );
+  return render(<PartDetail request={t.r} part={t.p} events={t.calls} />);
 }
 
 const section = (name: string) => screen.getByRole("region", { name });
@@ -351,7 +335,6 @@ describe("PartDetail", () => {
     });
     render(
       <PartDetail
-        sessionId="s1"
         request={request([p])}
         part={p}
         events={[
@@ -363,7 +346,6 @@ describe("PartDetail", () => {
             },
           }),
         ]}
-        onBack={() => {}}
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: /a\.ts/ }));
@@ -386,7 +368,6 @@ describe("PartDetail", () => {
     });
     render(
       <PartDetail
-        sessionId="s1"
         cwd="/p"
         request={request([p])}
         part={p}
@@ -414,7 +395,6 @@ describe("PartDetail", () => {
             },
           }),
         ]}
-        onBack={() => {}}
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: /b\.css/ }));
@@ -494,12 +474,10 @@ describe("PartDetail", () => {
     });
     render(
       <PartDetail
-        sessionId="s1"
         cwd="/x/app"
         request={request([p], { planInferred: true })}
         part={p}
         events={events}
-        onBack={() => {}}
       />,
     );
     const title = screen.getByRole("heading", { level: 1 });
@@ -556,13 +534,7 @@ describe("PartDetail", () => {
     });
     const r = request([full, other]);
     const mk = (p: PartView) => (
-      <PartDetail
-        sessionId="s1"
-        request={r}
-        part={p}
-        events={events}
-        onBack={() => {}}
-      />
+      <PartDetail request={r} part={p} events={events} />
     );
     const { rerender } = render(mk(full));
     await userEvent.click(

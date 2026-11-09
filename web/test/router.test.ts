@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { matchRoute } from "../src/router";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { matchRoute, navigate, requestPath } from "../src/router";
 
 describe("matchRoute", () => {
   it("parses part route", () => {
@@ -22,7 +22,42 @@ describe("matchRoute", () => {
       name: "request",
       sessionId: "abc",
       requestId: "q",
+      tab: "story",
     });
     expect(matchRoute("/nope")).toEqual({ name: "notFound" });
+  });
+  it("parses a request's tabs, and nothing else after it", () => {
+    for (const tab of ["flow", "files", "helpers"] as const)
+      expect(matchRoute(`/s/abc/r/q/${tab}`)).toEqual({
+        name: "request",
+        sessionId: "abc",
+        requestId: "q",
+        tab,
+      });
+    // Story is the bare path, never a second URL for the same page.
+    expect(matchRoute("/s/abc/r/q/story")).toEqual({ name: "notFound" });
+    expect(matchRoute("/s/abc/r/q/map")).toEqual({ name: "notFound" });
+  });
+  it("builds a request's path per tab", () => {
+    expect(requestPath("a b", "q")).toBe("/s/a%20b/r/q");
+    expect(requestPath("a", "q", "story")).toBe("/s/a/r/q");
+    expect(requestPath("a", "q", "flow")).toBe("/s/a/r/q/flow");
+  });
+});
+
+describe("navigate", () => {
+  afterEach(() => {
+    delete (document as { startViewTransition?: unknown }).startViewTransition;
+  });
+  it("is instant without View Transitions", () => {
+    navigate("/s/x");
+    expect(location.pathname).toBe("/s/x");
+  });
+  it("runs the route change inside a view transition where there is one", () => {
+    const start = vi.fn((update: () => void) => update());
+    Object.assign(document, { startViewTransition: start });
+    navigate("/s/y/r/q/flow");
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(location.pathname).toBe("/s/y/r/q/flow");
   });
 });

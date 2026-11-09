@@ -153,13 +153,14 @@ export function App() {
     case "session":
     case "request":
     case "part":
-      // The live frame has its own bar; the account links sit at the foot of its plan.
+      // The live frame has its own bar; the account links sit in its session menu.
       return (
         <SessionPage
           key={route.sessionId}
           sessionId={route.sessionId}
           requestId={route.name === "session" ? undefined : route.requestId}
           partId={route.name === "part" ? route.partId : undefined}
+          tab={route.name === "request" ? route.tab : undefined}
           me={me}
           onSignOut={signOut}
         />

@@ -1,34 +1,34 @@
 import type { MurmurEvent, RequestView, SessionView } from "@murmur/core";
-import { useEffect, useReducer, useRef, useState } from "react";
-import { ApiError, api, type Me } from "../api";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import type { Me } from "../api";
 import { type Brief, catchUpBrief } from "../catchup";
-import { FileList, PathText } from "../files";
+import { FileList } from "../files";
 import { useLastLooked } from "../lastLooked";
 import { Assumptions } from "../live/Assumptions";
 import { BriefBlock } from "../live/Brief";
 import { PlanColumn } from "../live/PlanColumn";
+import { Brand, dayLabel, Rail, RailFoot } from "../live/Rail";
 import { Story, storyPhases } from "../live/Story";
+import { FilesTab, fileRow, HelpersTab, RequestTabs } from "../live/Tabs";
 import { TopBar } from "../live/TopBar";
 import { MapView } from "../map/MapView";
 import { PartDetail } from "../part/PartDetail";
-import { navigate } from "../router";
+import { navigate, partPath, requestPath, type Tab } from "../router";
 import {
   livePhase,
+  phasePlace,
   type RequestState,
-  requestState,
+  requestMark,
   type Waiting,
-  waitingOn,
 } from "../session";
 import { clock, sentBack } from "../story";
 import { type SessionStatus, useSession } from "../useSession";
-
-const enc = encodeURIComponent;
-const MINUS = "−";
 
 export function SessionPage(props: {
   sessionId: string;
   requestId?: string | undefined;
   partId?: string | undefined;
+  tab?: Tab | undefined;
   me?: Me;
   onSignOut?(): void;
 }) {
@@ -43,116 +43,6 @@ export function SessionPage(props: {
       status={status}
       lastLooked={lastLooked}
     />
-  );
-}
-
-function StatusLine(props: { status: SessionStatus; ended?: boolean }) {
-  const { status, ended } = props;
-  if (ended && status !== "error")
-    return (
-      <span className="status-line muted" role="status">
-        ended
-      </span>
-    );
-  if (status === "live")
-    return (
-      <span className="status-line live-dot" role="status">
-        live
-      </span>
-    );
-  if (status === "reconnecting")
-    return (
-      <span className="status-line muted" role="status">
-        reconnecting…
-      </span>
-    );
-  if (status === "error")
-    return (
-      <span className="status-line" role="status">
-        Session not found
-      </span>
-    );
-  return null;
-}
-
-/** Two clicks: "Delete session", then "Delete?" within 5 s. */
-function DeleteSession({ sessionId }: { sessionId: string }) {
-  const [armed, setArmed] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  async function click() {
-    setFailed(false);
-    if (!armed) {
-      setArmed(true);
-      timer.current = setTimeout(() => setArmed(false), 5000);
-      return;
-    }
-    clearTimeout(timer.current);
-    setArmed(false);
-    try {
-      await api.deleteSession(sessionId);
-    } catch (e) {
-      // Already gone counts as deleted.
-      if (!(e instanceof ApiError && e.status === 404)) return setFailed(true);
-    }
-    navigate("/");
-  }
-  return (
-    <span className="delete-session">
-      <button type="button" className="link" onClick={click}>
-        {armed ? "Delete?" : "Delete session"}
-      </button>
-      {(armed || failed) && (
-        <span
-          className={failed ? "delete-note error" : "delete-note"}
-          role={failed ? "alert" : undefined}
-        >
-          {failed
-            ? "Could not delete this session. Try again."
-            : "If Claude is still running here, new activity will start this session again."}
-        </span>
-      )}
-    </span>
-  );
-}
-
-/** The plan column's foot: the connection, who is signed in, and the session's actions. */
-function Footer(props: {
-  sessionId: string;
-  status: SessionStatus;
-  ended?: boolean;
-  me?: Me | undefined;
-  onSignOut?: (() => void) | undefined;
-}) {
-  const { sessionId, status, ended, me, onSignOut } = props;
-  return (
-    <div className="spine-foot">
-      <StatusLine status={status} {...(ended ? { ended } : {})} />
-      {me && (
-        <span className="user">
-          {me.avatarUrl && <img src={me.avatarUrl} alt="" />}
-          {me.login}
-        </span>
-      )}
-      <nav aria-label="Account">
-        <a
-          href="/settings"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate("/settings");
-          }}
-        >
-          Settings
-        </a>
-        {onSignOut && (
-          <button type="button" className="link" onClick={onSignOut}>
-            Sign out
-          </button>
-        )}
-      </nav>
-      <DeleteSession sessionId={sessionId} />
-    </div>
   );
 }
 
@@ -173,43 +63,69 @@ export function LiveSkeleton(props: { status?: SessionStatus; note?: string }) {
   const { status, note } = props;
   return (
     <div className="frame">
-      <header className="bar">
-        <div className="bar-brand">
-          <span className="brand">
-            <i aria-hidden="true" />
-            Murmur
-          </span>
-        </div>
-        {note && (
-          <span className="cell muted" role="status">
-            {note}
-          </span>
-        )}
-      </header>
-      <aside className="spine" aria-hidden={status === "error" || undefined}>
+      <aside className="rail" aria-hidden={status === "error" || undefined}>
+        <Brand />
         {status !== "error" && (
           <div className="sk-spine" aria-hidden="true">
             <div className="sk sk-ph" />
             <div className="sk sk-ph" />
           </div>
         )}
-        {status && (
-          <div className="spine-foot">
-            <StatusLine status={status} />
-          </div>
-        )}
+        <RailFoot status={status} />
       </aside>
-      <main className="main">{status !== "error" && <Skeleton />}</main>
+      <div className="col">
+        <header className="top">
+          {note && (
+            <span className="top-note muted" role="status">
+              {note}
+            </span>
+          )}
+        </header>
+        <main className="main">{status !== "error" && <Skeleton />}</main>
+      </div>
     </div>
   );
+}
+
+/** The drawer under 900 px: open, closed on Escape, a scrim click, navigation or a wider window. */
+function useDrawer(where: string) {
+  const [open, setOpen] = useState(false);
+  const back = useRef(false);
+  const close = useCallback((toToggle = true) => {
+    back.current = toToggle;
+    setOpen(false);
+  }, []);
+  // Focus goes back to the Requests button once the page is no longer inert.
+  useEffect(() => {
+    if (open || !back.current) return;
+    back.current = false;
+    document.getElementById("rail-toggle")?.focus();
+  }, [open]);
+  // Every move to another page closes it.
+  const last = useRef(where);
+  useEffect(() => {
+    if (last.current === where) return;
+    last.current = where;
+    setOpen(false);
+  }, [where]);
+  useEffect(() => {
+    const wide = window.matchMedia?.("(min-width: 900px)");
+    if (!wide) return;
+    const on = () => wide.matches && setOpen(false);
+    wide.addEventListener("change", on);
+    return () => wide.removeEventListener("change", on);
+  }, []);
+  return { open, toggle: () => setOpen((o) => !o), close };
 }
 
 /** The live screen for one session; SessionPage feeds it from the stream. */
 export function Live(props: {
   sessionId: string;
+  /** Unset on the session page, which shows the newest request in place. */
   requestId?: string | undefined;
   /** A task's page inside the same frame. */
   partId?: string | undefined;
+  tab?: Tab | undefined;
   view: SessionView | null;
   viewAt(ts: string): SessionView | null;
   events?: MurmurEvent[];
@@ -219,7 +135,7 @@ export function Live(props: {
   onSignOut?: (() => void) | undefined;
 }) {
   const { sessionId, view, viewAt, events = [], status, lastLooked } = props;
-  const { partId, me, onSignOut } = props;
+  const { partId, me, onSignOut, tab = "story" } = props;
   // Relative times ("14 m ago") move on even when no events arrive.
   const [, tick] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
@@ -227,7 +143,9 @@ export function Live(props: {
     return () => clearInterval(t);
   }, []);
   const [hoverPart, setHoverPart] = useState<string>();
-  const [mode, setMode] = useViewMode();
+  const drawer = useDrawer(`${props.requestId}/${partId}/${tab}`);
+  const closeDrawer = drawer.close;
+  const onClose = useCallback(() => closeDrawer(), [closeDrawer]);
 
   if (!view) return <LiveSkeleton status={status} />;
   const wanted = view.requests.find((r) => r.id === props.requestId);
@@ -240,127 +158,146 @@ export function Live(props: {
   if (partId && !part && status === "loading")
     return <LiveSkeleton status={status} />;
 
-  const waiting = req ? waitingOn(view, req, events) : null;
-  const { state, end } = req
-    ? requestState(view, req, events, waiting)
-    : { state: "running" as RequestState, end: view.lastEventAt };
+  const { state, end, waiting } = req
+    ? requestMark(view, req, events)
+    : {
+        state: "running" as RequestState,
+        end: view.lastEventAt,
+        waiting: null,
+      };
   const done = state === "done";
-  const base = req ? `/s/${enc(sessionId)}/r/${enc(req.id)}` : "";
-  const open = (p: string) => navigate(`${base}/p/${enc(p)}`);
   const live = req ? livePhase(req, done) : undefined;
-  const storied =
-    req && !partId
-      ? new Set(storyPhases(req, done).map((g) => g.phase.id))
-      : undefined;
-  const footer = (
-    <Footer
-      sessionId={sessionId}
-      status={status}
-      ended={view.ended}
-      me={me}
-      onSignOut={onSignOut}
-    />
-  );
 
   return (
-    <div className="frame">
-      <TopBar
+    <div className={drawer.open ? "frame drawer-open" : "frame"}>
+      <a className="skip" href="#main">
+        Skip to the content
+      </a>
+      <Rail
         sessionId={sessionId}
         view={view}
-        request={req}
-        state={state}
-        waiting={waiting}
         events={events}
-        onTaskPage={!!partId}
+        currentId={req?.id}
+        onRequestPage={!!wanted && !partId}
+        status={status}
+        me={me}
+        open={drawer.open}
+        onClose={onClose}
       />
-      {req ? (
-        <PlanColumn
-          request={req}
-          done={done}
-          end={end}
-          events={events}
-          partId={partId}
-          {...(storied ? { storyPhases: storied } : {})}
-          onOpen={open}
-          onHover={setHoverPart}
-          footer={footer}
-        />
-      ) : (
-        <aside className="spine" aria-label="Plan">
-          {footer}
-        </aside>
+      {drawer.open && (
+        <div className="scrim" aria-hidden="true" onClick={onClose} />
       )}
-      <main className="main" id="main" tabIndex={-1}>
-        {!req ? (
-          <p className="muted">Waiting for the first prompt in this session.</p>
-        ) : partId ? (
-          part ? (
-            <PartDetail
-              sessionId={sessionId}
-              cwd={view.cwd}
-              request={req}
-              part={part}
-              events={events}
-              onBack={() => navigate(base)}
-            />
+      <div className="col" inert={drawer.open || undefined}>
+        <TopBar
+          sessionId={sessionId}
+          view={view}
+          request={req}
+          part={part}
+          onSession={!props.requestId}
+          state={state}
+          end={end}
+          waiting={waiting}
+          events={events}
+          drawerOpen={drawer.open}
+          onRequests={drawer.toggle}
+          me={me}
+          onSignOut={onSignOut}
+        />
+        <main
+          className={tab === "flow" && !partId ? "main wide" : "main"}
+          id="main"
+          tabIndex={-1}
+        >
+          {!req ? (
+            <p className="muted">
+              Waiting for the first prompt in this session.
+            </p>
+          ) : partId ? (
+            part ? (
+              <PartDetail
+                cwd={view.cwd}
+                request={req}
+                part={part}
+                events={events}
+              />
+            ) : (
+              <>
+                <p>This part is not in the map yet.</p>
+                <button
+                  type="button"
+                  className="link"
+                  onClick={() => navigate(requestPath(sessionId, req.id))}
+                >
+                  ‹ Back to the request
+                </button>
+              </>
+            )
           ) : (
-            <>
-              <p>This part is not in the map yet.</p>
-              <button
-                type="button"
-                className="link"
-                onClick={() => navigate(base)}
-              >
-                ‹ Back to the request
-              </button>
-            </>
-          )
-        ) : (
-          <RequestMain
-            key={req.id}
-            sessionId={sessionId}
-            view={view}
-            viewAt={viewAt}
-            events={events}
-            lastLooked={lastLooked}
-            status={status}
-            mode={mode}
-            setMode={setMode}
-            request={req}
-            waiting={waiting}
-            live={live}
-            done={done}
-            hoverPart={hoverPart}
-            onOpenPart={open}
-          />
-        )}
-      </main>
+            <RequestMain
+              key={req.id}
+              sessionId={sessionId}
+              view={view}
+              viewAt={viewAt}
+              events={events}
+              lastLooked={lastLooked}
+              status={status}
+              tab={tab}
+              request={req}
+              waiting={waiting}
+              live={live}
+              done={done}
+              end={end}
+              hoverPart={hoverPart}
+              onHoverPart={setHoverPart}
+              onOpenPart={(p) => navigate(partPath(sessionId, req.id, p))}
+            />
+          )}
+        </main>
+      </div>
     </div>
   );
 }
 
-type ViewMode = "story" | "map";
-const VIEW = "murmur:view";
-/** The viewer's Story or Map choice, kept across requests and visits. */
-function useViewMode(): [ViewMode, (m: ViewMode) => void] {
-  const [mode, set] = useState<ViewMode>(() => {
-    try {
-      return localStorage.getItem(VIEW) === "map" ? "map" : "story";
-    } catch {
-      return "story";
-    }
-  });
-  const choose = (m: ViewMode) => {
-    set(m);
-    try {
-      localStorage.setItem(VIEW, m);
-    } catch {}
-  };
-  return [mode, choose];
-}
+const KIND: Record<RequestView["kind"], string> = {
+  feature: "Feature",
+  bug: "Bug hunt",
+  refactor: "Refactor",
+  question: "Question",
+};
 
 const n_ = (n: number, one: string, many = `${one}s`) =>
   n ? [`${n} ${n === 1 ? one : many}`] : [];
+
+/** Where the plan stands, under the title: the phase, a bar of its tasks, the count. */
+function Progress(props: { request: RequestView; done: boolean }) {
+  const { request, done } = props;
+  const tasks = request.phases.flatMap((p) => p.tasks);
+  const shown = livePhase(request, done) ?? request.phases.at(-1);
+  if (!shown) return null;
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the bar
+    <div className="progress" role="group" aria-label="Progress">
+      <span className="k">{phasePlace(request, shown)}</span>
+      <span className="mt" aria-hidden="true">
+        {tasks.map((t) => (
+          <b
+            key={t.id}
+            className={`seg ${
+              t.status === "failed"
+                ? "bad"
+                : done && t.status !== "done"
+                  ? "open"
+                  : t.status
+            }`}
+          />
+        ))}
+      </span>
+      <span className="v num">
+        {tasks.filter((t) => t.status === "done").length}/{tasks.length}
+      </span>
+    </div>
+  );
+}
 
 function RequestMain(props: {
   sessionId: string;
@@ -372,15 +309,16 @@ function RequestMain(props: {
   waiting: Waiting | null;
   live: ReturnType<typeof livePhase>;
   done: boolean;
+  end: string;
   hoverPart: string | undefined;
+  onHoverPart(partId: string | undefined): void;
   status: SessionStatus;
-  mode: ViewMode;
-  setMode(mode: ViewMode): void;
+  tab: Tab;
   onOpenPart(partId: string): void;
 }) {
   const { sessionId, view, viewAt, events, lastLooked, request: req } = props;
-  const { status, mode, setMode } = props;
-  const { waiting, live, done, hoverPart, onOpenPart } = props;
+  const { status, tab, end } = props;
+  const { waiting, live, done, hoverPart, onHoverPart, onOpenPart } = props;
   const hasStory = (req.messages?.length ?? 0) > 0;
   // Built the first time the stream is live and kept still after, through reconnects,
   // so new work never moves the story under the reader; built again only when they
@@ -397,17 +335,46 @@ function RequestMain(props: {
       brief: catchUpBrief(before, view, req.id, lastLooked),
     });
   }, [status, lastLooked, frozen, view, viewAt, req.id]);
+  // A breadcrumb's phase link lands on that phase of the story.
+  useEffect(() => {
+    const id = decodeURIComponent(location.hash.slice(1));
+    if (id) document.getElementById(id)?.scrollIntoView?.({ block: "start" });
+  }, []);
   const brief = frozen?.looked === lastLooked ? frozen.brief : null;
-  const tasks = req.phases.flatMap((p) => p.tasks).length;
+  const tasks = req.phases.flatMap((p) => p.tasks);
   const back = sentBack(req);
   const facts = [
-    ...n_(tasks, "task"),
+    ...n_(tasks.length, "task"),
     ...n_(req.tally.helpers, "helper"),
     ...n_(back, "sent back after review", "sent back after review"),
   ];
-  const showMap = !hasStory || mode === "map";
+  const storied = new Set(storyPhases(req, done).map((g) => g.phase.id));
+  const map = (
+    <section className="map-panel" aria-label="Map">
+      <div className="sect">
+        <h2>How it ties together</h2>
+      </div>
+      <div className="map-box">
+        <MapView
+          request={req}
+          highlight={hoverPart ? { partId: hoverPart } : {}}
+          onOpenPart={onOpenPart}
+        />
+      </div>
+    </section>
+  );
   return (
     <>
+      <div className="over">
+        <span className="label-chip">
+          {KIND[req.kind]}
+          {req.kindInferred && <span className="inferred">inferred</span>}
+        </span>
+        <span className="num">
+          Request {view.requests.indexOf(req) + 1} of {view.requests.length} ·{" "}
+          {dayLabel(req.startedAt)}
+        </span>
+      </div>
       <h1 className="ask live-title" title={req.prompt}>
         {req.goal || req.prompt}
       </h1>
@@ -426,21 +393,7 @@ function RequestMain(props: {
             );
           })}
         </div>
-        {hasStory && (
-          // biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around two buttons
-          <div className="view-toggle" role="group" aria-label="View">
-            {(["story", "map"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                aria-pressed={mode === m}
-                onClick={() => setMode(m)}
-              >
-                {m === "story" ? "Story" : "Map"}
-              </button>
-            ))}
-          </div>
-        )}
+        {req.phases.length > 0 && <Progress request={req} done={done} />}
       </div>
       <BriefBlock
         brief={brief}
@@ -449,49 +402,56 @@ function RequestMain(props: {
         flags={req.flags}
       />
       <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
-      {showMap ? (
-        <section className="map-panel" aria-label="Map">
-          <div className="sect">
-            <h2>How it ties together</h2>
-          </div>
-          <div className="map-box">
-            <MapView
+      <RequestTabs sessionId={sessionId} requestId={req.id} tab={tab} />
+      <div className="tab-body">
+        {tab === "flow" ? (
+          map
+        ) : tab === "files" ? (
+          <FilesTab request={req} events={events} cwd={view.cwd} />
+        ) : tab === "helpers" ? (
+          <HelpersTab sessionId={sessionId} request={req} events={events} />
+        ) : (
+          <div className="req-split">
+            <div className="req-story">
+              {/* With nothing said yet, the map tells how the work ties together. */}
+              {hasStory ? (
+                <Story
+                  request={req}
+                  live={live}
+                  done={done}
+                  onOpenPart={onOpenPart}
+                />
+              ) : (
+                map
+              )}
+              {req.looseFiles.length > 0 && (
+                <section className="loose" aria-label="Files touched">
+                  <div className="sect">
+                    <h2>Files touched</h2>
+                    <span>outside any task</span>
+                  </div>
+                  <FileList
+                    files={req.looseFiles}
+                    events={events}
+                    label="Files touched"
+                    className="loose-files"
+                    row={fileRow(view.cwd)}
+                  />
+                </section>
+              )}
+            </div>
+            <PlanColumn
               request={req}
-              highlight={hoverPart ? { partId: hoverPart } : {}}
-              onOpenPart={onOpenPart}
+              done={done}
+              end={end}
+              events={events}
+              storyPhases={storied}
+              onOpen={onOpenPart}
+              onHover={onHoverPart}
             />
           </div>
-        </section>
-      ) : (
-        <Story request={req} live={live} done={done} onOpenPart={onOpenPart} />
-      )}
-      {req.looseFiles.length > 0 && (
-        <section className="loose" aria-label="Files touched">
-          <div className="sect">
-            <h2>Files touched</h2>
-            <span>outside any task</span>
-          </div>
-          <FileList
-            files={req.looseFiles}
-            events={events}
-            label="Files touched"
-            className="loose-files"
-            row={(f) => (
-              <li key={f.path}>
-                <PathText path={f.path} cwd={view.cwd} />
-                <span className={f.added ? "pd-add" : "pd-add zero"}>
-                  +{f.added}
-                </span>
-                <span className={f.removed ? "pd-del" : "pd-del zero"}>
-                  {MINUS}
-                  {f.removed}
-                </span>
-                {f.role && <span className="muted">{f.role}</span>}
-              </li>
-            )}
-          />
-        </section>
-      )}
+        )}
+      </div>
     </>
   );
 }

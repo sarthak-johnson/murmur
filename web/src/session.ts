@@ -199,11 +199,77 @@ export function requestState(
   return { state: done ? "done" : "running", end };
 }
 
-/** "2 questions for you", "Permission needed", "Waiting for you". */
+/** "2 waiting on you", "Permission needed", "Waiting on you". */
 export function waitingLabel(w: Waiting): string {
   const n = w.questions.length;
-  if (n) return `${n} ${n === 1 ? "question" : "questions"} for you`;
-  return w.permission ? "Permission needed" : "Waiting for you";
+  if (n) return `${n} waiting on you`;
+  return w.permission ? "Permission needed" : "Waiting on you";
+}
+
+/** How a request stands, as the rail marks it: each with its own shape and colour. */
+export type Mark = "done" | "running" | "waiting" | "open" | "failed";
+const MARKS: readonly string[] = [
+  "done",
+  "running",
+  "waiting",
+  "open",
+  "failed",
+];
+
+/**
+ * A request's mark and when it was last active. Core's `request.state` (coming with the
+ * reshape's logic phase) replaces this reading when present. Until then: the newest
+ * request runs, waits on you or is done; a finished one failed when a task of its plan
+ * failed, was left open when its plan has tasks not done, else is done.
+ */
+export function requestMark(
+  view: SessionView,
+  req: RequestView,
+  events: MurmurEvent[],
+): { mark: Mark; state: RequestState; end: string; waiting: Waiting | null } {
+  const waiting = waitingOn(view, req, events);
+  const { state, end } = requestState(view, req, events, waiting);
+  const at = { state, end, waiting };
+  const own = (req as { state?: unknown }).state;
+  if (typeof own === "string" && MARKS.includes(own))
+    return { mark: own as Mark, ...at };
+  if (state !== "done") return { mark: state, ...at };
+  const tasks = req.phases.flatMap((p) => p.tasks);
+  if (tasks.some((t) => t.status === "failed"))
+    return { mark: "failed", ...at };
+  if (req.finished && tasks.some((t) => t.status !== "done"))
+    return { mark: "open", ...at };
+  return { mark: "done", ...at };
+}
+
+const SHORT = 32;
+/** A clause ends at a comma, colon or semicolon, or a spaced hyphen, en or em dash. */
+const CLAUSE = new RegExp(
+  `[,:;](?:\\s|$)| [-${String.fromCharCode(0x2013, 0x2014)}] `,
+);
+
+/**
+ * A 2 to 4 word name: the text cut at its first comma, colon or " - ", then at a word
+ * boundary near 32 characters. "Restyle the app, then speed it up" reads "Restyle the app".
+ */
+export function shortOf(text: string): string {
+  const line = text.replace(/\s+/g, " ").trim();
+  const head = line.split(CLAUSE)[0]?.trim() || line;
+  const tidy = (s: string) => s.replace(/[\s.,;:!?-]+$/, "");
+  if (head.length <= SHORT) return tidy(head);
+  const cut = head.slice(0, SHORT + 1);
+  const at = cut.lastIndexOf(" ");
+  return `${tidy(at > SHORT / 2 ? cut.slice(0, at) : head.slice(0, SHORT))}…`;
+}
+
+/**
+ * A request's short title for the rail and the breadcrumb. Core's `request.short`
+ * (coming with the reshape's logic phase) replaces the cut of its goal when present.
+ */
+export function requestShort(req: RequestView): string {
+  const own = (req as { short?: unknown }).short;
+  if (typeof own === "string" && own.trim()) return own.trim();
+  return shortOf(req.goal || req.prompt) || "Untitled request";
 }
 
 const count = (n: number, one: string, many: string) =>

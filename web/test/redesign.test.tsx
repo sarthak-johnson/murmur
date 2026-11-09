@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cutWords, list } from "../src/catchup";
 import { Live } from "../src/pages/Session";
 import { PartDetail } from "../src/part/PartDetail";
+import type { Tab } from "../src/router";
 import { questionsIn } from "../src/session";
 import { clock } from "../src/story";
 
@@ -249,6 +250,7 @@ function show(
     before?: SessionView | null;
     requestId?: string;
     partId?: string;
+    tab?: Tab;
   } = {},
 ) {
   return render(
@@ -256,6 +258,7 @@ function show(
       sessionId="s1"
       {...(p.requestId ? { requestId: p.requestId } : {})}
       {...(p.partId ? { partId: p.partId } : {})}
+      {...(p.tab ? { tab: p.tab } : {})}
       view={view}
       viewAt={() => p.before ?? null}
       events={p.events ?? []}
@@ -268,7 +271,7 @@ function show(
 const bar = () => screen.getByRole("banner");
 
 describe("top bar", () => {
-  it("while running: Running, the now line, phase n of m with a bar of tasks", () => {
+  it("while running: Running, the now line, and phase n of m with a bar of tasks under the title", () => {
     show(session(request()));
     const b = within(bar());
     expect(b.getByText("Running")).toBeTruthy();
@@ -277,7 +280,9 @@ describe("top bar", () => {
         "Two builders are running their checks",
       ),
     ).toBeTruthy();
-    const progress = b.getByRole("group", { name: "Progress" });
+    const progress = within(screen.getByRole("main")).getByRole("group", {
+      name: "Progress",
+    });
     expect(progress.textContent).toContain("Phase 2 of 2");
     expect(progress.textContent).toContain("2/5");
     const segs = [...progress.querySelectorAll(".seg")].map((s) => s.className);
@@ -289,7 +294,7 @@ describe("top bar", () => {
       "seg todo",
     ]);
     // No amber chip while nobody waits on you.
-    expect(b.queryByText(/for you/)).toBeNull();
+    expect(b.queryByText(/waiting on you/)).toBeNull();
   });
 
   it("once done: Done and what the request did in all", () => {
@@ -331,8 +336,8 @@ describe("top bar", () => {
       },
     });
     show(session(request()), { events: [ask] });
-    const chip = within(bar()).getByRole("link", { name: /for you/ });
-    expect(chip.textContent).toContain("2 questions for you");
+    const chip = within(bar()).getByRole("link", { name: /waiting on you/ });
+    expect(chip.textContent).toContain("2 waiting on you");
     expect(chip.textContent).toContain("21 m");
     expect(chip.className).toContain("need");
   });
@@ -348,7 +353,7 @@ describe("top bar", () => {
       tool_use_id: "toolu_q",
     });
     show(session(request()), { events: [ask, answer] });
-    expect(within(bar()).queryByText(/for you/)).toBeNull();
+    expect(within(bar()).queryByText(/waiting on you/)).toBeNull();
   });
 });
 
@@ -400,32 +405,22 @@ describe("now line", () => {
   });
 });
 
-describe("request switcher", () => {
+describe("requests in the rail", () => {
   it("names the request's place and switches to another", async () => {
     show(session(request()));
-    const btn = within(bar()).getByRole("button", { name: /Request 2 of 2/ });
-    expect(btn.getAttribute("aria-expanded")).toBe("false");
-    await userEvent.click(btn);
-    expect(btn.getAttribute("aria-expanded")).toBe("true");
-    const menu = screen.getByRole("navigation", { name: "Requests" });
-    const items = within(menu).getAllByRole("button");
-    // Newest first, the shown one marked.
-    expect(items[0]?.textContent).toContain(
+    expect(document.querySelector(".over")?.textContent).toContain(
+      "Request 2 of 2",
+    );
+    const rail = screen.getByRole("navigation", { name: "Requests" });
+    const items = within(rail).getAllByRole("link");
+    // Oldest first, the shown one marked.
+    expect(items[0]?.getAttribute("title")).toBe("Fix the login form");
+    expect(items[1]?.getAttribute("title")).toBe(
       "Watering reminders for the garden planner",
     );
-    expect(items[0]?.getAttribute("aria-current")).toBe("true");
-    expect(items[1]?.textContent).toContain("Fix the login form");
-    await userEvent.click(items[1] as HTMLElement);
+    expect(items[1]?.className).toContain("cur");
+    await userEvent.click(items[0] as HTMLElement);
     expect(location.pathname).toBe("/s/s1/r/r1");
-  });
-
-  it("closes on Escape", async () => {
-    show(session(request()));
-    await userEvent.click(
-      within(bar()).getByRole("button", { name: /Request 2 of 2/ }),
-    );
-    await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("navigation", { name: "Requests" })).toBeNull();
   });
 });
 
@@ -519,16 +514,18 @@ describe("plan column", () => {
     expect(p.querySelector(".ph.open .sub")?.textContent).toBe("0 of 3 done");
   });
 
-  it("a task opens its page, and its row is marked there", async () => {
+  it("a task opens its page, and the breadcrumb marks it there", async () => {
     show(session(request()));
     await userEvent.click(
       within(plan()).getByRole("button", { name: /Schedule maths/ }),
     );
     expect(location.pathname).toBe("/s/s1/r/r2/p/maths");
     cleanup();
-    show(session(request()), { partId: "maths" });
-    const row = within(plan()).getByRole("button", { name: /Schedule maths/ });
-    expect(row.getAttribute("aria-current")).toBe("page");
+    show(session(request()), { requestId: "r2", partId: "maths" });
+    const here = within(
+      screen.getByRole("navigation", { name: "Breadcrumb" }),
+    ).getByText(/Schedule maths/);
+    expect(here.getAttribute("aria-current")).toBe("page");
   });
 });
 
@@ -688,8 +685,8 @@ describe("needs your call", () => {
     ]);
     expect(within(bar()).getByText("Waiting")).toBeTruthy();
     expect(
-      within(bar()).getByRole("link", { name: /for you/ }).textContent,
-    ).toContain("2 questions for you");
+      within(bar()).getByRole("link", { name: /waiting on you/ }).textContent,
+    ).toContain("2 waiting on you");
   });
 
   it("is not drawn when Claude waits on no one", () => {
@@ -726,14 +723,17 @@ describe("story by phase", () => {
     ]);
   });
 
-  it("the map is one click away", async () => {
+  it("the map is one tab away", async () => {
     show(session(request()));
     expect(screen.queryByRole("region", { name: "Map" })).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "Map" }));
+    await userEvent.click(screen.getByRole("link", { name: "Flow" }));
+    expect(location.pathname).toBe("/s/s1/r/r2/flow");
+    cleanup();
+    show(session(request()), { requestId: "r2", tab: "flow" });
     expect(screen.getByRole("region", { name: "Map" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "What happened" })).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "Story" }));
-    expect(story()).toBeTruthy();
+    await userEvent.click(screen.getByRole("link", { name: "Story" }));
+    expect(location.pathname).toBe("/s/s1/r/r2");
   });
 });
 
@@ -857,15 +857,7 @@ function task3() {
 
 describe("task page", () => {
   const showTask = (t = task3()) =>
-    render(
-      <PartDetail
-        sessionId="s1"
-        request={t.r}
-        part={t.p}
-        events={t.events}
-        onBack={() => {}}
-      />,
-    );
+    render(<PartDetail request={t.r} part={t.p} events={t.events} />);
   const timeline = () => screen.getByRole("list", { name: "Timeline" });
 
   it("titles the task with its outcome", () => {
@@ -873,8 +865,9 @@ describe("task page", () => {
     const h1 = screen.getByRole("heading", { level: 1 });
     expect(h1.textContent).toContain("Reminder list");
     expect(screen.getByText("Done after one fix round")).toBeTruthy();
-    const crumb = screen.getByRole("navigation", { name: "Breadcrumb" });
-    expect(crumb.textContent).toContain("Phase 2: the screen");
+    const where = screen.getByRole("group", { name: "Where it sits" });
+    expect(where.textContent).toContain("Phase 2: the screen");
+    expect(where.textContent).toMatch(/^Task \d+ of \d+/);
   });
 
   it("draws one lane per helper and one for Claude, on a shared time axis", () => {
@@ -1029,7 +1022,7 @@ describe("review fixes: questions", () => {
     });
     show(session(req), { events: [ev("s", 45, "Stop")] });
     expect(within(bar()).getByText("Done")).toBeTruthy();
-    expect(within(bar()).queryByText(/for you/)).toBeNull();
+    expect(within(bar()).queryByText(/waiting on you/)).toBeNull();
     expect(
       screen.queryByRole("region", { name: "Needs your call" }),
     ).toBeNull();
@@ -1256,7 +1249,7 @@ describe("review fixes: stillness and order", () => {
 
   it("the first stop on the page skips to the content", () => {
     show(session(request({ messages: [msg("m1", 1, "Starting.")] })));
-    const skip = within(bar()).getAllByRole("link")[0] as HTMLElement;
+    const skip = screen.getAllByRole("link")[0] as HTMLElement;
     expect(skip.textContent).toBe("Skip to the content");
     expect(skip.getAttribute("href")).toBe("#main");
     expect(document.getElementById("main")?.tagName).toBe("MAIN");
@@ -1272,12 +1265,16 @@ describe("review fixes: stillness and order", () => {
     expect(story.textContent).not.toContain("newest first");
   });
 
-  it("the Story or Map choice stays when you switch requests", async () => {
+  it("the tab lives in the URL: another request opens on its Story", () => {
     const two = session(request(), {
       requests: [request({ id: "r1", goal: "Fix the login form" }), request()],
     });
-    const { rerender } = show(two);
-    await userEvent.click(screen.getByRole("button", { name: "Map" }));
+    const { rerender } = show(two, { requestId: "r2", tab: "flow" });
+    expect(screen.getByRole("region", { name: "Map" })).toBeTruthy();
+    const rail = screen.getByRole("navigation", { name: "Requests" });
+    expect(within(rail).getAllByRole("link")[0]?.getAttribute("href")).toBe(
+      "/s/s1/r/r1",
+    );
     rerender(
       <Live
         sessionId="s1"
@@ -1289,9 +1286,8 @@ describe("review fixes: stillness and order", () => {
         lastLooked={null}
       />,
     );
-    expect(
-      screen.getByRole("button", { name: "Map" }).getAttribute("aria-pressed"),
-    ).toBe("true");
+    expect(screen.getByRole("region", { name: "What happened" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Map" })).toBeNull();
   });
 });
 
@@ -1312,15 +1308,7 @@ describe("review fixes: timeline", () => {
     t.p.status = status;
     t.p.agents = agents.map((a) => a.id);
     t.r.agents = agents;
-    render(
-      <PartDetail
-        sessionId="s1"
-        request={t.r}
-        part={t.p}
-        events={[]}
-        onBack={() => {}}
-      />,
-    );
+    render(<PartDetail request={t.r} part={t.p} events={[]} />);
   };
 
   it("bars sit at their true width; a label too wide for its bar goes beside it", () => {
@@ -1432,15 +1420,7 @@ describe("review fixes: timeline", () => {
         eventIds: [],
       },
     ];
-    render(
-      <PartDetail
-        sessionId="s1"
-        request={t.r}
-        part={t.p}
-        events={t.events}
-        onBack={() => {}}
-      />,
-    );
+    render(<PartDetail request={t.r} part={t.p} events={t.events} />);
     expect(runs(0)[0]?.textContent).toMatch(/^Builder added the list/);
   });
 });

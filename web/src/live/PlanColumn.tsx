@@ -5,7 +5,6 @@ import type {
   RequestView,
   TaskView,
 } from "@murmur/core";
-import type { ReactNode } from "react";
 import {
   livePhase,
   modelOf,
@@ -111,10 +110,9 @@ export function PlanColumn(props: {
   storyPhases?: Set<string>;
   onOpen(partId: string): void;
   onHover(partId: string | undefined): void;
-  footer?: ReactNode;
 }) {
   const { request, done, end, events, partId, storyPhases } = props;
-  const { onOpen, onHover, footer } = props;
+  const { onOpen, onHover } = props;
   const live = livePhase(request, done);
   const now = new Date().toISOString();
   // Once over, work not finished was left open; once Claude stopped, nothing runs.
@@ -227,7 +225,7 @@ export function PlanColumn(props: {
 
   const total = duration(request.startedAt, done ? end : now);
   return (
-    <aside className="spine" id="plan" aria-label="Plan" tabIndex={-1}>
+    <aside className="plan" id="plan" aria-label="Plan" tabIndex={-1}>
       <h2 className="spine-h">
         <span>
           The plan <PlanSource request={request} />
@@ -302,7 +300,6 @@ export function PlanColumn(props: {
           );
         })}
       </ol>
-      {footer}
     </aside>
   );
 }
