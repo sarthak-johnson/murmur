@@ -3,6 +3,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { Me } from "../api";
 import { type Brief, catchUpBrief } from "../catchup";
 import { FileList } from "../files";
+import { FlowBoard } from "../flow/FlowBoard";
 import { useLastLooked } from "../lastLooked";
 import { Assumptions } from "../live/Assumptions";
 import { BriefBlock } from "../live/Brief";
@@ -11,7 +12,6 @@ import { Brand, dayLabel, Rail, RailFoot } from "../live/Rail";
 import { Story, storyPhases } from "../live/Story";
 import { FilesTab, fileRow, HelpersTab, RequestTabs } from "../live/Tabs";
 import { TopBar } from "../live/TopBar";
-import { MapView } from "../map/MapView";
 import { PartDetail } from "../part/PartDetail";
 import { navigate, partPath, requestPath, type Tab } from "../router";
 import {
@@ -143,7 +143,6 @@ export function Live(props: {
     const t = setInterval(tick, 30_000);
     return () => clearInterval(t);
   }, []);
-  const [hoverPart, setHoverPart] = useState<string>();
   const drawer = useDrawer();
   const closeDrawer = drawer.close;
   const onClose = useCallback(() => closeDrawer(), [closeDrawer]);
@@ -250,8 +249,6 @@ export function Live(props: {
               live={live}
               done={done}
               end={end}
-              hoverPart={hoverPart}
-              onHoverPart={setHoverPart}
               onOpenPart={(p) => navigate(partPath(sessionId, req.id, p))}
             />
           )}
@@ -313,15 +310,13 @@ function RequestMain(props: {
   live: ReturnType<typeof livePhase>;
   done: boolean;
   end: string;
-  hoverPart: string | undefined;
-  onHoverPart(partId: string | undefined): void;
   status: SessionStatus;
   tab: Tab;
   onOpenPart(partId: string): void;
 }) {
   const { sessionId, view, viewAt, events, lastLooked, request: req } = props;
   const { status, tab, end } = props;
-  const { waiting, live, done, hoverPart, onHoverPart, onOpenPart } = props;
+  const { waiting, live, done, onOpenPart } = props;
   const hasStory = (req.messages?.length ?? 0) > 0;
   // Built the first time the stream is live and kept still after, through reconnects,
   // so new work never moves the story under the reader; built again only when they
@@ -352,20 +347,6 @@ function RequestMain(props: {
     ...n_(back, "sent back after review", "sent back after review"),
   ];
   const storied = new Set(storyPhases(req, done).map((g) => g.phase.id));
-  const map = (
-    <section className="map-panel" aria-label="Map">
-      <div className="sect">
-        <h2>How it ties together</h2>
-      </div>
-      <div className="map-box">
-        <MapView
-          request={req}
-          highlight={hoverPart ? { partId: hoverPart } : {}}
-          onOpenPart={onOpenPart}
-        />
-      </div>
-    </section>
-  );
   return (
     <>
       <div className="over">
@@ -408,7 +389,7 @@ function RequestMain(props: {
       <RequestTabs sessionId={sessionId} requestId={req.id} tab={tab} />
       <div className="tab-body">
         {tab === "flow" ? (
-          map
+          <FlowBoard sessionId={sessionId} request={req} />
         ) : tab === "files" ? (
           <FilesTab request={req} events={events} cwd={view.cwd} />
         ) : tab === "helpers" ? (
@@ -416,16 +397,13 @@ function RequestMain(props: {
         ) : (
           <div className="req-split">
             <div className="req-story">
-              {/* With nothing said yet, the map tells how the work ties together. */}
-              {hasStory ? (
+              {hasStory && (
                 <Story
                   request={req}
                   live={live}
                   done={done}
                   onOpenPart={onOpenPart}
                 />
-              ) : (
-                map
               )}
               {req.looseFiles.length > 0 && (
                 <section className="loose" aria-label="Files touched">
@@ -450,7 +428,8 @@ function RequestMain(props: {
               events={events}
               storyPhases={storied}
               onOpen={onOpenPart}
-              onHover={onHoverPart}
+              // The map it lit up is gone; the flow board has its own selection.
+              onHover={() => {}}
             />
           </div>
         )}
