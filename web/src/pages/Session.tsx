@@ -149,10 +149,11 @@ export function Live(props: {
   if (partId && !part && status === "loading")
     return <LiveSkeleton status={status} />;
 
-  const { state, end, waiting } = req
+  const { state, mark, end, waiting } = req
     ? requestMark(view, req, events)
     : {
         state: "running" as RequestState,
+        mark: "running" as const,
         end: view.lastEventAt,
         waiting: null,
       };
@@ -185,6 +186,7 @@ export function Live(props: {
           part={part}
           onSession={!props.requestId}
           state={state}
+          mark={mark}
           end={end}
           waiting={waiting}
           events={events}

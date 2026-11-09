@@ -296,6 +296,7 @@ describe("top bar", () => {
   it("once done: Done and what the request did in all", () => {
     const done = request({
       finished: true,
+      state: "done",
       planInferred: true,
       now: { text: "Editing notes.md", why: "", ts: at(40), inferred: true },
       agents: request().agents.map((a) => ({ ...a, status: "done" as const })),

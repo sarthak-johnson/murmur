@@ -670,6 +670,7 @@ describe("live screen", () => {
     view.requests[1] = request({
       planInferred: true,
       finished: true,
+      state: "done",
       now: { text: "Editing style.css", why: "", ts: T0, inferred: true },
       tally: { helpers: 3, files: 19, commands: 51 },
       agents: [],
@@ -689,6 +690,7 @@ describe("live screen", () => {
     view.requests[1] = request({
       planInferred: true,
       finished: true,
+      state: "done",
       tally: { helpers: 0, files: 0, commands: 0 },
       agents: [running("a1"), { ...running("a2"), status: "done" }],
     });
@@ -697,6 +699,25 @@ describe("live screen", () => {
     const now = screen.getByRole("region", { name: "Now" });
     expect(within(now).getByText("Nothing changed")).toBeTruthy();
     expect(now.textContent).not.toContain("still running");
+  });
+
+  it("the top bar's pill says core's state: left open is quiet, failed is red", () => {
+    const view = session();
+    view.requests[1] = request({ finished: true, state: "left-open" });
+    show(view);
+    const bar = within(screen.getByRole("banner"));
+    expect(bar.queryByText("Done")).toBeNull();
+    expect(bar.getByText("Left open").closest(".state-pill")?.className).toBe(
+      "state-pill open",
+    );
+    cleanup();
+    view.requests[1] = request({ finished: true, state: "failed" });
+    show(view);
+    expect(
+      within(screen.getByRole("banner"))
+        .getByText("Failed")
+        .closest(".state-pill")?.className,
+    ).toBe("state-pill failed");
   });
 
   it("the done line counts in plain words and skips zeros", () => {

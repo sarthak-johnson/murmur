@@ -230,15 +230,12 @@ function SessionMenu(props: {
   );
 }
 
-const PILL: Record<RequestState, string> = {
+const PILL: Record<Mark, string> = {
   running: "Running",
   waiting: "Waiting",
   done: "Done",
-};
-const PILL_MARK: Record<RequestState, Mark> = {
-  running: "running",
-  waiting: "waiting",
-  done: "done",
+  open: "Left open",
+  failed: "Failed",
 };
 
 const took = (from: string, to: string) => {
@@ -310,6 +307,8 @@ export function TopBar(props: {
   part: PartView | undefined;
   onSession: boolean;
   state: RequestState;
+  /** How it stands as the rail marks it (core's state): the pill's word and colour. */
+  mark: Mark;
   /** The request's last activity, for how long a finished one took. */
   end: string;
   waiting: Waiting | null;
@@ -319,7 +318,7 @@ export function TopBar(props: {
   me?: Me | undefined;
   onSignOut?: (() => void) | undefined;
 }) {
-  const { sessionId, view, request, part, onSession, state, end } = props;
+  const { sessionId, view, request, part, onSession, state, mark, end } = props;
   const { waiting, events, drawerOpen, onRequests, me, onSignOut } = props;
   const now = new Date().toISOString();
   const base = request ? requestPath(sessionId, request.id) : "";
@@ -385,10 +384,10 @@ export function TopBar(props: {
           </a>
         )}
         {request && (
-          <span className={`state-pill ${state}`}>
-            <StateMark mark={PILL_MARK[state]} />
+          <span className={`state-pill ${mark}`}>
+            <StateMark mark={mark} />
             <span className="num">
-              <span>{PILL[state]}</span>
+              <span>{PILL[mark]}</span>
               {" · "}
               {took(since, state === "done" ? end : now)}
             </span>
