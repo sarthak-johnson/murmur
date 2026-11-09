@@ -553,6 +553,84 @@ describe("helper roles and rounds", () => {
     expect(tasks?.map((t) => t.rounds)).toEqual([1, 0, undefined]);
     expect(req?.parts.map((p) => p.rounds)).toEqual([1, 0, undefined]);
   });
+
+  test("a builder sent fix rounds in a later request counts them there", () => {
+    // Task 1's builder and reviewer start in the first request; after a pause the review
+    // restarts, the builder is resumed twice with fixes and a recheck sits between them.
+    const send = (n: number, to: string, message: string) =>
+      tool(n, "SendMessage", { to, message }, "PreToolUse");
+    const [a, b] = reduce([
+      prompt(0, "go"),
+      mapCall(1, LIT),
+      ...run(2, "Build Task 1: tokens", "a1"),
+      ...run(4, "Review Task 1 tokens", "a2"),
+      prompt(20, "restart the stopped jobs"),
+      mapCall(21, LIT),
+      send(22, "a2", "Your session ended. Pick up where you stopped."),
+      ...run(24, "Review Task 1 tokens", "b1"),
+      send(26, "a1", "Task 1 fix round 1: read the review and fix it."),
+      ...run(28, "Re-review Task 1 fix round", "b2"),
+      send(30, "a1", "Task 1 fix round 2 (small): three items left."),
+      // Neither a follow-up after it passed nor a word mid-round is another round.
+      send(32, "a1", "One more change in this round, before the re-review."),
+      send(34, "a1", "Task 1 follow-up (small): the captures now exist."),
+    ]).requests;
+    expect(a?.phases[0]?.tasks[0]?.rounds).toBe(0);
+    expect(b?.phases[0]?.tasks[0]?.rounds).toBe(2);
+    expect(b?.parts[0]?.rounds).toBe(2);
+    expect(b?.sentBack).toEqual(["Task 1"]);
+    // Resumes are not new helpers.
+    expect(b?.helperCounts).toMatchObject({ build: 0, review: 1, recheck: 1 });
+  });
+
+  test("a builder told the review found issues is in a fix round", () => {
+    const send = (n: number, to: string, message: string) =>
+      tool(n, "SendMessage", { to, message }, "PreToolUse");
+    const events = [
+      prompt(0, "go"),
+      mapCall(1, LIT),
+      ...run(2, "Implement Task 1: tokens", "a1"),
+      ...run(4, "Review Task 1 (spec + quality)", "a2"),
+      // Only the opening is read: Task 2 further on is not what it is about.
+      send(
+        6,
+        "a1",
+        "Task review found issues. Fix these. Then rerun Task 2's tests.",
+      ),
+      ...run(8, "Re-review Task 1 fix round 1", "a3"),
+      send(
+        10,
+        "a1",
+        "The re-review found two new issues in round 1's fix. Fix them.",
+      ),
+      // Another task's work sent to the same helper is not Task 1's.
+      send(12, "a1", "Follow-up for Task 2: Fix these captures too."),
+    ];
+    const rounds = (n: number) =>
+      reduce(events.slice(0, n)).requests[0]?.phases[0]?.tasks.map(
+        (t) => t.rounds,
+      );
+    expect(rounds(7)).toEqual([1, undefined]);
+    expect(rounds(events.length)).toEqual([2, undefined]);
+  });
+
+  test("a fix sent for a pair of tasks counts for the pair", () => {
+    const [req] = reduce([
+      prompt(0, "go"),
+      ...run(2, "Implement Tasks 13-14: book plate", "a1"),
+      ...run(4, "Review Tasks 13-14 agent cards", "a2"),
+      tool(
+        6,
+        "SendMessage",
+        {
+          to: "a1",
+          message: "Tasks 13+14 fix round 1: the review asked for fixes.",
+        },
+        "PreToolUse",
+      ),
+    ]).requests;
+    expect(req?.sentBack).toEqual(["Tasks 13-14"]);
+  });
 });
 
 describe("full cards for every part", () => {

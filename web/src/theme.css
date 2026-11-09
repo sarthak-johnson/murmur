@@ -3777,3 +3777,330 @@ button.task-chip:hover {
   letter-spacing: 0;
   vertical-align: 0.6em;
 }
+
+/* Task page (reshape) */
+.pd .pd-over {
+  align-items: center;
+}
+.pd .pd-over .inferred {
+  margin-left: 2px;
+  color: var(--t3);
+  font-size: 13px;
+}
+.pd .tt {
+  align-items: center;
+  margin-top: 12px;
+}
+.pd .pd-title {
+  font: 600 32px / 40px var(--font-ui);
+}
+.pd .verdict {
+  font-size: 15px;
+}
+.pd .deck {
+  margin-top: 10px;
+}
+.pd .deck .source {
+  font-size: 13px;
+}
+/* Nothing on the task page under 13 px, open panels included. */
+.pd button.link.more,
+.pd .md .md-code,
+.pd .diff-more,
+.pd .ev-inputs dt,
+.pd .ev-inputs dd,
+.pd .term-cmd {
+  font-size: 13px;
+}
+.pd .done-when .lbl-inline {
+  margin-right: 4px;
+  color: var(--t1);
+  font-weight: 600;
+}
+.pd .facts {
+  gap: 6px 22px;
+  color: var(--t3);
+  font-size: 15px;
+}
+.pd .facts .hash {
+  font-size: 14px;
+}
+/* The one quiet line on a task Claude never described. */
+.pd-read {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  color: var(--t3);
+  font-size: 14px;
+  line-height: 20px;
+}
+.pd .pd-read > svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.pd-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+.pd-nav-sides {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+.pd-nav-sides:empty {
+  display: none;
+}
+.pd-nav.foot {
+  margin-top: 40px;
+  padding-top: 20px;
+  box-shadow: inset 0 1px 0 var(--s5);
+}
+.pd-nav.foot .pd-nav-sides {
+  flex: 1;
+  justify-content: space-between;
+  margin-left: 0;
+}
+.pd-nav.foot .pd-btn:only-child {
+  margin-left: auto;
+}
+.pd-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--s6);
+  color: var(--t2);
+  font-size: 14px;
+  line-height: 20px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  transition:
+    background 150ms ease-out,
+    color 150ms ease-out;
+}
+.pd-btn:hover {
+  background: var(--s3);
+  color: var(--t1);
+}
+.pd-btn:focus-visible {
+  outline: 2px solid var(--now);
+  outline-offset: 2px;
+}
+/* How it went: the heading, rounds, lanes and axis in one panel. */
+.pd .how {
+  margin-top: 24px;
+  padding: 18px 20px 10px;
+  border-radius: 12px;
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--s6);
+}
+.pd .how .hh {
+  margin-bottom: 14px;
+  /* A note too long for the line wraps as one block, not under the heading. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 12px;
+}
+.pd .how .hh-note {
+  margin-left: 0;
+  color: var(--t3);
+  font: 400 13px var(--font-ui);
+  letter-spacing: 0;
+}
+.pd .how .rec {
+  padding: 0 28px 0 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.rounds {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  height: 26px;
+}
+.rd-track {
+  position: relative;
+  box-shadow: inset 0 -1px 0 var(--s5);
+}
+.rd {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  padding: 2px 0 0 8px;
+  box-shadow: inset 1px 0 0 var(--s7);
+  color: var(--t3);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+/* A round that starts near the end names itself before its line. */
+.rd.flip {
+  padding: 2px 8px 0 0;
+  box-shadow: inset -1px 0 0 var(--s7);
+  transform: translateX(-100%);
+}
+.rd.last.flip {
+  box-shadow: inset -1px 0 0 var(--now-line);
+}
+.rd.last {
+  box-shadow: inset 1px 0 0 var(--now-line);
+  color: var(--now);
+}
+.tr .rl {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--s7);
+}
+.pd .lane {
+  height: 48px;
+}
+.pd .lane > .tr {
+  height: 48px;
+}
+.pd .run {
+  top: 13px;
+  height: 22px;
+  font-size: 13px;
+}
+.pd .lane-name {
+  display: grid;
+  line-height: 18px;
+}
+.pd .lane-name b {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+.pd .lane-name span {
+  overflow: hidden;
+  margin-left: 0;
+  text-overflow: ellipsis;
+}
+.pd .axis {
+  margin-top: 6px;
+}
+/* Claude's messages: a ring each, red where something was found, green where it ended. */
+.cdot {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1.5px var(--t4);
+  transform: translate(-50%, -50%);
+}
+.cdot.bad {
+  box-shadow: inset 0 0 0 1.5px var(--bad);
+}
+.cdot.good {
+  background: var(--done);
+  box-shadow: none;
+}
+.pd .pill {
+  height: 22px;
+  font-size: 13px;
+}
+.pd .step-card {
+  row-gap: 0;
+}
+.pd .step-hd {
+  font-size: 14px;
+  line-height: 20px;
+}
+.pd .step-title {
+  color: var(--t1);
+}
+.pd .step-act {
+  color: var(--t3);
+  font-size: 14px;
+  text-decoration: underline;
+  text-decoration-color: var(--s8);
+  text-underline-offset: 3px;
+}
+.pd .step-act:hover {
+  color: var(--t1);
+}
+/* The margin: each list a quiet card with a small capital heading. */
+.pd .margin > section {
+  padding: 14px 18px 6px;
+  border-radius: 12px;
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--s6);
+}
+.pd .margin > section + section {
+  margin-top: 14px;
+}
+.pd .margin .mh {
+  display: flex;
+  margin-bottom: 2px;
+  color: var(--t3);
+  font: 500 13px / 20px var(--font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.pd .margin .mh .lbl-count {
+  margin-left: auto;
+  color: var(--t3);
+  font: 500 13px / 20px var(--font-ui);
+}
+.pd .margin .mn + .mn {
+  box-shadow: none;
+}
+/* A chip moves to the next line whole; only one longer than the card wraps inside. */
+.pd .margin .mn code {
+  display: inline-block;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: bottom;
+}
+/* Files: cards as wide as their paths, filling each row; an open diff takes the row. */
+.pd .fgrid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+  columns: auto;
+}
+.pd .fcard {
+  flex: 1 1 auto;
+  min-width: min(300px, 100%);
+  max-width: 100%;
+  margin: 0;
+  padding: 14px 16px;
+}
+.pd .fcard:has(.file-row.open) {
+  flex-basis: 100%;
+}
+.pd .fcard h3 {
+  font-size: 15px;
+  line-height: 22px;
+}
+.pd .pd-tag {
+  font-size: 13px;
+}
+@media (max-width: 899px) {
+  .rounds {
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+  .pd .pd-title {
+    font-size: 26px;
+    line-height: 34px;
+  }
+  .pd .lane {
+    height: auto;
+    min-height: 48px;
+  }
+}

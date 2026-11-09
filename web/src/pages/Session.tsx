@@ -216,6 +216,8 @@ export function Live(props: {
             part ? (
               <PartDetail
                 cwd={view.cwd}
+                sessionId={sessionId}
+                requestNumber={view.requests.indexOf(req) + 1}
                 request={req}
                 part={part}
                 events={events}
