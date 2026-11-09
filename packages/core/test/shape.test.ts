@@ -952,6 +952,22 @@ describe("key moments", () => {
     expect(keyMoments(req).every((m) => !m.new)).toBe(true);
   });
 
+  test("the same thing finished twice is one moment, the later word kept", () => {
+    const [r] = reduce([
+      prompt(0, "go"),
+      said(1, "Phase 0 is finished: every task has passed review."),
+      said(2, "Review found a problem: the label is cut."),
+      said(3, "Review found a problem: the label is cut."),
+      said(4, "Phase 0 is finished: all 11 tasks are built and live."),
+    ]).requests;
+    if (!r) throw new Error("no request");
+    expect(keyMoments(r).map((m) => [m.mark, m.text])).toEqual([
+      ["problem", "Review found a problem: the label is cut."],
+      ["problem", "Review found a problem: the label is cut."],
+      ["done", "Phase 0 is finished: all 11 tasks are built and live."],
+    ]);
+  });
+
   test("a blocked report is a problem, and work beyond the plan a plan moment", () => {
     const [r] = reduce([
       prompt(0, "add alerts"),

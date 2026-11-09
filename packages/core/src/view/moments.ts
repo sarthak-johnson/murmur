@@ -85,10 +85,19 @@ export function cutWords(s: string, max: number): string {
 const MOMENT_TEXT = 140;
 const BAD_VERDICT = /block|fail|reject/i;
 
+/** What a "done" moment says finished: its words before the first colon or semicolon. */
+const doneKey = (m: Omit<KeyMoment, "new">) =>
+  `${m.task ?? ""}|${m.text
+    .split(/[:;]/)[0]
+    ?.toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()}`;
+
 /**
  * Up to five moments of a request, newest last: messages that read as a moment (their
  * first sentence), helper reports that failed or were blocked, and the plan being done
- * while work goes on (`beyond`). With `lastLooked`, moments after it are `new`.
+ * while work goes on (`beyond`). A thing said finished twice counts once, at its later
+ * word. With `lastLooked`, moments after it are `new`.
  */
 export function keyMoments(req: RequestView, lastLooked?: string): KeyMoment[] {
   const out: Omit<KeyMoment, "new">[] = [];
@@ -123,8 +132,14 @@ export function keyMoments(req: RequestView, lastLooked?: string): KeyMoment[] {
       mark: "plan",
       text: "The plan is done; work goes on beyond it",
     });
+  out.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+  // The same thing said finished twice ("Phase 0 is finished: ...") is one moment, the
+  // later word kept; problems and decisions can rightly repeat, so they all stay.
+  const lastDone = new Map(
+    out.flatMap((m, i) => (m.mark === "done" ? [[doneKey(m), i]] : [])),
+  );
   return out
-    .sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0))
+    .filter((m, i) => m.mark !== "done" || lastDone.get(doneKey(m)) === i)
     .slice(-5)
     .map((m) => ({ ...m, new: lastLooked !== undefined && m.ts > lastLooked }));
 }
