@@ -5,6 +5,7 @@ export type Status = "todo" | "now" | "done";
 export interface SessionView {
   sessionId: string;
   cwd: string;
+  /** The first prompt, spaces collapsed, cut at a word within 48 characters. */
   title: string;
   startedAt: string;
   lastEventAt: string;

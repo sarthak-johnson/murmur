@@ -21774,7 +21774,12 @@ function reduce(events) {
   return {
     sessionId: first?.sessionId ?? "",
     cwd: first?.cwd ?? "",
-    title: cut(requests[0]?.prompt ?? "", 80),
+    // Claude Code gives a session no name and Murmur invents none: the first prompt,
+    // cut at a word.
+    title: cutWords(
+      (requests[0]?.prompt ?? "").replace(/\s+/g, " ").trim(),
+      48
+    ),
     startedAt: first?.ts ?? "",
     lastEventAt: sorted.at(-1)?.ts ?? "",
     ended,
