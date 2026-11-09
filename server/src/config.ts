@@ -11,6 +11,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): {
   startupNote: string | undefined;
 } {
   const production = env.NODE_ENV === "production";
+  if (env.DATABASE_URL && env.MURMUR_DATA_DIR)
+    throw new Error("Set DATABASE_URL or MURMUR_DATA_DIR, not both.");
   const missing = [
     ...(env.DATABASE_URL || env.MURMUR_DATA_DIR
       ? []
@@ -24,7 +26,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): {
       `Murmur cannot start in production without ${missing.join(", ")}.`,
     );
   const port = Number(env.PORT) || 8787;
-  const baseUrl = env.BASE_URL || `http://localhost:${port}`;
+  const baseUrl = (env.BASE_URL || `http://localhost:${port}`).replace(
+    /\/+$/,
+    "",
+  );
   const config: Deps["config"] = {
     baseUrl,
     devLogin: env.MURMUR_DEV_LOGIN === "1" && !production,
@@ -38,13 +43,14 @@ export function loadConfig(env: NodeJS.ProcessEnv): {
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
-  if (allowed.length) config.allowedLogins = allowed;
+  // Unset or "*" means anyone may sign in.
+  const n = allowed.includes("*") ? 0 : allowed.length;
+  if (n) config.allowList = parseAllowList(allowed);
   // Dev login lets anyone sign in as anyone, so it never listens beyond this
   // machine unless HOST says so. Nor does production behind a local proxy
   // (Tailscale Funnel), which is the only way in.
   const local = config.devLogin || (production && config.trustProxy);
   const host = env.HOST || (local ? "127.0.0.1" : undefined);
-  const n = allowed.length;
   const startupNote = !production
     ? undefined
     : n
@@ -58,4 +64,19 @@ export function loadConfig(env: NodeJS.ProcessEnv): {
     dataDir: env.MURMUR_DATA_DIR || undefined,
     startupNote,
   };
+}
+
+/** "login" matches the GitHub login (any case); "login:id" matches only the numeric GitHub id. */
+function parseAllowList(entries: string[]) {
+  const list = { logins: [] as string[], ids: [] as number[] };
+  for (const e of entries) {
+    const m = /^([a-z0-9-]+)(?::(\d+))?$/.exec(e);
+    if (!m?.[1])
+      throw new Error(
+        `MURMUR_ALLOWED_LOGINS: "${e}" is not a GitHub login or login:id.`,
+      );
+    if (m[2]) list.ids.push(Number(m[2]));
+    else list.logins.push(m[1]);
+  }
+  return list;
 }

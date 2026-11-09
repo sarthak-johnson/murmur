@@ -1,12 +1,13 @@
 import { createHash, randomBytes } from "node:crypto";
 import { GitHub } from "arctic";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
 import { html } from "hono/html";
 import type { Deps, GithubProvider } from "./app.js";
-import { ingestTokens, users, webSessions } from "./db/schema.js";
+import type { Db } from "./db/client.js";
+import { deviceCodes, ingestTokens, users, webSessions } from "./db/schema.js";
 
 export type User = typeof users.$inferSelect;
 export interface AppEnv {
@@ -26,9 +27,62 @@ export const randomToken = () => randomBytes(32).toString("base64url");
 
 const unauthorized = (c: Context) => c.json({ error: "unauthorized" }, 401);
 
-/** True when no allow-list is set, or the login is on it (any case). */
-const allowed = ({ config }: Deps, login: string) =>
-  !config.allowedLogins || config.allowedLogins.includes(login.toLowerCase());
+/** True when no allow-list is set, or the GitHub id or login (any case) is on it. */
+const allowed = (
+  { allowList }: Deps["config"],
+  login: string,
+  githubId: number,
+) =>
+  !allowList ||
+  allowList.ids.includes(githubId) ||
+  allowList.logins.includes(login.toLowerCase());
+
+/**
+ * Signs out everyone the allow-list no longer names: deletes their web sessions and pending
+ * device logins and revokes their machine tokens. Their data stays. The list only changes on
+ * restart, so the server runs this once at startup. Returns how many users were signed out.
+ */
+export async function purgeUnlisted(
+  db: Db,
+  config: Deps["config"],
+  now: Date,
+): Promise<number> {
+  if (!config.allowList) return 0;
+  const all = await db
+    .select({ id: users.id, login: users.login, githubId: users.githubId })
+    .from(users);
+  const gone = all
+    .filter((u) => !allowed(config, u.login, u.githubId))
+    .map((u) => u.id);
+  if (!gone.length) return 0;
+  await db.transaction(async (tx) => {
+    await tx.delete(webSessions).where(inArray(webSessions.userId, gone));
+    await tx.delete(deviceCodes).where(inArray(deviceCodes.userId, gone));
+    await tx
+      .update(ingestTokens)
+      .set({ revokedAt: now })
+      .where(
+        and(inArray(ingestTokens.userId, gone), isNull(ingestTokens.revokedAt)),
+      );
+  });
+  return gone.length;
+}
+
+/**
+ * A request straight to this machine: a loopback Host and no header a proxy adds. Tailscale
+ * Funnel keeps the public Host and adds X-Forwarded-* and Tailscale-Funnel-Request.
+ */
+const fromThisMachine = (c: Context) => {
+  const host = new URL(c.req.url).hostname;
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(host)) return false;
+  return !Object.keys(c.req.header()).some(
+    (h) =>
+      h === "forwarded" ||
+      h === "x-real-ip" ||
+      h.startsWith("x-forwarded-") ||
+      h.startsWith("tailscale-"),
+  );
+};
 
 const inviteOnly = (c: Context, login: string) =>
   c.html(
@@ -56,13 +110,9 @@ export async function readBody(
     : null;
 }
 
-/**
- * Cookie user. 401 when the cookie is missing, unknown or expired (expired rows are deleted),
- * or the user is no longer on the allow-list (all their sessions are deleted; their data stays).
- */
-export const requireUser = (deps: Deps) =>
+/** Cookie user. 401 when the cookie is missing, unknown or expired (expired rows are deleted). */
+export const requireUser = ({ db, now }: Deps) =>
   createMiddleware<AppEnv>(async (c, next) => {
-    const { db, now } = deps;
     const raw = getCookie(c, SESSION_COOKIE);
     if (!raw) return unauthorized(c);
     const idHash = sha256(raw);
@@ -76,20 +126,12 @@ export const requireUser = (deps: Deps) =>
       await db.delete(webSessions).where(eq(webSessions.idHash, idHash));
       return unauthorized(c);
     }
-    if (!allowed(deps, row.user.login)) {
-      await db.delete(webSessions).where(eq(webSessions.userId, row.user.id));
-      deleteCookie(c, SESSION_COOKIE, { path: "/" });
-      return unauthorized(c);
-    }
     c.set("user", row.user);
     await next();
   });
 
-/**
- * Bearer ingest token. 401 when missing, unknown, revoked, or its user is no longer on the
- * allow-list (the token is kept, so adding them back lets it work again); records last use.
- */
-export const requireIngest = ({ db, now, config }: Deps) =>
+/** Bearer ingest token. 401 when missing, unknown or revoked; records last use. */
+export const requireIngest = ({ db, now }: Deps) =>
   createMiddleware<AppEnv>(async (c, next) => {
     const m = /^Bearer (mur_[A-Za-z0-9_-]+)$/.exec(
       c.req.header("authorization") ?? "",
@@ -102,17 +144,6 @@ export const requireIngest = ({ db, now, config }: Deps) =>
         and(
           eq(ingestTokens.tokenHash, sha256(m[1])),
           isNull(ingestTokens.revokedAt),
-          config.allowedLogins
-            ? inArray(
-                ingestTokens.userId,
-                db
-                  .select({ id: users.id })
-                  .from(users)
-                  .where(
-                    inArray(sql`lower(${users.login})`, config.allowedLogins),
-                  ),
-              )
-            : undefined,
         ),
       )
       .returning({
@@ -236,7 +267,8 @@ export function authRoutes(app: Hono<AppEnv>, deps: Deps) {
       } catch {
         return c.json({ error: "github_failed" }, 400);
       }
-      if (!allowed(deps, profile.login)) return inviteOnly(c, profile.login);
+      if (!allowed(config, profile.login, profile.id))
+        return inviteOnly(c, profile.login);
       const fields = {
         login: profile.login,
         name: profile.name,
@@ -259,14 +291,20 @@ export function authRoutes(app: Hono<AppEnv>, deps: Deps) {
 
   // Public, so the sign-in page shows only the methods this server has.
   app.get("/auth/options", (c) =>
-    c.json({ github: Boolean(github), dev: config.devLogin }),
+    c.json({
+      github: Boolean(github),
+      dev: config.devLogin && fromThisMachine(c),
+    }),
   );
 
   if (config.devLogin) {
+    // Anyone may sign in as anyone here, so never through a proxy or tunnel.
     app.get("/auth/dev", async (c) => {
+      if (!fromThisMachine(c)) return c.notFound();
       const login = c.req.query("login")?.trim();
       if (!login) return c.json({ error: "bad_request" }, 400);
-      if (!allowed(deps, login)) return inviteOnly(c, login);
+      if (!allowed(config, login, devGithubId(login)))
+        return inviteOnly(c, login);
       const [user] = await db
         .insert(users)
         .values({ githubId: devGithubId(login), login })

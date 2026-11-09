@@ -221,15 +221,50 @@ describe("loadConfig", () => {
     expect(loadConfig(prod).host).toBeUndefined();
     expect(loadConfig({ ...base, TRUST_PROXY: "1" }).host).toBeUndefined();
   });
-  it("parses MURMUR_ALLOWED_LOGINS into lowercase logins", () => {
-    expect(loadConfig(base).config.allowedLogins).toBeUndefined();
+  it("parses MURMUR_ALLOWED_LOGINS into lowercase logins and GitHub ids", () => {
+    const parse = (v: string) =>
+      loadConfig({ ...base, MURMUR_ALLOWED_LOGINS: v }).config.allowList;
+    expect(loadConfig(base).config.allowList).toBeUndefined();
+    expect(parse(" ")).toBeUndefined();
+    expect(parse("Ada, bob,,CHARLIE-9 ")).toEqual({
+      logins: ["ada", "bob", "charlie-9"],
+      ids: [],
+    });
+    // login:id matches the numeric GitHub id only, so a rename keeps access
+    // and someone who takes the old name gets none.
+    expect(parse("ada:583231, bob")).toEqual({
+      logins: ["bob"],
+      ids: [583231],
+    });
+    expect(() => parse("ada:12x")).toThrow(
+      'MURMUR_ALLOWED_LOGINS: "ada:12x" is not a GitHub login or login:id.',
+    );
+    expect(() => parse("ada bob")).toThrow(/"ada bob"/);
+  });
+  it("MURMUR_ALLOWED_LOGINS=* means anyone may sign in", () => {
     expect(
-      loadConfig({ ...base, MURMUR_ALLOWED_LOGINS: " " }).config.allowedLogins,
+      loadConfig({ ...base, MURMUR_ALLOWED_LOGINS: "*" }).config.allowList,
     ).toBeUndefined();
     expect(
-      loadConfig({ ...base, MURMUR_ALLOWED_LOGINS: "Ada, bob,,CHARLIE-9 " })
-        .config.allowedLogins,
-    ).toEqual(["ada", "bob", "charlie-9"]);
+      loadConfig({ ...base, MURMUR_ALLOWED_LOGINS: "ada,*" }).config.allowList,
+    ).toBeUndefined();
+    expect(
+      loadConfig({ ...prod, MURMUR_ALLOWED_LOGINS: "*" }).startupNote,
+    ).toMatch(/^Murmur is open/);
+  });
+  it("strips trailing slashes from BASE_URL", () => {
+    expect(loadConfig({ BASE_URL: "https://m.example//" }).config.baseUrl).toBe(
+      "https://m.example",
+    );
+  });
+  it("refuses DATABASE_URL and MURMUR_DATA_DIR together", () => {
+    expect(() =>
+      loadConfig({
+        ...base,
+        DATABASE_URL: "postgres://db",
+        MURMUR_DATA_DIR: "/d",
+      }),
+    ).toThrow("Set DATABASE_URL or MURMUR_DATA_DIR, not both.");
   });
   it("says at startup in production whether anyone may sign in", () => {
     expect(loadConfig(base).startupNote).toBeUndefined();
@@ -238,6 +273,9 @@ describe("loadConfig", () => {
     );
     expect(
       loadConfig({ ...prod, MURMUR_ALLOWED_LOGINS: "ada,bob" }).startupNote,
+    ).toBe("Murmur is invite-only: 2 GitHub logins may sign in.");
+    expect(
+      loadConfig({ ...prod, MURMUR_ALLOWED_LOGINS: "ada:1,bob" }).startupNote,
     ).toBe("Murmur is invite-only: 2 GitHub logins may sign in.");
     expect(
       loadConfig({ ...prod, MURMUR_ALLOWED_LOGINS: "ada" }).startupNote,
