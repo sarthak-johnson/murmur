@@ -21277,7 +21277,7 @@ var import_node_fs2 = __toESM(require("node:fs"), 1);
 var import_node_path2 = __toESM(require("node:path"), 1);
 var MAX_EVENTS = 200;
 var MAX_AGE_MS = 7 * 24 * 3600 * 1e3;
-var MAX_QUEUE_BYTES = 1e8;
+var MAX_QUEUE_BYTES = 2e8;
 var MAX_BYTES = 5e6;
 var QUEUED = /^\d{15}-[^/\\]+\.json$/;
 var WRAPPER = '{"events":[]}'.length;
@@ -22015,8 +22015,8 @@ function refreshEvents(req, r, base, paths, at) {
 }
 
 // src/backfill.ts
-var MAX_EVENTS2 = 1e4;
-var MAX_BYTES2 = 4e7;
+var MAX_EVENTS2 = 5e4;
+var MAX_BYTES2 = 1e8;
 var TAIL_BYTES = 512e6;
 var CHUNK = 1 << 20;
 var STALE_MS2 = 10 * 6e4;
