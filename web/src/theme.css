@@ -66,6 +66,10 @@
   scrollbar-width: thin;
   scrollbar-color: var(--line-2) transparent;
 }
+/* What a link or focus scrolls to lands below the sticky top bar, not under it. */
+html {
+  scroll-padding-top: calc(var(--top) + 16px);
+}
 body {
   margin: 0;
   background: var(--s1);
@@ -1243,6 +1247,7 @@ svg.g {
   margin-top: 3px;
   color: var(--t4);
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
   line-height: 18px;
 }
 /* Only the requests scroll; Murmur, the session and the foot stay put. */
@@ -1338,7 +1343,10 @@ svg.g {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Two digits wide, so the titles of rows 1 to 9 and 10 on start in one column. */
 .stop-n {
+  display: inline-block;
+  min-width: 2ch;
   margin-right: 6px;
   color: var(--t4);
   font: 500 13px / 20px var(--font-code);
@@ -1349,6 +1357,7 @@ svg.g {
   overflow: hidden;
   color: var(--t4);
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
   line-height: 17px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3166,9 +3175,11 @@ button.task-chip:hover {
     padding: 14px 8px 12px;
     overflow-x: hidden;
   }
+  /* A line under Murmur, as over the foot, so a row scrolled under it is cut on a line. */
   .rail-brand {
     justify-content: center;
     padding: 4px 0 12px;
+    box-shadow: inset 0 -1px 0 var(--s6);
   }
   .rail-brand span,
   .rail-sess,
@@ -3198,6 +3209,7 @@ button.task-chip:hover {
     font-size: 0;
   }
   .stop-n {
+    min-width: 0;
     margin: 0;
     padding: 0 2px;
     border-radius: 4px;
@@ -3282,6 +3294,14 @@ button.task-chip:hover {
     align-items: center;
     min-height: 40px;
   }
+  /* The bar is not sticky here. */
+  html {
+    scroll-padding-top: 16px;
+  }
+  /* The page behind the open drawer does not scroll. */
+  body:has(.frame.drawer-open) {
+    overflow: hidden;
+  }
   .scrim {
     position: fixed;
     inset: 0;
@@ -3326,7 +3346,9 @@ button.task-chip:hover {
     stroke-width: 1.6;
     stroke-linecap: round;
   }
-  .crumbs {
+  /* Also once done: the wide bar's room for the now line does not apply here. */
+  .crumbs,
+  .top.done .crumbs {
     flex: 1 1 140px;
     order: 2;
     max-width: none;
@@ -3337,8 +3359,9 @@ button.task-chip:hover {
   .crumbs li:nth-last-child(2)::before {
     display: none;
   }
+  /* Where you are gives way last, as on the wide bar. */
   .crumbs li:not(:last-child) {
-    flex-shrink: 1;
+    flex-shrink: 3;
     min-width: 64px;
     max-width: 45%;
   }

@@ -399,6 +399,56 @@ describe("the rail", () => {
     again({ requestId: "r1" });
     expect(rail()).toBe(before);
   });
+
+  it("does not scroll back to the shown request when a new request arrives", () => {
+    // jsdom has no layout: the shown row sits below the list's visible 200 px.
+    const box = (el: HTMLElement) => ({
+      offsetTop: el.classList.contains("cur") ? 600 : 0,
+      offsetHeight: 40,
+      clientHeight: 200,
+    });
+    const keys = ["offsetTop", "offsetHeight", "clientHeight"] as const;
+    const saved = keys.map((k) =>
+      Object.getOwnPropertyDescriptor(HTMLElement.prototype, k),
+    );
+    for (const k of keys)
+      Object.defineProperty(HTMLElement.prototype, k, {
+        configurable: true,
+        get(this: HTMLElement) {
+          return box(this)[k];
+        },
+      });
+    try {
+      const view = session();
+      const props = {
+        sessionId: "s1",
+        viewAt: () => null,
+        status: "live" as const,
+        lastLooked: null,
+        requestId: "r1",
+      };
+      const { rerender } = render(<Live {...props} view={view} />);
+      const list = requests();
+      expect(list.scrollTop).toBeGreaterThan(0);
+      // The reader scrolls the rail to look at other requests, then a new one arrives.
+      list.scrollTop = 0;
+      const more = {
+        ...view,
+        requests: [
+          ...view.requests,
+          request({ id: "r5", startedAt: day(9, 50), goal: "One more thing" }),
+        ],
+      };
+      rerender(<Live {...props} view={more} />);
+      expect(list.scrollTop).toBe(0);
+    } finally {
+      keys.forEach((k, i) => {
+        const d = saved[i];
+        if (d) Object.defineProperty(HTMLElement.prototype, k, d);
+        else Reflect.deleteProperty(HTMLElement.prototype, k);
+      });
+    }
+  });
 });
 
 describe("the breadcrumb", () => {
@@ -551,6 +601,8 @@ describe("the top bar", () => {
     expect(screen.queryByRole("button", { name: "Delete session" })).toBeNull();
     const menu = within(bar()).getByRole("button", { name: "Session menu" });
     expect(menu.getAttribute("aria-expanded")).toBe("false");
+    // A plain disclosure: it holds links and buttons, not an ARIA menu.
+    expect(menu.hasAttribute("aria-haspopup")).toBe(false);
     await userEvent.click(menu);
     expect(menu.getAttribute("aria-expanded")).toBe("true");
     expect(
@@ -692,5 +744,18 @@ describe("the drawer under 900 px", () => {
     again({ requestId: "r1" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("closes when the request already shown is tapped, focus back on the button", async () => {
+    show(session(), { requestId: "r3" });
+    history.pushState(null, "", "/s/s1/r/r3");
+    await userEvent.click(toggle());
+    const cur = within(screen.getByRole("dialog")).getByRole("link", {
+      current: "page",
+    });
+    await userEvent.click(cur);
+    expect(location.pathname).toBe("/s/s1/r/r3");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(toggle());
   });
 });

@@ -60,4 +60,15 @@ describe("navigate", () => {
     expect(start).toHaveBeenCalledTimes(1);
     expect(location.pathname).toBe("/s/y/r/q/flow");
   });
+  it("starts another page at its top, but not a move within the page", () => {
+    navigate("/s/a/r/b");
+    const top = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    navigate("/s/a/r/c");
+    expect(top).toHaveBeenCalledTimes(1);
+    expect(top).toHaveBeenCalledWith(0, 0);
+    navigate("/s/a/r/c#phase-p1");
+    navigate("/s/a/r/c");
+    expect(top).toHaveBeenCalledTimes(1);
+    top.mockRestore();
+  });
 });

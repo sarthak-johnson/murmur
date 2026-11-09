@@ -181,15 +181,15 @@ export function Rail(props: {
   );
   const now = new Date().toISOString();
 
-  // The shown request scrolls into the rail's view when it changes or the list grows
-  // (the first pages load in steps), only if it is out of view, so a click never jumps.
-  const placed = useRef("");
-  const key = `${currentId}:${view.requests.length}`;
+  // The shown request scrolls into the rail's view when it changes, only if it is out of
+  // view, so a click never jumps. New requests arriving live (appended below) never move
+  // the list, so a reader scrolled elsewhere in it stays there.
+  const placed = useRef<string>(undefined);
   useEffect(() => {
     const list = box.current?.querySelector<HTMLElement>(".spine");
     const cur = list?.querySelector<HTMLElement>(".stop.cur");
-    if (placed.current === key || !list || !cur) return;
-    placed.current = key;
+    if (placed.current === currentId || !list || !cur) return;
+    placed.current = currentId;
     // Rows sit in .spine-in, which starts at the top of the scrolled list; the
     // bottom 24 px is under the fade.
     const fade = 24;

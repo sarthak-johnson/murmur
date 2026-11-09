@@ -193,7 +193,6 @@ function SessionMenu(props: {
         aria-label="Session menu"
         title="Session menu"
         aria-expanded={open}
-        aria-haspopup="true"
         onClick={() => setOpen(!open)}
       >
         <svg viewBox="0 0 16 16" aria-hidden="true">

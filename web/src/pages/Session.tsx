@@ -88,7 +88,7 @@ export function LiveSkeleton(props: { status?: SessionStatus; note?: string }) {
 }
 
 /** The drawer under 900 px: open, closed on Escape, a scrim click, navigation or a wider window. */
-function useDrawer(where: string) {
+function useDrawer() {
   const [open, setOpen] = useState(false);
   const back = useRef(false);
   const close = useCallback((toToggle = true) => {
@@ -101,13 +101,14 @@ function useDrawer(where: string) {
     back.current = false;
     document.getElementById("rail-toggle")?.focus();
   }, [open]);
-  // Every move to another page closes it.
-  const last = useRef(where);
+  // Every navigation closes it, the request already shown too (navigate and back and
+  // forward all end in popstate); focus goes back to the Requests button.
   useEffect(() => {
-    if (last.current === where) return;
-    last.current = where;
-    setOpen(false);
-  }, [where]);
+    if (!open) return;
+    const on = () => close();
+    window.addEventListener("popstate", on);
+    return () => window.removeEventListener("popstate", on);
+  }, [open, close]);
   useEffect(() => {
     const wide = window.matchMedia?.("(min-width: 900px)");
     if (!wide) return;
@@ -143,7 +144,7 @@ export function Live(props: {
     return () => clearInterval(t);
   }, []);
   const [hoverPart, setHoverPart] = useState<string>();
-  const drawer = useDrawer(`${props.requestId}/${partId}/${tab}`);
+  const drawer = useDrawer();
   const closeDrawer = drawer.close;
   const onClose = useCallback(() => closeDrawer(), [closeDrawer]);
 

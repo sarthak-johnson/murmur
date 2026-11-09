@@ -65,7 +65,10 @@ type Transitioning = Document & {
  * the request title morphs and the page rises (theme.css); elsewhere it is instant.
  */
 export function navigate(path: string): void {
+  // Another page starts at its top, as a real link would; a hash within the page scrolls itself.
+  const another = new URL(path, location.href).pathname !== location.pathname;
   const go = () => {
+    if (another) window.scrollTo(0, 0);
     history.pushState(null, "", path);
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
