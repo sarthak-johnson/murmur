@@ -7,9 +7,9 @@ import type {
   RequestView,
 } from "@murmur/core";
 import { useLayoutEffect, useRef, useState } from "react";
-import { cutWords } from "../catchup";
-import { Glyph } from "../live/PlanColumn";
+import { cutWords } from "../format";
 import { plainText } from "../markdown";
+import { Glyph } from "../marks";
 import {
   type HelperKind,
   helperKind,

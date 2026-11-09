@@ -198,7 +198,6 @@ function show(
   const props = {
     sessionId: "s1",
     view,
-    viewAt: () => null,
     status: "live" as const,
     lastLooked: null,
     events: p.events ?? [],
@@ -431,7 +430,6 @@ describe("the rail", () => {
       const view = session();
       const props = {
         sessionId: "s1",
-        viewAt: () => null,
         status: "live" as const,
         lastLooked: null,
         requestId: "r1",
@@ -529,6 +527,9 @@ describe("the top bar", () => {
 
   it("done: Done with how long it took, from its ask to its last word", () => {
     const view = session();
+    // Core's state: its failed task alone would make the pill say Failed.
+    const r3 = view.requests[2] as RequestView;
+    view.requests[2] = { ...r3, state: "done" };
     show(view, {
       requestId: "r3",
       events: [

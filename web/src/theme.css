@@ -1273,8 +1273,9 @@ svg.g {
  * would add an ellipsis); it leaves the now line room while Claude works, and once the
  * request is done the now line is only history, so the breadcrumb comes first.
  */
+/* The crumbs give way before the right side spills: a longer pill ("Left open") fits. */
 .crumbs {
-  flex: none;
+  flex: 0 1 auto;
   min-width: 0;
   max-width: calc(100% - 520px);
 }
@@ -1495,6 +1496,16 @@ svg.g {
   box-shadow: inset 0 0 0 1px var(--need-line);
   color: var(--need);
 }
+.state-pill.open {
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--s6);
+  color: var(--t2);
+}
+.state-pill.failed {
+  background: var(--bad-tint);
+  box-shadow: inset 0 0 0 1px var(--bad-line);
+  color: var(--bad);
+}
 .menu {
   position: relative;
   flex: none;
@@ -1652,203 +1663,6 @@ svg.g {
   }
 }
 
-/* ── The plan column: a vertical timeline of phases ──────────────────────── */
-.plan {
-  min-width: 0;
-  margin-top: 34px;
-  padding: 18px 18px 4px;
-  border-radius: 14px;
-  background: var(--s2);
-  box-shadow: inset 0 0 0 1px var(--s6);
-}
-.plan:focus,
-.main:focus {
-  outline: none;
-}
-.spine-h {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 0 0 16px;
-  color: var(--t3);
-  font: 500 13px / 18px var(--font-ui);
-}
-.spine-empty {
-  color: var(--t3);
-  font-size: 14px;
-}
-.phases {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.ph {
-  position: relative;
-  padding: 0 0 18px 26px;
-}
-.ph::before {
-  content: "";
-  position: absolute;
-  top: 22px;
-  bottom: 0;
-  left: 7px;
-  width: 2px;
-  background: var(--s6);
-}
-.ph.done::before {
-  background: var(--done-line);
-}
-.ph .dot {
-  position: absolute;
-  top: 4px;
-  left: 0;
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--s2);
-}
-.ph.done .dot {
-  background: var(--done-tint);
-  box-shadow: inset 0 0 0 1px var(--done-line);
-}
-/* The one glow on the page: where the work is now. */
-.here {
-  position: absolute;
-  top: 4px;
-  left: 0;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--now);
-  box-shadow:
-    0 0 0 4px rgb(96 170 243 / 18%),
-    0 0 18px 2px rgb(96 170 243 / 45%);
-}
-.ph h3 {
-  margin: 0;
-  color: var(--t1);
-  font: 600 16px / 22px var(--font-ui);
-  letter-spacing: -0.01em;
-}
-.ph a {
-  color: inherit;
-  text-decoration: none;
-}
-.ph a:hover {
-  text-decoration: underline;
-  text-decoration-color: var(--s8);
-  text-underline-offset: 4px;
-}
-.ph .sub {
-  margin-top: 1px;
-  color: var(--t3);
-  font-size: 13px;
-  line-height: 18px;
-}
-.tl {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  margin: 10px 0 0;
-  padding: 0;
-}
-.task {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: calc(100% + 20px);
-  margin: 0 -10px;
-  padding: 3px 10px;
-  border: 0;
-  border-radius: 6px;
-  background: none;
-  color: var(--t3);
-  font-size: 14px;
-  line-height: 20px;
-  text-align: left;
-}
-button.task:hover {
-  background: var(--s3);
-  color: var(--t1);
-}
-.task[aria-current="page"] {
-  background: var(--s4);
-  color: var(--t1);
-}
-.task.now {
-  color: var(--t2);
-}
-.task-title {
-  min-width: 0;
-}
-.task-problem {
-  display: block;
-  margin: 0 0 4px 20px;
-  color: var(--bad-text);
-  font-size: 13px;
-  line-height: 18px;
-}
-.lt {
-  margin-top: 8px;
-}
-.tl > .lt:first-child {
-  margin-top: 2px;
-}
-.tl > .lt + li:not(.lt) {
-  margin-top: 8px;
-}
-.lt-in {
-  position: relative;
-  display: block;
-  width: 100%;
-  overflow: hidden;
-  padding: 12px 12px 12px 14px;
-  border: 0;
-  border-radius: 10px;
-  background: var(--s3);
-  box-shadow: inset 0 0 0 1px var(--s6);
-  color: inherit;
-  text-align: left;
-}
-button.lt-in:hover {
-  background: var(--s4);
-}
-.lt-in[aria-current="page"] {
-  box-shadow: inset 0 0 0 1px var(--s8);
-}
-.lt-in::before {
-  content: "";
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: 0;
-  width: 2px;
-  border-radius: 0 2px 2px 0;
-  background: var(--hue, transparent);
-}
-.lt-in b {
-  display: block;
-  color: var(--t1);
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
-}
-/* One line, always: a helper starting or ending changes the words, never the height. */
-.lt-in > span:not(.task-problem) {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  white-space: nowrap;
-  margin-top: 2px;
-  color: var(--t3);
-  font-size: 13px;
-  line-height: 18px;
-}
-.lt-in .task-problem {
-  margin: 4px 0 0;
-}
 /* ── The request page ─────────────────────────────────────────────────────── */
 .main {
   width: 100%;
@@ -1869,45 +1683,6 @@ button.lt-in:hover {
   color: var(--t4);
   font-size: 13px;
   line-height: 18px;
-}
-.progress {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 10px;
-}
-.progress .k {
-  color: var(--t3);
-  font-size: 13px;
-  white-space: nowrap;
-}
-.progress .v {
-  color: var(--t1);
-  font-size: 14px;
-  font-weight: 500;
-}
-.mt {
-  display: flex;
-  gap: 2px;
-  width: 96px;
-}
-.seg {
-  flex: 1;
-  height: 5px;
-  border-radius: 1px;
-  background: var(--s7);
-}
-.seg.done {
-  background: var(--done-line);
-}
-.seg.now {
-  background: var(--now);
-}
-.seg.bad {
-  background: var(--bad);
-}
-.seg.open {
-  background: var(--s8);
 }
 
 /* Story · Flow · Files · Helpers */
@@ -1937,28 +1712,6 @@ button.lt-in:hover {
 .tabs a[aria-current="page"] {
   border-color: var(--t1);
   color: var(--t1);
-}
-.req-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-}
-.req-story {
-  min-width: 0;
-}
-@container (min-width: 860px) {
-  .req-split {
-    grid-template-columns: minmax(0, 1fr) 300px;
-    gap: 40px;
-    align-items: start;
-  }
-  .plan {
-    position: sticky;
-    top: calc(var(--top) + 20px);
-    max-height: calc(100vh - var(--top) - 40px);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
 }
 .tab-empty {
   margin-top: 28px;
@@ -2020,171 +1773,6 @@ a.helper:focus-visible {
   overflow-wrap: break-word;
   text-wrap: pretty;
 }
-.asked-row {
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-  margin-top: 8px;
-}
-.asked {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 20px;
-  color: var(--t3);
-  font-size: 13px;
-}
-.asked b {
-  color: var(--t2);
-  font-weight: 500;
-}
-.view-toggle {
-  flex: none;
-  display: inline-flex;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--s2);
-  box-shadow: inset 0 0 0 1px var(--s6);
-}
-.view-toggle button {
-  height: 26px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 6px;
-  background: none;
-  color: var(--t3);
-  font-size: 13px;
-}
-.view-toggle button:hover {
-  color: var(--t1);
-}
-.view-toggle button[aria-pressed="true"] {
-  background: var(--s4);
-  color: var(--t1);
-}
-
-/* Since you last looked, beside what needs your call */
-.brief {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  margin-top: 24px;
-  overflow: hidden;
-  border-radius: 14px;
-  background: var(--s3);
-  box-shadow:
-    inset 0 0 0 1px var(--s6),
-    inset 0 1px 0 rgb(255 255 255 / 4%);
-}
-.brief.two {
-  grid-template-columns: minmax(0, 1fr) 340px;
-}
-.brief-l {
-  padding: 22px 28px;
-}
-.since {
-  color: var(--t3);
-  font-size: 13px;
-}
-.since b {
-  color: var(--t1);
-  font-weight: 600;
-}
-.lead {
-  max-width: 64ch;
-  margin: 8px 0 0;
-  color: var(--t1);
-  font: 400 18px / 28px var(--font-ui);
-}
-.items {
-  list-style: none;
-  margin: 14px 0 0;
-  padding: 0;
-}
-.call-h svg {
-  width: 16px;
-  height: 16px;
-}
-.it {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 10px;
-  padding: 7px 0;
-  color: var(--t2);
-  font-size: 15px;
-  line-height: 22px;
-}
-.it svg {
-  width: 14px;
-  height: 14px;
-  margin-top: 4px;
-}
-.it.bad svg {
-  color: var(--bad-text);
-}
-.it b {
-  color: var(--t1);
-  font-weight: 600;
-}
-.brief-r {
-  display: flex;
-  flex-direction: column;
-  padding: 22px 24px;
-  background: var(--need-tint);
-}
-.brief.two .brief-r {
-  box-shadow: inset 1px 0 0 var(--need-line);
-}
-.call-h {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--need);
-  font-size: 15px;
-  font-weight: 600;
-}
-.call-h .num {
-  margin-left: auto;
-  color: #d8c08f;
-  font-size: 13px;
-  font-weight: 500;
-}
-.qq {
-  margin-top: 14px;
-}
-.qq + .qq {
-  padding-top: 14px;
-  box-shadow: inset 0 1px 0 #45381b;
-}
-.qq b {
-  display: block;
-  color: var(--t1);
-  font: 600 16px / 23px var(--font-ui);
-}
-.qq p {
-  margin: 3px 0 0;
-  color: #ddd0b4;
-  font-size: 14px;
-  line-height: 20px;
-  overflow-wrap: anywhere;
-}
-.ans {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-top: auto;
-  padding-top: 18px;
-}
-.ans .where {
-  color: var(--need);
-  font-size: 13px;
-  font-weight: 600;
-}
-.ans .num {
-  color: #cdb487;
-  font-size: 13px;
-}
 
 /* Assumptions, as a quiet list under the brief */
 .assumptions {
@@ -2242,10 +1830,7 @@ a.helper:focus-visible {
   font-size: 13px;
 }
 
-/* The story, grouped under its phase */
-.story {
-  position: relative;
-}
+/* Section heads and the map panel, shared with the Flow and Files tabs */
 .sect {
   display: flex;
   flex-wrap: wrap;
@@ -2263,88 +1848,10 @@ a.helper:focus-visible {
   color: var(--t3);
   font-size: 13px;
 }
-.story-phase + .story-phase {
-  margin-top: 8px;
-}
-.moments {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.moment {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  gap: 16px;
-  padding-top: 14px;
-}
-.moment-t {
-  color: var(--t4);
-  font: 400 13px / 26px var(--font-code);
-}
-.moment-body {
-  min-width: 0;
-}
-.moment-hd {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-  margin-bottom: 2px;
-  color: var(--t3);
-  font-size: 13px;
-  line-height: 20px;
-}
-.task-chip {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--t2);
-  font-size: 13px;
-  font-weight: 600;
-}
-button.task-chip:hover {
-  color: var(--t1);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.story-text {
-  max-width: 680px;
-  color: var(--t1);
-  font: 400 16px / 26px var(--font-ui);
-}
-.group-n {
-  color: var(--t3);
-  font-size: 13px;
-}
-.group-out {
-  max-width: 680px;
-  margin: 2px 0 0;
-  color: var(--t2);
-  font-size: 15px;
-  line-height: 22px;
-}
-.group-msgs {
-  display: grid;
-  gap: 10px;
-  margin-top: 8px;
-  padding-left: 16px;
-  box-shadow: inset 2px 0 0 var(--s6);
-}
-.group-more {
-  justify-self: start;
-  font-size: 13px;
-}
-.msg-t {
-  color: var(--t4);
-  font: 400 13px / 20px var(--font-code);
-}
 .lbl-inline {
   margin-right: 8px;
   color: var(--t3);
   font-size: 13px;
-}
-.loose {
-  margin-top: 8px;
 }
 .loose-files {
   list-style: none;
@@ -3451,15 +2958,6 @@ button.task-chip:hover {
   text-decoration-color: var(--faint);
   text-underline-offset: 3px;
 }
-.ph .dot .glyph {
-  width: 11px;
-  height: 11px;
-}
-.ph.todo .dot .glyph,
-.ph.open .dot .glyph {
-  width: 16px;
-  height: 16px;
-}
 .facts .pd-add,
 .facts .pd-del {
   color: var(--done);
@@ -3471,12 +2969,6 @@ button.task-chip:hover {
 
 /* ── Narrower windows ─────────────────────────────────────────────────────── */
 @media (max-width: 1180px) {
-  .brief.two {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .brief.two .brief-r {
-    box-shadow: inset 0 1px 0 var(--need-line);
-  }
   .split {
     grid-template-columns: minmax(0, 1fr);
     gap: 28px;
@@ -3734,19 +3226,8 @@ button.task-chip:hover {
     font-size: 34px;
     line-height: 40px;
   }
-  .asked-row {
-    flex-wrap: wrap;
-  }
   .tabs a {
     padding: 9px 12px;
-  }
-  .brief-l,
-  .brief-r {
-    padding: 18px 18px;
-  }
-  .moment {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
   }
   .axis,
   .lane {
@@ -3776,6 +3257,885 @@ button.task-chip:hover {
   font: 500 12px var(--font-ui);
   letter-spacing: 0;
   vertical-align: 0.6em;
+}
+
+/* Request page (reshape) */
+/*
+ * The request page: the facts under the title, the brief, the phase track, the story by
+ * phase and the side column. Shapes and words carry every state; colour only repeats it.
+ * Nothing here is under 13 px; times and numbers are tabular so live counts never jitter.
+ */
+.asked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 10px;
+  color: var(--t3);
+  font-size: 15px;
+  line-height: 22px;
+}
+.asked b {
+  color: var(--t1);
+  font-weight: 500;
+}
+.rb .k,
+.side-card .k {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 0 0 12px;
+  color: var(--t4);
+  font: 500 13px / 18px var(--font-ui);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.rb .add,
+.side .add {
+  color: var(--done);
+}
+.rb .del,
+.side .del {
+  color: var(--bad-text);
+}
+.rb .chip,
+.story .chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--s3);
+  box-shadow: inset 0 0 0 1px var(--s6);
+  color: var(--t3);
+  font: 500 13px / 1 var(--font-ui);
+  white-space: nowrap;
+}
+.story button.chip:hover,
+.story button.chip:focus-visible {
+  color: var(--t1);
+  box-shadow: inset 0 0 0 1px var(--s8);
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--s3);
+  color: var(--t3);
+  font: 500 13px / 1 var(--font-ui);
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+.badge.done {
+  background: var(--done-tint);
+  color: var(--done);
+}
+.badge.bad {
+  background: var(--bad-tint);
+  color: var(--bad-text);
+}
+.badge.now,
+.badge.new {
+  background: var(--now-tint);
+  color: var(--now);
+}
+.badge.new {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--now-line);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+/* Beyond the plan, and a fix under way: amber stays for "needs you" alone. */
+.mk.beyond {
+  background: var(--now-tint);
+  box-shadow: inset 0 0 0 1.5px var(--now);
+}
+.mk.waiting.fix {
+  background: var(--s3);
+  box-shadow: inset 0 0 0 1.5px var(--s8);
+  color: var(--t2);
+}
+
+/* The brief: three cells side by side, the wait across the foot */
+.rb {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 24px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--s6);
+}
+.rb-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 20px 24px 22px;
+}
+.rb-stands {
+  flex-grow: 1.15;
+}
+.rb-moments {
+  flex-grow: 1.25;
+}
+.rb-nums {
+  flex-grow: 0.85;
+}
+.rb-cell + .rb-cell {
+  box-shadow: inset 1px 0 0 var(--s6);
+}
+.rb-out {
+  margin: 0;
+  color: var(--t1);
+  font: 500 19px / 28px var(--font-ui);
+  letter-spacing: -0.005em;
+  text-wrap: pretty;
+}
+.rb-edge {
+  margin: 10px 0 0;
+  color: var(--t2);
+  font: 400 16px / 24px var(--font-ui);
+}
+.km {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.km-row {
+  display: grid;
+  grid-template-columns: 16px 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  color: var(--t2);
+  font-size: 15px;
+  line-height: 21px;
+}
+.km-row > .mk {
+  margin-top: 2px;
+}
+.km-row time {
+  padding-top: 1px;
+  color: var(--t4);
+  font: 400 13px / 20px var(--font-code);
+}
+.km-t {
+  overflow-wrap: anywhere;
+}
+.km-t .chip {
+  display: flex;
+  width: fit-content;
+  height: 22px;
+  margin-top: 4px;
+}
+.nw {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--now);
+  vertical-align: 2px;
+}
+.figs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+.fig .v {
+  color: var(--t1);
+  font: 400 24px / 28px var(--font-code);
+  font-variant-numeric: tabular-nums;
+}
+.fig .v small {
+  color: var(--t3);
+  font-size: 15px;
+}
+.fig .l {
+  margin-top: 2px;
+  color: var(--t4);
+  font-size: 13px;
+  line-height: 18px;
+}
+.rb-need {
+  flex: 1 0 100%;
+  padding: 16px 24px 18px;
+  background: linear-gradient(90deg, var(--need-tint), transparent 70%);
+  box-shadow: inset 0 1px 0 var(--s6);
+}
+.rb-need .k {
+  color: var(--need);
+}
+.rb-need .k .num {
+  color: var(--need-soft);
+}
+.rb-qs {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--t2);
+  font-size: 15px;
+  line-height: 22px;
+}
+.rb-qs li + li {
+  margin-top: 4px;
+}
+.rb-q {
+  margin: 0;
+  color: var(--t1);
+  font-size: 15px;
+  line-height: 22px;
+}
+.rb-d {
+  color: var(--need-soft);
+}
+.rb-where {
+  margin: 10px 0 0;
+  color: var(--need);
+  font-size: 13px;
+  font-weight: 600;
+}
+@container (max-width: 760px) {
+  .rb-cell {
+    flex-basis: 100%;
+  }
+  .rb-cell + .rb-cell {
+    box-shadow: inset 0 1px 0 var(--s6);
+  }
+}
+
+/* The phase track: segments left to right, stations on them, captions under three */
+.trk {
+  margin-top: 30px;
+}
+.trk-segs {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.trk-seg {
+  flex: var(--wt, 1) 1 0;
+  min-width: 0;
+}
+.trk-lbl {
+  display: block;
+  margin-bottom: 12px;
+}
+.trk-n,
+.trk-s {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trk-n {
+  color: var(--t1);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 21px;
+}
+.trk-seg.beyond .trk-n {
+  color: var(--now);
+}
+.trk-s {
+  color: var(--t4);
+  font-size: 13px;
+  line-height: 18px;
+}
+.trk-st {
+  position: relative;
+  height: 42px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* The line draws once, left to right; the live phase's fill grows as its tasks finish. */
+.trk-st::before,
+.trk-st::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  right: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--s6);
+  transform-origin: left;
+  animation: trk-draw 900ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.trk-st::after {
+  display: none;
+}
+.trk-seg.done .trk-st::before {
+  background: var(--done-line);
+}
+.trk-seg.now .trk-st::after {
+  display: block;
+  background: var(--done-line);
+  transform: scaleX(var(--fill, 0));
+  transition: transform 600ms ease-out;
+  animation-fill-mode: backwards;
+}
+.trk-seg.beyond .trk-st::before {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--now-line) 0 6px,
+    transparent 6px 11px
+  );
+}
+@keyframes trk-draw {
+  from {
+    transform: scaleX(0);
+  }
+}
+.st > a,
+.st > span {
+  color: inherit;
+  text-decoration: none;
+}
+.trk-st .mk {
+  position: absolute;
+  top: 1px;
+  left: var(--x);
+  width: 15px;
+  height: 15px;
+  transform: translateX(-50%);
+}
+.trk-st .mk.done {
+  background: var(--done);
+  box-shadow: none;
+  color: var(--s1);
+}
+.trk-st .st .mk.open {
+  background: var(--s1);
+}
+.trk-st .mk.running {
+  box-shadow: 0 0 0 4px var(--now-tint);
+}
+.cap {
+  position: absolute;
+  top: 24px;
+  left: var(--a);
+  width: var(--w);
+  overflow: hidden;
+  color: var(--t3);
+  font-size: 13px;
+  line-height: 17px;
+  /* Room between two captions side by side. */
+  padding: 0 6px;
+  text-align: var(--align, center);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st.now .cap {
+  color: var(--t1);
+  font-weight: 500;
+}
+.st > a:hover .cap {
+  color: var(--t1);
+}
+/* A station with no caption still names its link, out of sight. */
+.cap:not(.on) {
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+}
+.trk-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 12px 0 0;
+  color: var(--t3);
+  font-size: 14px;
+  line-height: 20px;
+}
+.trk-foot b {
+  color: var(--t1);
+  font-weight: 500;
+}
+@media (max-width: 899px) {
+  .trk-segs {
+    flex-direction: column;
+    gap: 18px;
+  }
+  .trk-seg {
+    flex: none;
+    width: 100%;
+  }
+  .trk-lbl {
+    margin-bottom: 8px;
+  }
+  .trk-n,
+  .trk-s {
+    white-space: normal;
+  }
+  .trk-st {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    height: auto;
+  }
+  .trk-st::before,
+  .trk-st::after {
+    top: 10px;
+    bottom: 10px;
+    left: 6px;
+    width: 3px;
+    height: auto;
+    transform-origin: top;
+    animation-name: trk-draw-down;
+  }
+  .trk-seg.now .trk-st::after {
+    transform: scaleY(var(--fill, 0));
+  }
+  .trk-seg.beyond .trk-st::before {
+    background: repeating-linear-gradient(
+      180deg,
+      var(--now-line) 0 6px,
+      transparent 6px 11px
+    );
+  }
+  .st > a,
+  .st > span {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 32px;
+  }
+  .trk-st .mk {
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+  }
+  .cap,
+  .cap:not(.on) {
+    position: static;
+    width: auto;
+    height: auto;
+    clip-path: none;
+    font-size: 14px;
+    line-height: 20px;
+    text-align: left;
+    white-space: normal;
+  }
+}
+@keyframes trk-draw-down {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+/* The story and the side column: side by side from 1200 px, the side sticky */
+.req-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.req-story {
+  min-width: 0;
+}
+@media (min-width: 1200px) {
+  .req-split {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 40px;
+    align-items: start;
+  }
+  .side {
+    position: sticky;
+    top: calc(var(--top) + 20px);
+    max-height: calc(100vh - var(--top) - 40px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+.st-phase {
+  margin-top: 36px;
+}
+.st-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: 6px;
+}
+.st-h h2 {
+  margin: 0;
+  color: var(--t1);
+  font: 600 20px / 28px var(--font-ui);
+  letter-spacing: -0.01em;
+}
+.st-word {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 7px;
+  color: var(--t3);
+  font-size: 13px;
+  font-weight: 500;
+}
+.st-word .mk {
+  width: 14px;
+  height: 14px;
+}
+.st-word.done {
+  color: var(--done);
+}
+.st-word.now {
+  color: var(--now);
+}
+.st-word .mk.running {
+  box-shadow: 0 0 0 3px var(--now-tint);
+}
+.st-meta {
+  margin-left: auto;
+  color: var(--t4);
+  font: 400 13px / 18px var(--font-code);
+}
+.st-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.st-msg,
+.st-run,
+.st-now {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 18px;
+  box-shadow: inset 0 1px 0 var(--s6);
+}
+.st-msg {
+  padding: 16px 0 18px;
+}
+.st-run {
+  padding: 12px 0;
+}
+.st-t {
+  color: var(--t4);
+  font: 400 13px / 24px var(--font-code);
+}
+/* Level with the run's title inside its box. */
+.st-run > .st-t {
+  padding-top: 9px;
+}
+.st-body {
+  min-width: 0;
+}
+.st-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  margin-bottom: 8px;
+}
+.story .story-text {
+  max-width: 680px;
+  color: var(--t2);
+  font: 400 16px / 25px var(--font-ui);
+}
+/* Title, badge and counts on the first line, what happened under them, the chevron at the side. */
+.st-run-box {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "t b . c v"
+    "r r r r v";
+  align-items: center;
+  gap: 4px 12px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--s6);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.st-run-box:hover,
+.st-run-box:focus-visible {
+  background: var(--s3);
+}
+.st-run-t {
+  grid-area: t;
+  min-width: 0;
+  color: var(--t1);
+  font-weight: 500;
+  line-height: 21px;
+}
+.st-run-box .badge {
+  grid-area: b;
+}
+.st-run-r {
+  grid-area: r;
+  min-width: 0;
+  color: var(--t3);
+  font-size: 14px;
+  line-height: 20px;
+}
+.st-run-c {
+  grid-area: c;
+  color: var(--t4);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.st-chev {
+  grid-area: v;
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: var(--s9);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 150ms ease-out;
+}
+.st-run-box[aria-expanded="true"] .st-chev {
+  transform: rotate(90deg);
+}
+.st-run-msgs {
+  display: grid;
+  gap: 16px;
+  margin: 14px 0 4px;
+  padding: 0 0 0 16px;
+  list-style: none;
+  box-shadow: inset 2px 0 0 var(--s6);
+}
+.st-run-msgs .st-row {
+  margin-bottom: 4px;
+}
+.st-now {
+  padding: 10px 0;
+  color: var(--t3);
+  font-size: 14px;
+  line-height: 20px;
+}
+.st-now .st-t {
+  line-height: 20px;
+}
+.st-now-b {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.st-now-b .mk {
+  width: 12px;
+  height: 12px;
+  box-shadow: 0 0 0 3px var(--now-tint);
+}
+/* A new message slides down 8 px and fades in, once, as it mounts. */
+.st-in {
+  animation: st-in 180ms ease-out both;
+}
+@keyframes st-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@media (max-width: 599px) {
+  .st-msg,
+  .st-run,
+  .st-now {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .st-run > .st-t {
+    padding-top: 0;
+  }
+  /* No column gap, so the counts sit flush left when there is no badge. */
+  .st-run-box {
+    grid-template-columns: max-content minmax(0, 1fr) auto;
+    grid-template-areas:
+      "t t v"
+      "r r r"
+      "b c c";
+    column-gap: 0;
+  }
+  .st-run-box .badge {
+    margin-right: 10px;
+  }
+  .st-meta {
+    margin-left: 0;
+  }
+}
+
+/* The side column: helpers, files, checks */
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  margin-top: 36px;
+}
+.side-card {
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--s6);
+}
+.side-card .cnt {
+  margin-left: auto;
+  color: var(--t4);
+  font-weight: 450;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.hl,
+.ck,
+.fl-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hl {
+  gap: 12px;
+}
+.hl-row,
+.ck-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+.hl-m {
+  display: grid;
+  place-items: center;
+  height: 20px;
+}
+.hl-m .mk {
+  width: 12px;
+  height: 12px;
+}
+.hl-m .mk.running {
+  box-shadow: 0 0 0 3px var(--now-tint);
+}
+/* Under 900 px the rail's running mark is off screen: then this one is the loop. */
+@media (max-width: 899px) {
+  .hl-m.solo .mk.running {
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+}
+.hl-n {
+  color: var(--t1);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.hl-s {
+  color: var(--t4);
+  font-size: 13px;
+  line-height: 18px;
+}
+.hl-b {
+  position: relative;
+  height: 4px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--s5);
+}
+.hl-b i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  background: var(--s8);
+}
+.hl-b i.running {
+  background: var(--now);
+}
+.hl-b i.done {
+  background: var(--done-line);
+}
+.hl-b i.failed {
+  background: var(--bad-line);
+}
+.side-more {
+  display: inline-block;
+  margin-top: 12px;
+  color: var(--t3);
+  font-size: 13px;
+  text-decoration: underline;
+  text-decoration-color: var(--s8);
+  text-underline-offset: 3px;
+}
+.side-more:hover,
+.side-more:focus-visible {
+  color: var(--t1);
+}
+.fl-grp + .fl-grp {
+  margin-top: 12px;
+}
+.fl-g {
+  margin-bottom: 6px;
+  color: var(--t2);
+  font-size: 14px;
+  line-height: 20px;
+}
+.fl-list {
+  gap: 6px;
+}
+.fl-f {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--t3);
+  font: 400 13px / 18px var(--font-code);
+}
+.fl-f .p {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Cut from the left, so the file name stays in view. */
+  direction: rtl;
+  text-align: left;
+}
+.fl-f .d {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.ck {
+  gap: 8px;
+  color: var(--t2);
+  font-size: 14px;
+  line-height: 20px;
+}
+.ck .mk {
+  margin-top: 2px;
+}
+/* Kept late: it refines the marks above when a station is pointed at. */
+.st > a:hover .mk,
+.st > a:focus-visible .mk {
+  outline: 2px solid var(--s8);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .trk-st::before,
+  .trk-st::after,
+  .st-in,
+  .hl-m.solo .mk.running {
+    animation: none;
+  }
+  .trk-seg.now .trk-st::after,
+  .st-chev {
+    transition: none;
+  }
 }
 
 /* Task page (reshape) */

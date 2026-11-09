@@ -37,12 +37,17 @@ describe("no serif", () => {
   });
 
   it("titles carry their weight at 600", () => {
-    for (const sel of [".pd-title", ".ask", ".sect h2", ".hh", ".ph h3"])
+    for (const sel of [".pd-title", ".ask", ".sect h2", ".hh", ".st-h h2"])
       expect(font(sel)[0], sel).toBe(600);
   });
 
   it("Claude's words are 400 at a comfortable size and line height", () => {
-    for (const sel of [".story-text", ".step-text", ".reading", ".lead"]) {
+    for (const sel of [
+      ".story .story-text",
+      ".step-text",
+      ".reading",
+      ".rb-edge",
+    ]) {
       const [w, size, lh] = font(sel);
       expect(w, sel).toBe(400);
       expect(size, sel).toBeGreaterThanOrEqual(15);

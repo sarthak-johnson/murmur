@@ -177,7 +177,6 @@ function show(
   p: {
     requestId?: string;
     lastLooked?: string | null;
-    before?: SessionView | null;
   } = {},
 ) {
   return render(
@@ -185,7 +184,6 @@ function show(
       sessionId="s1"
       {...(p.requestId ? { requestId: p.requestId } : {})}
       view={view}
-      viewAt={() => p.before ?? null}
       status="live"
       lastLooked={p.lastLooked ?? null}
     />,
@@ -204,19 +202,20 @@ afterEach(() => {
 });
 
 describe("live screen", () => {
-  it("the plan column and the progress under the title say where the work is", () => {
+  it("the phase track says where the work is", () => {
     show(session());
-    const plan = screen.getByRole("complementary", { name: "Plan" });
-    const phases = [...plan.querySelectorAll(".ph")].map((p) => p.className);
-    expect(phases).toEqual(["ph done", "ph now", "ph todo"]);
-    const progress = within(screen.getByRole("main")).getByRole("group", {
-      name: "Progress",
-    });
-    expect(progress.textContent).toContain("Phase 2 of 3");
-    expect(progress.textContent).toContain("4/7");
+    const track = screen.getByRole("region", { name: "Phase track" });
+    const segs = [...track.querySelectorAll(".trk-seg")].map(
+      (p) => p.className,
+    );
+    expect(segs).toEqual(["trk-seg done", "trk-seg now", "trk-seg todo"]);
+    expect(track.querySelector(".trk-foot")?.textContent).toContain(
+      "Plan: 4 of 7 done",
+    );
+    expect(screen.queryByRole("group", { name: "Progress" })).toBeNull();
   });
 
-  it("a plan with one phase shows its tasks as a list", () => {
+  it("a plan with one phase shows its tasks as stations", () => {
     const one = request({
       phases: [
         {
@@ -228,31 +227,33 @@ describe("live screen", () => {
       ],
     });
     show(session({ requests: [one] }));
-    const plan = screen.getByRole("complementary", { name: "Plan" });
-    expect(within(plan).getByText("Style A")).toBeTruthy();
-    expect(within(plan).getByText("Style B")).toBeTruthy();
-    expect(within(plan).queryByText("Style A · Style B")).toBeNull();
-    expect(within(plan).queryByRole("button", { name: /phase 1/ })).toBeNull();
+    const track = screen.getByRole("region", { name: "Phase track" });
+    expect(
+      [...track.querySelectorAll(".cap")].map((c) => c.textContent),
+    ).toEqual(["Style A", "Style B"]);
+    expect(within(track).queryByRole("button", { name: /phase 1/ })).toBeNull();
   });
 
   it("a finished phase says its count and keeps its tasks in view", () => {
     show(session());
-    const plan = screen.getByRole("complementary", { name: "Plan" });
-    const first = within(plan).getAllByRole("listitem", {
-      name: "Understand",
-    })[0] as HTMLElement;
-    expect(first.querySelector(".sub")?.textContent).toBe("2 of 2 done");
+    const track = screen.getByRole("region", { name: "Phase track" });
+    const first = track.querySelector(".trk-seg") as HTMLElement;
+    expect(first.querySelector(".trk-s")?.textContent).toBe("2 of 2 done");
     expect(within(first).getByText("Read how watchlists work")).toBeTruthy();
-    expect(within(plan).queryByText(/Read how watchlists work ·/)).toBeNull();
   });
 
-  it("the live task shows its helper as a card, with its problem", () => {
+  it("the live task is the live station, its problem on hover; its helper is in the side", () => {
     show(session());
-    const plan = screen.getByRole("complementary", { name: "Plan" });
-    const card = within(plan).getByRole("listitem", { name: "Agent 1" });
-    expect(within(card).getByText("Endpoint to save an alert")).toBeTruthy();
-    expect(within(card).getByText("Agent 1")).toBeTruthy();
-    expect(within(card).getByText("tried a fix 3 times")).toBeTruthy();
+    const track = screen.getByRole("region", { name: "Phase track" });
+    const live = within(track).getByRole("link", {
+      name: "Endpoint to save an alert, in progress",
+    });
+    expect(live.closest(".st")?.className).toBe("st now");
+    expect(live.title).toBe("Endpoint to save an alert: tried a fix 3 times");
+    const helpers = screen.getByRole("region", { name: "Helpers" });
+    expect(
+      within(helpers).getByText("writing tests for this endpoint"),
+    ).toBeTruthy();
   });
 
   it("a permission prompt raises the amber chip and says what Claude needs", () => {
@@ -269,7 +270,8 @@ describe("live screen", () => {
       name: /Permission needed/,
     });
     expect(chip.getAttribute("href")).toBe("#needs");
-    const call = screen.getByRole("region", { name: "Needs your call" });
+    const call = screen.getByRole("region", { name: "Waiting on you" });
+    expect(call.id).toBe("needs");
     expect(call.textContent).toContain(
       "Claude needs your permission to use Bash",
     );
@@ -286,7 +288,7 @@ describe("live screen", () => {
     });
     view.requests[1] = request({ flags });
     show(view);
-    const call = screen.getByRole("region", { name: "Needs your call" });
+    const call = screen.getByRole("region", { name: "Waiting on you" });
     expect(call.textContent).toContain("rm -rf build");
     expect(call.textContent).not.toContain("rm -rf old");
   });
@@ -312,30 +314,27 @@ describe("live screen", () => {
     expect(main).toEqual([
       "over",
       "ask live-title",
-      "asked-row",
+      "asked",
+      "rb",
+      "trk",
       "tabs",
       "tab-body",
     ]);
+    const brief = kids(".rb");
     rerender(
       <Live
         sessionId="s1"
         view={view({
           needsYou: { reason: "permission", text: "Allow Bash?", since: T0 },
         })}
-        viewAt={() => null}
         status="live"
         lastLooked={null}
       />,
     );
     expect(kids(".top-right")).toEqual(["need-chip", ...bar]);
-    expect(kids(".main")).toEqual([
-      "over",
-      "ask live-title",
-      "asked-row",
-      "brief",
-      "tabs",
-      "tab-body",
-    ]);
+    expect(kids(".main")).toEqual(main);
+    // The wait joins the brief at its foot; the cells above it stay put.
+    expect(kids(".rb")).toEqual([...brief, "rb-need"]);
   });
 
   it("delete session asks once, then deletes and goes to the sessions list", async () => {
@@ -389,36 +388,38 @@ describe("live screen", () => {
     expect(kind().textContent).toBe("Feature");
   });
 
-  it("catch-up renders what changed and hides when nothing did", () => {
-    const before = session();
-    before.requests[1] = request({
-      phases: request().phases.map((ph) =>
-        ph.id === "p2"
-          ? {
-              ...ph,
-              tasks: ph.tasks.map((t) =>
-                t.id === "t3" ? { ...t, status: "now" as const } : t,
-              ),
-            }
-          : ph,
-      ),
+  it("key moments since the last look are marked new, with their count", () => {
+    const view = session();
+    const looked = new Date(Date.parse(T0) + 60_000).toISOString();
+    view.requests[1] = request({
+      messages: [
+        { id: "m1", ts: T0, text: "Task 1 is done." },
+        {
+          id: "m2",
+          ts: new Date(Date.parse(T0) + 120_000).toISOString(),
+          text: "The review found a problem in the endpoint.",
+        },
+      ],
     });
-    const lastLooked = new Date(Date.now() - 6 * 60_000).toISOString();
-    show(session(), { lastLooked, before });
-    const brief = screen.getByRole("region", { name: "Since you last looked" });
-    expect(brief.textContent).toContain("6 min ago");
-    expect(brief.querySelector(".lead")?.textContent).toBe("1 task is done.");
-    expect(brief.querySelector(".it")?.textContent).toBe(
-      "1 task done: Alerts table in the database",
+    show(view, { lastLooked: looked });
+    const moments = screen.getByRole("region", { name: "Key moments" });
+    expect(
+      [...moments.querySelectorAll(".km-row")].map((r) => r.className),
+    ).toEqual(["km-row", "km-row new"]);
+    expect(moments.querySelector(".badge.new")?.textContent).toMatch(
+      /^1 new since \d\d:\d\d$/,
     );
-    cleanup();
-    show(session(), { lastLooked, before: session() });
     expect(screen.queryByText(/Since you last looked/)).toBeNull();
   });
 
-  it("catch-up hides when lastLooked is null", () => {
-    show(session(), { lastLooked: null, before: session({ requests: [] }) });
-    expect(screen.queryByText(/Since you last looked/)).toBeNull();
+  it("nothing is marked new on a first visit", () => {
+    const view = session();
+    view.requests[1] = request({
+      messages: [{ id: "m1", ts: T0, text: "Task 1 is done." }],
+    });
+    show(view, { lastLooked: null });
+    const moments = screen.getByRole("region", { name: "Key moments" });
+    expect(moments.querySelector(".new")).toBeNull();
   });
 
   it("rejecting an assumption shows the paste line", async () => {
@@ -456,30 +457,34 @@ describe("live screen", () => {
     const view = session();
     view.requests[1] = request({ planInferred: true });
     show(view);
-    expect(screen.getAllByText("inferred").length).toBeGreaterThan(0);
+    expect(document.querySelector(".over")?.textContent).toContain(
+      "plan inferred",
+    );
     cleanup();
     show(session());
+    expect(document.querySelector(".over")?.textContent).toContain(
+      "narrated live",
+    );
     expect(screen.queryByText("inferred")).toBeNull();
   });
 
-  it("a phase title links to its part of the story, and only when it has one", () => {
+  it("a phase has a part of the story to land on, and only when it has one", () => {
     const view = session();
     view.requests[1] = request({
-      messages: [{ id: "m1", ts: T0, text: "The table is in.", task: "t3" }],
+      messages: [
+        { id: "m1", ts: T0, text: "The table is in.", task: "t3", phase: "p2" },
+      ],
     });
     show(view);
-    const plan = screen.getByRole("complementary", { name: "Plan" });
-    const link = within(plan).getByRole("link", { name: "Server side" });
-    expect(link.getAttribute("href")).toBe("#phase-p2");
     expect(document.getElementById("phase-p2")).toBeTruthy();
-    expect(within(plan).queryByRole("link", { name: "App screen" })).toBeNull();
+    expect(document.getElementById("phase-p3")).toBeNull();
   });
 
-  it("clicking a task opens the part drill-down route", async () => {
+  it("clicking a station opens the part drill-down route", async () => {
     show(session());
-    const plan = screen.getByRole("complementary", { name: "Plan" });
+    const track = screen.getByRole("region", { name: "Phase track" });
     await userEvent.click(
-      within(plan).getByRole("button", { name: /Reuse push code to notify/ }),
+      within(track).getByRole("link", { name: /Reuse push code to notify/ }),
     );
     expect(location.pathname).toBe("/s/s1/r/r2/p/push");
   });
@@ -493,7 +498,7 @@ describe("live screen", () => {
     ).toBeTruthy();
   });
 
-  it("an inferred now has no why, and loose files are listed under the story", () => {
+  it("an inferred now has no why, and loose files are listed beside the story", () => {
     const view = session();
     view.requests[1] = request({
       now: { text: "Editing math.js", why: "", ts: T0, inferred: true },
@@ -519,12 +524,13 @@ describe("live screen", () => {
     const now = screen.getByRole("region", { name: "Now" });
     expect(within(now).getByText("Editing math.js")).toBeTruthy();
     expect(within(now).queryByRole("button", { name: "Details" })).toBeNull();
-    const files = screen.getByRole("list", { name: "Files touched" });
+    const files = screen.getByRole("region", { name: "Files" });
+    expect(files.querySelector(".fl-g")?.textContent).toBe(
+      "Outside any task · 2",
+    );
     expect(
-      within(files)
-        .getAllByRole("listitem")
-        .map((li) => li.textContent),
-    ).toEqual(["math.js+3−1the add function", "math.test.js+5−0"]);
+      [...files.querySelectorAll(".fl-f")].map((li) => li.textContent),
+    ).toEqual(["math.js+3 −1", "math.test.js+5"]);
   });
 
   it("a narrated now keeps its why one click away", async () => {
@@ -533,7 +539,7 @@ describe("live screen", () => {
     expect(within(now).queryByText(/Why now/)).toBeNull();
     await userEvent.click(within(now).getByRole("button", { name: "Details" }));
     expect(within(now).getByText(/Why now/)).toBeTruthy();
-    expect(screen.queryByRole("list", { name: "Files touched" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Files" })).toBeNull();
   });
 
   it("an ended session says ended, not live", () => {
@@ -546,27 +552,27 @@ describe("live screen", () => {
     expect(screen.getByRole("status").textContent).toBe("live");
   });
 
-  it("a running helper shows in the plan under its task, with its number", () => {
+  it("a running helper shows in the side column, marked running", () => {
     show(session());
-    const plan = screen.getByRole("complementary", { name: "Plan" });
-    const card = within(plan).getByRole("listitem", { name: "Agent 1" });
-    expect(card.querySelector("b")?.textContent).toBe(
-      "Endpoint to save an alert",
+    const helpers = screen.getByRole("region", { name: "Helpers" });
+    const row = helpers.querySelector(".hl-row") as HTMLElement;
+    expect(row.querySelector(".hl-n")?.textContent).toBe(
+      "writing tests for this endpoint",
     );
+    expect(row.querySelector(".mk.running")).toBeTruthy();
     expect(screen.getByRole("heading", { level: 1 }).title).toBe(
       "add price alerts to the app",
     );
   });
 
-  it("a running helper with no task reads as its own name", () => {
+  it("a running helper with no name reads as a helper", () => {
     show(
       session({
         requests: [request({ agents: [agent("a9", "", undefined)] })],
       }),
     );
-    const plan = screen.getByRole("complementary", { name: "Plan" });
-    const card = within(plan).getByRole("listitem", { name: "Agent 1" });
-    expect(card.querySelector("b")?.textContent).toBe("Agent 1");
+    const helpers = screen.getByRole("region", { name: "Helpers" });
+    expect(helpers.querySelector(".hl-n")?.textContent).toBe("A helper");
     expect(screen.queryByText(/Agent 1 ·|Agent 1:/)).toBeNull();
   });
 
@@ -648,11 +654,14 @@ describe("live screen", () => {
     ]);
     const req = view.requests[0] as RequestView;
     show(view);
-    const plan = screen.getByRole("complementary", { name: "Plan" });
-    const card = within(plan).getByRole("listitem", { name: "Agent 1" });
-    expect(card.querySelector("b")?.textContent).toBe(
-      "Endpoint to save an alert",
-    );
+    const track = screen.getByRole("region", { name: "Phase track" });
+    expect(
+      within(track).getByRole("link", {
+        name: "Endpoint to save an alert, in progress",
+      }),
+    ).toBeTruthy();
+    const helpers = screen.getByRole("region", { name: "Helpers" });
+    expect(helpers.querySelector(".hl-n")?.textContent).toBe("tests");
     expect(req.agents).toHaveLength(1);
   });
 
@@ -661,6 +670,7 @@ describe("live screen", () => {
     view.requests[1] = request({
       planInferred: true,
       finished: true,
+      state: "done",
       now: { text: "Editing style.css", why: "", ts: T0, inferred: true },
       tally: { helpers: 3, files: 19, commands: 51 },
       agents: [],
@@ -680,6 +690,7 @@ describe("live screen", () => {
     view.requests[1] = request({
       planInferred: true,
       finished: true,
+      state: "done",
       tally: { helpers: 0, files: 0, commands: 0 },
       agents: [running("a1"), { ...running("a2"), status: "done" }],
     });
@@ -688,6 +699,25 @@ describe("live screen", () => {
     const now = screen.getByRole("region", { name: "Now" });
     expect(within(now).getByText("Nothing changed")).toBeTruthy();
     expect(now.textContent).not.toContain("still running");
+  });
+
+  it("the top bar's pill says core's state: left open is quiet, failed is red", () => {
+    const view = session();
+    view.requests[1] = request({ finished: true, state: "left-open" });
+    show(view);
+    const bar = within(screen.getByRole("banner"));
+    expect(bar.queryByText("Done")).toBeNull();
+    expect(bar.getByText("Left open").closest(".state-pill")?.className).toBe(
+      "state-pill open",
+    );
+    cleanup();
+    view.requests[1] = request({ finished: true, state: "failed" });
+    show(view);
+    expect(
+      within(screen.getByRole("banner"))
+        .getByText("Failed")
+        .closest(".state-pill")?.className,
+    ).toBe("state-pill failed");
   });
 
   it("the done line counts in plain words and skips zeros", () => {
@@ -728,7 +758,7 @@ describe("live screen", () => {
     ).toBeTruthy();
   });
 
-  it("files touched shows 8 newest first, readable paths, then Show all N", async () => {
+  it("the Files tab shows 8 newest first, readable paths, then Show all N", async () => {
     const tmp =
       "/private/tmp/claude-501/-x-app/27a000a1-7dbc-4dd1-ab83-961149fc03ae";
     const looseFiles = Array.from({ length: 10 }, (_, i) => ({
@@ -752,14 +782,15 @@ describe("live screen", () => {
     render(
       <Live
         sessionId="s1"
+        requestId="r2"
+        tab="files"
         view={view}
-        viewAt={() => null}
         events={events}
         status="live"
         lastLooked={null}
       />,
     );
-    const now = screen.getByRole("region", { name: "Files touched" });
+    const now = screen.getByRole("region", { name: "Outside any task" });
     const names = () =>
       within(now)
         .getAllByRole("listitem")
@@ -807,13 +838,7 @@ describe("live screen", () => {
 
   it("the loading skeleton draws the same frame as the loaded screen", () => {
     const { container } = render(
-      <Live
-        sessionId="s1"
-        view={null}
-        viewAt={() => null}
-        status="loading"
-        lastLooked={null}
-      />,
+      <Live sessionId="s1" view={null} status="loading" lastLooked={null} />,
     );
     const kids = (el: Element | null) =>
       [...(el?.children ?? [])]

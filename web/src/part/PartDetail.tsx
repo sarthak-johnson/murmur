@@ -8,8 +8,8 @@ import type {
 } from "@murmur/core";
 import { type ReactNode, useState } from "react";
 import { FileList, PathText, sharedFolder } from "../files";
-import { Glyph, PlanSource } from "../live/PlanColumn";
 import { Fold, inline, Markdown } from "../markdown";
+import { Glyph, PlanSource } from "../marks";
 import { Pill } from "../Pill";
 import { follow, partPath, requestPath } from "../router";
 import { helperKind, rounds as roundsWord, shortTitle } from "../session";

@@ -1,27 +1,20 @@
 import type { MurmurEvent, RequestView, SessionView } from "@murmur/core";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { Me } from "../api";
-import { type Brief, catchUpBrief } from "../catchup";
-import { FileList } from "../files";
 import { FlowBoard } from "../flow/FlowBoard";
 import { useLastLooked } from "../lastLooked";
 import { Assumptions } from "../live/Assumptions";
-import { BriefBlock } from "../live/Brief";
-import { PlanColumn } from "../live/PlanColumn";
+import { RequestBrief } from "../live/Brief";
 import { Brand, dayLabel, Rail, RailFoot } from "../live/Rail";
-import { Story, storyPhases } from "../live/Story";
-import { FilesTab, fileRow, HelpersTab, RequestTabs } from "../live/Tabs";
+import { SideColumn } from "../live/Side";
+import { Story } from "../live/Story";
+import { FilesTab, HelpersTab, RequestTabs } from "../live/Tabs";
 import { TopBar } from "../live/TopBar";
+import { PhaseTrack } from "../live/Track";
 import { PartDetail } from "../part/PartDetail";
 import { navigate, partPath, requestPath, type Tab } from "../router";
-import {
-  livePhase,
-  phasePlace,
-  type RequestState,
-  requestMark,
-  type Waiting,
-} from "../session";
-import { clock, sentBack } from "../story";
+import { type RequestState, requestMark, type Waiting } from "../session";
+import { clock, fixRoundCount, sentBack, thousands } from "../story";
 import { type SessionStatus, useSession } from "../useSession";
 
 export function SessionPage(props: {
@@ -32,14 +25,13 @@ export function SessionPage(props: {
   me?: Me;
   onSignOut?(): void;
 }) {
-  const { view, viewAt, status, events } = useSession(props.sessionId);
+  const { view, status, events } = useSession(props.sessionId);
   const lastLooked = useLastLooked(props.sessionId);
   return (
     <Live
       {...props}
       view={view}
       events={events}
-      viewAt={viewAt}
       status={status}
       lastLooked={lastLooked}
     />
@@ -128,14 +120,13 @@ export function Live(props: {
   partId?: string | undefined;
   tab?: Tab | undefined;
   view: SessionView | null;
-  viewAt(ts: string): SessionView | null;
   events?: MurmurEvent[];
   status: SessionStatus;
   lastLooked: string | null;
   me?: Me | undefined;
   onSignOut?: (() => void) | undefined;
 }) {
-  const { sessionId, view, viewAt, events = [], status, lastLooked } = props;
+  const { sessionId, view, events = [], status, lastLooked } = props;
   const { partId, me, onSignOut, tab = "story" } = props;
   // Relative times ("14 m ago") move on even when no events arrive.
   const [, tick] = useReducer((n: number) => n + 1, 0);
@@ -158,15 +149,15 @@ export function Live(props: {
   if (partId && !part && status === "loading")
     return <LiveSkeleton status={status} />;
 
-  const { state, end, waiting } = req
+  const { state, mark, end, waiting } = req
     ? requestMark(view, req, events)
     : {
         state: "running" as RequestState,
+        mark: "running" as const,
         end: view.lastEventAt,
         waiting: null,
       };
   const done = state === "done";
-  const live = req ? livePhase(req, done) : undefined;
 
   return (
     <div className={drawer.open ? "frame drawer-open" : "frame"}>
@@ -195,6 +186,7 @@ export function Live(props: {
           part={part}
           onSession={!props.requestId}
           state={state}
+          mark={mark}
           end={end}
           waiting={waiting}
           events={events}
@@ -239,15 +231,13 @@ export function Live(props: {
               key={req.id}
               sessionId={sessionId}
               view={view}
-              viewAt={viewAt}
               events={events}
               lastLooked={lastLooked}
-              status={status}
               tab={tab}
               request={req}
               waiting={waiting}
-              live={live}
               done={done}
+              stopped={state !== "running"}
               end={end}
               onOpenPart={(p) => navigate(partPath(sessionId, req.id, p))}
             />
@@ -268,85 +258,49 @@ const KIND: Record<RequestView["kind"], string> = {
 const n_ = (n: number, one: string, many = `${one}s`) =>
   n ? [`${n} ${n === 1 ? one : many}`] : [];
 
-/** Where the plan stands, under the title: the phase, a bar of its tasks, the count. */
-function Progress(props: { request: RequestView; done: boolean }) {
-  const { request, done } = props;
-  const tasks = request.phases.flatMap((p) => p.tasks);
-  const shown = livePhase(request, done) ?? request.phases.at(-1);
-  if (!shown) return null;
-  return (
-    // biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the bar
-    <div className="progress" role="group" aria-label="Progress">
-      <span className="k">{phasePlace(request, shown)}</span>
-      <span className="mt" aria-hidden="true">
-        {tasks.map((t) => (
-          <b
-            key={t.id}
-            className={`seg ${
-              t.status === "failed"
-                ? "bad"
-                : done && t.status !== "done"
-                  ? "open"
-                  : t.status
-            }`}
-          />
-        ))}
-      </span>
-      <span className="v num">
-        {tasks.filter((t) => t.status === "done").length}/{tasks.length}
-      </span>
-    </div>
-  );
-}
+/** Where the plan came from, said once in the line over the title. */
+const source = (req: RequestView) =>
+  req.recap
+    ? "recap by Claude"
+    : req.planInferred
+      ? "plan inferred"
+      : req.phases.length
+        ? "narrated live"
+        : "";
 
 function RequestMain(props: {
   sessionId: string;
   view: SessionView;
-  viewAt(ts: string): SessionView | null;
   events: MurmurEvent[];
   lastLooked: string | null;
   request: RequestView;
   waiting: Waiting | null;
-  live: ReturnType<typeof livePhase>;
   done: boolean;
+  stopped: boolean;
   end: string;
-  status: SessionStatus;
   tab: Tab;
   onOpenPart(partId: string): void;
 }) {
-  const { sessionId, view, viewAt, events, lastLooked, request: req } = props;
-  const { status, tab, end } = props;
-  const { waiting, live, done, onOpenPart } = props;
-  const hasStory = (req.messages?.length ?? 0) > 0;
-  // Built the first time the stream is live and kept still after, through reconnects,
-  // so new work never moves the story under the reader; built again only when they
-  // come back (a new last look). The past is reduced once, here, not on every batch.
-  const [frozen, setFrozen] = useState<{
-    looked: string | null;
-    brief: Brief | null;
-  }>();
-  useEffect(() => {
-    if (status !== "live" || (frozen && frozen.looked === lastLooked)) return;
-    const before = lastLooked ? viewAt(lastLooked) : null;
-    setFrozen({
-      looked: lastLooked,
-      brief: catchUpBrief(before, view, req.id, lastLooked),
-    });
-  }, [status, lastLooked, frozen, view, viewAt, req.id]);
+  const { sessionId, view, events, lastLooked, request: req } = props;
+  const { tab, end, waiting, done, stopped, onOpenPart } = props;
   // A breadcrumb's phase link lands on that phase of the story.
   useEffect(() => {
     const id = decodeURIComponent(location.hash.slice(1));
     if (id) document.getElementById(id)?.scrollIntoView?.({ block: "start" });
   }, []);
-  const brief = frozen?.looked === lastLooked ? frozen.brief : null;
   const tasks = req.phases.flatMap((p) => p.tasks);
-  const back = sentBack(req);
+  const rounds = fixRoundCount(req);
+  const back = req.sentBack?.length ?? sentBack(req);
   const facts = [
     ...n_(tasks.length, "task"),
     ...n_(req.tally.helpers, "helper"),
-    ...n_(back, "sent back after review", "sent back after review"),
+    ...n_(req.tally.files, "file"),
+    ...(rounds
+      ? n_(rounds, "fix round")
+      : n_(back, "sent back after review", "sent back after review")),
+    ...n_(req.tally.commands, "command"),
   ];
-  const storied = new Set(storyPhases(req, done).map((g) => g.phase.id));
+  const from = source(req);
   return (
     <>
       <div className="over">
@@ -355,35 +309,41 @@ function RequestMain(props: {
           {req.kindInferred && <span className="inferred">inferred</span>}
         </span>
         <span className="num">
-          Request {view.requests.indexOf(req) + 1} of {view.requests.length} ·{" "}
-          {dayLabel(req.startedAt)}
+          Request {view.requests.indexOf(req) + 1} of {view.requests.length} ·
+          asked {dayLabel(req.startedAt)}, {clock(req.startedAt)}
+          {from && ` · ${from}`}
         </span>
       </div>
       <h1 className="ask live-title" title={req.prompt}>
         {req.goal || req.prompt}
       </h1>
-      <div className="asked-row">
-        {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the facts */}
+      {facts.length > 0 && (
+        // biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the facts
         <div className="asked" role="group" aria-label="Summary">
-          <span className="num">
-            Asked at <b>{clock(req.startedAt)}</b>
-          </span>
           {facts.map((f) => {
             const [n, ...rest] = f.split(" ");
             return (
               <span key={f}>
-                <b>{n}</b> {rest.join(" ")}
+                <b className="num">{thousands(Number(n))}</b> {rest.join(" ")}
               </span>
             );
           })}
         </div>
-        {req.phases.length > 0 && <Progress request={req} done={done} />}
-      </div>
-      <BriefBlock
-        brief={brief}
-        since={lastLooked}
+      )}
+      <RequestBrief
+        request={req}
+        done={done}
+        stopped={stopped}
+        end={end}
         waiting={waiting}
-        flags={req.flags}
+        lastLooked={lastLooked}
+      />
+      <PhaseTrack
+        sessionId={sessionId}
+        request={req}
+        done={done}
+        stopped={stopped}
+        end={end}
       />
       <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
       <RequestTabs sessionId={sessionId} requestId={req.id} tab={tab} />
@@ -397,39 +357,15 @@ function RequestMain(props: {
         ) : (
           <div className="req-split">
             <div className="req-story">
-              {hasStory && (
-                <Story
-                  request={req}
-                  live={live}
-                  done={done}
-                  onOpenPart={onOpenPart}
-                />
-              )}
-              {req.looseFiles.length > 0 && (
-                <section className="loose" aria-label="Files touched">
-                  <div className="sect">
-                    <h2>Files touched</h2>
-                    <span>outside any task</span>
-                  </div>
-                  <FileList
-                    files={req.looseFiles}
-                    events={events}
-                    label="Files touched"
-                    className="loose-files"
-                    row={fileRow(view.cwd)}
-                  />
-                </section>
-              )}
+              <Story request={req} done={done} onOpenPart={onOpenPart} />
             </div>
-            <PlanColumn
+            <SideColumn
+              sessionId={sessionId}
               request={req}
-              done={done}
-              end={end}
               events={events}
-              storyPhases={storied}
-              onOpen={onOpenPart}
-              // The map it lit up is gone; the flow board has its own selection.
-              onHover={() => {}}
+              cwd={view.cwd}
+              over={done || req.finished}
+              end={end}
             />
           </div>
         )}
