@@ -260,165 +260,6 @@ label {
 .send-text {
   color: var(--muted);
 }
-.map svg {
-  display: block;
-  margin-inline: auto;
-  font-family: var(--font-ui);
-}
-.map-caption {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-.map .spoke {
-  stroke: var(--line);
-  stroke-width: 1.5;
-}
-.map .link {
-  fill: none;
-  stroke: var(--muted);
-  stroke-width: 1.3;
-  stroke-dasharray: 4 3;
-}
-.map .arrow-head {
-  fill: var(--muted);
-}
-.map .link-label,
-.map .phase-tag,
-.map .map-empty {
-  paint-order: stroke;
-  stroke: var(--bg);
-  stroke-width: 4px;
-  stroke-linejoin: round;
-}
-.map .link-label {
-  fill: var(--muted);
-  font-size: 12px;
-  text-anchor: middle;
-}
-.map .map-empty {
-  fill: var(--muted);
-  font-size: 13px;
-  text-anchor: middle;
-}
-.map .backing {
-  fill: var(--panel);
-}
-.map .dim {
-  transition: opacity 150ms;
-}
-.map .goal-box {
-  fill: var(--panel-2);
-  stroke: var(--line);
-}
-.map .goal-label {
-  fill: var(--text);
-  font-size: 14px;
-  font-weight: 600;
-  text-anchor: middle;
-}
-.map-node {
-  cursor: pointer;
-  outline: none;
-}
-.map-node:focus-visible {
-  outline: none;
-}
-.map-node .ring {
-  fill: none;
-  stroke: var(--now);
-  stroke-width: 2;
-  visibility: hidden;
-}
-.map-node:focus-visible .ring {
-  visibility: visible;
-}
-.map-node .box {
-  fill: var(--panel);
-  stroke: var(--line);
-}
-.map-node .label {
-  fill: var(--muted);
-  font-size: 12px;
-  text-anchor: middle;
-}
-.map-node:hover .box {
-  fill: var(--panel-2);
-}
-.map-node.now .box {
-  fill: color-mix(in srgb, var(--now) 12%, var(--panel));
-  stroke: var(--now);
-  stroke-width: 2;
-}
-.map-node.now .label {
-  fill: var(--text);
-  font-weight: 600;
-}
-.map-node .dot {
-  fill: var(--now);
-}
-.map-node.done .box {
-  stroke: var(--done);
-}
-.map-node.done .label {
-  fill: var(--text);
-}
-.map-node .tick {
-  fill: var(--done);
-}
-.map-node.stuck .box {
-  stroke: var(--bad);
-  stroke-width: 2;
-}
-.map-node.stuck .label {
-  fill: var(--text);
-}
-.map .phase-tag {
-  fill: var(--faint);
-  font-size: 12px;
-}
-.map .chip-line {
-  stroke: var(--agent);
-  stroke-dasharray: 3 3;
-}
-.map .chip-box {
-  fill: color-mix(in srgb, var(--agent) 10%, var(--panel));
-  stroke: var(--agent);
-}
-.map .chip-label {
-  fill: var(--agent);
-  font-size: 12px;
-  text-anchor: middle;
-}
-@keyframes map-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-.map-node,
-.map-chips,
-.map .chip,
-.map .spoke,
-.map .link,
-.map .link-label {
-  animation: map-in 200ms ease-out;
-}
-@media (prefers-reduced-motion: reduce) {
-  .map .dim {
-    transition: none;
-  }
-  .map-node,
-  .map-chips,
-  .map .chip,
-  .map .spoke,
-  .map .link,
-  .map .link-label {
-    animation: none;
-  }
-}
-
 .lbl {
   font-size: 13px;
   line-height: 20px;
@@ -484,8 +325,13 @@ label {
   background: var(--now);
   vertical-align: 1px;
 }
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
 .fade-in {
-  animation: map-in 200ms ease-out;
+  animation: fade-in 200ms ease-out;
 }
 @media (prefers-reduced-motion: reduce) {
   .fade-in {
@@ -2497,13 +2343,6 @@ button.task-chip:hover {
   color: var(--t3);
   font-size: 13px;
 }
-.map-panel .map-box {
-  margin-top: 12px;
-  overflow: auto;
-  border-radius: 12px;
-  background: var(--s2);
-  box-shadow: inset 0 0 0 1px var(--s6);
-}
 .loose {
   margin-top: 8px;
 }
@@ -3079,6 +2918,483 @@ button.task-chip:hover {
 }
 .show-all {
   font-size: 13px;
+}
+
+/* Flow board (reshape) */
+/*
+ * The request's parts as a build order: a band per phase, cards laid out by flow.ts on a
+ * grid of one card size, links in the gaps between them. Selecting a card lights its
+ * links blue and dims the rest to 42 percent in 200 ms; reduced motion is instant.
+ */
+.flow {
+  margin-top: 22px;
+}
+.fb-frame {
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  overflow-y: hidden;
+  padding: 18px 22px 22px;
+  border-radius: 14px;
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--s6);
+  animation: fade-in 200ms ease-out;
+}
+/* More of the board lies past an edge: that edge fades rather than cuts, with a button. */
+.fb-wrap {
+  position: relative;
+}
+.fb-wrap.less::before,
+.fb-wrap.more::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 1px;
+  bottom: 1px;
+  width: 72px;
+  pointer-events: none;
+}
+.fb-wrap.less::before {
+  left: 1px;
+  border-radius: 13px 0 0 13px;
+  background: linear-gradient(to left, transparent, var(--s2));
+}
+.fb-wrap.more::after {
+  right: 1px;
+  border-radius: 0 13px 13px 0;
+  background: linear-gradient(to right, transparent, var(--s2));
+}
+.fb-edge {
+  position: absolute;
+  z-index: 2;
+  /* Level with the band headers, where it covers no card. */
+  top: 24px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0 0 2px;
+  border: 1px solid var(--s7);
+  border-radius: 50%;
+  background: var(--s4);
+  color: var(--t1);
+  font: 400 20px / 1 var(--font-ui);
+  cursor: pointer;
+}
+.fb-edge:hover {
+  border-color: var(--s9);
+  background: var(--s5);
+}
+.fb-edge.l {
+  left: 10px;
+}
+.fb-edge.r {
+  right: 10px;
+}
+/* The bands by name, when some lie off screen; each one scrolls the frame to its band. */
+.fb-index {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.fb-ix {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--s6);
+  border-radius: 9px;
+  background: none;
+  color: var(--t3);
+  font: 500 13px / 18px var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.fb-ix .mk {
+  width: 14px;
+  height: 14px;
+}
+.fb-ix:hover {
+  border-color: var(--s8);
+  color: var(--t1);
+}
+.fb-ix.seen {
+  border-color: var(--s8);
+  background: var(--s3);
+  color: var(--t1);
+}
+.fb-ix-n {
+  color: var(--t4);
+  font-weight: 400;
+}
+.fb-canvas {
+  position: relative;
+}
+.fb-head {
+  position: absolute;
+  min-width: 0;
+  padding: 0 2px 10px;
+  border-bottom: 1px solid var(--s6);
+}
+/* One line, cut after a whole word. */
+.fb-name {
+  display: -webkit-box;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--t1);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+.fb-word,
+.fd-word {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+.fb-word .mk,
+.fd-word .mk,
+.fc-st .mk {
+  width: 14px;
+  height: 14px;
+}
+/* Pieces that do not fit wrap onto a second line, which is clipped away. */
+.fb-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 4px;
+  height: 18px;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--t4);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.fb-line .fb-word {
+  margin-right: 6px;
+}
+.fb-div {
+  position: absolute;
+  top: 0;
+  border-left: 1px dashed var(--s7);
+}
+.fb-links {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.fl {
+  fill: none;
+  stroke: var(--s7);
+  stroke-width: 1.5;
+  transition:
+    stroke 200ms ease-out,
+    stroke-width 200ms ease-out,
+    opacity 200ms ease-out;
+}
+.fl.dash {
+  stroke-dasharray: 4 4;
+}
+.fl.on {
+  stroke: var(--now);
+  stroke-width: 2;
+}
+.fl.dim {
+  opacity: 0.42;
+}
+.fc {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  border: 1px solid var(--s6);
+  border-radius: 12px;
+  background: var(--s3);
+  color: var(--t2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    opacity 200ms ease-out,
+    border-color 150ms ease-out,
+    background-color 150ms ease-out,
+    box-shadow 150ms ease-out;
+}
+/* Nothing in a card shrinks: the board measures it and makes its row tall enough. */
+.fc > * {
+  flex-shrink: 0;
+}
+.fc:hover {
+  border-color: var(--s8);
+  background: var(--s4);
+}
+.fc.running {
+  border-color: var(--now-line);
+}
+.fc.failed {
+  border-color: var(--bad-line);
+}
+.fc.sel {
+  border-color: var(--now);
+  box-shadow:
+    0 0 0 1px var(--now),
+    0 0 0 6px var(--now-tint);
+}
+.fc.dim {
+  opacity: 0.42;
+}
+.fc-ttl {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--t1);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.fc-tag {
+  margin-right: 8px;
+  color: var(--t4);
+  font: 400 13px / 20px var(--font-code);
+}
+.fc-st {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 6px;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+.fb-word.done,
+.fd-word.done,
+.fc.done .fc-st {
+  color: var(--done);
+}
+.fb-word.running,
+.fd-word.running,
+.fc.running .fc-st {
+  color: var(--now);
+}
+.fb-word.failed,
+.fd-word.failed,
+.fc.failed .fc-st {
+  color: var(--bad-text);
+}
+.fb-word.open,
+.fd-word.open,
+.fc.open .fc-st {
+  color: var(--t3);
+}
+.fc-aim {
+  display: none;
+}
+/* A separator leads each fact; the one starting a line sits left of the clip, unseen. */
+.fc-fxw {
+  margin-top: auto;
+  overflow: hidden;
+}
+.fc-fx {
+  display: flex;
+  flex-wrap: wrap;
+  margin-left: -16px;
+  color: var(--t3);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.fc-fx span::before {
+  content: "·";
+  display: inline-block;
+  width: 16px;
+  color: var(--t4);
+  text-align: center;
+}
+/* A wide card has room for one more fact: what the part is for (flow.ts sets `wide`). */
+.fc.wide .fc-ttl {
+  -webkit-line-clamp: 1;
+}
+.fc.wide .fc-aim {
+  display: -webkit-box;
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--t3);
+  font-size: 13px;
+  line-height: 18px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+/* How a card relates to the selected one, on its top edge. */
+.fc-rel {
+  position: absolute;
+  top: -10px;
+  left: 10px;
+  max-width: calc(100% - 20px);
+  height: 20px;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 1px solid var(--now-line);
+  border-radius: 6px;
+  background: var(--now-tint);
+  color: var(--now);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fb-fold {
+  position: absolute;
+  border: 1px dashed var(--s7);
+  border-radius: 10px;
+  background: none;
+  color: var(--t3);
+  font: 500 13px / 18px var(--font-ui);
+  cursor: pointer;
+}
+.fb-fold:hover {
+  border-color: var(--s9);
+  color: var(--t1);
+}
+.fd {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  margin-top: 16px;
+  padding: 16px 20px;
+  border: 1px solid var(--s6);
+  border-radius: 14px;
+  background: var(--s2);
+  animation: 200ms cubic-bezier(0.2, 0.7, 0.2, 1) both vt-rise;
+}
+.fd-ttl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 0;
+  color: var(--t1);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 24px;
+}
+.fd p {
+  max-width: 88ch;
+  margin: 6px 0 0;
+  color: var(--t3);
+  font-size: 15px;
+  line-height: 22px;
+}
+.fd-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin-top: 8px;
+  color: var(--t3);
+  font-size: 14px;
+  line-height: 20px;
+}
+.fd-facts b {
+  color: var(--t1);
+  font-weight: 500;
+}
+.fd-add {
+  color: var(--done);
+}
+.fd-del {
+  color: var(--del);
+}
+.fd-open {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 9px;
+  background: var(--t1);
+  color: var(--s1);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.fd-open:hover,
+.fd-open:focus-visible {
+  background: #fff;
+  color: var(--s1);
+  text-decoration: none;
+}
+.fb-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 22px;
+  margin-top: 14px;
+  color: var(--t4);
+  font-size: 13px;
+  line-height: 18px;
+}
+.fb-legend i {
+  display: inline-block;
+  width: 22px;
+  margin-right: 6px;
+  border-top: 1.5px solid var(--s7);
+  vertical-align: middle;
+}
+.fb-legend i.dash {
+  border-top-style: dashed;
+}
+.fb-legend i.on {
+  border-color: var(--now);
+}
+.fb-hint {
+  margin-left: auto;
+}
+@media (max-width: 899px) {
+  .flow.stacked .fb-frame {
+    padding: 14px 14px 16px 4px;
+  }
+  .fd {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+  }
+  .fb-hint {
+    display: none;
+  }
+  /* The rail and its pulsing mark are folded away here, so a running card may pulse. */
+  .fc-pulse .mk.running {
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fb-frame,
+  .fd,
+  .fc-pulse .mk.running {
+    animation: none;
+  }
+  .fb-frame {
+    scroll-behavior: auto;
+  }
+  .fl,
+  .fc {
+    transition: none;
+  }
 }
 
 /* ── Loading ──────────────────────────────────────────────────────────────── */

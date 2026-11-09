@@ -725,12 +725,12 @@ describe("story by phase", () => {
 
   it("the map is one tab away", async () => {
     show(session(request()));
-    expect(screen.queryByRole("region", { name: "Map" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Flow" })).toBeNull();
     await userEvent.click(screen.getByRole("link", { name: "Flow" }));
     expect(location.pathname).toBe("/s/s1/r/r2/flow");
     cleanup();
     show(session(request()), { requestId: "r2", tab: "flow" });
-    expect(screen.getByRole("region", { name: "Map" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Flow" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "What happened" })).toBeNull();
     await userEvent.click(screen.getByRole("link", { name: "Story" }));
     expect(location.pathname).toBe("/s/s1/r/r2");
@@ -1270,7 +1270,7 @@ describe("review fixes: stillness and order", () => {
       requests: [request({ id: "r1", goal: "Fix the login form" }), request()],
     });
     const { rerender } = show(two, { requestId: "r2", tab: "flow" });
-    expect(screen.getByRole("region", { name: "Map" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Flow" })).toBeTruthy();
     const rail = screen.getByRole("navigation", { name: "Requests" });
     expect(within(rail).getAllByRole("link")[0]?.getAttribute("href")).toBe(
       "/s/s1/r/r1",
@@ -1287,7 +1287,7 @@ describe("review fixes: stillness and order", () => {
       />,
     );
     expect(screen.getByRole("region", { name: "What happened" })).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "Map" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Flow" })).toBeNull();
   });
 });
 

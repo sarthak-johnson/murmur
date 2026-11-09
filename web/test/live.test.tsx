@@ -192,13 +192,6 @@ function show(
   );
 }
 
-const nodeOpacity = (name: string) =>
-  (
-    screen
-      .getByRole("button", { name })
-      .querySelector(".dim") as SVGElement | null
-  )?.style.opacity;
-
 let calls: ReturnType<typeof mockFetch>;
 beforeEach(() => {
   calls = mockFetch();
@@ -469,19 +462,6 @@ describe("live screen", () => {
     expect(screen.queryByText("inferred")).toBeNull();
   });
 
-  it("hovering a task highlights its part", async () => {
-    show(session());
-    const plan = screen.getByRole("complementary", { name: "Plan" });
-    const row = within(plan).getByRole("button", {
-      name: /Reuse push code to notify/,
-    });
-    await userEvent.hover(row);
-    expect(nodeOpacity("Push notification, not started")).toBe("1");
-    expect(nodeOpacity("Server endpoint, in progress")).toBe("0.35");
-    await userEvent.unhover(row);
-    expect(nodeOpacity("Server endpoint, in progress")).toBe("1");
-  });
-
   it("a phase title links to its part of the story, and only when it has one", () => {
     const view = session();
     view.requests[1] = request({
@@ -605,7 +585,7 @@ describe("live screen", () => {
     expect(location.pathname).toBe("/s/s1/r/r1");
   });
 
-  it("a helper spawned during a task shows on its task row and map part", () => {
+  it("a helper spawned during a task shows on its task row", () => {
     let n = 0;
     const at = (
       hook: MurmurEvent["hook"],
@@ -673,7 +653,6 @@ describe("live screen", () => {
     expect(card.querySelector("b")?.textContent).toBe(
       "Endpoint to save an alert",
     );
-    expect(screen.getByText("Agent 1: tests")).toBeTruthy();
     expect(req.agents).toHaveLength(1);
   });
 
