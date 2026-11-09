@@ -216,12 +216,17 @@ test("ingest accepts a valid token, records use, and refuses revoked ones", asyn
   expect(await revoked.json()).toEqual({ error: "unauthorized" });
 });
 
-const rawStart = (headers: Record<string, string> = {}) =>
-  t?.app.request("/api/device/start", {
-    method: "POST",
-    headers: { ...json, ...headers },
-    body: JSON.stringify({ machineName: "m" }),
-  }) as Promise<Response>;
+/** A device start as Node would see it, from a socket at `from` (default: the local proxy). */
+const rawStart = (headers: Record<string, string> = {}, from = "127.0.0.1") =>
+  t?.app.request(
+    "/api/device/start",
+    {
+      method: "POST",
+      headers: { ...json, ...headers },
+      body: JSON.stringify({ machineName: "m" }),
+    },
+    { incoming: { socket: { remoteAddress: from } } },
+  ) as Promise<Response>;
 
 /** Client IP taken from a test-only header, so one test can act as several clients. */
 const ipFromHeader = (c: { req: { header(n: string): string | undefined } }) =>
@@ -307,6 +312,30 @@ test("default client IP uses the last X-Forwarded-For entry only when trustProxy
   for (let i = 0; i < 20; i++)
     await rawStart({ "X-Forwarded-For": `3.3.3.${i}` });
   expect((await rawStart({ "X-Forwarded-For": "4.4.4.4" })).status).toBe(429);
+});
+
+test("with trustProxy, X-Forwarded-For counts only from a loopback socket", async () => {
+  t = await testApp({ config: { trustProxy: true } });
+  // Through the local proxy (IPv4 or IPv6 loopback): each client has its own bucket.
+  for (let i = 0; i < 25; i++)
+    expect(
+      (
+        await rawStart(
+          { "X-Forwarded-For": `5.5.5.${i}` },
+          i % 2 ? "::1" : "127.0.0.1",
+        )
+      ).status,
+    ).toBe(200);
+  // Straight from the network: the header is ignored and the socket is the key.
+  for (let i = 0; i < 20; i++)
+    await rawStart({ "X-Forwarded-For": `6.6.6.${i}` }, "203.0.113.9");
+  expect(
+    (await rawStart({ "X-Forwarded-For": "7.7.7.7" }, "203.0.113.9")).status,
+  ).toBe(429);
+  expect(
+    (await rawStart({ "X-Forwarded-For": "7.7.7.7" }, "::ffff:127.0.0.1"))
+      .status,
+  ).toBe(200);
 });
 
 test("concurrent failed approves cannot overshoot the limit", async () => {
