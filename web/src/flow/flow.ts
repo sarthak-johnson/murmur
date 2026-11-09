@@ -99,6 +99,27 @@ export function cardFacts(p: PartView, now: string): [string, string, string] {
   return [n(p.agents.length, "helper"), n(p.files.length, "file"), time];
 }
 
+/**
+ * The one line a wide card has room for, so no card has an empty middle: the aim, else
+ * what done means, else the latest step, else what it leads to ("hands off to Conversation
+ * page"). Unset when the part has said none of these.
+ */
+export function cardLine(req: RequestView, p: PartView): string | undefined {
+  const aim = p.aim?.aim.trim();
+  if (aim) return aim;
+  const done = p.aim?.doneWhen.trim();
+  if (done)
+    return `Done when ${done.replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase())}`;
+  const step = p.steps.at(-1)?.text.trim();
+  if (step) return step;
+  for (const l of p.links) {
+    const to = req.parts.find((o) => o.id === l.to && o !== p);
+    if (to)
+      return `${l.label[0]?.toUpperCase()}${l.label.slice(1)} ${to.title}`;
+  }
+  return undefined;
+}
+
 const TASK = /\btasks?\s+(\d+[a-z]?)(?:\s*[-–]\s*(\d+[a-z]?))?/i;
 const BUG = /\b(B\d+)\b/;
 
@@ -184,8 +205,8 @@ export function bandWord(req: RequestView, b: Band): string {
   return req.finished ? "Left open" : "Not started";
 }
 
-/** "6 of 6 done · 10:08 to 12:47", "0 of 2 done · 12:50 to now". */
-export function bandLine(b: Band, running: boolean): string {
+/** ["6 of 6 done", "10:08 to 12:47"], ["0 of 2 done", "12:50 to now"]; no span before a start. */
+export function bandLine(b: Band, running: boolean): [string, string?] {
   const done = b.parts.filter((p) => p.status === "done").length;
   const from = b.parts.flatMap((p) => p.span?.start ?? []).sort()[0];
   const last = b.parts
@@ -194,17 +215,23 @@ export function bandLine(b: Band, running: boolean): string {
     .at(-1);
   const to = running || !last ? "now" : clock(last);
   const count = `${done} of ${b.parts.length} done`;
-  return from ? `${count} · ${clock(from)} to ${to}` : count;
+  return from ? [count, `${clock(from)} to ${to}`] : [count];
 }
 
 /** Past this many parts, each band folds its done parts into one row. */
 export const FOLD_AT = 20;
 
-// The grid every board is laid on. Cards are one size, so rows line up across columns
-// and the gaps between them are free channels for links.
-export const CARD_H = 136;
+// The grid every board is laid on. Cards are one width and every card in a row is as tall
+// as the row's tallest, so rows line up across columns and the gaps between them are free
+// channels for links, and no row is taller than its content needs. The page measures each
+// card's content; until it has, a wide card without a line is estimated shorter.
+const CARD_H = 136;
+/** The card's line: its 6 px gap and two 18 px lines. */
+const LINE_H = 42;
 const MIN_W = 156;
 const MAX_W = 340;
+/** From this width a card shows its line (14 px padding and a 1 px border each side). */
+const WIDE_W = 290;
 const GX = 32;
 const BAND_GX = 48;
 const GY = 24;
@@ -244,6 +271,8 @@ export interface LinkPath {
 }
 export interface FlowLayout {
   width: number;
+  /** Cards are wide enough to show their line. */
+  wide: boolean;
   height: number;
   bands: BandBox[];
   cards: CardBox[];
@@ -313,9 +342,15 @@ export function neighbour(
  */
 export function layoutFlow(
   req: RequestView,
-  opts: { width: number; stacked: boolean; open: ReadonlySet<string> },
+  opts: {
+    width: number;
+    stacked: boolean;
+    open: ReadonlySet<string>;
+    /** Each card's height as measured in the page, by part id; estimated until then. */
+    heights?: ReadonlyMap<string, number>;
+  },
 ): FlowLayout {
-  const { width, stacked, open } = opts;
+  const { width, stacked, open, heights } = opts;
   const fold = req.parts.length > FOLD_AT;
   const shown = bands(req).map((band) => {
     const keep =
@@ -336,7 +371,22 @@ export function layoutFlow(
   const cw = stacked
     ? Math.max(MIN_W, width - LEFT)
     : Math.min(MAX_W, Math.max(MIN_W, (width - gaps) / Math.max(1, cols)));
-  const rowY = (r: number) => TOP + r * (CARD_H + GY);
+  const wide = cw >= WIDE_W;
+  const cardH = (p: PartView) =>
+    heights?.get(p.id) ??
+    (wide && !cardLine(req, p) ? CARD_H - LINE_H : CARD_H);
+  // Wide, row r is as tall as its tallest card; stacked, each card is its own row.
+  const rowH: number[] = [];
+  if (!stacked)
+    for (const { cols: bc } of shown)
+      for (const col of bc)
+        for (const [r, p] of col.entries())
+          rowH[r] = Math.max(rowH[r] ?? 0, cardH(p));
+  const rowY = (r: number, hs = rowH) => {
+    let y = TOP;
+    for (let k = 0; k < r; k++) y += (hs[k] ?? CARD_H) + GY;
+    return y;
+  };
 
   const bandBoxes: BandBox[] = [];
   const cards: CardBox[] = [];
@@ -346,6 +396,7 @@ export function layoutFlow(
   shown.forEach(({ band, cols: bc, folded }, bi) => {
     if (stacked) {
       const list = bc.flat();
+      const hs = list.map(cardH);
       for (const [i, part] of list.entries())
         cards.push({
           part,
@@ -353,13 +404,13 @@ export function layoutFlow(
           col: 0,
           row: i,
           x: LEFT,
-          y: y + rowY(i),
+          y: y + rowY(i, hs),
           w: cw,
-          h: CARD_H,
+          h: hs[i] ?? CARD_H,
         });
-      const fy = y + rowY(list.length);
+      const fy = y + rowY(list.length, hs);
       const fold = folded ? { x: LEFT, y: fy, w: cw, h: FOLD_H } : undefined;
-      const h = (fold ? fy + FOLD_H : y + rowY(list.length) - GY) - y;
+      const h = (fold ? fy + FOLD_H : fy - GY) - y;
       bandBoxes.push({
         band,
         folded,
@@ -384,7 +435,7 @@ export function layoutFlow(
           x: x + ci * (cw + GX),
           y: rowY(ri),
           w: cw,
-          h: CARD_H,
+          h: rowH[ri] ?? CARD_H,
         });
     const rows = Math.max(0, ...bc.map((c) => c.length));
     const fold = folded
@@ -420,15 +471,25 @@ export function layoutFlow(
 
   return {
     width: boardW,
+    wide,
     height,
     bands: bandBoxes,
     cards,
-    links: route(cards, stacked, maxRows),
+    links: route(
+      cards,
+      stacked,
+      Array.from({ length: maxRows + 1 }, (_, r) => rowY(r) - GY / 2),
+    ),
   };
 }
 
 /** Links between shown parts, one per pair, routed through the gaps between cards. */
-function route(cards: CardBox[], stacked: boolean, rows: number): LinkPath[] {
+function route(
+  cards: CardBox[],
+  stacked: boolean,
+  /** The gap channels between rows, at their middles; any of them runs clear across the board. */
+  channels: number[],
+): LinkPath[] {
   const at = new Map(cards.map((c) => [c.part.id, c]));
   const pairs = new Map<string, LinkPath & { a: CardBox; b: CardBox }>();
   for (const reader of cards)
@@ -455,11 +516,6 @@ function route(cards: CardBox[], stacked: boolean, rows: number): LinkPath[] {
       });
     }
   const mid = (c: Box) => c.y + c.h / 2;
-  // The gap channels between rows, at their middles; any of them runs clear across the board.
-  const channels = Array.from(
-    { length: rows + 1 },
-    (_, r) => TOP + r * (CARD_H + GY) - GY / 2,
-  );
   return [...pairs.values()].map(({ a, b, ...link }) => {
     let pts: [number, number][];
     if (stacked) {

@@ -10,7 +10,14 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FlowBoard } from "../src/flow/FlowBoard";
-import { bands, cardFacts, columns, tagOf } from "../src/flow/flow";
+import {
+  bands,
+  cardFacts,
+  cardLine,
+  columns,
+  layoutFlow,
+  tagOf,
+} from "../src/flow/flow";
 
 afterEach(() => {
   cleanup();
@@ -225,6 +232,21 @@ describe("layering", () => {
   });
 });
 
+describe("layering edge cases", () => {
+  it("a self link, a link to a missing part and a three-part loop still lay out", () => {
+    const parts = [
+      part({ id: "a", links: [...uses("a", "ghost"), ...uses("c")] }),
+      part({ id: "b", links: uses("a") }),
+      part({ id: "c", links: uses("b") }),
+    ];
+    expect(columns(parts).map((c) => c.map((p) => p.id))).toEqual([
+      ["a"],
+      ["b"],
+      ["c"],
+    ]);
+  });
+});
+
 describe("bands", () => {
   it("one per phase with parts, in plan order, then Other work", () => {
     const bs = bands(seven());
@@ -326,6 +348,87 @@ const on = () =>
     .map((l) => l.dataset.key)
     .sort();
 
+describe("no empty gap on a card", () => {
+  const wide = { width: 2400, stacked: false, open: new Set<string>() };
+
+  it("says the aim, else what done means, else the latest step", () => {
+    const step = (text: string) => ({
+      ts: at(1),
+      text,
+      status: "done" as const,
+      eventIds: [],
+    });
+    expect(
+      cardLine(
+        request(),
+        part({ id: "a", aim: { aim: "Build it.", doneWhen: "x" } }),
+      ),
+    ).toBe("Build it.");
+    expect(
+      cardLine(
+        request(),
+        part({ id: "a", aim: { aim: "", doneWhen: "Tests pass." } }),
+      ),
+    ).toBe("Done when tests pass.");
+    expect(
+      cardLine(
+        request(),
+        part({ id: "a", steps: [step("Built"), step("Reviewing")] }),
+      ),
+    ).toBe("Reviewing");
+    const b = part({ id: "b", title: "Conversation page" });
+    const a = part({ id: "a", links: [{ to: "b", label: "hands off to" }] });
+    const req = request({ parts: [a, b] });
+    expect(cardLine(req, a)).toBe("Hands off to Conversation page");
+    expect(cardLine(req, b)).toBeUndefined();
+  });
+
+  it("cards in a row stay one height; a row with nothing more to say is shorter", () => {
+    const req = request({
+      phases: [phase({ id: "p" })],
+      parts: [
+        part({ id: "a", phase: "p", aim: { aim: "Do a.", doneWhen: "" } }),
+        part({ id: "b", phase: "p" }),
+        part({ id: "c", phase: "p", links: uses("a") }),
+      ],
+    });
+    const l = layoutFlow(req, wide);
+    expect(l.wide).toBe(true);
+    const h = (id: string) => l.cards.find((c) => c.part.id === id)?.h;
+    // a and c share the first row; b, alone in the second, has no line.
+    expect(h("c")).toBe(h("a"));
+    expect(h("b")).toBeLessThan(h("a") ?? 0);
+  });
+
+  it("measured heights win: a row is as tall as its tallest card", () => {
+    const l = layoutFlow(seven(), {
+      ...wide,
+      width: 600,
+      heights: new Map([
+        ["tokens", 90],
+        ["hero", 150],
+        ["basics", 100],
+        ["b1", 80],
+      ]),
+    });
+    const h = (id: string) => l.cards.find((c) => c.part.id === id)?.h;
+    // tokens, hero and frame share row 0; basics sits alone in row 1 of its column.
+    expect(h("tokens")).toBe(150);
+    expect(h("hero")).toBe(150);
+    expect(h("basics")).toBe(100);
+    const basics = l.cards.find((c) => c.part.id === "basics");
+    expect(basics?.y).toBe(
+      (l.cards.find((c) => c.part.id === "hero")?.y ?? 0) + 150 + 24,
+    );
+  });
+
+  it("narrow cards keep one height and show no line", () => {
+    const l = layoutFlow(seven(), { ...wide, width: 600 });
+    expect(l.wide).toBe(false);
+    expect(new Set(l.cards.map((c) => c.h)).size).toBe(1);
+  });
+});
+
 describe("selection", () => {
   it("links are quiet until a part is selected; checks are dashed", () => {
     render(<FlowBoard sessionId="s1" request={seven()} />);
@@ -384,6 +487,26 @@ describe("selection", () => {
     render(<FlowBoard sessionId="s1" request={seven()} />);
     expect(card("The rail").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("region", { name: "Selected part" })).toBeTruthy();
+  });
+
+  it("?part= scrolls its card into view, so a part in a far band is not hidden", () => {
+    const into = vi.fn();
+    Element.prototype.scrollIntoView = into;
+    try {
+      history.replaceState(null, "", "/s/s1/r/r7/flow?part=b1");
+      render(<FlowBoard sessionId="s1" request={seven()} />);
+      expect(into.mock.contexts).toContain(card("Closed trades disagree"));
+    } finally {
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+    }
+  });
+
+  it("?part= naming no part selects nothing and leaves the first card a tab stop", () => {
+    history.replaceState(null, "", "/s/s1/r/r7/flow?part=nope");
+    render(<FlowBoard sessionId="s1" request={seven()} />);
+    expect(screen.queryAllByRole("button", { pressed: true })).toHaveLength(0);
+    expect(screen.queryByRole("region", { name: "Selected part" })).toBeNull();
+    expect(document.querySelectorAll('.fc[tabindex="0"]')).toHaveLength(1);
   });
 
   it("arrow keys move the selection along columns and rows", async () => {
@@ -450,6 +573,46 @@ describe("folding past 20 parts", () => {
     history.replaceState(null, "", "/s/s1/r/r7/flow?part=p7");
     render(<FlowBoard sessionId="s1" request={big()} />);
     expect(card("Part 7").getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+describe("band index", () => {
+  it("names every band and scrolls the frame to the one picked", async () => {
+    render(<FlowBoard sessionId="s1" request={seven()} />);
+    const index = screen.getByRole("navigation", { name: "Phases" });
+    const items = within(index).getAllByRole("button");
+    expect(items.map((b) => b.textContent)).toEqual([
+      "Phase 0: foundation6 parts",
+      "Phase 11 part",
+      "Other work1 part",
+    ]);
+    const frame = document.querySelector(".fb-frame") as HTMLElement;
+    const scrollTo = vi.fn();
+    frame.scrollTo = scrollTo as unknown as typeof frame.scrollTo;
+    await userEvent.click(items[1] as HTMLElement);
+    const phase1 = screen.getByRole("heading", { name: "Phase 1" })
+      .parentElement as HTMLElement;
+    expect(scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        left: Number.parseFloat(phase1.style.left),
+      }),
+    );
+  });
+
+  it("a deep-linked part's band stays open after the selection clears", () => {
+    history.replaceState(null, "", "/s/s1/r/r7/flow?part=p7");
+    const parts = Array.from({ length: 22 }, (_, i) =>
+      part({ id: `p${i}`, title: `Part ${i}`, phase: "a" }),
+    );
+    render(
+      <FlowBoard
+        sessionId="s1"
+        request={request({ phases: [phase({ id: "a" })], parts })}
+      />,
+    );
+    fireEvent.keyDown(card("Part 7"), { key: "Escape" });
+    expect(screen.queryByRole("button", { name: /done$/ })).toBeNull();
+    expect(card("Part 7")).toBeTruthy();
   });
 });
 

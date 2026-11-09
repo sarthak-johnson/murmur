@@ -2931,6 +2931,7 @@ button.task-chip:hover {
 }
 .fb-frame {
   overflow-x: auto;
+  scroll-behavior: smooth;
   overflow-y: hidden;
   padding: 18px 22px 22px;
   border-radius: 14px;
@@ -2938,20 +2939,94 @@ button.task-chip:hover {
   box-shadow: inset 0 0 0 1px var(--s6);
   animation: fade-in 200ms ease-out;
 }
-/* More of the board lies to the right: its edge fades rather than cuts. */
+/* More of the board lies past an edge: that edge fades rather than cuts, with a button. */
 .fb-wrap {
   position: relative;
 }
+.fb-wrap.less::before,
 .fb-wrap.more::after {
   content: "";
   position: absolute;
+  z-index: 1;
   top: 1px;
-  right: 1px;
   bottom: 1px;
-  width: 64px;
+  width: 72px;
+  pointer-events: none;
+}
+.fb-wrap.less::before {
+  left: 1px;
+  border-radius: 13px 0 0 13px;
+  background: linear-gradient(to left, transparent, var(--s2));
+}
+.fb-wrap.more::after {
+  right: 1px;
   border-radius: 0 13px 13px 0;
   background: linear-gradient(to right, transparent, var(--s2));
-  pointer-events: none;
+}
+.fb-edge {
+  position: absolute;
+  z-index: 2;
+  /* Level with the band headers, where it covers no card. */
+  top: 24px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0 0 2px;
+  border: 1px solid var(--s7);
+  border-radius: 50%;
+  background: var(--s4);
+  color: var(--t1);
+  font: 400 20px / 1 var(--font-ui);
+  cursor: pointer;
+}
+.fb-edge:hover {
+  border-color: var(--s9);
+  background: var(--s5);
+}
+.fb-edge.l {
+  left: 10px;
+}
+.fb-edge.r {
+  right: 10px;
+}
+/* The bands by name, when some lie off screen; each one scrolls the frame to its band. */
+.fb-index {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.fb-ix {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--s6);
+  border-radius: 9px;
+  background: none;
+  color: var(--t3);
+  font: 500 13px / 18px var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.fb-ix .mk {
+  width: 14px;
+  height: 14px;
+}
+.fb-ix:hover {
+  border-color: var(--s8);
+  color: var(--t1);
+}
+.fb-ix.seen {
+  border-color: var(--s8);
+  background: var(--s3);
+  color: var(--t1);
+}
+.fb-ix-n {
+  color: var(--t4);
+  font-weight: 400;
 }
 .fb-canvas {
   position: relative;
@@ -2962,7 +3037,9 @@ button.task-chip:hover {
   padding: 0 2px 10px;
   border-bottom: 1px solid var(--s6);
 }
+/* One line, cut after a whole word. */
 .fb-name {
+  display: -webkit-box;
   min-width: 0;
   margin: 0;
   overflow: hidden;
@@ -2970,8 +3047,9 @@ button.task-chip:hover {
   font-size: 15px;
   font-weight: 600;
   line-height: 22px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
 }
 .fb-word,
 .fd-word {
@@ -2989,20 +3067,22 @@ button.task-chip:hover {
   width: 14px;
   height: 14px;
 }
+/* Pieces that do not fit wrap onto a second line, which is clipped away. */
 .fb-line {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  column-gap: 4px;
+  height: 18px;
   margin-top: 4px;
+  overflow: hidden;
   color: var(--t4);
   font-size: 13px;
   line-height: 18px;
   white-space: nowrap;
 }
-.fb-count {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.fb-line .fb-word {
+  margin-right: 6px;
 }
 .fb-div {
   position: absolute;
@@ -3047,12 +3127,15 @@ button.task-chip:hover {
   font: inherit;
   text-align: left;
   cursor: pointer;
-  container-type: inline-size;
   transition:
     opacity 200ms ease-out,
     border-color 150ms ease-out,
     background-color 150ms ease-out,
     box-shadow 150ms ease-out;
+}
+/* Nothing in a card shrinks: the board measures it and makes its row tall enough. */
+.fc > * {
+  flex-shrink: 0;
 }
 .fc:hover {
   border-color: var(--s8);
@@ -3143,21 +3226,19 @@ button.task-chip:hover {
   color: var(--t4);
   text-align: center;
 }
-/* A wide card has room to say what the part is for. */
-@container (min-width: 260px) {
-  .fc-ttl {
-    -webkit-line-clamp: 1;
-  }
-  .fc-aim {
-    display: -webkit-box;
-    margin-top: 6px;
-    overflow: hidden;
-    color: var(--t3);
-    font-size: 13px;
-    line-height: 18px;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-  }
+/* A wide card has room for one more fact: what the part is for (flow.ts sets `wide`). */
+.fc.wide .fc-ttl {
+  -webkit-line-clamp: 1;
+}
+.fc.wide .fc-aim {
+  display: -webkit-box;
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--t3);
+  font-size: 13px;
+  line-height: 18px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 /* How a card relates to the selected one, on its top edge. */
 .fc-rel {
@@ -3306,6 +3387,9 @@ button.task-chip:hover {
   .fd,
   .fc-pulse .mk.running {
     animation: none;
+  }
+  .fb-frame {
+    scroll-behavior: auto;
   }
   .fl,
   .fc {
