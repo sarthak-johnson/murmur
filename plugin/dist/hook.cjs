@@ -21207,6 +21207,11 @@ function readRefresh(sessionId) {
 function writeRefresh(sessionId, r) {
   writeJson(refreshFile(sessionId), r);
 }
+function clearRefresh(sessionId) {
+  import_node_fs.default.rmSync(import_node_path.default.join(murmurDir(), refreshFile(sessionId)), { force: true });
+  const { refresh: _, ...rest } = readSession(sessionId);
+  if (_) writeSession(sessionId, rest);
+}
 var NO_NARRATION = {
   mapped: false,
   tasks: [],
@@ -21861,6 +21866,37 @@ Answer with one JSON object and nothing else, in exactly this shape:
   }]
 }
 Rules: use only the task and part ids in the plan, exactly as written; never add, rename or drop one. The tasks under "done" are finished: say nothing of them. Give one entry in "tasks" for every task in the plan that has started. A task is "done" only when the material shows it finished (a helper reported it done, Claude said so, a commit or review passed); "running" while it is under way; "failed" when it was given up or is blocked. Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
+function requestsOf(r) {
+  if (r?.requests) return r.requests;
+  if (!r?.request) return {};
+  const { tried, at, tasks } = r;
+  return {
+    [r.request]: {
+      ...tried ? { tried } : {},
+      ...at ? { at } : {},
+      ...tasks ? { tasks } : {}
+    }
+  };
+}
+function pickRequest(requests, events, per, t) {
+  for (let i = requests.length - 1; i >= 0; i--) {
+    const req = requests[i];
+    const next = requests[i + 1];
+    const mine = per[req.id];
+    if (req.planInferred || req.recap || next && mine?.final) continue;
+    const own2 = events.filter(
+      (e) => e.ts >= req.startedAt && (!next || e.ts < next.startedAt)
+    );
+    const st = planState(own2, mine);
+    const open2 = req.phases.some(
+      (ph) => ph.tasks.some((x) => !settled(st.statuses.get(x.id)))
+    );
+    const news = !mine?.tried || st.latest > Date.parse(mine.tried);
+    const due = !!next || st.reports >= STALE_REPORTS || t - st.changed >= STALE_MS;
+    if (open2 && news && due) return { req, own: own2, st, finished: !!next };
+  }
+  return void 0;
+}
 async function runRefresh(sessionId, {
   env = process.env,
   now = /* @__PURE__ */ new Date(),
@@ -21881,7 +21917,12 @@ async function runRefresh(sessionId, {
   if (prior && t - Date.parse(prior.checked) < CHECK_MS) return none;
   if (prior?.tried && t - Date.parse(prior.tried) < REFRESH_EVERY_MS)
     return none;
-  writeRefresh(sessionId, { ...prior, checked: iso });
+  const per = requestsOf(prior);
+  writeRefresh(sessionId, {
+    ...prior?.tried ? { tried: prior.tried } : {},
+    requests: per,
+    checked: iso
+  });
   const events = readBackfill({
     sessionId,
     machineId: creds.machineId,
@@ -21890,20 +21931,19 @@ async function runRefresh(sessionId, {
     cutoff: iso
   });
   const view = reduce(events);
-  const req = view.requests.at(-1);
-  if (!req || req.planInferred || req.recap) return none;
-  const mine = prior?.request === req.id ? prior : void 0;
-  const own2 = events.filter((e) => e.ts >= req.startedAt);
-  const st = planState(own2, mine);
+  const pick2 = pickRequest(view.requests, events, per, t);
+  if (!pick2) return none;
+  const { req, own: own2, st, finished } = pick2;
+  const mine = per[req.id];
   const tasks = req.phases.flatMap((ph) => ph.tasks);
-  const news = !prior?.tried || st.latest > Date.parse(prior.tried);
-  const stale = news && tasks.some((x) => !settled(st.statuses.get(x.id))) && (st.reports >= STALE_REPORTS || t - st.changed >= STALE_MS);
-  if (!stale) return none;
+  const atMs = finished ? Date.parse(own2.at(-1).ts) + 1 : t;
   writeRefresh(sessionId, {
-    ...mine,
     checked: iso,
-    request: req.id,
-    tried: iso
+    tried: iso,
+    requests: {
+      ...per,
+      [req.id]: { ...mine, tried: iso, ...finished ? { final: true } : {} }
+    }
   });
   const done = (id) => st.statuses.get(id) === "done";
   const plan = {
@@ -21966,19 +22006,26 @@ ${reportsInput(own2)}`,
     { ...answer.data, tasks: moved },
     events.find((e2) => e2.id === req.id),
     changedPaths(events),
-    t
+    atMs
   ))
     enqueue(e);
+  const after = readRefresh(sessionId);
   writeRefresh(sessionId, {
     checked: iso,
-    request: req.id,
     tried: iso,
-    at: iso,
-    // Every status the plan has now, not only this answer's, which may leave one out.
-    tasks: Object.fromEntries([
-      ...st.statuses,
-      ...moved.map((x) => [x.id, x.status])
-    ])
+    requests: {
+      ...requestsOf(after),
+      [req.id]: {
+        tried: iso,
+        ...finished ? { final: true } : {},
+        at: new Date(atMs).toISOString(),
+        // Every status the plan has now, not only this answer's, which may leave one out.
+        tasks: Object.fromEntries([
+          ...st.statuses,
+          ...moved.map((x) => [x.id, x.status])
+        ])
+      }
+    }
   });
   log(`murmur refresh: ${req.id} ok (${secs} s${costOf(r)})`);
   return { ran: 1, ok: 1 };
@@ -22267,7 +22314,10 @@ function readBackfill(b, {
   }
   return out.slice(from);
 }
-async function runBackfill(sessionId, opts = {}) {
+async function runBackfill(sessionId, {
+  env = process.env,
+  ...opts
+} = {}) {
   const deadline = Date.now() + 23e4;
   const creds = readCredentials();
   const s = readSession(sessionId);
@@ -22277,6 +22327,7 @@ async function runBackfill(sessionId, opts = {}) {
     backfill: "running",
     runningSince: (/* @__PURE__ */ new Date()).toISOString()
   });
+  clearRefresh(sessionId);
   let events = [];
   let upTo;
   try {
@@ -22306,10 +22357,13 @@ async function runBackfill(sessionId, opts = {}) {
   if (same()) await flush(creds, { budgetMs: 5e4, ...opts });
   const left = () => deadline - Date.now();
   const recap = await runRecap(sessionId, events, {
+    env,
     lastOpen: lastRequestOpen(s.triggerHook),
     budgetMs: Math.min(15e4, left() - 7e4)
   });
   if (recap.ok && same())
+    await flush(creds, { budgetMs: Math.max(1e3, left()), ...opts });
+  if (left() > 75e3 && (await runRefresh(sessionId, { env })).ok && same())
     await flush(creds, { budgetMs: Math.max(1e3, left()), ...opts });
   return events.length;
 }

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { MAP_TOOL, type MurmurEvent, NARRATE_TOOL, reduce } from "@murmur/core";
 import { beforeEach, describe, expect, it } from "vitest";
-import { readBackfill } from "../src/backfill.js";
+import { readBackfill, runBackfill } from "../src/backfill.js";
 import {
   clearCredentials,
   queueDir,
@@ -13,6 +13,7 @@ import {
   setProjectState,
   updateSession,
   writeCredentials,
+  writeRefresh,
   writeSession,
 } from "../src/local.js";
 import { runRecap, runRefresh } from "../src/recap.js";
@@ -259,8 +260,8 @@ describe("live plan refresh", () => {
       "Header built and reviewed.",
     ]);
     expect(readRefresh(SID)).toMatchObject({
-      request: req?.id,
       tried: t(10),
+      requests: { [req?.id as string]: { tried: t(10) } },
     });
   });
 
@@ -649,4 +650,171 @@ describe("review fixes", () => {
     await runRefresh(SID, { env: env(), now: at(10), ...quiet });
     expect(onServer(at(10))?.now).toEqual(before);
   });
+});
+
+/** Request 1 (open: t1 running, `first` after it), then request 2 from minute 10, mapped, `second` after its map. */
+function twoRequests(
+  second: unknown[] = [],
+  first: unknown[] = reports(5, 6, 7),
+) {
+  write([
+    ...first,
+    {
+      type: "user",
+      uuid: "prompt2",
+      timestamp: t(10),
+      origin: { kind: "human" },
+      message: { content: "Now the footer" },
+    },
+    ...call("toolu_map2", 11, MAP_TOOL, MAP),
+    ...second,
+  ]);
+}
+const allDone = [
+  ...narrate("toolu_d1", 11.5, "t1", "done"),
+  ...narrate("toolu_d2", 11.6, "t2", "done"),
+];
+const history = (now: Date) =>
+  readBackfill({
+    sessionId: SID,
+    machineId: "m1",
+    cwd,
+    transcriptPath: transcript,
+    cutoff: now.toISOString(),
+  });
+const serverRequests = (now: Date) =>
+  reduce([...history(now), ...queued()]).requests;
+const stdin = () => fs.readFileSync(`${dir}/stdin.txt`, "utf8");
+
+describe("finished requests", () => {
+  it("a finished request left open gets one final refresh, drawn on that request", async () => {
+    twoRequests(allDone);
+    fake(ANSWER);
+    expect(
+      await runRefresh(SID, { env: env(), now: at(20), ...quiet }),
+    ).toEqual({ ran: 1, ok: 1 });
+    expect(stdin()).toContain("Build the agent page");
+    expect(stdin()).not.toContain("Now the footer");
+    // Its events fall inside request 1, before request 2's prompt.
+    expect(queued().every((e) => e.ts > t(7) && e.ts < t(10))).toBe(true);
+    const [first, second] = serverRequests(at(20));
+    expect(first?.phases[0]?.tasks.map((x) => x.status)).toEqual([
+      "done",
+      "now",
+    ]);
+    expect(second?.phases[0]?.tasks.map((x) => x.status)).toEqual([
+      "done",
+      "done",
+    ]);
+    expect(readRefresh(SID)?.requests?.[first?.id as string]?.final).toBe(true);
+  });
+
+  it("never a second time, even with something new", async () => {
+    twoRequests(allDone);
+    fake(ANSWER);
+    await runRefresh(SID, { env: env(), now: at(20), ...quiet });
+    twoRequests(allDone, reports(5, 6, 7, 8, 9));
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(60), ...quiet })).ran,
+    ).toBe(0);
+    expect(calls()).toHaveLength(1);
+  });
+
+  it("a final refresh that failed is not tried again either", async () => {
+    twoRequests(allDone);
+    fake({ tasks: [{ id: "t9", status: "done", ended: "x" }], parts: [] });
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(20), ...quiet })).ok,
+    ).toBe(0);
+    fake(ANSWER);
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(60), ...quiet })).ran,
+    ).toBe(0);
+  });
+
+  it("the latest wins when stale, one ask per run, and the finished one catches up after 30 minutes", async () => {
+    twoRequests(reports(12, 13, 14));
+    fake(ANSWER);
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(20), ...quiet })).ok,
+    ).toBe(1);
+    expect(calls()).toHaveLength(1);
+    expect(stdin()).toContain("Now the footer");
+    // The per-session cap holds across requests.
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(35), ...quiet })).ran,
+    ).toBe(0);
+    expect(
+      (await runRefresh(SID, { env: env(), now: at(51), ...quiet })).ok,
+    ).toBe(1);
+    expect(stdin()).toContain("Build the agent page");
+    expect(stdin()).not.toContain("Now the footer");
+    const [first, second] = serverRequests(at(51));
+    expect(first?.phases[0]?.tasks[0]?.status).toBe("done");
+    expect(second?.phases[0]?.tasks[0]?.status).toBe("done");
+  });
+
+  it.each([
+    ["headless", { CLAUDE_CODE_ENTRYPOINT: "sdk-cli" }, () => {}],
+    ["MURMUR_RECAP=0", { MURMUR_RECAP: "0" }, () => {}],
+    ["off", {}, () => setProjectState(cwd, "off")],
+    ["paused", {}, () => setPaused(cwd, true, SID)],
+  ])(
+    "%s: a finished request is never asked about",
+    async (_, extra, before) => {
+      twoRequests(allDone);
+      fake(ANSWER);
+      before();
+      expect(
+        (await runRefresh(SID, { env: env(extra), now: at(20), ...quiet })).ran,
+      ).toBe(0);
+      expect(calls()).toEqual([]);
+    },
+  );
+
+  it("a re-import starts the refresh state over, and the backfill child runs one pass", async () => {
+    twoRequests(allDone);
+    const [first] = reduce(history(at(30))).requests;
+    // What the server had before the re-import deleted it.
+    writeRefresh(SID, {
+      checked: new Date().toISOString(),
+      tried: new Date().toISOString(),
+      requests: {
+        [first?.id as string]: {
+          tried: t(20),
+          final: true,
+          at: t(9),
+          tasks: { t1: "done" },
+        },
+      },
+    });
+    updateSession(SID, { backfill: "pending", cutoff: t(30) });
+    fake(ANSWER);
+    await runBackfill(SID, {
+      env: env(),
+      fetch: (async () =>
+        new Response("{}", { status: 200 })) as unknown as typeof fetch,
+    });
+    expect(calls()).toHaveLength(1);
+    expect(stdin()).toContain("Build the agent page");
+    expect(readRefresh(SID)?.requests?.[first?.id as string]?.final).toBe(true);
+  });
+});
+
+it("reads the one-request state the first version wrote", async () => {
+  twoRequests(allDone);
+  const [first] = reduce(history(at(30))).requests;
+  // What the author's session holds: both tasks of request 1 already said done.
+  writeRefresh(SID, {
+    checked: t(-60),
+    tried: t(-60),
+    request: first?.id as string,
+    at: t(9),
+    tasks: { t1: "done", t2: "done" },
+  });
+  fake(ANSWER);
+  expect(
+    (await runRefresh(SID, { env: env(), now: at(20), ...quiet })).ran,
+  ).toBe(0);
+  expect(calls()).toEqual([]);
 });
