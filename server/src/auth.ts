@@ -36,6 +36,7 @@ const inviteOnly = (c: Context, login: string) =>
 <html lang="en">
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
 <title>Murmur is invite-only</title>
 <body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5">
 <p>This Murmur is invite-only. Ask its owner to add your GitHub name.</p>
