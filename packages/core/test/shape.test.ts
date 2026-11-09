@@ -330,6 +330,21 @@ describe("request state", () => {
     expect(b?.state).toBe("running");
   });
 
+  test("done: a refresh queued after the Stop does not reopen it", () => {
+    const refresh = (n: number, input: unknown): MurmurEvent => {
+      const e = narrateCall(n, input);
+      return { ...e, payload: { ...e.payload, recap: true, refresh: true } };
+    };
+    const [req] = reduce([
+      prompt(0, "x"),
+      mapCall(1, MAP),
+      said(2, "Done."),
+      at(3, "Stop"),
+      refresh(9, note({ task: "1.1", taskStatus: "done" })),
+    ]).requests;
+    expect(req?.state).toBe("done");
+  });
+
   test("failed: its last helper failed and nothing passed after", () => {
     const [req] = reduce([
       prompt(0, "x"),
@@ -401,7 +416,7 @@ describe("short title", () => {
     ).toBe("Restyle the logged-in app");
     expect(
       shortOf("Start Phase 2 of the Lit plate redesign: the agent page"),
-    ).toBe("Phase 2 of the Lit plate");
+    ).toBe("Phase 2");
     expect(shortOf("Continue the agent pages work")).toBe(
       "Continue the agent pages work",
     );
@@ -413,6 +428,27 @@ describe("short title", () => {
         "Review the internal (logged-in) pages of Tradara, which look mid",
       ),
     ).toBe("Review the internal pages");
+  });
+
+  test("a cut ends on a whole phrase, before its last small word, never under two words", () => {
+    expect(
+      shortOf(
+        "Track every phase of the Lit plate redesign in more detail, and carry the work",
+      ),
+    ).toBe("Track every phase");
+    expect(
+      shortOf(
+        "Review the inside of the Tradara app (logged in by the user) and say why",
+      ),
+    ).toBe("Review the inside");
+    // Backing off to before "the" would leave one word, so the cut stays.
+    expect(shortOf("Restart the two stopped Phase 3 jobs and publish")).toBe(
+      "Restart the two stopped Phase 3",
+    );
+    // No cut, no back-off.
+    expect(shortOf("Compare the app with the site")).toBe(
+      "Compare the app with the site",
+    );
   });
 
   test("a request with no map cuts its prompt", () => {
@@ -475,6 +511,22 @@ describe("helper roles and rounds", () => {
   test("rounds carry across requests", () => {
     expect(second?.agents[0]).toMatchObject({ subject: "Task 2", round: 2 });
     expect(second?.sentBack).toEqual(["Task 2"]);
+  });
+
+  test("a new build of a task number an older plan used starts over at round 1", () => {
+    const [a, b] = reduce([
+      prompt(0, "first plan"),
+      ...run(2, "Implement Task 1: tokens", "a1"),
+      ...run(4, "Review Task 1", "a2"),
+      ...run(6, "Fix Task 1 review findings", "a3"),
+      ...run(8, "Re-review Task 1", "a4"),
+      prompt(20, "second plan"),
+      ...run(22, "Implement Task 1: alerts table", "b1"),
+      ...run(24, "Review Task 1", "b2"),
+    ]).requests;
+    expect(a?.sentBack).toEqual(["Task 1"]);
+    expect(b?.agents.map((x) => x.round)).toEqual([1, 1]);
+    expect(b?.sentBack).toEqual([]);
   });
 
   test("counts by role, and the subjects sent back", () => {
@@ -572,6 +624,28 @@ describe("full cards for every part", () => {
         eventIds: ["e40"],
       },
     ]);
+  });
+
+  test("a review that failed reads as reviewed, not passed", () => {
+    const [r] = reduce([
+      prompt(0, "go"),
+      mapCall(1, LIT),
+      ...helper(10, "Implement Task 2: hero", "a1"),
+      call(20, "Review Task 2", "Review the hero."),
+      start(21, "a2"),
+      stop(22, "a2"),
+      prompt(
+        23,
+        '<task-notification>\n<task-id>a2</task-id>\n<tool-use-id>t20</tool-use-id>\n<output-file>/tmp/x.output</output-file>\n<status>failed</status>\n<summary>Agent "Review Task 2" failed</summary>\n<result>Ran out of turns.</result>\n</task-notification>',
+      ),
+    ]).requests;
+    const hero = r?.parts.find((p) => p.id === "hero");
+    expect(r?.agents[1]?.report?.status).toBe("failed");
+    expect(hero?.steps.map((s) => [s.text, s.status])).toEqual([
+      ["Built", "done"],
+      ["Reviewed", "failed"],
+    ]);
+    expect(hero?.aim?.doneWhen).toBe("Failed");
   });
 
   test("span from the first to the last event", () => {

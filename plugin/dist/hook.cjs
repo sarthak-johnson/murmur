@@ -20599,6 +20599,11 @@ function applyRounds(reqs, agents) {
     const s = subjectOf(a.description);
     if (!s) continue;
     a.subject = s;
+    if (a.role === "build") {
+      latest.delete(s);
+      last.delete(s);
+      reviewed.delete(s);
+    }
     const prev = Math.max(latest.get(s) ?? 0, 1);
     const n = ROUND.exec(a.description);
     const named = n ? Number(n[2] ?? n[1]) + 1 : void 0;
@@ -21369,9 +21374,19 @@ function shortOf(goal) {
     if (next.length > SHORT_MAX) break;
     out = next;
   }
-  const words = (out || s.slice(0, SHORT_MAX)).split(" ");
-  while (words.length > 1 && STOP.has(words.at(-1).toLowerCase()))
-    words.pop();
+  let words = (out || s.slice(0, SHORT_MAX)).split(" ");
+  const trim = (ws) => {
+    const t2 = [...ws];
+    while (t2.length > 1 && STOP.has(t2.at(-1).toLowerCase()))
+      t2.pop();
+    return t2;
+  };
+  if (out && words.length < s.split(/\s+/).length) {
+    const i = words.findLastIndex((w, k) => k > 0 && STOP.has(w.toLowerCase()));
+    const head = i > 0 ? trim(words.slice(0, i)) : [];
+    if (head.length >= 2) words = head;
+  }
+  words = trim(words);
   const t = words.join(" ").replace(/[.;]+$/, "");
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
@@ -21457,7 +21472,7 @@ var isFailed = (s) => s === "failed" || s === "blocked";
 function stateOf(req, events, live2, ctx) {
   if (ctx.waiting) return "waiting";
   const last = events.findLast(
-    (e) => !e.payload.agent_id && e.hook !== "Notification"
+    (e) => !e.payload.agent_id && e.hook !== "Notification" && real(e)
   );
   const ended = ["Stop", "StopFailure", "SessionEnd"].includes(
     last?.hook ?? ""
@@ -21616,7 +21631,7 @@ function helperStep(a, after, starts, ctx) {
     (b) => b.subject === a.subject && (b.round ?? 0) > (a.round ?? 0) && (b.role === "fix" || b.role === "recheck")
   ) || SENT_BACK.test(`${r?.verdict ?? ""} ${r?.text.slice(0, 300) ?? ""}`);
   const review = a.role === "review" || a.role === "recheck";
-  const text3 = review ? running ? a.role === "review" ? "Reviewing" : "Re-reviewing" : backed ? "Sent back" : r ? "Passed" : a.role === "review" ? "Reviewed" : "Re-reviewed" : a.role === "build" ? running ? "Building" : "Built" : a.role === "fix" ? running ? "Fixing" : "Fixed" : a.role === "plan" ? "Planned" : a.role === "research" ? "Researched" : a.description || "A helper";
+  const text3 = review ? running ? a.role === "review" ? "Reviewing" : "Re-reviewing" : backed ? "Sent back" : r && !failed ? "Passed" : a.role === "review" ? "Reviewed" : "Re-reviewed" : a.role === "build" ? running ? "Building" : "Built" : a.role === "fix" ? running ? "Fixing" : "Fixed" : a.role === "plan" ? "Planned" : a.role === "research" ? "Researched" : a.description || "A helper";
   const startEvent = starts.get(a.id);
   return {
     ts: a.startedAt,

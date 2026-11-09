@@ -103,9 +103,21 @@ export function shortOf(goal: string): string {
     if (next.length > SHORT_MAX) break;
     out = next;
   }
-  const words = (out || s.slice(0, SHORT_MAX)).split(" ");
-  while (words.length > 1 && STOP.has((words.at(-1) as string).toLowerCase()))
-    words.pop();
+  let words = (out || s.slice(0, SHORT_MAX)).split(" ");
+  const trim = (ws: string[]) => {
+    const t = [...ws];
+    while (t.length > 1 && STOP.has((t.at(-1) as string).toLowerCase()))
+      t.pop();
+    return t;
+  };
+  // A cut phrase ("Track every phase of the Lit") backs off to before its last small
+  // word ("Track every phase"), unless that leaves under two words.
+  if (out && words.length < s.split(/\s+/).length) {
+    const i = words.findLastIndex((w, k) => k > 0 && STOP.has(w.toLowerCase()));
+    const head = i > 0 ? trim(words.slice(0, i)) : [];
+    if (head.length >= 2) words = head;
+  }
+  words = trim(words);
   const t = words.join(" ").replace(/[.;]+$/, "");
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
@@ -237,8 +249,9 @@ function stateOf(
 ): RequestState {
   if (ctx.waiting) return "waiting";
   // The main thread's last word; a helper's events and notices say nothing of it.
+  // A recap or refresh is Murmur's, queued after the Stop at its own time.
   const last = events.findLast(
-    (e) => !e.payload.agent_id && e.hook !== "Notification",
+    (e) => !e.payload.agent_id && e.hook !== "Notification" && real(e),
   );
   const ended = ["Stop", "StopFailure", "SessionEnd"].includes(
     last?.hook ?? "",
@@ -483,7 +496,7 @@ function helperStep(
         : "Re-reviewing"
       : backed
         ? "Sent back"
-        : r
+        : r && !failed
           ? "Passed"
           : a.role === "review"
             ? "Reviewed"

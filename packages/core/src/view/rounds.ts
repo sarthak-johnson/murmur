@@ -67,6 +67,12 @@ export function applyRounds(
     const s = subjectOf(a.description);
     if (!s) continue;
     a.subject = s;
+    // A new build starts the count over: a later plan reuses "Task 1", a stopped job restarts.
+    if (a.role === "build") {
+      latest.delete(s);
+      last.delete(s);
+      reviewed.delete(s);
+    }
     const prev = Math.max(latest.get(s) ?? 0, 1);
     const n = ROUND.exec(a.description);
     const named = n ? Number(n[2] ?? n[1]) + 1 : undefined;

@@ -56,16 +56,16 @@ Helpers are build, review, recheck, fix, other.
 |---|---|---|---|---|---|---|---|
 | 1 | Compare tradara.in's UI | done | 3/0 | 3/0 | - | 0 | 0/0/0/0/0 |
 | 2 | Review the internal pages | left-open | 2/0 | 2/0 | - | 0 | 0/0/0/0/0 |
-| 3 | Review the inside of the Tradara | done | 8/0/0 | 6/0/2 | - | 0 | 0/0/0/0/0 |
+| 3 | Review the inside | done | 8/0/0 | 6/0/2 | - | 0 | 0/0/0/0/0 |
 | 4 | Revamp the logged-in app's look | done | 9/0/2 | 3/5/3 | - | 0 | 3/0/0/0/0 |
 | 5 | Redesign the other app screens | done | 14/2/0/0/0/0 | 4/3/0/4/1/4 | - | 0 | 0/0/0/0/4 |
 | 6 | Build the Lit plate redesign | left-open | 6/0 | 6/0 | - | 0 | 0/0/0/0/0 |
 | 7 | Restyle the logged-in app | left-open | 82/2 | 81/3 | - | 10 | 11/10/10/1/0 |
-| 8 | Track every phase of the Lit | done | 46/7/1 | 4/26/24 | - | 6 | 2/6/8/2/1 |
-| 9 | Phase 2 of the Lit plate | left-open | 113/0/0 | 1/5/107 | - | 18 | 19/18/20/0/2 |
+| 8 | Track every phase | done | 46/7/1 | 4/26/24 | - | 6 | 2/6/8/2/1 |
+| 9 | Phase 2 | left-open | 113/0/0 | 1/5/107 | - | 18 | 19/18/20/0/2 |
 | 10 | Continue the agent pages work | left-open | 2 | 2 | - | 0 | 0/0/0/0/0 |
 | 11 | Estimate time left | left-open | 4 | 4 | - | 0 | 1/1/0/0/0 |
-| 12 | Phase 3 of the Lit plate | left-open | 38/0 | 35/3 | - | 4 | 3/3/4/1/3 |
+| 12 | Phase 3 | left-open | 38/0 | 35/3 | - | 4 | 3/3/4/1/3 |
 | 13 | Restart the two stopped Phase 3 | running | 6/0 | 3/2 | since 15:12 UTC: the Task 38 builder, 1 message, 0 rounds | 1 | 1/1/1/0/0 |
 
 Request 7's messages stay under Phase 0 because Phase 1 only began in its last half hour, which is what happened.
@@ -89,7 +89,7 @@ Totals: 135 helpers, 477 distinct files, 7,269 commands, 38 subjects sent back, 
 
 ## Known limits
 
-- A short title cut at 32 characters can end mid phrase ("Track every phase of the Lit"); maps and recaps written from now on carry their own `short`.
+- A short title cut near 32 characters backs off to before its last article, preposition or conjunction ("Track every phase"), never under two words, so one with no such word can still end mid phrase ("Restart the two stopped Phase 3"); maps and recaps written from now on carry their own `short`.
 - Task 39's second fix round was done by messaging the builder, not by a new helper, so it shows one fix round, not two.
 - `running` for the last request rests on its last main-thread event not being a Stop; a session closed without a SessionEnd reads as running until the web compares the last event with the clock.
 
