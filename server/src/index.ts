@@ -15,8 +15,9 @@ try {
   console.error((e as Error).message);
   process.exit(1);
 }
-const { config, port, host, databaseUrl } = loaded;
-const { db, close } = await openDb(databaseUrl);
+const { config, port, host, databaseUrl, dataDir, startupNote } = loaded;
+if (startupNote) console.log(startupNote);
+const { db, close } = await openDb(databaseUrl, dataDir);
 const api = createApp({ db, now: () => new Date(), config });
 
 const dist =

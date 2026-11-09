@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { afterEach, expect, test } from "vitest";
-import { users, webSessions } from "../src/db/schema.js";
-import { sameOrigin, testApp } from "./helpers.js";
+import { afterEach, describe, expect, test } from "vitest";
+import { events, ingestTokens, users, webSessions } from "../src/db/schema.js";
+import { ev, ingest, linkMachine, sameOrigin, testApp } from "./helpers.js";
 
 let t: Awaited<ReturnType<typeof testApp>> | undefined;
 afterEach(async () => {
@@ -255,4 +255,94 @@ test("/auth/github without GitHub configured goes back to the sign-in page", asy
   const res = await t.app.request("/auth/github");
   expect(res.status).toBe(302);
   expect(res.headers.get("location")).toBe("/");
+});
+
+describe("allow-list", () => {
+  const fakeGithub = (login: string) => ({
+    createAuthorizationURL: (state: string) =>
+      new URL(`https://github.example/authorize?state=${state}`),
+    validate: async () => ({ id: 7, login, name: null, avatarUrl: null }),
+  });
+  const callback = (app: Awaited<ReturnType<typeof testApp>>["app"]) =>
+    app.request("/auth/github/callback?code=c&state=s", {
+      headers: { Cookie: "murmur_oauth_state=s" },
+    });
+
+  test("a GitHub login not on the list gets the invite-only page, no user and no session", async () => {
+    t = await testApp({
+      config: { allowedLogins: ["ada"] },
+      github: fakeGithub("mallory"),
+    });
+    const res = await callback(t.app);
+    expect(res.status).toBe(403);
+    expect(res.headers.get("content-type")).toMatch(/^text\/html/);
+    expect(await res.text()).toContain(
+      "This Murmur is invite-only. Ask its owner to add your GitHub name.",
+    );
+    expect(
+      res.headers.getSetCookie().some((c) => c.startsWith("murmur_session=")),
+    ).toBe(false);
+    expect(await t.db.select().from(users)).toHaveLength(0);
+    expect(await t.db.select().from(webSessions)).toHaveLength(0);
+  });
+
+  test("the list is case-insensitive", async () => {
+    t = await testApp({
+      config: { allowedLogins: ["ada"] },
+      github: fakeGithub("AdA"),
+    });
+    const res = await callback(t.app);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/");
+    expect(await t.db.select().from(webSessions)).toHaveLength(1);
+  });
+
+  test("without a list anyone may sign in with GitHub", async () => {
+    t = await testApp({ github: fakeGithub("mallory") });
+    expect((await callback(t.app)).status).toBe(302);
+    expect(await t.db.select().from(users)).toHaveLength(1);
+  });
+
+  test("dev login follows the list too", async () => {
+    t = await testApp({ config: { allowedLogins: ["ada"] } });
+    const no = await t.app.request("/auth/dev?login=%3Cb%3Emallory");
+    expect(no.status).toBe(403);
+    expect(await no.text()).toContain("&lt;b&gt;mallory");
+    expect(await t.db.select().from(users)).toHaveLength(0);
+    expect((await t.app.request("/auth/dev?login=ADA")).status).toBe(302);
+  });
+
+  test("a user taken off the list is signed out of cookie routes, and their data stays", async () => {
+    const list = ["ada", "bob"];
+    t = await testApp({ config: { allowedLogins: list } });
+    const ada = await t.loginAs("Ada");
+    const bob = await t.loginAs("bob");
+    const me = (cookie: string) =>
+      t?.app.request("/api/me", { headers: { Cookie: cookie } });
+    expect((await me(ada))?.status).toBe(200);
+    list.splice(0, 1); // the owner removes ada and restarts
+    const out = await me(ada);
+    expect(out?.status).toBe(401);
+    expect(await out?.json()).toEqual({ error: "unauthorized" });
+    expect((await me(bob))?.status).toBe(200);
+    const sessionsLeft = await t.db.select().from(webSessions);
+    expect(sessionsLeft).toHaveLength(1);
+    expect(await t.db.select().from(users)).toHaveLength(2);
+    list.push("ada"); // added back: the old cookie stays dead
+    expect((await me(ada))?.status).toBe(401);
+  });
+
+  test("a user taken off the list is refused on the ingest-token route, and their data stays", async () => {
+    const list = ["ada"];
+    t = await testApp({ config: { allowedLogins: list } });
+    const { token } = await linkMachine(t, "ADA");
+    expect((await ingest(t, token, [ev("s1")])).status).toBe(200);
+    list.length = 0;
+    list.push("someone-else");
+    const res = await ingest(t, token, [ev("s1")]);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+    expect(await t.db.select().from(events)).toHaveLength(1);
+    expect(await t.db.select().from(ingestTokens)).toHaveLength(1);
+  });
 });

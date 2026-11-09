@@ -34,6 +34,8 @@ export interface Deps {
     cookieSecure: boolean;
     /** Behind one trusted reverse proxy: take the client IP from the last X-Forwarded-For entry (the one the proxy appended). */
     trustProxy?: boolean;
+    /** Lowercase GitHub logins that may sign in; unset means anyone may. */
+    allowedLogins?: string[];
     /** SSE keep-alive comment interval. Defaults to 20 s. */
     ssePingMs?: number;
   };

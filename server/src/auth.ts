@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { GitHub } from "arctic";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
+import { html } from "hono/html";
 import type { Deps, GithubProvider } from "./app.js";
 import { ingestTokens, users, webSessions } from "./db/schema.js";
 
@@ -25,6 +26,25 @@ export const randomToken = () => randomBytes(32).toString("base64url");
 
 const unauthorized = (c: Context) => c.json({ error: "unauthorized" }, 401);
 
+/** True when no allow-list is set, or the login is on it (any case). */
+const allowed = ({ config }: Deps, login: string) =>
+  !config.allowedLogins || config.allowedLogins.includes(login.toLowerCase());
+
+const inviteOnly = (c: Context, login: string) =>
+  c.html(
+    html`<!doctype html>
+<html lang="en">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Murmur is invite-only</title>
+<body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5">
+<p>This Murmur is invite-only. Ask its owner to add your GitHub name.</p>
+<p>You signed in as <strong>${login}</strong>.</p>
+</body>
+</html>`,
+    403,
+  );
+
 /** Reads a JSON object body; null when the body is missing or not an object. */
 export async function readBody(
   c: Context,
@@ -35,9 +55,13 @@ export async function readBody(
     : null;
 }
 
-/** Cookie user. 401 when the cookie is missing, unknown or expired (expired rows are deleted). */
-export const requireUser = ({ db, now }: Deps) =>
+/**
+ * Cookie user. 401 when the cookie is missing, unknown or expired (expired rows are deleted),
+ * or the user is no longer on the allow-list (all their sessions are deleted; their data stays).
+ */
+export const requireUser = (deps: Deps) =>
   createMiddleware<AppEnv>(async (c, next) => {
+    const { db, now } = deps;
     const raw = getCookie(c, SESSION_COOKIE);
     if (!raw) return unauthorized(c);
     const idHash = sha256(raw);
@@ -51,12 +75,20 @@ export const requireUser = ({ db, now }: Deps) =>
       await db.delete(webSessions).where(eq(webSessions.idHash, idHash));
       return unauthorized(c);
     }
+    if (!allowed(deps, row.user.login)) {
+      await db.delete(webSessions).where(eq(webSessions.userId, row.user.id));
+      deleteCookie(c, SESSION_COOKIE, { path: "/" });
+      return unauthorized(c);
+    }
     c.set("user", row.user);
     await next();
   });
 
-/** Bearer ingest token. 401 when missing, unknown or revoked; records last use. */
-export const requireIngest = ({ db, now }: Deps) =>
+/**
+ * Bearer ingest token. 401 when missing, unknown, revoked, or its user is no longer on the
+ * allow-list (the token is kept, so adding them back lets it work again); records last use.
+ */
+export const requireIngest = ({ db, now, config }: Deps) =>
   createMiddleware<AppEnv>(async (c, next) => {
     const m = /^Bearer (mur_[A-Za-z0-9_-]+)$/.exec(
       c.req.header("authorization") ?? "",
@@ -69,6 +101,17 @@ export const requireIngest = ({ db, now }: Deps) =>
         and(
           eq(ingestTokens.tokenHash, sha256(m[1])),
           isNull(ingestTokens.revokedAt),
+          config.allowedLogins
+            ? inArray(
+                ingestTokens.userId,
+                db
+                  .select({ id: users.id })
+                  .from(users)
+                  .where(
+                    inArray(sql`lower(${users.login})`, config.allowedLogins),
+                  ),
+              )
+            : undefined,
         ),
       )
       .returning({
@@ -192,6 +235,7 @@ export function authRoutes(app: Hono<AppEnv>, deps: Deps) {
       } catch {
         return c.json({ error: "github_failed" }, 400);
       }
+      if (!allowed(deps, profile.login)) return inviteOnly(c, profile.login);
       const fields = {
         login: profile.login,
         name: profile.name,
@@ -221,6 +265,7 @@ export function authRoutes(app: Hono<AppEnv>, deps: Deps) {
     app.get("/auth/dev", async (c) => {
       const login = c.req.query("login")?.trim();
       if (!login) return c.json({ error: "bad_request" }, 400);
+      if (!allowed(deps, login)) return inviteOnly(c, login);
       const [user] = await db
         .insert(users)
         .values({ githubId: devGithubId(login), login })
