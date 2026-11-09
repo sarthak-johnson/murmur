@@ -211,12 +211,12 @@ afterEach(() => {
 });
 
 describe("live screen", () => {
-  it("the plan column and the bar say where the work is", () => {
+  it("the plan column and the progress under the title say where the work is", () => {
     show(session());
     const plan = screen.getByRole("complementary", { name: "Plan" });
     const phases = [...plan.querySelectorAll(".ph")].map((p) => p.className);
     expect(phases).toEqual(["ph done", "ph now", "ph todo"]);
-    const progress = within(screen.getByRole("banner")).getByRole("group", {
+    const progress = within(screen.getByRole("main")).getByRole("group", {
       name: "Progress",
     });
     expect(progress.textContent).toContain("Phase 2 of 3");
@@ -314,9 +314,15 @@ describe("live screen", () => {
         ],
       });
     const { rerender } = show(view());
-    const bar = kids(".bar");
+    const bar = kids(".top-right");
     const main = kids(".main");
-    expect(main).toEqual(["ask live-title", "asked-row", "story"]);
+    expect(main).toEqual([
+      "over",
+      "ask live-title",
+      "asked-row",
+      "tabs",
+      "tab-body",
+    ]);
     rerender(
       <Live
         sessionId="s1"
@@ -328,12 +334,14 @@ describe("live screen", () => {
         lastLooked={null}
       />,
     );
-    expect(kids(".bar")).toEqual([...bar, "cell need"]);
+    expect(kids(".top-right")).toEqual(["need-chip", ...bar]);
     expect(kids(".main")).toEqual([
+      "over",
       "ask live-title",
       "asked-row",
       "brief",
-      "story",
+      "tabs",
+      "tab-body",
     ]);
   });
 
@@ -341,6 +349,10 @@ describe("live screen", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       show(session());
+      // Delete sits in the session's menu in the top bar.
+      await userEvent.click(
+        screen.getByRole("button", { name: "Session menu" }),
+      );
       const del = screen.getByRole("button", { name: "Delete session" });
       await userEvent.click(del);
       expect(
@@ -374,18 +386,14 @@ describe("live screen", () => {
       ...(view.requests[0] as RequestView),
       kindInferred: true,
     };
-    show(view);
-    await userEvent.click(
-      within(screen.getByRole("banner")).getByRole("button", {
-        name: /Request 2 of 2/,
-      }),
-    );
-    const list = screen.getByRole("navigation", { name: "Requests" });
-    const [mapped, guessed] = within(list).getAllByRole("button");
-    expect(within(guessed as HTMLElement).getByText("inferred").className).toBe(
-      "inferred",
-    );
-    expect(within(mapped as HTMLElement).queryByText("inferred")).toBeNull();
+    show(view, { requestId: "r1" });
+    const kind = () =>
+      document.querySelector(".over .label-chip") as HTMLElement;
+    expect(kind().textContent).toBe("Bug huntinferred");
+    expect(within(kind()).getByText("inferred").className).toBe("inferred");
+    cleanup();
+    show(view, { requestId: "r2" });
+    expect(kind().textContent).toBe("Feature");
   });
 
   it("catch-up renders what changed and hides when nothing did", () => {
@@ -582,20 +590,18 @@ describe("live screen", () => {
     expect(screen.queryByText(/Agent 1 ·|Agent 1:/)).toBeNull();
   });
 
-  it("the request switcher shows the last request by default", async () => {
+  it("the rail shows the last request by default", async () => {
     show(session());
-    await userEvent.click(
-      within(screen.getByRole("banner")).getByRole("button", {
-        name: /Request 2 of 2/,
-      }),
-    );
     const list = screen.getByRole("navigation", { name: "Requests" });
-    const items = within(list).getAllByRole("button");
-    expect(items[0]?.textContent).toContain("Price alerts");
-    expect(items[0]?.getAttribute("aria-current")).toBe("true");
-    expect(items[1]?.textContent).toContain("Bug hunt");
-    expect(items[1]?.getAttribute("aria-current")).toBeNull();
-    await userEvent.click(items[1] as HTMLElement);
+    const items = within(list).getAllByRole("link");
+    expect(items[0]?.textContent).toContain("Fix the login bug");
+    expect(items[0]?.getAttribute("aria-current")).toBeNull();
+    expect(items[1]?.textContent).toContain("Price alerts");
+    expect(items[1]?.getAttribute("aria-current")).toBe("true");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+      "Price alerts",
+    );
+    await userEvent.click(items[0] as HTMLElement);
     expect(location.pathname).toBe("/s/s1/r/r1");
   });
 
@@ -830,10 +836,20 @@ describe("live screen", () => {
         lastLooked={null}
       />,
     );
+    const kids = (el: Element | null) =>
+      [...(el?.children ?? [])]
+        .map((c) => c.className.split(" ")[0])
+        .filter((c) => c !== "skip");
     const frame = container.querySelector(".frame");
-    expect(
-      [...(frame?.children ?? [])].map((c) => c.className.split(" ")[0]),
-    ).toEqual(["bar", "spine", "main"]);
+    expect(kids(frame)).toEqual(["rail", "col"]);
+    expect(kids(frame?.querySelector(".col") ?? null)).toEqual(["top", "main"]);
     expect(frame?.querySelector(".main .skeleton")).toBeTruthy();
+    cleanup();
+    const loaded = show(session()).container.querySelector(".frame");
+    expect(kids(loaded)).toEqual(["rail", "col"]);
+    expect(kids(loaded?.querySelector(".col") ?? null)).toEqual([
+      "top",
+      "main",
+    ]);
   });
 });

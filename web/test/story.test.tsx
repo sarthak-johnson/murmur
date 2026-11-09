@@ -652,22 +652,24 @@ describe("request page, story first", () => {
     expect(row.querySelector(".glyph.done")).toBeTruthy();
   });
 
-  it("the map is a view beside the story, one click away", async () => {
+  it("the map is a tab beside the story, one click away", async () => {
     show(session(request()));
-    const toggle = screen.getByRole("group", { name: "View" });
+    const tabs = screen.getByRole("navigation", {
+      name: "Views of this request",
+    });
     expect(
-      within(toggle)
-        .getByRole("button", { name: "Story" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    await userEvent.click(within(toggle).getByRole("button", { name: "Map" }));
-    expect(screen.getByRole("region", { name: "Map" })).toBeTruthy();
+      within(tabs)
+        .getByRole("link", { name: "Story" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(screen.queryByRole("region", { name: "Map" })).toBeNull();
+    await userEvent.click(within(tabs).getByRole("link", { name: "Flow" }));
+    expect(location.pathname).toMatch(/\/flow$/);
   });
 
   it("a request with no messages shows the map and draws no story", () => {
     show(session(request({ messages: [], finished: false })));
     expect(screen.queryByRole("region", { name: "What happened" })).toBeNull();
-    expect(screen.queryByRole("group", { name: "View" })).toBeNull();
     expect(screen.getByRole("region", { name: "Map" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Now" })).toBeTruthy();
     expect(screen.getByRole("group", { name: "Summary" })).toBeTruthy();
@@ -890,9 +892,9 @@ describe("round 3", () => {
 
   it("the page's first stop skips past the plan to the content", () => {
     show(session(request()));
-    const skip = within(screen.getByRole("banner")).getByRole("link", {
-      name: "Skip to the content",
-    });
+    // The first link on the page, before the rail.
+    const skip = screen.getAllByRole("link")[0] as HTMLElement;
+    expect(skip.textContent).toBe("Skip to the content");
     expect(skip.getAttribute("href")).toBe("#main");
     expect(document.getElementById("plan")?.getAttribute("aria-label")).toBe(
       "Plan",

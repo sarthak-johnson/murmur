@@ -32,6 +32,8 @@
   --done-line: #2e5a41;
   --need-tint: #2a2415;
   --need-line: #5a4820;
+  --need-hover: #322a18;
+  --need-soft: #d8c08f;
   --bad-tint: #2e1818;
   --bad-line: #6a302d;
   --bad-text: #f39590;
@@ -52,11 +54,21 @@
   --font-code: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --radius: 10px;
   --radius-l: 12px;
+  /* The frame: the rail, its folded strip, the top bar, the page's width. */
+  --rail: 272px;
+  --rail-strip: 64px;
+  --top: 56px;
+  --content: 1120px;
+  --content-wide: 1360px;
 }
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
   scrollbar-color: var(--line-2) transparent;
+}
+/* What a link or focus scrolls to lands below the sticky top bar, not under it. */
+html {
+  scroll-padding-top: calc(var(--top) + 16px);
 }
 body {
   margin: 0;
@@ -1082,130 +1094,477 @@ svg.g {
   color: var(--t3);
 }
 
-/* ── The frame: a bar across, the plan on the left, the page beside it ──── */
+/* ── The frame: the rail on the left, the bar over the page ───────────────── */
 .frame {
   display: grid;
-  grid-template-columns: 312px minmax(0, 1fr);
-  grid-template-rows: 60px 1fr;
+  grid-template-columns: var(--rail) minmax(0, 1fr);
   min-height: 100vh;
   background: var(--s1);
 }
-.bar {
-  grid-column: 1 / -1;
+.col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.frame > .skip:focus {
+  position: fixed;
+  top: 12px;
+  left: 16px;
+  z-index: 60;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--s5);
+}
+
+/* Marks: colour, shape and (beside them) a word, for every state */
+.mk {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font: 700 11px / 1 var(--font-ui);
+}
+.mk svg {
+  width: 9px;
+  height: 9px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mk.done {
+  background: var(--done-tint);
+  box-shadow: inset 0 0 0 1.5px var(--done);
+  color: var(--done);
+}
+.mk.running {
+  background: var(--now);
+  box-shadow: 0 0 0 4px var(--now-tint);
+}
+.mk.waiting {
+  background: var(--need-tint);
+  box-shadow: inset 0 0 0 1.5px var(--need);
+  color: var(--need);
+}
+.mk.open {
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1.5px var(--s8);
+}
+.mk.failed {
+  background: var(--bad-tint);
+  box-shadow: inset 0 0 0 1.5px var(--bad);
+  color: var(--bad);
+}
+/* The one loop on screen: the running request's mark. */
+.mk.pulse {
+  animation: pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px var(--now-tint);
+  }
+  50% {
+    box-shadow:
+      0 0 0 7px rgb(96 170 243 / 22%),
+      0 0 18px 2px rgb(96 170 243 / 35%);
+  }
+}
+
+/* The rail: the same on every page of a session */
+.rail {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100vh;
+  min-width: 0;
+  overflow: hidden;
+  padding: 14px 12px 12px;
+  background: var(--s2);
+  box-shadow: inset -1px 0 0 var(--s6);
+}
+.rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 10px;
+  color: var(--t1);
+  font: 600 16px / 22px var(--font-ui);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.rail-brand:hover,
+.rail-brand:focus-visible {
+  color: var(--t1);
+  text-decoration: none;
+}
+.rail-brand i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--now);
+  box-shadow: 0 0 0 3px var(--now-tint);
+}
+.rail-sess {
+  display: block;
+  margin-bottom: 6px;
+  padding: 8px 8px 12px;
+  box-shadow: inset 0 -1px 0 var(--s6);
+  text-decoration: none;
+}
+.rail-sess:hover,
+.rail-sess:focus-visible {
+  text-decoration: none;
+}
+.sess-ttl {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--t1);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 21px;
+  overflow-wrap: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.rail-sess:hover .sess-ttl {
+  color: var(--t1);
+  text-decoration: underline;
+  text-decoration-color: var(--s8);
+  text-underline-offset: 4px;
+}
+.sess-sub {
+  display: block;
+  margin-top: 3px;
+  color: var(--t4);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+}
+/* Only the requests scroll; Murmur, the session and the foot stay put. */
+.spine {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 -12px;
+  padding: 0 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  /* Rows fade in and out at both edges, so a cut row never sits hard on a line. */
+  mask-image: linear-gradient(
+    transparent,
+    #000 10px,
+    #000 calc(100% - 24px),
+    transparent
+  );
+}
+.spine-in {
+  position: relative;
+  padding: 4px 0 24px;
+}
+.spine-in::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: 44px;
+  left: 19px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--s6);
+}
+.spine .day {
+  position: relative;
+  margin: 0;
+  padding: 10px 0 2px 40px;
+  color: var(--t4);
+  font: 500 13px / 18px var(--font-ui);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.spine ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.stop {
+  position: relative;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  min-height: 32px;
+  padding: 5px 8px 5px 0;
+  border-radius: 8px;
+  color: var(--t3);
+  text-decoration: none;
+}
+.stop:hover,
+.stop:focus-visible {
+  background: var(--s3);
+  color: var(--t1);
+  text-decoration: none;
+}
+.stop.cur {
+  background: var(--s4);
+  color: var(--t1);
+}
+.stop > .mk {
+  justify-self: center;
+  width: 14px;
+  height: 14px;
+}
+.stop > .mk.running {
+  width: 12px;
+  height: 12px;
+}
+.stop:hover > .mk.open {
+  background: var(--s3);
+}
+.stop.cur > .mk.open {
+  background: var(--s4);
+}
+.stop-txt {
+  min-width: 0;
+}
+.stop-ttl {
+  display: block;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Two digits wide, so the titles of rows 1 to 9 and 10 on start in one column. */
+.stop-n {
+  display: inline-block;
+  min-width: 2ch;
+  margin-right: 6px;
+  color: var(--t4);
+  font: 500 13px / 20px var(--font-code);
+}
+.stop-sub {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  color: var(--t4);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stop.cur .stop-sub {
+  color: var(--t3);
+}
+.rail-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: auto;
+  padding: 12px 8px 4px;
+  box-shadow: inset 0 1px 0 var(--s6);
+  color: var(--t4);
+  font-size: 13px;
+}
+.rail-foot .status-line {
+  margin: 0;
+  color: var(--t3);
+  font-size: 13px;
+}
+.rail-foot .user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--t3);
+}
+.rail-foot img {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+.rail-settings {
+  margin-left: auto;
+  color: var(--t4);
+  font-size: 13px;
+  text-decoration: none;
+}
+.sk-spine {
+  padding: 12px 8px;
+}
+
+/* The top bar: where you are, then the now line, the needs-you chip and the state */
+.top {
   position: sticky;
   top: 0;
   z-index: 20;
   display: flex;
-  align-items: stretch;
-  height: 60px;
-  min-width: 0;
-  background: var(--s2);
+  align-items: center;
+  gap: 20px;
+  height: var(--top);
+  padding: 0 32px;
+  background: color-mix(in srgb, var(--s1) 86%, transparent);
   box-shadow: inset 0 -1px 0 var(--s6);
+  backdrop-filter: blur(10px);
 }
-.bar-brand {
+.top-note {
+  font-size: 13px;
+}
+.rail-toggle {
+  display: none;
+}
+/*
+ * The breadcrumb takes its own width while it fits (shrinking by a fraction of a pixel
+ * would add an ellipsis); it leaves the now line room while Claude works, and once the
+ * request is done the now line is only history, so the breadcrumb comes first.
+ */
+.crumbs {
   flex: none;
-  width: 312px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 16px 0 28px;
-  box-shadow: inset -1px 0 0 var(--s6);
-}
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--t1);
-  font: 600 18px / 1 var(--font-ui);
-  letter-spacing: -0.02em;
-  text-decoration: none;
-}
-a.brand:hover,
-a.brand:focus-visible {
-  color: var(--t1);
-  text-decoration: none;
-}
-.brand i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--now);
-  box-shadow: 0 0 0 4px rgb(96 170 243 / 18%);
-}
-.cell {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
   min-width: 0;
-  padding: 0 24px;
+  max-width: calc(100% - 520px);
 }
-.bar > .cell + .cell {
-  box-shadow: inset 1px 0 0 var(--s6);
+.top.done .crumbs {
+  max-width: calc(100% - 220px);
 }
-.cell .k {
-  flex: none;
-  color: var(--t3);
-  font-size: 13px;
-  white-space: nowrap;
-}
-.cell .v {
-  color: var(--t1);
-  font-size: 15px;
-  font-weight: 500;
-}
-.cell.grow {
-  flex: 1;
-}
-.bar .cell.muted {
-  font-size: 13px;
-}
-.state {
-  display: inline-flex;
+.crumbs ol {
+  display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--t3);
+  font-size: 15px;
+  line-height: 22px;
 }
-.state i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
+.crumbs li {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
-.state.running {
-  color: var(--now);
+.crumbs li:not(:last-child) {
+  flex-shrink: 3;
+  max-width: 240px;
 }
-.state.done {
-  color: var(--done);
+/* Where you are reads whole; the levels above it give way first. */
+.crumbs li:last-child {
+  flex-shrink: 0;
+  max-width: 360px;
 }
-.state.waiting {
-  color: var(--need);
+.crumbs li + li::before {
+  content: "›";
+  flex: none;
+  color: var(--s9);
 }
-.now-cell {
-  position: relative;
-}
-.now-cell .v {
-  display: -webkit-box;
+.crumbs a,
+.crumbs [aria-current] {
   min-width: 0;
   overflow: hidden;
-  line-height: 20px;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crumbs a {
+  color: var(--t3);
+  text-decoration: none;
+}
+.crumbs a:hover,
+.crumbs a:focus-visible {
+  color: var(--t1);
+  text-decoration: none;
+}
+.crumbs [aria-current] {
+  color: var(--t1);
+  font-weight: 500;
+}
+.nowline {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+  max-width: 440px;
+  margin-left: auto;
+  font-size: 15px;
+  line-height: 22px;
+  container-type: inline-size;
+}
+/* Too narrow to say anything whole: it steps aside rather than show a stub. */
+@container (max-width: 140px) {
+  .nowline > * {
+    visibility: hidden;
+  }
+}
+/* A done request's line is only history: it needs room for its counts or it goes. */
+@container (max-width: 280px) {
+  .top.done .nowline > * {
+    visibility: hidden;
+  }
+}
+.nowline .k {
+  flex: none;
+  color: var(--t4);
+  font: 500 13px / 18px var(--font-ui);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.nowline .txt {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--t1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .now-more {
+  display: grid;
   flex: none;
-  font-size: 13px;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--t3);
+}
+.now-more:hover,
+.now-more[aria-expanded="true"] {
+  background: var(--s4);
+  color: var(--t1);
+}
+.now-more .chev {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 150ms ease-out;
+}
+.now-more[aria-expanded="true"] .chev {
+  transform: rotate(180deg);
 }
 .now-pop {
   position: absolute;
-  top: calc(100% + 8px);
-  left: 16px;
+  top: calc(100% + 16px);
+  right: 0;
   z-index: 30;
-  width: min(720px, calc(100vw - 32px));
+  width: min(640px, calc(100vw - 32px));
   max-height: 60vh;
   overflow: auto;
   padding: 16px 18px;
@@ -1217,93 +1576,111 @@ a.brand:focus-visible {
 }
 .now-why {
   margin: 0 0 12px;
-  font-size: 14px;
   color: var(--t2);
+  font-size: 14px;
 }
 .now-why:last-child {
   margin: 0;
 }
-.mt {
+.top-right {
   display: flex;
-  gap: 2px;
-  width: 96px;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
 }
-.seg {
-  flex: 1;
-  height: 5px;
-  border-radius: 1px;
-  background: var(--s7);
+.nowline + .top-right {
+  margin-left: 0;
 }
-.seg.done {
-  background: var(--done-line);
-}
-.seg.now {
-  background: var(--now);
-}
-.seg.bad {
-  background: var(--bad);
-}
-.seg.open {
-  background: var(--s8);
-}
-.cell.need {
-  gap: 8px;
-  color: var(--need);
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-  text-decoration: none;
-  background: var(--need-tint);
-  box-shadow: inset 1px 0 0 var(--need-line);
-}
-.cell.need:hover,
-.cell.need:focus-visible {
-  color: var(--need);
-  text-decoration: none;
-  background: #322a18;
-}
-.need .num {
-  color: #d8c08f;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-/* The request switcher */
-.switch {
-  position: relative;
-  min-width: 0;
-}
-.switch-btn {
+.need-chip,
+.state-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   height: 30px;
-  padding: 0 8px 0 10px;
+  padding: 0 12px 0 9px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.need-chip {
+  background: var(--need-tint);
+  box-shadow: inset 0 0 0 1px var(--need-line);
+  color: var(--need);
+}
+.need-chip:hover,
+.need-chip:focus-visible {
+  background: var(--need-hover);
+  color: var(--need);
+  text-decoration: none;
+}
+.need-chip .g {
+  width: 16px;
+  height: 16px;
+}
+.need-chip .num {
+  color: var(--need-soft);
+  font-size: 13px;
+}
+.state-pill .mk {
+  width: 14px;
+  height: 14px;
+}
+.state-pill .mk.running {
+  width: 10px;
+  height: 10px;
+  margin: 0 2px;
+  box-shadow: 0 0 0 3px var(--now-line);
+}
+.state-pill.running {
+  background: var(--now-tint);
+  box-shadow: inset 0 0 0 1px var(--now-line);
+  color: var(--now);
+}
+.state-pill.done {
+  background: var(--done-tint);
+  box-shadow: inset 0 0 0 1px var(--done-line);
+  color: var(--done);
+}
+.state-pill.waiting {
+  background: var(--need-tint);
+  box-shadow: inset 0 0 0 1px var(--need-line);
+  color: var(--need);
+}
+.menu {
+  position: relative;
+  flex: none;
+}
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 0;
   border-radius: 8px;
-  background: var(--s3);
-  box-shadow: inset 0 0 0 1px var(--s6);
-  color: var(--t2);
-  font-size: 13px;
-  white-space: nowrap;
+  background: none;
+  color: var(--t3);
 }
-.switch-btn:hover,
-.switch-btn[aria-expanded="true"] {
+.icon-btn:hover,
+.icon-btn[aria-expanded="true"] {
   background: var(--s4);
   color: var(--t1);
 }
-.switch-btn .chev {
-  color: var(--t3);
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
 }
-.switch-menu {
+.menu-pop {
   position: absolute;
-  top: calc(100% + 10px);
-  left: -140px;
+  top: calc(100% + 12px);
+  right: 0;
   z-index: 30;
-  width: 380px;
+  width: 280px;
   max-width: calc(100vw - 32px);
-  max-height: min(560px, 70vh);
-  overflow: auto;
   padding: 6px;
   border-radius: 12px;
   background: var(--s5);
@@ -1311,83 +1688,136 @@ a.brand:focus-visible {
     0 0 0 1px var(--s7),
     0 18px 40px rgb(0 0 0 / 55%);
 }
-.switch-menu ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.menu-pop nav {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  box-shadow: inset 0 -1px 0 var(--s7);
 }
-.switch-menu .request {
-  display: block;
+.menu-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  color: var(--t3);
+  font-size: 13px;
+}
+.menu-who img {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
   width: 100%;
-  padding: 10px 12px;
+  min-height: 40px;
+  padding: 0 10px;
   border: 0;
   border-radius: 8px;
   background: none;
+  color: var(--t2);
+  font-size: 14px;
   text-align: left;
+  text-decoration: none;
 }
-.switch-menu .request:hover {
-  background: var(--s4);
-}
-.switch-menu .request[aria-current="true"] {
+.menu-item:hover,
+.menu-item:focus-visible {
   background: var(--s6);
+  color: var(--t1);
+  text-decoration: none;
 }
-.switch-menu .kind {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.menu-item.danger,
+.menu-item.danger:hover {
+  color: var(--bad-text);
+}
+.menu-item.armed {
+  background: var(--bad-tint);
+}
+.menu-note {
+  margin: 4px 10px 8px;
   color: var(--t3);
   font-size: 13px;
   line-height: 18px;
 }
-.live-mark {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--now);
+.menu-note.error {
+  color: var(--bad-text);
 }
-.switch-menu .clamp {
-  display: -webkit-box;
-  margin-top: 2px;
-  overflow: hidden;
-  color: var(--t2);
-  font-size: 14px;
-  line-height: 20px;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+
+/* Moving between pages: the request title morphs, the page rises 8 px (View Transitions) */
+.main {
+  view-transition-name: page;
 }
-.switch-menu [aria-current="true"] .clamp {
-  color: var(--t1);
+.live-title {
+  view-transition-name: request-title;
+}
+::view-transition-old(root),
+::view-transition-new(root),
+::view-transition-group(page) {
+  animation: none;
+}
+::view-transition-old(page) {
+  animation: 120ms ease-out both vt-out;
+}
+::view-transition-new(page) {
+  animation: 200ms cubic-bezier(0.2, 0.7, 0.2, 1) both vt-rise;
+}
+::view-transition-group(request-title) {
+  animation-duration: 260ms;
+  animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@keyframes vt-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes vt-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes vt-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mk.pulse {
+    animation: none;
+    box-shadow:
+      0 0 0 2px var(--s2),
+      0 0 0 3.5px var(--now);
+  }
+  ::view-transition-group(page),
+  ::view-transition-group(request-title) {
+    animation: none;
+  }
+  ::view-transition-old(root),
+  ::view-transition-old(page),
+  ::view-transition-old(request-title) {
+    animation: 150ms ease both vt-out;
+  }
+  ::view-transition-new(root),
+  ::view-transition-new(page),
+  ::view-transition-new(request-title) {
+    animation: 150ms ease both vt-in;
+  }
 }
 
 /* ── The plan column: a vertical timeline of phases ──────────────────────── */
-.spine {
-  grid-row: 2;
-  position: sticky;
-  top: 60px;
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 60px);
+.plan {
   min-width: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 26px 24px 20px 28px;
+  margin-top: 34px;
+  padding: 18px 18px 4px;
+  border-radius: 14px;
   background: var(--s2);
-  box-shadow: inset -1px 0 0 var(--s6);
+  box-shadow: inset 0 0 0 1px var(--s6);
 }
-.spine:focus,
+.plan:focus,
 .main:focus {
   outline: none;
-}
-/* The bar's first stop: hidden until a keyboard reaches it. */
-.bar .skip:focus {
-  position: absolute;
-  top: 12px;
-  left: 16px;
-  z-index: 40;
-  margin: 0;
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: var(--s5);
 }
 .spine-h {
   display: flex;
@@ -1552,25 +1982,6 @@ button.lt-in:hover {
   border-radius: 0 2px 2px 0;
   background: var(--hue, transparent);
 }
-/* A running helper's rail shimmers: the only looping motion on the page. */
-.lt-in.busy::after {
-  content: "";
-  position: absolute;
-  top: 12px;
-  left: 0;
-  width: 2px;
-  height: 12px;
-  background: linear-gradient(transparent, rgb(255 255 255 / 60%), transparent);
-  animation: shimmer 1.8s linear infinite;
-}
-@keyframes shimmer {
-  from {
-    top: 6px;
-  }
-  to {
-    top: calc(100% - 18px);
-  }
-}
 .lt-in b {
   display: block;
   color: var(--t1);
@@ -1592,59 +2003,167 @@ button.lt-in:hover {
 .lt-in .task-problem {
   margin: 4px 0 0;
 }
-.spine-foot {
+/* ── The request page ─────────────────────────────────────────────────────── */
+.main {
+  width: 100%;
+  max-width: var(--content);
+  min-width: 0;
+  padding: 28px 40px 72px;
+  container-type: inline-size;
+}
+.main.wide {
+  max-width: var(--content-wide);
+}
+.over {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 16px;
-  margin-top: auto;
-  padding-top: 28px;
-  color: var(--t3);
+  gap: 6px 10px;
+  margin-bottom: 10px;
+  color: var(--t4);
   font-size: 13px;
+  line-height: 18px;
 }
-.spine-foot nav {
+.progress {
   display: flex;
-  gap: 16px;
-}
-.spine-foot a,
-.spine-foot button.link {
-  color: var(--t3);
-  font-size: 13px;
-  text-decoration: none;
-}
-.spine-foot .user {
-  display: flex;
+  flex: none;
   align-items: center;
-  gap: 8px;
-  color: var(--t2);
+  gap: 10px;
 }
-.spine-foot img {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-}
-.spine-foot .status-line {
-  margin: 0;
+.progress .k {
+  color: var(--t3);
   font-size: 13px;
+  white-space: nowrap;
 }
-.spine-foot .delete-session {
-  font-size: 13px;
+.progress .v {
+  color: var(--t1);
+  font-size: 14px;
+  font-weight: 500;
 }
-.spine-foot .delete-note {
-  top: auto;
-  right: auto;
-  bottom: calc(100% + 6px);
-  left: 0;
-  background: var(--s5);
-  border-color: var(--s7);
-  font-size: 13px;
+.mt {
+  display: flex;
+  gap: 2px;
+  width: 96px;
+}
+.seg {
+  flex: 1;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--s7);
+}
+.seg.done {
+  background: var(--done-line);
+}
+.seg.now {
+  background: var(--now);
+}
+.seg.bad {
+  background: var(--bad);
+}
+.seg.open {
+  background: var(--s8);
 }
 
-/* ── The request page ─────────────────────────────────────────────────────── */
-.main {
-  grid-row: 2;
+/* Story · Flow · Files · Helpers */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 28px;
+  overflow-x: auto;
+  box-shadow: inset 0 -1px 0 var(--s6);
+  scrollbar-width: none;
+}
+.tabs a {
+  flex: none;
+  padding: 8px 12px 10px;
+  border-bottom: 2px solid transparent;
+  color: var(--t3);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  text-decoration: none;
+}
+.tabs a:hover,
+.tabs a:focus-visible {
+  color: var(--t1);
+  text-decoration: none;
+}
+.tabs a[aria-current="page"] {
+  border-color: var(--t1);
+  color: var(--t1);
+}
+.req-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.req-story {
   min-width: 0;
-  padding: 30px 56px 96px 64px;
+}
+@container (min-width: 860px) {
+  .req-split {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 40px;
+    align-items: start;
+  }
+  .plan {
+    position: sticky;
+    top: calc(var(--top) + 20px);
+    max-height: calc(100vh - var(--top) - 40px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+.tab-empty {
+  margin-top: 28px;
+  color: var(--t3);
+}
+.helpers {
+  max-width: 860px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.helper {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 14px 12px;
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+}
+.helpers li + li .helper {
+  box-shadow: inset 0 1px 0 var(--s5);
+}
+a.helper:hover,
+a.helper:focus-visible {
+  background: var(--s2);
+  text-decoration: none;
+}
+.helper > .mk {
+  margin-top: 3px;
+}
+.h-main {
+  min-width: 0;
+}
+.h-name {
+  display: block;
+  color: var(--t1);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  overflow-wrap: break-word;
+}
+.h-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin-top: 2px;
+  color: var(--t3);
+  font-size: 13px;
+  line-height: 18px;
 }
 .ask {
   max-width: 860px;
@@ -2032,23 +2551,24 @@ button.task-chip:hover {
 }
 
 /* ── The task page ────────────────────────────────────────────────────────── */
-.crumb {
+.pd-over {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 8px;
-  color: var(--t3);
+  gap: 8px;
+}
+.label-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: var(--s3);
+  box-shadow: inset 0 0 0 1px var(--s6);
+  color: var(--t2);
   font-size: 13px;
-}
-.crumb a {
-  color: var(--t3);
-  text-decoration: none;
-}
-.crumb a:hover {
-  color: var(--t1);
-  text-decoration: underline;
-}
-.crumb .sep {
-  color: var(--t4);
+  font-weight: 500;
+  white-space: nowrap;
 }
 .tt {
   display: flex;
@@ -2593,12 +3113,6 @@ button.task-chip:hover {
   margin-bottom: 16px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .lt-in.busy::after {
-    display: none;
-  }
-}
-
 /* ── More specific rules, kept after the ones they refine ─────────────── */
 .loose-files li > .pd-path {
   flex: 0 1 auto;
@@ -2652,61 +3166,249 @@ button.task-chip:hover {
     gap: 28px;
   }
 }
-@media (max-width: 900px) {
+/* 900 to 1199 px: the rail folds to a strip of numbered marks; hover or focus names one. */
+@media (min-width: 900px) and (max-width: 1199px) {
+  .frame {
+    grid-template-columns: var(--rail-strip) minmax(0, 1fr);
+  }
+  .rail {
+    padding: 14px 8px 12px;
+    overflow-x: hidden;
+  }
+  /* A line under Murmur, as over the foot, so a row scrolled under it is cut on a line. */
+  .rail-brand {
+    justify-content: center;
+    padding: 4px 0 12px;
+    box-shadow: inset 0 -1px 0 var(--s6);
+  }
+  .rail-brand span,
+  .rail-sess,
+  .spine .day,
+  .stop-sub,
+  .rail-foot .user,
+  .rail-settings {
+    display: none;
+  }
+  .spine-in::before {
+    left: 23px;
+  }
+  /* A mask would clip the names that show beside the strip. */
+  .spine {
+    mask-image: none;
+  }
+  .spine ol + .day + ol {
+    margin-top: 10px;
+  }
+  .stop {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: 4px;
+    padding: 8px 0 6px;
+  }
+  .stop-ttl {
+    font-size: 0;
+  }
+  .stop-n {
+    min-width: 0;
+    margin: 0;
+    padding: 0 2px;
+    border-radius: 4px;
+    background: var(--s2);
+  }
+  .stop:hover .stop-n,
+  .stop:focus-visible .stop-n {
+    background: var(--s3);
+  }
+  .stop.cur .stop-n {
+    background: var(--s4);
+    color: var(--t1);
+  }
+  /* Fixed with no top, so it sits by its row yet escapes the rail's scroll box. */
+  .stop::after {
+    content: attr(data-tip);
+    position: fixed;
+    left: calc(var(--rail-strip) + 6px);
+    z-index: 40;
+    display: none;
+    max-width: 280px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--s5);
+    box-shadow:
+      0 0 0 1px var(--s7),
+      0 8px 24px rgb(0 0 0 / 45%);
+    color: var(--t1);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .stop:hover::after,
+  .stop:focus-visible::after {
+    display: block;
+  }
+  .rail-foot {
+    justify-content: center;
+    padding: 12px 0 4px;
+  }
+  .rail-foot .status-line {
+    font-size: 0;
+  }
+  .rail-foot .live-dot::before {
+    margin: 0;
+  }
+}
+
+/* Under 900 px: no rail, a Requests button opens it as a drawer over the page. */
+@media (max-width: 899px) {
   .frame {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto;
   }
-  .bar {
+  .rail {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 50;
+    width: min(320px, 86vw);
+    height: 100dvh;
+    visibility: hidden;
+    transform: translateX(-100%);
+    transition:
+      transform 200ms ease-out,
+      visibility 0s 200ms;
+  }
+  .rail.open {
+    visibility: visible;
+    transform: none;
+    box-shadow:
+      inset -1px 0 0 var(--s6),
+      18px 0 48px rgb(0 0 0 / 55%);
+    transition: transform 200ms ease-out;
+  }
+  .stop {
+    min-height: 44px;
+  }
+  .rail-foot a,
+  .rail-brand {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+  }
+  /* The bar is not sticky here. */
+  html {
+    scroll-padding-top: 16px;
+  }
+  /* The page behind the open drawer does not scroll. */
+  body:has(.frame.drawer-open) {
+    overflow: hidden;
+  }
+  .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    background: rgb(0 0 0 / 55%);
+  }
+  /* The bar wraps: where you are, then the state, then the now line on its own. */
+  .top {
     position: static;
     flex-wrap: wrap;
+    gap: 8px 12px;
     height: auto;
+    min-height: var(--top);
+    padding: 8px 16px 0;
+    backdrop-filter: none;
+    background: var(--s1);
   }
-  .bar-brand {
-    flex: 1 0 100%;
-    width: auto;
-    height: 52px;
-    padding: 0 16px;
-    box-shadow: inset 0 -1px 0 var(--s6);
+  .top-right {
+    display: contents;
   }
-  .cell {
-    height: 48px;
-    padding: 0 16px;
+  .rail-toggle {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    order: 1;
+    height: 40px;
+    padding: 0 12px 0 10px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--s3);
+    box-shadow: inset 0 0 0 1px var(--s6);
+    color: var(--t1);
+    font-size: 14px;
+    font-weight: 500;
   }
-  .bar > .cell.now-cell {
+  .rail-toggle svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+  }
+  /* Also once done: the wide bar's room for the now line does not apply here. */
+  .crumbs,
+  .top.done .crumbs {
+    flex: 1 1 140px;
+    order: 2;
+    max-width: none;
+  }
+  .crumbs li:not(:nth-last-child(-n + 2)) {
+    display: none;
+  }
+  .crumbs li:nth-last-child(2)::before {
+    display: none;
+  }
+  /* Where you are gives way last, as on the wide bar. */
+  .crumbs li:not(:last-child) {
+    flex-shrink: 3;
+    min-width: 64px;
+    max-width: 45%;
+  }
+  .crumbs li:last-child {
+    flex-shrink: 1;
+  }
+  .need-chip {
+    order: 3;
+    height: 40px;
+  }
+  .state-pill {
+    order: 4;
+    height: 36px;
+  }
+  .menu {
     order: 5;
-    flex: 1 0 100%;
-    height: auto;
-    min-height: 48px;
-    padding: 10px 16px;
+    margin-left: auto;
   }
-  .bar > .cell.now-cell {
+  .icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .nowline {
+    order: 6;
+    flex: 1 0 100%;
+    justify-content: flex-start;
+    max-width: none;
+    min-height: 44px;
+    margin: 0 -16px;
+    padding: 0 16px;
     box-shadow: inset 0 1px 0 var(--s6);
   }
-  .cell.need {
-    flex: 1 0 auto;
+  .now-more {
+    width: 40px;
+    height: 40px;
   }
-  .spine,
-  .main {
-    grid-row: auto;
+  .crumbs a {
+    padding: 9px 0;
   }
-  /* The page leads on a phone; the plan and the account links follow it. */
-  .main {
-    order: 1;
-  }
-  .spine {
-    order: 2;
-    position: static;
-    height: auto;
-    padding: 20px 16px;
-    box-shadow: inset 0 -1px 0 var(--s6);
+  .now-pop {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    top: 100%;
   }
   .main {
     padding: 24px 16px 64px;
-  }
-  .switch-menu {
-    left: auto;
-    right: 0;
   }
   .ask {
     font-size: 26px;
@@ -2718,6 +3420,9 @@ button.task-chip:hover {
   }
   .asked-row {
     flex-wrap: wrap;
+  }
+  .tabs a {
+    padding: 9px 12px;
   }
   .brief-l,
   .brief-r {
@@ -2742,6 +3447,12 @@ button.task-chip:hover {
   .lane-name span {
     display: block;
     margin-left: 0;
+  }
+}
+@media (max-width: 899px) and (prefers-reduced-motion: reduce) {
+  .rail,
+  .rail.open {
+    transition: none;
   }
 }
 .pd-title .inferred {

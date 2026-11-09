@@ -28,7 +28,6 @@ import { DiffView, hunksOf } from "./Diff";
 import { EventData, EventView } from "./EventView";
 import { helperLanes, Timeline } from "./Timeline";
 
-const enc = encodeURIComponent;
 const MINUS = "−";
 
 const STATUS: Record<PartView["status"], [string, Tone]> = {
@@ -229,15 +228,12 @@ export function PartDetail(props: Parameters<typeof PartBody>[0]) {
 }
 
 function PartBody(props: {
-  sessionId: string;
   cwd?: string;
   request: RequestView;
   part: PartView;
   events: MurmurEvent[];
-  onBack(): void;
 }) {
-  const { sessionId, cwd = "", request, part, events, onBack } = props;
-  const base = `/s/${enc(sessionId)}/r/${enc(request.id)}`;
+  const { cwd = "", request, part, events } = props;
   const byId = new Map(events.map((e) => [e.id, e]));
   const problem = request.phases
     .flatMap((p) => p.tasks)
@@ -420,34 +416,18 @@ function PartBody(props: {
 
   return (
     <div className="pd">
-      <nav className="crumb" aria-label="Breadcrumb">
-        <a
-          href={base}
-          title={request.goal || request.prompt}
-          onClick={(e) => {
-            e.preventDefault();
-            onBack();
-          }}
-        >
-          {crumbGoal(request.goal || request.prompt)}
-        </a>
-        {phase && (
-          <>
-            <span className="sep" aria-hidden="true">
-              /
+      {/* Where the task sits; the way back is the breadcrumb in the top bar. */}
+      {(task || phase) && (
+        // biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around two chips
+        <div className="pd-over" role="group" aria-label="Where it sits">
+          {task && (
+            <span className="label-chip">
+              Task {tasks.indexOf(task) + 1} of {tasks.length}
             </span>
-            <span>{phase.title}</span>
-          </>
-        )}
-        {task && (
-          <>
-            <span className="sep" aria-hidden="true">
-              /
-            </span>
-            <span>Task {tasks.indexOf(task) + 1}</span>
-          </>
-        )}
-      </nav>
+          )}
+          {phase && <span className="label-chip">{phase.title}</span>}
+        </div>
+      )}
       <header className="tt">
         <h1 className="pd-title">
           {shortTitle(part.title)}
@@ -731,14 +711,6 @@ function fileGroups(files: FileTouch[]) {
         ]
       : []),
   ];
-}
-
-/** The request's goal, short enough for a breadcrumb: its first clause, cut at a word. */
-function crumbGoal(goal: string): string {
-  const first = goal.split(/,\s|\s\(|\s-\s|:\s/)[0] ?? goal;
-  if (first.length <= 48) return first;
-  const head = first.slice(0, 48);
-  return `${head.slice(0, head.lastIndexOf(" "))}…`;
 }
 
 const DID = { build: "Built", review: "Reviewed", recheck: "Rechecked" };

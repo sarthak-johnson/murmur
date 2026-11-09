@@ -296,15 +296,7 @@ describe("the task page over a long day", () => {
     messages: [],
   } as unknown as RequestView;
   const show = () =>
-    render(
-      <PartDetail
-        sessionId="s1"
-        request={r}
-        part={p}
-        events={events}
-        onBack={() => {}}
-      />,
-    );
+    render(<PartDetail request={r} part={p} events={events} />);
 
   it("marks the cut gaps on the axis and across the lane", () => {
     show();
