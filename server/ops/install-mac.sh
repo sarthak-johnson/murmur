@@ -27,24 +27,34 @@ run() {
 }
 
 [ -n "$NODE" ] || { echo "Murmur needs Node.js 22 or newer on PATH." >&2; exit 1; }
+NODE_VERSION=$("$NODE" -v)
+NODE_MAJOR=${NODE_VERSION#v}
+NODE_MAJOR=${NODE_MAJOR%%.*}
+if ! [ "$NODE_MAJOR" -ge 22 ] 2>/dev/null; then
+  echo "Murmur needs Node.js 22 or newer; this node is $NODE_VERSION." >&2
+  exit 1
+fi
 
 env_template() {
   cat <<EOF
 # Murmur server settings, read by the LaunchAgent when the server starts.
 # After a change, restart it: launchctl kickstart -k gui/\$(id -u)/$LABEL
 NODE_ENV=production
-# Your Tailscale Funnel URL, no trailing slash, e.g. https://my-mac.tail1234.ts.net
+# Your Tailscale address, e.g. https://my-mac.tail1234.ts.net
 BASE_URL=
 # From your GitHub OAuth app (github.com/settings/developers)
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 # The database folder, owner-only
 MURMUR_DATA_DIR=$HOME_DIR/data
-# GitHub logins that may sign in, comma-separated, yours first. Empty lets anyone with GitHub in.
+# Required. GitHub logins that may sign in, comma-separated, yours first, e.g. you,friend.
+# login:id (id from https://api.github.com/users/<login>) survives a GitHub rename.
+# * lets anyone with a GitHub account in.
 MURMUR_ALLOWED_LOGINS=
 # Funnel is a proxy on this Mac: listen on 127.0.0.1 only and read the client from X-Forwarded-For
 TRUST_PROXY=1
-PORT=8787
+# Not 8787, where a dev server runs: Funnel must never point at a dev server.
+PORT=8788
 EOF
 }
 
@@ -82,15 +92,23 @@ plist() {
 EOF
 }
 
-echo "Murmur from $REPO, run by $NODE ($("$NODE" -v))"
+echo "Murmur from $REPO, run by $NODE ($NODE_VERSION)"
+case "$NODE" in
+  */.nvm/* | */.volta/* | */.asdf/* | *fnm*)
+    echo "Warning: this node comes from a version manager (nvm, volta, asdf or fnm)."
+    echo "The server keeps using this exact path; run this script again whenever you change or remove it."
+    ;;
+esac
 [ "$DRY" = 1 ] && echo "Dry run: nothing is written, built or started."
 
 step "1/5 Settings folder $HOME_DIR (owner-only)"
-run mkdir -p -m 700 "$HOME_DIR"
+run mkdir -p "$HOME_DIR"
+run chmod 700 "$HOME_DIR"
 
 step "2/5 Env file $ENV_FILE"
 if [ -f "$ENV_FILE" ]; then
   echo "    Kept: it already exists."
+  run chmod 600 "$ENV_FILE"
 else
   echo "    Writing this template (0600):"
   env_template | sed 's/^/    | /'
@@ -102,12 +120,18 @@ else
     exit 0
   fi
 fi
-if [ "$DRY" = 0 ]; then
+if [ -f "$ENV_FILE" ]; then
   for k in BASE_URL GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET MURMUR_DATA_DIR; do
     grep -Eq "^$k=.+" "$ENV_FILE" || { echo "    $k is empty in $ENV_FILE. Fill it in and run this script again." >&2; exit 1; }
   done
-  grep -Eq "^MURMUR_ALLOWED_LOGINS=.+" "$ENV_FILE" ||
-    echo "    Warning: MURMUR_ALLOWED_LOGINS is empty, so anyone with a GitHub account can sign in."
+  # The server treats a missing list as open (for cloud deploys); here open must be said.
+  grep -Eq "^MURMUR_ALLOWED_LOGINS=.*[^[:space:]]" "$ENV_FILE" || {
+    echo "    MURMUR_ALLOWED_LOGINS is empty. List the GitHub logins that may sign in, or set it to * to let anyone in." >&2
+    exit 1
+  }
+  if grep -Eq "^MURMUR_ALLOWED_LOGINS=.*\*" "$ENV_FILE"; then
+    echo "    MURMUR_ALLOWED_LOGINS=* lets anyone with a GitHub account sign in."
+  fi
 fi
 
 step "3/5 Install dependencies and build the web app"
@@ -125,8 +149,20 @@ fi
 
 step "5/5 Start (or restart) the server"
 run launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+# bootout returns before the old server has quit; starting again too soon fails.
+echo "    \$ launchctl print gui/$(id -u)/$LABEL   (until it is gone, at most 15 s)"
+if [ "$DRY" = 0 ]; then
+  for _ in $(seq 1 30); do
+    launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || break
+    sleep 0.5
+  done
+  if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
+    echo "    The old server is still loaded after 15 s. Run this script again in a moment." >&2
+    exit 1
+  fi
+fi
 PORT=$( (grep -E '^PORT=' "$ENV_FILE" 2>/dev/null || true) | tail -1 | cut -d= -f2)
-PORT=${PORT:-8787}
+PORT=${PORT:-8788}
 if [ "$DRY" = 0 ] && lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   echo "    Something else is listening on port $PORT:" >&2
   lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >&2
@@ -143,6 +179,9 @@ done
 if curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; then
   echo "    Up: http://127.0.0.1:$PORT/healthz answers ok."
   tail -n 3 "$LOG" | sed 's/^/    log: /'
+  echo
+  echo "Next, if you have not yet: tailscale funnel --bg $PORT"
+  echo "Then check: curl $(sed -n 's/^BASE_URL=//p' "$ENV_FILE" | tail -1 | sed 's#/*$##')/healthz"
 else
   echo "    The server did not answer within 30 s. Last lines of $LOG:" >&2
   tail -n 20 "$LOG" >&2
