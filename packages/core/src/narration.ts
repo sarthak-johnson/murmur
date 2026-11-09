@@ -28,6 +28,8 @@ const status = z.preprocess(said, z.enum(["running", "done", "failed"]));
 export const MapInput = z.object({
   kind: z.enum(["feature", "bug", "refactor", "question"]),
   goal: text,
+  // The request in 2 to 4 words, for a list of requests ("Restyle the app").
+  short: z.string().max(60).optional(),
   phases: list(
     z.object({
       id: text,

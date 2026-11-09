@@ -5,13 +5,15 @@
 import type {
   AgentReport,
   AgentView,
+  Moment,
   PartView,
   RequestView,
   TaskView,
 } from "@murmur/core";
 import { plainText } from "./markdown";
 
-export type Moment = "problem" | "fixing" | "done" | "decision" | "plan";
+// The badge rules live in core, so the request brief and the story read messages alike.
+export { firstSentence, type Moment, moment } from "@murmur/core";
 export type Tone = "done" | "warn" | "bad" | "now" | "plain";
 
 export const MOMENT: Record<Moment, { label: string; tone: Tone }> = {
@@ -21,56 +23,6 @@ export const MOMENT: Record<Moment, { label: string; tone: Tone }> = {
   decision: { label: "Decision", tone: "plain" },
   plan: { label: "Plan changed", tone: "plain" },
 };
-
-// Decided from the first sentence only, and conservatively: the first rule that
-// matches names the moment, and most messages match none.
-const SUBJECT = String.raw`\b(?:tasks?|phase)\b[^.;:!?]*?`;
-const RULES: [Moment, RegExp][] = [
-  // A review or test that found a problem, or something that failed.
-  [
-    "problem",
-    // Not a guess ("means one failed", "might have failed", "if it failed") or a
-    // negation ("none of the tests failed", "the review found no problems").
-    /\breview(?:er)? found\b(?!\s+(?:no|nothing|none|zero)\b)|\bfound (?:a|an|one|two|three|\d+|some|real)\b[^.;:]*\bproblems?\b|(?<!\b(?:none|nothing|no|zero|0|never|not|means|meaning|might|may|maybe|could|would|if|or|whether)\b(?:\s[\w'-]+){0,3}\s)\bfailed\b/i,
-  ],
-  // Something sent back.
-  [
-    "fixing",
-    /\bsen(?:d|ding|t) (?:it |them |this |that )?back\b|\bback to the (?:same )?builder\b/i,
-  ],
-  // A task or phase that is done or passed.
-  [
-    "done",
-    new RegExp(
-      `${SUBJECT}\\b(?:is|are|was|were)\\s+(?:now\\s+)?(?:done|finished|complete)\\b|\\b(?:tasks?|phase)\\s+[\\w-]+(?:\\s+and\\s+[\\w-]+)?\\s+passed\\b`,
-      "i",
-    ),
-  ],
-  // An explicit change of plan, or a choice with its reason ("X, not Y: because").
-  [
-    "decision",
-    /\b(?:I|I'm|I'll|I've|we|we'll|we're)\b[^.;]*\b(?:instead of|rather than)\b|\bI(?:'ve| have)? decided\b|\bchanged? (?:the |my |our )?plan\b|,\s*not\s+\w+(?:\s+\w+)?\s*[:;]/i,
-  ],
-  ["plan", /\badded an? (?:\w+ )?task\b/i],
-];
-
-/** A text's first sentence, without its Markdown marks. */
-export function firstSentence(text: string): string {
-  const plain = plainText(text);
-  for (const m of plain.matchAll(/[.!?](?=\s|$)/g)) {
-    // "e.g." and its kind do not end a sentence.
-    if (/\b(?:e\.g|i\.e|vs|cf|approx|incl|etc)$/i.test(plain.slice(0, m.index)))
-      continue;
-    return plain.slice(0, m.index + 1);
-  }
-  return plain;
-}
-
-/** The kind of moment a message is, or undefined when it is none of them. */
-export function moment(text: string): Moment | undefined {
-  const first = firstSentence(text);
-  return RULES.find(([, re]) => re.test(first))?.[0];
-}
 
 const pad = (n: number) => String(n).padStart(2, "0");
 /** "10:06", in the viewer's time. */

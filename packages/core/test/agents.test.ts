@@ -62,6 +62,7 @@ test("subagent gets description and part", () => {
       startedAt: "2026-11-06T00:00:06.000Z",
       endedAt: "2026-11-06T00:00:09.000Z",
       lastText: "table is fine",
+      role: "other",
     },
     {
       id: "a2",
@@ -72,6 +73,7 @@ test("subagent gets description and part", () => {
       part: "api",
       status: "running",
       startedAt: "2026-11-06T00:00:07.000Z",
+      role: "build",
     },
   ]);
   expect(req?.parts[1]?.steps[0]?.agentId).toBe("a2");
@@ -150,6 +152,7 @@ test("feature.jsonl links its subagent; interactive prompt suggestions are ignor
       startedAt: "2026-11-06T00:00:12.000Z",
       endedAt: "2026-11-06T00:00:16.000Z",
       lastText: "hello world",
+      role: "other",
     },
   ]);
   const view = reduce(fixture("interactive.jsonl"));

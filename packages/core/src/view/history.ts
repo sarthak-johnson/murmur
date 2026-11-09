@@ -2,7 +2,7 @@
  * A request with no valid map call (`planInferred`) still tells its story, from its events.
  * Runs after every request is reduced, so helpers that stop later are seen.
  * - Helpers: each Agent PreToolUse is a run. Runs whose description names the same task
- *   or bug id (`Task 12`, `Tasks 13-14`, `B7`, `bug B1`, `bug 1`; case and `bug` ignored)
+ *   or bug id (`Task 12`, `Tasks 13-14`, `Task 18a`, `B7`, `bug B1`, `bug 1`; case and `bug` ignored)
  *   share one part; runs with no id get a part each. The title is the first non-review
  *   run's description without its work verb. Each run is a step labelled by its verb.
  * - Run status: failed on a PostToolUseFailure of its call; done when its subagent
@@ -22,6 +22,7 @@
 import type { MurmurEvent } from "../events.js";
 import { addTouch, displayPath, touchesOf } from "./files.js";
 import { addOnce } from "./requests.js";
+import { itemOf } from "./rounds.js";
 import type {
   AgentView,
   FileTouch,
@@ -32,7 +33,6 @@ import type {
 } from "./types.js";
 
 const MAX_FOLDERS = 6;
-const ID = /\b(?:tasks?\s+(\d+(?:\s*[-–]\s*\d+)?)|(?:bug\s+b?|b)(\d+))\b/i;
 const VERB =
   /^(implement|build|draft|write|fix|add|research|investigate|re-?review|review)\b[\s:]*/i;
 const QUIET_MS = 600_000; // 10 minutes
@@ -55,10 +55,30 @@ const isTool = (e: MurmurEvent, hook: string, name: string) =>
 const describe = (e: MurmurEvent) =>
   str(obj(e.payload.tool_input).description).trim();
 
+/** A run's part id from the task or bug its description names: `task:12`, `task:13-14`, `item:B7`. */
 function subject(description: string): string | undefined {
-  const m = ID.exec(description);
-  if (!m) return undefined;
-  return m[1] ? `task:${m[1].replace(/\s*[-–]\s*/, "-")}` : `item:B${m[2]}`;
+  const id = itemOf(description);
+  if (!id) return undefined;
+  return id.startsWith("B")
+    ? `item:${id}`
+    : `task:${id.replace(/^Tasks? /, "")}`;
+}
+
+/**
+ * When each helper was last heard from, and `over(since)`: a SessionEnd came after
+ * `since`, or it was over 10 minutes before the session's latest event.
+ */
+export function quiet(all: MurmurEvent[]) {
+  const lastAt = new Map<string, string>(); // agent id -> ts of its latest event
+  for (const e of all) {
+    const id = str(e.payload.agent_id);
+    if (id) lastAt.set(id, e.ts);
+  }
+  const latest = Date.parse(all.at(-1)?.ts ?? "");
+  const endAt = all.findLast((e) => e.hook === "SessionEnd")?.ts ?? "";
+  const over = (since: string) =>
+    endAt > since || latest - Date.parse(since) > QUIET_MS;
+  return { lastAt, over };
 }
 
 function titleOf(description: string): string {
@@ -81,15 +101,7 @@ export function inferHistory(
   started: Map<string, string>,
 ): void {
   const all = events.flat();
-  const lastAt = new Map<string, string>(); // agent id -> ts of its latest event
-  for (const e of all) {
-    const id = str(e.payload.agent_id);
-    if (id) lastAt.set(id, e.ts);
-  }
-  const latest = Date.parse(all.at(-1)?.ts ?? "");
-  const endAt = all.findLast((e) => e.hook === "SessionEnd")?.ts ?? "";
-  const over = (since: string) =>
-    endAt > since || latest - Date.parse(since) > QUIET_MS;
+  const { lastAt, over } = quiet(all);
   const failed = new Set<string>();
   const returned = new Set<string>();
   for (const e of all) {
