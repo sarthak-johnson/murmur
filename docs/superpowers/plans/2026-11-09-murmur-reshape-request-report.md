@@ -33,8 +33,11 @@ Branch `feat/reshape-request`, web only (`web/src`, `web/test`).
 - Grouped by `MessageView.phase`, in plan order, then a "Beyond the plan" section from `beyond.messages`.
 - Each section head has the phase name, its state word and mark, its time span, done count and message count.
 - A finished section reads oldest first; the live section reads newest first under a "now" row for each helper that has not reported yet.
-- Consecutive messages about the same task fold into one row ("Task 1 · Lit plate tokens · Logged on the tracker. · <1 m · 3 helpers · 2 messages") that opens in place.
-- Decisions, problems found and a phase finished always stand alone, never folded.
+- Every message about a task folds into that task's row, its problems found, fixes and decisions included; the row says what happened in order ("Task 2 · HeroMoney · built, review found the decimal point misaligned, fixed, passed · 6 m · 3 helpers · 8 messages"), with a Problem found badge when one was found, and opens in place.
+- A message's task is the one core tied it to, else the tasks its first sentence names ("Task 2", "Tasks 4 and 5", "Bug B1"), else its helper's task; a message that names nothing carries on the task before it.
+- Only messages about no task stand alone: the opening lines, a phase finished, a plan change.
+- Once a section is over, each task's messages gather in one row at its first message; the live section folds consecutive runs only, so a new message never moves an older row, and its newest run is open (it stays open while the section is live, folds once it is over, and the reader's own toggle always wins).
+- Request 7's story went from 8,395 px to 2,015 px at 1440, request 8's from 8,955 to 1,483 and request 9's from 21,961 to 3,212.
 - New messages slide down 8 px and fade in once (180 ms) on mount; rows are keyed by their oldest message, so nothing above the reader is rebuilt or reordered.
 - A message folds only past 8 lines, so one under 6 lines never shows "Show more".
 - Badges are 13 px tinted words (Done, Problem found, Fixing, Decision); Fixing stays grey so amber means "needs you" only.

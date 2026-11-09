@@ -3496,6 +3496,10 @@ a.helper:focus-visible {
   color: var(--t4);
   font: 400 13px / 24px var(--font-code);
 }
+/* Level with the run's title inside its box. */
+.st-run > .st-t {
+  padding-top: 9px;
+}
 .st-body {
   min-width: 0;
 }
@@ -3512,10 +3516,15 @@ a.helper:focus-visible {
   color: var(--t2);
   font: 400 16px / 25px var(--font-ui);
 }
+/* Title, badge and counts on the first line, what happened under them, the chevron at the side. */
 .st-run-box {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "t b . c v"
+    "r r r r v";
   align-items: center;
-  gap: 12px 16px;
+  gap: 4px 12px;
   width: 100%;
   padding: 10px 14px;
   border: 0;
@@ -3532,27 +3541,30 @@ a.helper:focus-visible {
   background: var(--s3);
 }
 .st-run-t {
-  flex: 0 1 30%;
+  grid-area: t;
   min-width: 0;
   color: var(--t1);
   font-weight: 500;
   line-height: 21px;
 }
+.st-run-box .badge {
+  grid-area: b;
+}
 .st-run-r {
-  flex: 1 1 0;
+  grid-area: r;
   min-width: 0;
   color: var(--t3);
   font-size: 14px;
   line-height: 20px;
 }
 .st-run-c {
-  flex: none;
+  grid-area: c;
   color: var(--t4);
   font-size: 13px;
   white-space: nowrap;
 }
 .st-chev {
-  flex: none;
+  grid-area: v;
   width: 10px;
   height: 10px;
   fill: none;
@@ -3612,11 +3624,20 @@ a.helper:focus-visible {
     grid-template-columns: minmax(0, 1fr);
     gap: 4px;
   }
-  .st-run-box {
-    flex-wrap: wrap;
+  .st-run > .st-t {
+    padding-top: 0;
   }
-  .st-run-t {
-    flex-basis: 100%;
+  /* No column gap, so the counts sit flush left when there is no badge. */
+  .st-run-box {
+    grid-template-columns: max-content minmax(0, 1fr) auto;
+    grid-template-areas:
+      "t t v"
+      "r r r"
+      "b c c";
+    column-gap: 0;
+  }
+  .st-run-box .badge {
+    margin-right: 10px;
   }
   .st-meta {
     margin-left: 0;

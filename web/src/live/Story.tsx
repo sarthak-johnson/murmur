@@ -11,6 +11,7 @@ import type {
   TaskView,
 } from "@murmur/core";
 import { type ReactNode, useState } from "react";
+import { cutWords } from "../catchup";
 import { Fold } from "../markdown";
 import { livePhase, type Mark, shortTitle, taskAgents } from "../session";
 import {
@@ -80,26 +81,91 @@ function Message(props: {
   );
 }
 
-/** A task's run of messages as one row: name, how it ended, time, helpers, count. Opens in place. */
+/** What a task's run did, in order: "built, review found X, fixed, passed"; "" when unclear. */
+export function runSummary(ms: MessageView[]): string {
+  const kinds = ms.map((m) => moment(m.text));
+  const firsts = ms.map((m) => firstSentence(m.text));
+  const problem = kinds.indexOf("problem");
+  const problems = kinds.filter((k) => k === "problem").length;
+  const lastDone = kinds.lastIndexOf("done");
+  const before = problem < 0 ? firsts : firsts.slice(0, problem);
+  const out: string[] = [];
+  if (before.some((f) => /\b(?:buil[dt]|building|review)/i.test(f)))
+    out.push("built");
+  if (problem >= 0) {
+    const first = firsts[problem] as string;
+    const colon = first.indexOf(":");
+    const what =
+      (colon >= 0 && first.slice(colon + 1).trim()) ||
+      /\bfound\s+(.+)$/i.exec(first)?.[1] ||
+      "a problem";
+    // "Bar still jumps" reads as "bar still jumps"; "CSS" stays as it is.
+    const detail = cutWords(
+      /^[A-Z][a-z]/.test(what)
+        ? what.charAt(0).toLowerCase() + what.slice(1)
+        : what,
+      48,
+    ).replace(/[.!?]$/, "");
+    out.push(
+      `review found ${detail}${problems > 1 ? `, then ${problems - 1} more` : ""}`,
+    );
+    if (
+      ms
+        .slice(problem + 1)
+        .some(
+          (m, i) =>
+            kinds[problem + 1 + i] === "fixing" ||
+            /\bfix/i.test(firstSentence(m.text)),
+        ) ||
+      lastDone > problem
+    )
+      out.push("fixed");
+  }
+  if (lastDone >= 0 && lastDone > kinds.lastIndexOf("problem"))
+    out.push("passed");
+  return out.join(", ");
+}
+
+/** A task's run of messages as one row: name, what happened, time, helpers, count. Opens in place. */
 function Run(props: {
   ms: MessageView[];
-  task: TaskView;
+  subject: Subject;
   request: RequestView;
+  /** In the live section, newest first. */
+  live: boolean;
+  /** The live section's newest run. */
+  newest: boolean;
 }) {
-  const { ms, task, request } = props;
-  const [open, setOpen] = useState(false);
+  const { ms, subject, request, live } = props;
+  // The live section's newest run opens and stays open while the section is live, so
+  // a newer run never folds the one under the reader; once over it folds. The reader's
+  // own toggle always wins.
+  const [auto] = useState(props.newest);
+  const [mine, setMine] = useState<boolean>();
+  const open = mine ?? (live && auto);
   const first = ms[0] as MessageView;
   const last = ms.at(-1) as MessageView;
-  const num = taskNumber(task.title);
-  const name = shortTitle(task.title);
-  const helpers = taskAgents(request, task).length;
+  const [one] = subject.tasks;
+  const num = one && subject.tasks.length === 1 && taskNumber(one.title);
+  const title =
+    subject.tasks.length === 1 && one
+      ? num && num !== shortTitle(one.title)
+        ? `${num} · ${shortTitle(one.title)}`
+        : shortTitle(one.title)
+      : subject.tasks.length > 1
+        ? `${subject.label} · ${subject.tasks.map((t) => shortTitle(t.title)).join(", ")}`
+        : subject.label;
+  const helpers = new Set([
+    ...subject.tasks.flatMap((t) => taskAgents(request, t).map((a) => a.id)),
+    ...ms.flatMap((m) => (m.agent ? [m.agent] : [])),
+  ]).size;
+  const took = duration(first.ts, last.ts);
   const facts = [
-    duration(first.ts, last.ts) === "under a minute"
-      ? "<1 m"
-      : duration(first.ts, last.ts),
+    took === "under a minute" ? "<1 m" : took,
     ...(helpers ? [nOf(helpers, "helper")] : []),
     nOf(ms.length, "message"),
   ];
+  const problem = ms.some((m) => moment(m.text) === "problem");
   return (
     <li className="st-run st-in">
       <time className="st-t" dateTime={first.ts}>
@@ -110,12 +176,13 @@ function Run(props: {
           type="button"
           className="st-run-box"
           aria-expanded={open}
-          onClick={() => setOpen(!open)}
+          onClick={() => setMine(!open)}
         >
-          <span className="st-run-t">
-            {num && num !== name ? `${num} · ${name}` : name}
+          <span className="st-run-t">{title}</span>
+          {problem && <span className="badge bad">Problem found</span>}
+          <span className="st-run-r">
+            {runSummary(ms) || firstSentence(last.text)}
           </span>
-          <span className="st-run-r">{firstSentence(last.text)}</span>
           <span className="st-run-c num">{facts.join(" · ")}</span>
           <svg className="st-chev" viewBox="0 0 10 10" aria-hidden="true">
             <path d="M3.5 2 6.5 5l-3 3" />
@@ -163,24 +230,109 @@ export function taskOfMessage(
   return mine.length === 1 ? mine[0] : undefined;
 }
 
-/** Decisions, problems found and a phase finished stand alone, never folded into a run. */
+/** What a run of messages is about: one or more plan tasks, or a task named only in the text. */
+type Subject = { key: string; label: string; tasks: TaskView[] };
+
+/** A phase finished and a change of plan are about the request, not a task: they stand alone. */
 function standsAlone(m: MessageView): boolean {
   const kind = moment(m.text);
   return (
-    kind === "decision" ||
-    kind === "problem" ||
-    (kind === "done" && /\bphase\b/i.test(firstSentence(m.text)))
+    kind === "plan" ||
+    (kind === "done" &&
+      /\bphase(?:\s+[\w-]+)?\s+(?:is|was|has)\s+(?:now\s+)?(?:done|finished|complete)\b/i.test(
+        firstSentence(m.text),
+      ))
   );
 }
 
-/** Runs of consecutive messages about the same task, in time order. */
-function runs(request: RequestView, ms: MessageView[]) {
-  const out: { task?: TaskView | undefined; ms: MessageView[] }[] = [];
+// "Task 2", "Tasks 4 and 5", "Tasks 13, 14 and 15", "Bug B1", "Tasks 4-5".
+const NAMED =
+  /\b(tasks?|bugs?)\s+([A-Z]?\d+[a-z]?(?:\s*(?:,|&|-|–|and|to)\s*[A-Z]?\d+[a-z]?)*)/i;
+
+/** The tasks the first sentence names, by their number, else as a label. */
+function named(request: RequestView, m: MessageView): Subject | undefined {
+  const hit = NAMED.exec(firstSentence(m.text));
+  if (!hit) return undefined;
+  const kind = (hit[1] as string).toLowerCase().startsWith("bug")
+    ? "bug"
+    : "task";
+  const ids = (hit[2] as string).match(/[A-Z]?\d+[a-z]?/gi) ?? [];
+  const tasks = request.phases.flatMap((p) => p.tasks);
+  const mine = ids.flatMap((id) =>
+    tasks.filter(
+      (t) =>
+        taskNumber(t.title)
+          ?.toLowerCase()
+          .replace(/^tasks?\s+/, "task ") === `${kind} ${id.toLowerCase()}`,
+    ),
+  );
+  const label = hit[0].replace(/\s+/g, " ");
+  const word = kind === "bug" ? "Bug" : "Task";
+  return {
+    key: `${kind}:${ids.join("+").toLowerCase()}`,
+    label: `${ids.length > 1 ? `${word}s` : word}${label.slice(label.search(/\s/))}`,
+    tasks: mine.length === ids.length ? mine : [],
+  };
+}
+
+const ofTask = (t: TaskView): Subject => ({
+  key: `id:${t.id}`,
+  label: t.title,
+  tasks: [t],
+});
+
+// A text-named single task and core's or a helper's tie to it are the same subject.
+const keyOf = (s: Subject) =>
+  s.tasks.length === 1 ? `id:${s.tasks[0]?.id}` : s.key;
+
+/**
+ * Rows of messages about the same subject. A message's subject is the task core tied it
+ * to, else the tasks its first sentence names, else its helper's task; one about nothing
+ * named carries on the subject before it. A phase finished or a plan change stands
+ * alone. Live, a row is a run of consecutive messages, so a new one never moves an older
+ * row; once over, each subject's messages gather in one row at its first message.
+ */
+function runs(request: RequestView, ms: MessageView[], gather: boolean) {
+  const out: { subject?: Subject | undefined; ms: MessageView[] }[] = [];
+  const rows = new Map<string, (typeof out)[number]>();
+  let carry: Subject | undefined;
   for (const m of ms) {
-    const task = standsAlone(m) ? undefined : taskOfMessage(request, m);
+    if (standsAlone(m)) {
+      out.push({ ms: [m] });
+      carry = undefined;
+      continue;
+    }
+    const core = m.task
+      ? request.phases.flatMap((p) => p.tasks).find((t) => t.id === m.task)
+      : undefined;
+    const helper = m.agent
+      ? taskOfMessage(request, {
+          id: m.id,
+          ts: m.ts,
+          text: m.text,
+          agent: m.agent,
+        })
+      : undefined;
+    const subject =
+      (core && ofTask(core)) ??
+      named(request, m) ??
+      (helper && ofTask(helper)) ??
+      carry;
+    carry = subject;
     const last = out.at(-1);
-    if (last && task && last.task === task) last.ms.push(m);
-    else out.push({ task, ms: [m] });
+    const row = subject
+      ? gather
+        ? rows.get(keyOf(subject))
+        : last?.subject && keyOf(last.subject) === keyOf(subject)
+          ? last
+          : undefined
+      : undefined;
+    if (row) row.ms.push(m);
+    else {
+      const fresh = { subject, ms: [m] };
+      out.push(fresh);
+      if (subject) rows.set(keyOf(subject), fresh);
+    }
   }
   return out;
 }
@@ -194,7 +346,7 @@ function Rows(props: {
   onOpenPart(partId: string): void;
 }) {
   const { request, ms, newestFirst, waiting, onOpenPart } = props;
-  const groups = runs(request, ms);
+  const groups = runs(request, ms, !newestFirst);
   if (newestFirst) groups.reverse();
   const now = new Date().toISOString();
   return (
@@ -213,16 +365,23 @@ function Rows(props: {
             </span>
           </li>
         ))}
-      {groups.map((g) => {
+      {groups.map((g, i) => {
         const head = g.ms[0] as MessageView;
         // Keyed by its oldest message, so a row stays put (and open) as newer ones join.
-        return g.task && g.ms.length > 1 ? (
-          <Run key={head.id} ms={g.ms} task={g.task} request={request} />
+        return g.subject && g.ms.length > 1 ? (
+          <Run
+            key={head.id}
+            ms={g.ms}
+            subject={g.subject}
+            request={request}
+            live={newestFirst}
+            newest={newestFirst && i === 0}
+          />
         ) : (
           <Message
             key={head.id}
             m={head}
-            task={g.task ?? taskOfMessage(request, head)}
+            task={g.subject?.tasks[0]}
             onOpenPart={onOpenPart}
           />
         );

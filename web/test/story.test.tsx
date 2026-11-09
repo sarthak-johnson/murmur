@@ -477,14 +477,19 @@ describe("request page, story first", () => {
     expect(bar().getByRole("link", { name: /Permission needed/ })).toBeTruthy();
   });
 
-  it("the timeline runs oldest first once done", () => {
+  it("the timeline runs oldest first once done, each task's messages in one row", () => {
     show(session(request()));
-    expect(storyTexts().map((t) => t.slice(0, 12))).toEqual([
+    const rows = [...story().querySelectorAll(".st-phase > ol > li")].map(
+      (li) =>
+        (
+          li.querySelector(".st-run-t") ?? li.querySelector(".story-text")
+        )?.textContent?.slice(0, 12),
+    );
+    expect(rows).toEqual([
       "Approved, so",
       "One builder ",
-      "The review f",
+      "Task 1 · Lit",
       "I also added",
-      "Task 1 is do",
     ]);
   });
 
@@ -508,9 +513,18 @@ describe("request page, story first", () => {
   });
 
   it("each moment has its time, task chip and badge", async () => {
-    show(session(request()));
+    // Live, so each message about Task 1 is its own row between the others.
+    const [phase] = request().phases;
+    show(
+      session(
+        request({
+          finished: false,
+          phases: [{ ...(phase as PhaseView), status: "now" }],
+        }),
+      ),
+    );
     const items = within(story()).getAllByRole("listitem");
-    const [, decision, problem, plan, done] = items as HTMLElement[];
+    const [done, plan, problem, decision] = items as HTMLElement[];
     expect(within(decision as HTMLElement).getByText("Decision")).toBeTruthy();
     expect(
       within(problem as HTMLElement).getByText("Problem found"),
@@ -546,14 +560,14 @@ describe("request page, story first", () => {
       "st-msg",
       "st-run",
       "st-msg",
-      "st-msg",
-      "st-msg",
     ]);
-    const [, block, problem, alone, single] = rows as HTMLElement[];
+    const [alone, block, single] = rows as HTMLElement[];
     const b = within(block as HTMLElement);
-    const open = b.getByRole("button");
+    const open = b.getAllByRole("button")[0] as HTMLElement;
+    // The problem found is part of the run, and badges it; a message about nothing
+    // named carries on the run before it.
     expect(open.textContent).toBe(
-      "Task 1 · Lit plate tokensTask 1 is done and verified.2 m · 3 helpers · 3 messages",
+      "Task 1 · Lit plate tokensProblem foundbuilt, review found one real problem4 m · 3 helpers · 5 messages",
     );
     await userEvent.click(open);
     expect(
@@ -564,17 +578,10 @@ describe("request page, story first", () => {
       "Task 1 is being built on Sonnet.",
       "Task 1 is in review.",
       "Task 1 is done and verified.",
+      "The review found one real problem.",
+      "Waiting on the tracker.",
     ]);
-    // A problem found stands alone, with its badge and task chip.
-    expect(
-      within(problem as HTMLElement).getByText("Problem found"),
-    ).toBeTruthy();
-    expect(
-      within(problem as HTMLElement).getByRole("button", {
-        name: "Lit plate tokens",
-      }),
-    ).toBeTruthy();
-    // A message linked to no task stands alone; a one-message task is a plain message.
+    // A message before any task stands alone; a one-message task is a plain message.
     expect(alone?.querySelector(".task-chip")).toBeNull();
     expect(single?.textContent).toContain("Task 2 is built.");
     expect(single?.className).toContain("st-msg");
@@ -620,17 +627,22 @@ describe("request page, story first", () => {
       ),
     );
     const rows = [...story().querySelectorAll(".st-phase > ol > li")];
-    expect(rows[0]?.textContent).toContain("Waiting.");
-    await userEvent.click(within(rows[1] as HTMLElement).getByRole("button"));
+    // The newest run is on top and open; "Waiting." carries on Task 1's run.
+    expect(
+      within(rows[0] as HTMLElement)
+        .getAllByRole("button")[0]
+        ?.getAttribute("aria-expanded"),
+    ).toBe("true");
     const texts = [
-      ...(rows[1] as HTMLElement).querySelectorAll(".story-text"),
+      ...(rows[0] as HTMLElement).querySelectorAll(".story-text"),
     ].map((e) => e.textContent);
     expect(texts).toEqual([
       "Task 1 is being built.",
       "Task 1 is in review.",
       "Task 1 is done.",
+      "Waiting.",
     ]);
-    expect(rows[2]?.textContent).toContain("Starting.");
+    expect(rows[1]?.textContent).toContain("Starting.");
   });
 
   it("renders Markdown in messages as formatted text", () => {

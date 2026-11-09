@@ -670,26 +670,238 @@ describe("the story", () => {
     show(session(req));
     const phase = story().querySelector(".st-phase") as HTMLElement;
     const rows = [...phase.querySelectorAll(":scope > ol > li")];
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(2);
     const run = rows[1] as HTMLElement;
     expect(run.className).toContain("st-run");
     const button = within(run).getByRole("button");
     expect(button.textContent).toBe(
-      "Task 2 · HeroMoneyTask 2 passed.5 m · 2 helpers · 3 messages",
+      "Task 2 · HeroMoneybuilt, passed6 m · 2 helpers · 4 messages",
     );
     expect(button.getAttribute("aria-expanded")).toBe("false");
     expect(run.querySelectorAll(".story-text")).toHaveLength(0);
     await userEvent.click(button);
     expect(button.getAttribute("aria-expanded")).toBe("true");
+    // A decision about the task is part of its run.
     expect(
       [...run.querySelectorAll(".story-text")].map((t) => t.textContent),
     ).toEqual([
       "Task 2 is being built.",
       "Task 2 is in review.",
       "Task 2 passed.",
+      "I decided to keep one builder, rather than two.",
     ]);
-    // A decision stands alone, even about the same task.
-    expect((rows[2] as HTMLElement).textContent).toContain("Decision");
+  });
+
+  it("folds everything about one task, problems and fixes too; only messages about no task stand alone", () => {
+    const req = running({
+      beyond: undefined,
+      agents: [agent("a1", { part: "money" }), agent("a2", { part: "money" })],
+      finished: true,
+      state: "done",
+      phases: [
+        {
+          id: "p1",
+          title: "Phase 0",
+          status: "done",
+          tasks: [
+            task("t1", "Task 1: Lit plate tokens", "done"),
+            task("t2", "Task 2: HeroMoney", "done", { part: "money" }),
+            task("t4", "Task 4: Surfaces", "done"),
+            task("t5", "Task 5: Controls", "done"),
+          ],
+        },
+      ],
+      parts: [part({ id: "money", title: "HeroMoney", agents: ["a1", "a2"] })],
+      messages: [
+        msg("m1", 1, "Approved, so I'm starting.", { phase: "p1" }),
+        // Named in the text, not by core.
+        msg("m2", 2, "Task 2 is being built.", { phase: "p1" }),
+        // Interleaved: once the phase is over, Task 1's messages gather in one row.
+        msg("x1", 3, "Task 1 is done.", { phase: "p1" }),
+        msg("m3", 4, "Task 2 is built and in review.", { phase: "p1" }),
+        // Tied by the helper whose report it follows.
+        msg(
+          "m4",
+          5,
+          "The review found one real problem: the decimal point was misaligned. I'm sending it back to the builder.",
+          { phase: "p1", agent: "a2" },
+        ),
+        // About nothing named: it carries on the run before it.
+        msg("m5", 6, "The fix is with the builder.", { phase: "p1" }),
+        msg("m6", 7, "Task 2 is done after one fix round.", { phase: "p1" }),
+        // Progress on the phase is not the phase finished.
+        msg(
+          "x3",
+          7,
+          "Two of four Phase 0 tasks are done, and the plate is finished.",
+          {
+            phase: "p1",
+          },
+        ),
+        msg("m7", 8, "I added a task for the charts.", { phase: "p1" }),
+        msg("x2", 8, "Task 1 passed its recheck.", { phase: "p1" }),
+        msg("m8", 9, "Tasks 4 and 5 are being built as one batch.", {
+          phase: "p1",
+        }),
+        msg("m9", 10, "Tasks 4 and 5 are done.", { phase: "p1" }),
+        msg("m10", 11, "Phase 0 is finished: every task passed review.", {
+          phase: "p1",
+          agent: "a2",
+        }),
+      ],
+    });
+    show(session(req));
+    const phase = story().querySelector(".st-phase") as HTMLElement;
+    const rows = [...phase.querySelectorAll(":scope > ol > li")];
+    expect(rows.map((r) => r.className.split(" ")[0])).toEqual([
+      "st-msg",
+      "st-run",
+      "st-run",
+      "st-msg",
+      "st-run",
+      "st-msg",
+    ]);
+    expect(rows.splice(2, 1)[0]?.querySelector(".st-run-t")?.textContent).toBe(
+      "Task 1 · Lit plate tokens",
+    );
+    const money = rows[1] as HTMLElement;
+    expect(money.querySelector(".st-run-t")?.textContent).toBe(
+      "Task 2 · HeroMoney",
+    );
+    expect(money.querySelector(".st-run-r")?.textContent).toBe(
+      "built, review found the decimal point was misaligned, fixed, passed",
+    );
+    expect(money.querySelector(".st-run-c")?.textContent).toBe(
+      "5 m · 2 helpers · 6 messages",
+    );
+    expect(within(money).getByText("Problem found")).toBeTruthy();
+    expect(rows[2]?.textContent).toContain("Plan changed");
+    expect(rows[3]?.querySelector(".st-run-t")?.textContent).toBe(
+      "Tasks 4 and 5 · Surfaces, Controls",
+    );
+    expect(rows[3]?.querySelector(".st-run-r")?.textContent).toBe(
+      "built, passed",
+    );
+    expect(
+      within(rows[3] as HTMLElement).queryByText("Problem found"),
+    ).toBeNull();
+    expect(rows[4]?.textContent).toContain("Phase 0 is finished");
+  });
+
+  it("keeps the newest task run open in the live section, and what the reader opened stays open", async () => {
+    const base = running({
+      beyond: undefined,
+      agents: [],
+      phases: [
+        {
+          id: "p1",
+          title: "Build",
+          status: "now",
+          tasks: [
+            task("t1", "Task 1: Tokens", "done"),
+            task("t2", "Task 2: Money", "now"),
+          ],
+        },
+      ],
+      messages: [
+        msg("m1", 1, "Task 1 is being built.", { phase: "p1" }),
+        msg("m2", 2, "Task 1 is done.", { phase: "p1" }),
+        msg("m3", 3, "Task 2 is being built.", { phase: "p1" }),
+        msg("m4", 4, "Task 2 is in review.", { phase: "p1" }),
+      ],
+    });
+    const { rerender } = show(session(base));
+    const runsNow = () => [
+      ...story().querySelectorAll<HTMLElement>(".st-phase .st-run"),
+    ];
+    const [newest, older] = runsNow();
+    const toggle = (r?: HTMLElement) =>
+      within(r as HTMLElement).getAllByRole("button")[0] as HTMLElement;
+    expect(newest?.querySelector(".st-run-t")?.textContent).toBe(
+      "Task 2 · Money",
+    );
+    expect(toggle(newest).getAttribute("aria-expanded")).toBe("true");
+    expect(toggle(older).getAttribute("aria-expanded")).toBe("false");
+    await userEvent.click(toggle(older));
+    const later = (extra: MessageView[]) =>
+      rerender(
+        <Live
+          sessionId="s1"
+          view={session({
+            ...base,
+            messages: [...(base.messages ?? []), ...extra],
+          })}
+          status="live"
+          lastLooked={null}
+        />,
+      );
+    // A message joins the open run: same row, still open, the older one still open.
+    later([msg("m5", 5, "The review is still running.", { phase: "p1" })]);
+    expect(runsNow()[0]).toBe(newest);
+    expect(toggle(newest).getAttribute("aria-expanded")).toBe("true");
+    expect(newest?.querySelectorAll(".story-text")).toHaveLength(3);
+    expect(toggle(older).getAttribute("aria-expanded")).toBe("true");
+    // A reader who closed the newest run keeps it closed as messages arrive.
+    await userEvent.click(toggle(newest));
+    later([
+      msg("m5", 5, "The review is still running.", { phase: "p1" }),
+      msg("m6", 6, "Task 2 passed.", { phase: "p1" }),
+    ]);
+    expect(runsNow()[0]).toBe(newest);
+    expect(toggle(newest).getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("folds the newest run once the request is over, unless the reader opened it", () => {
+    const phase = (status: "now" | "done") => [
+      {
+        id: "p1",
+        title: "Build",
+        status,
+        tasks: [
+          task("t1", "Task 1: Tokens", "done"),
+          task("t2", "Task 2: Money", status),
+        ],
+      },
+    ];
+    const live = running({
+      beyond: undefined,
+      agents: [],
+      phases: phase("now"),
+      messages: [
+        msg("m1", 1, "Task 1 is being built.", { phase: "p1" }),
+        msg("m2", 2, "Task 1 is in review.", { phase: "p1" }),
+      ],
+    });
+    const draw = (r: RequestView) =>
+      rerender(
+        <Live
+          sessionId="s1"
+          view={session(r)}
+          status="live"
+          lastLooked={null}
+        />,
+      );
+    // The page draws partial views while a big session loads, so a finished request
+    // can mount as live first.
+    const { rerender } = show(session(live));
+    const open = () =>
+      [...story().querySelectorAll(".st-run-box")].map((b) =>
+        b.getAttribute("aria-expanded"),
+      );
+    expect(open()).toEqual(["true"]);
+    // A newer run opens on top; the one under it stays open while the phase is live.
+    const more = {
+      ...live,
+      messages: [
+        ...(live.messages ?? []),
+        msg("m3", 3, "Task 2 is being built.", { phase: "p1" }),
+        msg("m4", 4, "Task 2 is in review.", { phase: "p1" }),
+      ],
+    };
+    draw(more);
+    expect(open()).toEqual(["true", "true"]);
+    draw({ ...more, finished: true, state: "done", phases: phase("done") });
+    expect(open()).toEqual(["false", "false"]);
   });
 
   it("never shows Show more on a short message", () => {
@@ -759,6 +971,24 @@ describe("the side column", () => {
     const bar = rows[2]?.querySelector(".hl-b i") as HTMLElement;
     expect(bar.style.left).toMatch(/%$/);
     expect(Number.parseFloat(bar.style.width)).toBeGreaterThan(0);
+  });
+
+  it("says all done only when no helper was left running", () => {
+    show(session(running({ finished: true, state: "left-open" })));
+    expect(region("Helpers").querySelector(".cnt")?.textContent).toBe("3");
+    cleanup();
+    show(
+      session(
+        running({
+          finished: true,
+          state: "done",
+          agents: running().agents.map((a) => ({ ...a, status: "done" })),
+        }),
+      ),
+    );
+    expect(region("Helpers").querySelector(".cnt")?.textContent).toBe(
+      "3 · all done",
+    );
   });
 
   it("groups many helpers by role", () => {
