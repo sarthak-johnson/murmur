@@ -457,7 +457,7 @@ function Detail(props: {
     .replace(/\.$/, "")
     .replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase());
   return (
-    <section className="fd" aria-label="Selected part">
+    <section className="fd" aria-label="Selected part" data-morph={path}>
       <div className="fd-main">
         <h3 className="fd-ttl">
           {tag ? `${p.title} · ${name}` : p.title}

@@ -72,14 +72,18 @@ export function byDay(requests: RequestView[]) {
 
 const many = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
+/** How long the session has run: "7 days", "3 h 07 m", "under a minute". */
+export function sessionSpan(view: SessionView): string {
+  const ms = Date.parse(view.lastEventAt) - Date.parse(view.startedAt);
+  return ms < 86_400_000
+    ? duration(view.startedAt, view.lastEventAt)
+    : many(Math.round(ms / 86_400_000), "day");
+}
+
 /** "13 requests · 136 helpers · 7 days". */
 export function sessionFacts(view: SessionView): string {
   const helpers = view.requests.reduce((n, r) => n + r.tally.helpers, 0);
-  const ms = Date.parse(view.lastEventAt) - Date.parse(view.startedAt);
-  const span =
-    ms < 86_400_000
-      ? duration(view.startedAt, view.lastEventAt)
-      : many(Math.round(ms / 86_400_000), "day");
+  const span = sessionSpan(view);
   return [
     many(view.requests.length, "request"),
     ...(helpers ? [many(helpers, "helper")] : []),
@@ -166,6 +170,8 @@ export function Rail(props: {
   /** The request on screen, and whether the page is that request's own. */
   currentId: string | undefined;
   onRequestPage: boolean;
+  /** The session's own page (the journey): its running station is the loop, not the rail's. */
+  onJourney?: boolean;
   status: SessionStatus;
   me?: Me | undefined;
   /** Open as the drawer (under 900 px). */
@@ -173,23 +179,33 @@ export function Rail(props: {
   onClose(): void;
 }) {
   const { sessionId, view, events, currentId, onRequestPage } = props;
-  const { status, me, open, onClose } = props;
+  const { status, me, open, onClose, onJourney } = props;
   const box = useRef<HTMLElement>(null);
   const marks = useMemo(
     () => new Map(view.requests.map((r) => [r, requestMark(view, r, events)])),
     [view, events],
   );
   const now = new Date().toISOString();
+  // One loop on screen: the newest running request's mark.
+  const pulsing = onJourney
+    ? undefined
+    : view.requests.findLast((r) => marks.get(r)?.mark === "running");
 
   // The shown request scrolls into the rail's view when it changes, only if it is out of
   // view, so a click never jumps. New requests arriving live (appended below) never move
-  // the list, so a reader scrolled elsewhere in it stays there.
+  // the list, so a reader scrolled elsewhere in it stays there. On the journey, with no
+  // request shown, the newest one is placed: where the session is now.
   const placed = useRef<string>(undefined);
   useEffect(() => {
     const list = box.current?.querySelector<HTMLElement>(".spine");
-    const cur = list?.querySelector<HTMLElement>(".stop.cur");
-    if (placed.current === currentId || !list || !cur) return;
-    placed.current = currentId;
+    const key = currentId ?? (onJourney ? "journey" : undefined);
+    const cur = currentId
+      ? list?.querySelector<HTMLElement>(".stop.cur")
+      : onJourney
+        ? [...(list?.querySelectorAll<HTMLElement>(".stop") ?? [])].at(-1)
+        : undefined;
+    if (placed.current === key || !list || !cur) return;
+    placed.current = key;
     // Rows sit in .spine-in, which starts at the top of the scrolled list; the
     // bottom 24 px is under the fade.
     const fade = 24;
@@ -257,7 +273,8 @@ export function Rail(props: {
         className="rail-sess"
         href={sessionPath(sessionId)}
         onClick={follow(sessionPath(sessionId))}
-        title={view.title}
+        title={view.requests[0]?.prompt ?? view.title}
+        aria-current={onJourney ? "page" : undefined}
       >
         <span className="sess-ttl">{view.title || "Untitled session"}</span>
         <span className="sess-sub">{sessionFacts(view)}</span>
@@ -289,8 +306,9 @@ export function Rail(props: {
                           cur ? (onRequestPage ? "page" : "true") : undefined
                         }
                         onClick={follow(path)}
+                        data-morph=""
                       >
-                        <StateMark mark={mark} pulse />
+                        <StateMark mark={mark} pulse={req === pulsing} />
                         <span className="stop-txt">
                           <span className="stop-ttl">
                             <b className="num stop-n">{n}</b>

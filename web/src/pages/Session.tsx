@@ -5,6 +5,7 @@ import { FlowBoard } from "../flow/FlowBoard";
 import { useLastLooked } from "../lastLooked";
 import { Assumptions } from "../live/Assumptions";
 import { RequestBrief } from "../live/Brief";
+import { Journey } from "../live/Journey";
 import { Brand, dayLabel, Rail, RailFoot } from "../live/Rail";
 import { SideColumn } from "../live/Side";
 import { Story } from "../live/Story";
@@ -13,7 +14,7 @@ import { TopBar } from "../live/TopBar";
 import { PhaseTrack } from "../live/Track";
 import { PartDetail } from "../part/PartDetail";
 import { navigate, partPath, requestPath, type Tab } from "../router";
-import { type RequestState, requestMark, type Waiting } from "../session";
+import { KIND, type RequestState, requestMark, type Waiting } from "../session";
 import { clock, fixRoundCount, sentBack, thousands } from "../story";
 import { type SessionStatus, useSession } from "../useSession";
 
@@ -114,7 +115,7 @@ function useDrawer() {
 /** The live screen for one session; SessionPage feeds it from the stream. */
 export function Live(props: {
   sessionId: string;
-  /** Unset on the session page, which shows the newest request in place. */
+  /** Unset on the session page, which shows the journey. */
   requestId?: string | undefined;
   /** A task's page inside the same frame. */
   partId?: string | undefined;
@@ -158,6 +159,8 @@ export function Live(props: {
         waiting: null,
       };
   const done = state === "done";
+  // The session's own page: where it started and where it went.
+  const onJourney = !props.requestId && !partId;
 
   return (
     <div className={drawer.open ? "frame drawer-open" : "frame"}>
@@ -168,8 +171,9 @@ export function Live(props: {
         sessionId={sessionId}
         view={view}
         events={events}
-        currentId={req?.id}
+        currentId={onJourney ? undefined : req?.id}
         onRequestPage={!!wanted && !partId}
+        onJourney={onJourney}
         status={status}
         me={me}
         open={drawer.open}
@@ -204,6 +208,8 @@ export function Live(props: {
             <p className="muted">
               Waiting for the first prompt in this session.
             </p>
+          ) : onJourney ? (
+            <Journey sessionId={sessionId} view={view} events={events} />
           ) : partId ? (
             part ? (
               <PartDetail
@@ -247,13 +253,6 @@ export function Live(props: {
     </div>
   );
 }
-
-const KIND: Record<RequestView["kind"], string> = {
-  feature: "Feature",
-  bug: "Bug hunt",
-  refactor: "Refactor",
-  question: "Question",
-};
 
 const n_ = (n: number, one: string, many = `${one}s`) =>
   n ? [`${n} ${n === 1 ? one : many}`] : [];

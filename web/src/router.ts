@@ -62,28 +62,55 @@ export const partPath = (
 ) => `${requestPath(sessionId, requestId)}/p/${enc(partId)}`;
 
 type Transitioning = Document & {
-  startViewTransition?(update: () => void): unknown;
+  startViewTransition?(update: () => void): { finished: Promise<unknown> };
 };
 
+/** While set on <html>, only `.vt-src` carries the title's transition name (theme.css). */
+const MORPH = "vt-morph";
+const SRC = "vt-src";
+
+/** Names `el` the morphing card for one snapshot; `null` takes the name back. */
+function mark(el: Element | null) {
+  for (const old of document.querySelectorAll(`.${SRC}`))
+    old.classList.remove(SRC);
+  document.documentElement.classList.toggle(MORPH, !!el);
+  el?.classList.add(SRC);
+}
+
+/** Set while navigate's own popstate runs, so useRoute starts no second transition. */
+let moving = false;
+
 /**
- * Moves to a path. Where the browser has View Transitions the change runs inside one, so
- * the request title morphs and the page rises (theme.css); elsewhere it is instant.
+ * Moves to a path. Where the browser has View Transitions the change runs inside one: a
+ * clicked card marked `data-morph` (a station, a rail row, a track station) grows into the
+ * next page's title, and the page rises (theme.css); elsewhere it is instant.
  */
-export function navigate(path: string): void {
+export function navigate(path: string, from?: Element | null): void {
   // Another page starts at its top, as a real link would; a hash within the page scrolls itself.
   const another = new URL(path, location.href).pathname !== location.pathname;
   const go = () => {
+    // Back lands where the reader was: the scroll stays with the entry it leaves.
+    history.replaceState({ y: window.scrollY }, "");
     if (another) window.scrollTo(0, 0);
     history.pushState(null, "", path);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    moving = true;
+    try {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    } finally {
+      moving = false;
+    }
   };
   const doc = document as Transitioning;
   if (typeof doc.startViewTransition !== "function") {
     go();
     return;
   }
+  mark(from?.closest("[data-morph]") ?? null);
   // The DOM must be the new page when the callback returns, so React renders at once.
-  doc.startViewTransition(() => flushSync(go));
+  doc.startViewTransition(() => {
+    mark(null);
+    flushSync(go);
+  });
 }
 
 /** A link's click as an in-app move; a modified click still opens a new tab. */
@@ -92,16 +119,53 @@ export function follow(path: string) {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)
       return;
     e.preventDefault();
-    navigate(path);
+    navigate(path, e.currentTarget as Element);
   };
 }
 
-export function useRoute(): Route {
-  const [route, setRoute] = useState(() =>
-    matchRoute(location.pathname + location.search),
+/**
+ * The card linking to `path` (its `href`, or the path in `data-morph` for a card that is
+ * not itself the link): the main column's last one, else the rail's.
+ */
+function cardFor(path: string): Element | null {
+  const all = [...document.querySelectorAll("[data-morph]")].filter(
+    (el) => (el.getAttribute("data-morph") || el.getAttribute("href")) === path,
   );
+  return all.findLast((el) => el.closest("main")) ?? all[0] ?? null;
+}
+
+/** The scroll an entry was left at, once its page is drawn. */
+function restore() {
+  const y = (history.state as { y?: unknown } | null)?.y;
+  if (typeof y === "number") window.scrollTo(0, y);
+}
+
+const here = () => location.pathname + location.search;
+
+export function useRoute(): Route {
+  const [route, setRoute] = useState(() => matchRoute(here()));
   useEffect(() => {
-    const on = () => setRoute(matchRoute(location.pathname + location.search));
+    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+    let shown = location.pathname;
+    const on = () => {
+      const left = shown;
+      shown = location.pathname;
+      const show = () => setRoute(matchRoute(here()));
+      const doc = document as Transitioning;
+      if (moving) return show();
+      if (typeof doc.startViewTransition !== "function") {
+        flushSync(show);
+        return restore();
+      }
+      // Back or forward: the same path reversed, the title shrinking into its card.
+      doc
+        .startViewTransition(() => {
+          flushSync(show);
+          restore();
+          mark(left === shown ? null : cardFor(left));
+        })
+        .finished.finally(() => mark(null));
+    };
     window.addEventListener("popstate", on);
     return () => window.removeEventListener("popstate", on);
   }, []);

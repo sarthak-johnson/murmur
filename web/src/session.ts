@@ -241,6 +241,14 @@ export function requestMark(
   return { mark: "done", ...at };
 }
 
+/** A request's kind, as its chip says it. */
+export const KIND: Record<RequestView["kind"], string> = {
+  feature: "Feature",
+  bug: "Bug hunt",
+  refactor: "Refactor",
+  question: "Question",
+};
+
 const SHORT = 32;
 /** A clause ends at a comma, colon or semicolon, or a spaced hyphen, en or em dash. */
 const CLAUSE = new RegExp(
