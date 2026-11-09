@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, statSync } from "node:fs";
+import { chmodSync, cpSync, mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
@@ -42,4 +42,12 @@ test("a data dir is created 0700 and keeps its data across opens", async () => {
   const r = await second.db.execute(sql`select login from users`);
   expect(r.rows).toEqual([{ login: "ada" }]);
   await second.close();
+});
+
+test("an existing data dir is made owner-only", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "murmur-data-"));
+  chmodSync(dir, 0o755);
+  const { close } = await openDb(undefined, dir);
+  expect(statSync(dir).mode & 0o777).toBe(0o700);
+  await close();
 });

@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle as drizzleNode } from "drizzle-orm/node-postgres";
@@ -34,7 +34,10 @@ export async function openDb(
     return { db, close: () => pool.end() };
   }
   // Owner-only: the database holds everyone's sessions.
-  if (!url) mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  if (!url) {
+    mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+    chmodSync(dataDir, 0o700); // mode only applies to folders mkdir creates
+  }
   const client = new PGlite(url ? "memory://" : dataDir);
   const db = drizzleLite(client);
   await migrateLite(db, { migrationsFolder });
