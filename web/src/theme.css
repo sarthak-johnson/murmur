@@ -1273,8 +1273,9 @@ svg.g {
  * would add an ellipsis); it leaves the now line room while Claude works, and once the
  * request is done the now line is only history, so the breadcrumb comes first.
  */
+/* The crumbs give way before the right side spills: a longer pill ("Left open") fits. */
 .crumbs {
-  flex: none;
+  flex: 0 1 auto;
   min-width: 0;
   max-width: calc(100% - 520px);
 }
