@@ -62,5 +62,16 @@ No page scrolls sideways at any of the three widths.
 - Steps name the helper as "Agent n", matching its lane, rather than "the Sonnet builder"; with 57 helpers on one task the number is what tells them apart.
 - The mock's "4 files" link per step, "What review caught" card and "3,612 tests pass" fact need data core does not give per helper yet, so they are not drawn.
 - A recap's rounds have no step for the builder's resumed fix run, so Lit plate tokens shows four steps where the mock shows five.
-- Task 39 says "Done after one fix round" because core counts the rounds of this request's helpers, while Claude wrote "two rounds of fixes"; the first fix round ran in request 12.
+- Task 39's timeline has no builder lane: both its fix rounds were sent by message to the builder request 12 started, and a helper's lane shows only in the request it started in.
+  Its title and band still say "two fix rounds", as Claude wrote: a fix sent by message to an earlier request's builder counts in the request that sent it (review fix, below).
 - On a phone the timeline keeps its own sideways scroll inside its panel, as before.
+
+## Review fixes
+
+- Rounds: a builder resumed by message (SendMessage) with a fix ("Task 39 fix round 2: ...", "Task review found issues. Fix these") is a fix round, counted in the request that sent it.
+  Follow-ups, notes and restarts after a stop are not, and neither is a message about another task.
+  On the real session this changes only Task 39 in request 13 (one fix round to two) and Task 41 in request 12 (none to one, now in `sentBack`).
+- A helper named for a pair of tasks ("Review Tasks 13-14") joins the one of them Claude was on, as before PR #21, instead of none.
+- A timeline bar too narrow for the plan's words, with no room beside it, shows its short name ("Built") instead of nothing.
+- With more than ten helpers the timeline's note says "one lane per role".
+- The timeline's note wraps as one block under its heading on a phone.

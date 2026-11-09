@@ -20530,31 +20530,63 @@ function roleOf(description) {
   return "other";
 }
 var ROUND = /\brounds?\s+(\d+)(?:\s*[-–]\s*(\d+))?/i;
-function applyRounds(reqs, agents) {
+function applyRounds(reqs, agents, lists) {
   const latest = /* @__PURE__ */ new Map();
   const last = /* @__PURE__ */ new Map();
   const reviewed = /* @__PURE__ */ new Set();
-  const ordered = [...agents.values()].sort(
-    (a, b) => a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0
-  );
-  for (const a of ordered) {
-    a.role = roleOf(a.description);
-    const s = subjectOf(a.description);
-    if (!s) continue;
-    a.subject = s;
-    if (a.role === "build") {
+  const step = (s, role, text3) => {
+    if (role === "build") {
       latest.delete(s);
       last.delete(s);
       reviewed.delete(s);
     }
     const prev = Math.max(latest.get(s) ?? 0, 1);
-    const n = ROUND.exec(a.description);
+    const n = ROUND.exec(text3);
     const named = n ? Number(n[2] ?? n[1]) + 1 : void 0;
-    const again = /\bround/i.test(a.description);
-    a.round = named ?? (a.role === "recheck" ? last.get(s) === "fix" ? prev : prev + 1 : a.role === "fix" && (reviewed.has(s) || again) ? prev + 1 : prev);
-    latest.set(s, Math.max(latest.get(s) ?? 0, a.round));
-    last.set(s, a.role);
-    if (a.role === "review" || a.role === "recheck") reviewed.add(s);
+    const again = /\bround/i.test(text3);
+    const round = named ?? (role === "recheck" ? last.get(s) === "fix" ? prev : prev + 1 : role === "fix" && (reviewed.has(s) || again) ? prev + 1 : prev);
+    latest.set(s, Math.max(latest.get(s) ?? 0, round));
+    last.set(s, role);
+    if (role === "review" || role === "recheck") reviewed.add(s);
+    if (role === "fix") reviewed.delete(s);
+    return round;
+  };
+  const moves = [...agents.values()].map((a) => ({
+    ts: a.startedAt,
+    a
+  }));
+  reqs.forEach((req, i) => {
+    for (const e of lists[i] ?? []) {
+      if (e.hook !== "PreToolUse" || e.payload.tool_name !== "SendMessage")
+        continue;
+      const input3 = e.payload.tool_input;
+      const a = agents.get(String(input3?.to ?? ""));
+      const text3 = typeof input3?.message === "string" ? input3.message : "";
+      if (a && a.startedAt < e.ts) moves.push({ ts: e.ts, a, req, text: text3 });
+    }
+  });
+  moves.sort((x, y) => x.ts < y.ts ? -1 : x.ts > y.ts ? 1 : 0);
+  const resumed = /* @__PURE__ */ new Map();
+  for (const m of moves) {
+    const { a } = m;
+    if (!("req" in m)) {
+      a.role = roleOf(a.description);
+      const s2 = subjectOf(a.description);
+      if (!s2) continue;
+      a.subject = s2;
+      a.round = step(s2, a.role, a.description);
+      continue;
+    }
+    const s = a.subject;
+    const words = fixWords(m.text);
+    const named = words === void 0 ? void 0 : itemOf(words);
+    const first = (x) => x.replace(/^Tasks /, "Task ").split("-")[0];
+    if (!s || a.role !== "build" && a.role !== "fix" || words === void 0 || named && first(named) !== first(s))
+      continue;
+    const round = step(s, "fix", words);
+    const own2 = resumed.get(m.req) ?? /* @__PURE__ */ new Map();
+    own2.set(s, Math.max(own2.get(s) ?? 0, round));
+    resumed.set(m.req, own2);
   }
   for (const req of reqs) {
     const counts = {
@@ -20571,23 +20603,37 @@ function applyRounds(reqs, agents) {
       else counts.other++;
       if (a.subject && (a.round ?? 0) > 1) back.add(a.subject);
     }
+    const own2 = resumed.get(req);
+    for (const [s, n] of own2 ?? []) if (n > 1) back.add(s);
     req.helperCounts = counts;
     req.sentBack = [...back];
     const tasks = req.phases.flatMap((ph) => ph.tasks);
+    const roundsOf = (helpers, s) => {
+      const rounds = helpers.flatMap((a) => a.round ? [a.round] : []);
+      const more = s ? own2?.get(s) : void 0;
+      if (more) rounds.push(more);
+      return rounds.length ? Math.max(...rounds) - 1 : void 0;
+    };
     for (const t of tasks) {
-      const n = roundsOf(helpersOf(req, t));
+      const n = roundsOf(helpersOf(req, t), subjectOfWork(req, t));
       if (n !== void 0) t.rounds = n;
     }
     for (const p of req.parts) {
-      const n = roundsOf(helpersOf(req, void 0, p));
+      const n = roundsOf(
+        helpersOf(req, void 0, p),
+        subjectOfWork(req, void 0, p)
+      );
       if (n !== void 0) p.rounds = n;
     }
   }
 }
-var roundsOf = (helpers) => {
-  const rounds = helpers.flatMap((a) => a.round ? [a.round] : []);
-  return rounds.length ? Math.max(...rounds) - 1 : void 0;
-};
+function fixWords(text3) {
+  const [first = "", second = ""] = (text3.split("\n")[0] ?? "").split(
+    /(?<=[.!?:])\s+/
+  );
+  const head = first.replace(/\brounds?\s+\d+['’]s\b/gi, "");
+  return ROUND.test(head) || /\bfix (?:these|them|this|that|it)\b/i.test(second) ? `${head} ${second}` : void 0;
+}
 function subjectOfWork(req, task, part) {
   const tasks = req.phases.flatMap((ph) => ph.tasks);
   const p = part ?? req.parts.find((x) => x.id === task?.part);
@@ -20668,7 +20714,8 @@ function applyAgents(req, events, { before, narrated }, known) {
 function tiesOf(req, description, on) {
   const tasks = req.phases.flatMap((ph) => ph.tasks);
   const named = itemOf(description);
-  const other = (s) => !!named && !!s && s !== named && /^(?:Task \d+[a-z]?|B\d+)$/.test(s);
+  const lone = (s) => !!s && /^(?:Task \d+[a-z]?|B\d+)$/.test(s);
+  const other = (s) => lone(named) && lone(s) && s !== named;
   const mine = named ? tasks.find((t) => subjectOfWork(req, t) === named) : void 0;
   const task = mine ?? tasks.find((t) => t.id === on?.task && !other(subjectOfWork(req, t)));
   const at = named && (req.parts.find((p) => subjectOfWork(req, void 0, p) === named) ?? req.parts.find((p) => p.id === mine?.part)) || req.parts.find(
@@ -21711,7 +21758,7 @@ function reduce(events) {
   const lists = split.map((s) => [s.start, ...s.rest]);
   inferHistory(requests, lists, agents, started);
   applyWords(requests, lists, agents, started);
-  applyRounds(requests, agents);
+  applyRounds(requests, agents, lists);
   const needs = needsYou(sorted);
   const { lastAt, over } = quiet(sorted);
   const live2 = (a) => a.status === "running" && !over(lastAt.get(a.id) ?? a.startedAt);
