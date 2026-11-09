@@ -20503,63 +20503,6 @@ function cutWords(s, max) {
   return `${(space > 0 ? head.slice(0, space) : head).trimEnd()}\u2026`;
 }
 
-// ../packages/core/src/view/agents.ts
-var str3 = (v) => typeof v === "string" ? v : "";
-var obj3 = (v) => v && typeof v === "object" ? v : {};
-function applyAgents(req, events, { before, narrated }, known) {
-  const isAgent = (e) => e.payload.tool_name === "Agent";
-  const calls = events.filter((e) => e.hook === "PreToolUse" && isAgent(e));
-  const key = (c) => str3(c.payload.tool_use_id) || c.id;
-  const linked = /* @__PURE__ */ new Map();
-  for (const e of events)
-    if (e.hook === "PostToolUse" && isAgent(e)) {
-      const id = str3(obj3(e.payload.tool_response).agentId);
-      const use = str3(e.payload.tool_use_id);
-      if (id && use) linked.set(id, use);
-    }
-  const claimed = new Set(linked.values());
-  const started = /* @__PURE__ */ new Map();
-  events.forEach((e, i) => {
-    const id = str3(e.payload.agent_id);
-    if (e.hook === "SubagentStart" && id && !known.has(id)) {
-      const type = str3(e.payload.agent_type);
-      const free = calls.filter((c) => !claimed.has(key(c)));
-      const call = calls.find((c) => key(c) === linked.get(id)) ?? free.find(
-        (c) => str3(obj3(c.payload.tool_input).subagent_type) === type
-      ) ?? free[0];
-      if (call) {
-        claimed.add(key(call));
-        started.set(key(call), id);
-      }
-      const input3 = obj3(call?.payload.tool_input);
-      const part = narrated.findLast((x) => x.part && x.e.payload.agent_id === id)?.part ?? before[i]?.part;
-      const agent2 = {
-        id,
-        type,
-        description: str3(input3.description),
-        prompt: str3(input3.prompt),
-        ...part ? { part } : {},
-        status: "running",
-        startedAt: e.ts
-      };
-      known.set(id, agent2);
-      req.agents.push(agent2);
-      const task = req.phases.flatMap((ph) => ph.tasks).find((t) => t.id === before[i]?.task);
-      if (task) addOnce(task.agents, id);
-      const at = req.parts.find((p) => p.id === before[i]?.part);
-      if (at) addOnce(at.agents, id);
-    }
-    const agent = known.get(id);
-    if (e.hook === "SubagentStop" && agent) {
-      agent.status = "done";
-      agent.endedAt = e.ts;
-      const text3 = str3(e.payload.last_assistant_message);
-      if (text3) agent.lastText = text3;
-    }
-  });
-  return started;
-}
-
 // ../packages/core/src/view/rounds.ts
 var ITEM = /\b(?:tasks?\s+(\d+[a-z]?(?:\s*[-–]\s*\d+[a-z]?)?)|(?:bug\s+b?|b)(\d+))\b/i;
 var PHASE = /\bphase\s+(\d+)\b/i;
@@ -20665,6 +20608,73 @@ function helpersOf(req, task, part, every = false) {
   if (every) return tied;
   const subjects = new Set(tied.flatMap((a) => a.subject ? [a.subject] : []));
   return subjects.size <= 1 ? tied : [];
+}
+
+// ../packages/core/src/view/agents.ts
+var str3 = (v) => typeof v === "string" ? v : "";
+var obj3 = (v) => v && typeof v === "object" ? v : {};
+function applyAgents(req, events, { before, narrated }, known) {
+  const isAgent = (e) => e.payload.tool_name === "Agent";
+  const calls = events.filter((e) => e.hook === "PreToolUse" && isAgent(e));
+  const key = (c) => str3(c.payload.tool_use_id) || c.id;
+  const linked = /* @__PURE__ */ new Map();
+  for (const e of events)
+    if (e.hook === "PostToolUse" && isAgent(e)) {
+      const id = str3(obj3(e.payload.tool_response).agentId);
+      const use = str3(e.payload.tool_use_id);
+      if (id && use) linked.set(id, use);
+    }
+  const claimed = new Set(linked.values());
+  const started = /* @__PURE__ */ new Map();
+  events.forEach((e, i) => {
+    const id = str3(e.payload.agent_id);
+    if (e.hook === "SubagentStart" && id && !known.has(id)) {
+      const type = str3(e.payload.agent_type);
+      const free = calls.filter((c) => !claimed.has(key(c)));
+      const call = calls.find((c) => key(c) === linked.get(id)) ?? free.find(
+        (c) => str3(obj3(c.payload.tool_input).subagent_type) === type
+      ) ?? free[0];
+      if (call) {
+        claimed.add(key(call));
+        started.set(key(call), id);
+      }
+      const input3 = obj3(call?.payload.tool_input);
+      const { task, at } = tiesOf(req, str3(input3.description), before[i]);
+      const part = narrated.findLast((x) => x.part && x.e.payload.agent_id === id)?.part ?? at?.id;
+      const agent2 = {
+        id,
+        type,
+        description: str3(input3.description),
+        prompt: str3(input3.prompt),
+        ...part ? { part } : {},
+        status: "running",
+        startedAt: e.ts
+      };
+      known.set(id, agent2);
+      req.agents.push(agent2);
+      if (task) addOnce(task.agents, id);
+      if (at) addOnce(at.agents, id);
+    }
+    const agent = known.get(id);
+    if (e.hook === "SubagentStop" && agent) {
+      agent.status = "done";
+      agent.endedAt = e.ts;
+      const text3 = str3(e.payload.last_assistant_message);
+      if (text3) agent.lastText = text3;
+    }
+  });
+  return started;
+}
+function tiesOf(req, description, on) {
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  const named = itemOf(description);
+  const other = (s) => !!named && !!s && s !== named && /^(?:Task \d+[a-z]?|B\d+)$/.test(s);
+  const mine = named ? tasks.find((t) => subjectOfWork(req, t) === named) : void 0;
+  const task = mine ?? tasks.find((t) => t.id === on?.task && !other(subjectOfWork(req, t)));
+  const at = named && (req.parts.find((p) => subjectOfWork(req, void 0, p) === named) ?? req.parts.find((p) => p.id === mine?.part)) || req.parts.find(
+    (p) => p.id === on?.part && !other(subjectOfWork(req, void 0, p))
+  );
+  return { task, at };
 }
 
 // ../packages/core/src/view/history.ts

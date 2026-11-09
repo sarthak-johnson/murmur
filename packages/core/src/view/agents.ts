@@ -6,6 +6,8 @@
  *   `subagent_type`, else the oldest unclaimed one.
  * - Part: the latest part the subagent narrated, else the part current at its start.
  *   It also joins the task and part current at its start, so it shows there unnarrated.
+ *   A subagent whose description names a task ("Review Task 38") joins the task and part
+ *   of that subject instead, and never one of another subject Claude happened to be on.
  * - A SubagentStop with no earlier start is ignored (Claude Code's prompt-suggestion
  *   generator fires one with an empty `agent_type` after every interactive Stop).
  * - `known` spans requests, so a background subagent stopping later still closes.
@@ -14,7 +16,8 @@
  */
 import type { MurmurEvent } from "../events.js";
 import { addOnce, type Trace } from "./requests.js";
-import type { AgentView, RequestView } from "./types.js";
+import { itemOf, subjectOfWork } from "./rounds.js";
+import type { AgentView, PartView, RequestView, TaskView } from "./types.js";
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const obj = (v: unknown): Record<string, unknown> =>
@@ -55,9 +58,10 @@ export function applyAgents(
         started.set(key(call), id);
       }
       const input = obj(call?.payload.tool_input);
+      const { task, at } = tiesOf(req, str(input.description), before[i]);
       const part =
         narrated.findLast((x) => x.part && x.e.payload.agent_id === id)?.part ??
-        before[i]?.part;
+        at?.id;
       const agent: AgentView = {
         id,
         type,
@@ -69,12 +73,7 @@ export function applyAgents(
       };
       known.set(id, agent);
       req.agents.push(agent);
-      // It helps with whatever Claude was on when it spawned, even if it never narrates.
-      const task = req.phases
-        .flatMap((ph) => ph.tasks)
-        .find((t) => t.id === before[i]?.task);
       if (task) addOnce(task.agents, id);
-      const at = req.parts.find((p) => p.id === before[i]?.part);
       if (at) addOnce(at.agents, id);
     }
     const agent = known.get(id);
@@ -86,4 +85,34 @@ export function applyAgents(
     }
   });
   return started;
+}
+
+/**
+ * The task and part a new subagent helps with: those of the task its description names,
+ * else whatever Claude was on when it spawned, unless that names another task.
+ */
+function tiesOf(
+  req: RequestView,
+  description: string,
+  on: { task?: string | undefined; part?: string | undefined } | undefined,
+): { task?: TaskView | undefined; at?: PartView | undefined } {
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  const named = itemOf(description);
+  // A range ("Tasks 13-14") may hold the named task, so only a lone other task is another.
+  const other = (s: string | undefined) =>
+    !!named && !!s && s !== named && /^(?:Task \d+[a-z]?|B\d+)$/.test(s);
+  const mine = named
+    ? tasks.find((t) => subjectOfWork(req, t) === named)
+    : undefined;
+  const task =
+    mine ??
+    tasks.find((t) => t.id === on?.task && !other(subjectOfWork(req, t)));
+  const at =
+    (named &&
+      (req.parts.find((p) => subjectOfWork(req, undefined, p) === named) ??
+        req.parts.find((p) => p.id === mine?.part))) ||
+    req.parts.find(
+      (p) => p.id === on?.part && !other(subjectOfWork(req, undefined, p)),
+    );
+  return { task, at };
 }
