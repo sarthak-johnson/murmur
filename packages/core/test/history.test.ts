@@ -182,6 +182,8 @@ describe("parts from helpers", () => {
         removed: 1,
         isNew: false,
         eventIds: ["e3", "e7"],
+        role: "styles",
+        roleInferred: true,
       },
       {
         path: "web/src/new.ts",
@@ -189,6 +191,8 @@ describe("parts from helpers", () => {
         removed: 0,
         isNew: true,
         eventIds: ["e4"],
+        role: "source",
+        roleInferred: true,
       },
     ]);
     expect(r?.looseFiles.map((f) => f.path)).toEqual(["stray.ts"]);
@@ -353,6 +357,7 @@ describe("plan and map", () => {
             part: "task:1",
             status: "done",
             agents: [],
+            rounds: 0,
           },
           {
             id: "task:2",
@@ -360,6 +365,7 @@ describe("plan and map", () => {
             part: "task:2",
             status: "now",
             agents: [],
+            rounds: 0,
           },
         ],
       },

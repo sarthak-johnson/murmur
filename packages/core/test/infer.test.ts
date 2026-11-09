@@ -82,16 +82,17 @@ test("interactive fixture still reduces", () => {
 describe("now without narrate", () => {
   const nowOf = (...e: ReturnType<typeof at>[]) =>
     req(prompt(0, "Add price alerts"), ...e)?.now;
-  const inferred = (text: string, ts: number) => ({
+  const inferred = (text: string, ts: number, detail?: string) => ({
     text,
     why: "",
     ts: new Date(
       Date.parse("2026-11-06T00:00:00.000Z") + ts * 1000,
     ).toISOString(),
     inferred: true,
+    ...(detail ? { detail } : {}),
   });
 
-  test("each tool reads in plain words", () => {
+  test("each tool reads in plain words, never raw", () => {
     expect(nowOf(edit(1, "src/math.js", ["+a"]))).toEqual(
       inferred("Editing math.js", 1),
     );
@@ -102,17 +103,51 @@ describe("now without narrate", () => {
       inferred("Reading README.md", 1),
     );
     expect(
-      nowOf(tool(1, "Bash", { command: `npm  test\n${"x".repeat(80)}` })),
-    ).toEqual(inferred(`Running npm test ${"x".repeat(51)}`, 1));
-    expect(
       nowOf(tool(1, "Agent", { description: "Read greet file" }, "PreToolUse")),
-    ).toEqual(inferred("Started a helper: Read greet file", 1));
+    ).toEqual(inferred("Starting a helper: Read greet file", 1));
     expect(nowOf(tool(1, "Grep", { pattern: "x" }))).toEqual(
-      inferred("Using Grep", 1),
+      inferred("Searching the code", 1, "Grep"),
     );
+    expect(nowOf(tool(1, "Glob", { pattern: "x" }))).toEqual(
+      inferred("Searching the code", 1, "Glob"),
+    );
+  });
+
+  test("a command reads as its description, the command kept as detail", () => {
+    expect(
+      nowOf(
+        tool(1, "Bash", {
+          command: "pnpm vitest run",
+          description: "Run the tests",
+        }),
+      ),
+    ).toEqual(inferred("Run the tests", 1, "pnpm vitest run"));
+    expect(
+      nowOf(tool(1, "Bash", { command: `npm  test\n${"x".repeat(80)}` })),
+    ).toEqual(inferred("Running a command", 1, `npm  test\n${"x".repeat(80)}`));
     expect(nowOf(tool(1, "Bash", {}, "PostToolUseFailure"))).toEqual(
-      inferred("Using Bash", 1),
+      inferred("Running a command", 1),
     );
+  });
+
+  test("other tools get a plain phrase, the tool kept as detail", () => {
+    const phrase = (name: string) => nowOf(tool(1, name, {}))?.text;
+    expect(phrase("mcp__claude-in-chrome__browser_batch")).toBe(
+      "Looking at the browser",
+    );
+    expect(phrase("mcp__plugin_playwright_playwright__browser_click")).toBe(
+      "Looking at the browser",
+    );
+    expect(phrase("Monitor")).toBe("Watching a background job");
+    expect(phrase("TaskOutput")).toBe("Watching a background job");
+    expect(phrase("mcp__plugin_claude-mem_mcp-search__search")).toBe(
+      "Using claude-mem",
+    );
+    expect(phrase("mcp__claude_ai_Gmail__search_threads")).toBe("Using Gmail");
+    expect(phrase("mcp__linear__create_issue")).toBe("Using linear");
+    expect(phrase("SendMessage")).toBe("Messaging a helper");
+    expect(phrase("SomeNewTool")).toBe("Using SomeNewTool");
+    expect(nowOf(tool(1, "Monitor", {}))?.detail).toBe("Monitor");
   });
 
   test("a Stop with no later tool call finishes the request", () => {

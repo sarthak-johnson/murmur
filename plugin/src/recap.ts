@@ -132,6 +132,7 @@ Answer with one JSON object and nothing else, in exactly this shape:
   "map": {
     "kind": "feature" | "bug" | "refactor" | "question",
     "goal": "the request in a few plain words",
+    "short": "the request in 2 to 4 words, like a title",
     "phases": [{ "id": "p1", "title": "...", "tasks": [{ "id": "t1", "title": "...", "part": "<part id>" }] }],
     "parts": [{ "id": "<short id>", "title": "...", "phase": "p1", "links": [{ "to": "<part id>", "label": "uses" }] }]
   },
@@ -930,7 +931,8 @@ export async function runRefresh(
 
 /**
  * A refresh as narrate events at its own time, marked `refresh: true` so they never move
- * "now": each part's detail (an aim only where the part has none), then each task that
+ * "now": each part's detail (an aim only where the part has none, or only one Murmur
+ * read from the record), then each task that
  * moved forward, with its line as a step on its part.
  */
 function refreshEvents(
@@ -953,7 +955,10 @@ function refreshEvents(
       NARRATE_TOOL,
       detailNarrate(
         part?.title ?? p.id,
-        { ...detail, ...(aim && !part?.aim ? { aim } : {}) },
+        {
+          ...detail,
+          ...(aim && (!part?.aim || part.aim.inferred) ? { aim } : {}),
+        },
         paths,
       ),
     );

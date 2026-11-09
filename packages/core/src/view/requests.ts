@@ -119,6 +119,8 @@ function applyMap(req: RequestView, map: MapInput): void {
   req.kind = map.kind;
   req.kindInferred = false;
   req.goal = map.goal;
+  if (map.short?.trim()) req.short = map.short.trim();
+  else delete req.short;
   req.planInferred = false;
   req.phases = map.phases.map((ph) => ({
     id: ph.id,

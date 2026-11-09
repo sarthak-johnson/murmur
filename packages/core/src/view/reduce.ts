@@ -2,9 +2,12 @@ import type { MurmurEvent } from "../events.js";
 import { applyAgents } from "./agents.js";
 import { applyFiles } from "./files.js";
 import { applyFlags, needsYou } from "./flags.js";
-import { inferHistory } from "./history.js";
+import { inferHistory, quiet } from "./history.js";
 import { applyInference, inferNow } from "./infer.js";
-import { applyPlan, cut, newRequest } from "./requests.js";
+import { journeyOf } from "./journey.js";
+import { applyPlan, cut, newRequest, type Trace } from "./requests.js";
+import { applyRounds } from "./rounds.js";
+import { applyShape } from "./shape.js";
 import type { AgentView, SessionView } from "./types.js";
 import { applyWords } from "./words.js";
 
@@ -15,9 +18,11 @@ export function reduce(events: MurmurEvent[]): SessionView {
   const started = new Map<string, string>();
   const ended = sorted.some((e) => e.hook === "SessionEnd");
   const split = splitRequests(sorted);
+  const traces: Trace[] = [];
   const requests = split.map(({ start, rest }, i, all) => {
     const req = newRequest(start);
     const trace = applyPlan(req, rest);
+    traces.push(trace);
     applyInference(req, rest);
     inferNow(req, rest, trace);
     applyFiles(req, rest, trace);
@@ -31,6 +36,22 @@ export function reduce(events: MurmurEvent[]): SessionView {
   const lists = split.map((s) => [s.start, ...s.rest]);
   inferHistory(requests, lists, agents, started);
   applyWords(requests, lists, agents, started);
+  applyRounds(requests, agents);
+  const needs = needsYou(sorted);
+  const { lastAt, over } = quiet(sorted);
+  const live = (a: AgentView) =>
+    a.status === "running" && !over(lastAt.get(a.id) ?? a.startedAt);
+  // needsYou is cleared by every prompt, so it belongs to the last request begun before it.
+  const asking = needs
+    ? requests.findLastIndex((r) => r.startedAt <= needs.since)
+    : -1;
+  requests.forEach((req, i) => {
+    applyShape(req, lists[i] ?? [], traces[i] as Trace, {
+      later: i < requests.length - 1,
+      waiting: i === asking,
+      live,
+    });
+  });
   const first = sorted[0];
   return {
     sessionId: first?.sessionId ?? "",
@@ -40,7 +61,8 @@ export function reduce(events: MurmurEvent[]): SessionView {
     lastEventAt: sorted.at(-1)?.ts ?? "",
     ended,
     requests,
-    needsYou: needsYou(sorted),
+    needsYou: needs,
+    journey: journeyOf(requests, lists),
   };
 }
 

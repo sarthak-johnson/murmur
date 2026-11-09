@@ -246,17 +246,7 @@ export function inline(text: string): ReactNode[] {
 }
 
 /** The text with its Markdown marks dropped, for one-line summaries. */
-export function plainText(text: string): string {
-  return text
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`([^`]*)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/(\*\*|__)(.+?)\1/g, "$2")
-    .replace(/(^|\W)[*_]([^*_\n]+)[*_](?=\W|$)/g, "$1$2")
-    .replace(/^\s*(#{1,6}|>|[-*+]|\d+[.)])\s+/gm, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+export { plainText } from "@murmur/core";
 
 function render(blocks: Block[]): ReactNode[] {
   const out: ReactNode[] = [];

@@ -43,7 +43,7 @@ test("splits requests on each prompt", () => {
     phases: [],
     parts: [],
     looseFiles: [],
-    now: { text: "Running ls", why: "", inferred: true },
+    now: { text: "Running a command", why: "", inferred: true, detail: "ls" },
     agents: [],
     assumptions: [],
     flags: [],
@@ -61,7 +61,7 @@ test("a background task's notification is not a request", () => {
     prompt(4, `  ${notice}`),
   ]);
   expect(view.requests.map((r) => r.prompt)).toEqual(["build the page"]);
-  expect(view.requests[0]?.now?.text).toBe("Running ls");
+  expect(view.requests[0]?.now?.detail).toBe("ls");
 });
 
 test("Murmur's own commands are not requests", () => {
