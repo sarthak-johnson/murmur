@@ -698,15 +698,15 @@ describe("request page, story first", () => {
         .getByRole("link", { name: "Story" })
         .getAttribute("aria-current"),
     ).toBe("page");
-    expect(screen.queryByRole("region", { name: "Map" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Flow" })).toBeNull();
     await userEvent.click(within(tabs).getByRole("link", { name: "Flow" }));
     expect(location.pathname).toMatch(/\/flow$/);
   });
 
-  it("a request with no messages draws no story, and the map stays on its tab", () => {
+  it("a request with no messages draws no story, and the flow stays on its tab", () => {
     show(session(request({ messages: [], finished: false })));
     expect(screen.queryByRole("region", { name: "What happened" })).toBeNull();
-    expect(screen.queryByRole("region", { name: "Map" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Flow" })).toBeNull();
     expect(screen.getByRole("region", { name: "Now" })).toBeTruthy();
     expect(screen.getByRole("group", { name: "Summary" })).toBeTruthy();
     cleanup();

@@ -171,3 +171,77 @@ test("an agent started during a task joins that task and part without narrating"
   expect(req?.phases[1]?.tasks[1]?.agents).toEqual(["a1"]);
   expect(req?.parts.find((p) => p.id === "api")?.agents).toEqual(["a1"]);
 });
+
+test("a helper named for a task joins that task, not the one Claude was on", () => {
+  const map = {
+    kind: "feature",
+    goal: "Chat screens",
+    phases: [
+      {
+        id: "1",
+        title: "Restart",
+        tasks: [
+          { id: "t38", title: "Builder for Task 38", part: "capture" },
+          { id: "t39", title: "Reviewer for Task 39", part: "parts" },
+        ],
+      },
+    ],
+    parts: [
+      { id: "capture", title: "Recorded answers (Task 38)", phase: "1" },
+      { id: "parts", title: "Chat styles (Task 39)", phase: "1" },
+    ],
+  };
+  const view = reduce([
+    prompt(1, "restart the stopped jobs"),
+    mapCall(2, map),
+    narrateCall(3, note({ task: "t39", taskStatus: "running" })),
+    // Claude is on Task 39 while it starts a review of Task 38 and a build of Task 43.
+    agentCall(4, "Review Task 38 chat captures"),
+    start(5, "a38"),
+    agentCall(6, "Build Task 43: market strip"),
+    start(7, "a43"),
+    // A helper that names no task still joins what Claude was on.
+    agentCall(8, "check the colours"),
+    start(9, "aplain"),
+  ]);
+  const req = view.requests[0];
+  const part = (id: string) => req?.parts.find((p) => p.id === id);
+  expect(part("parts")?.agents).toEqual(["aplain"]);
+  expect(part("capture")?.agents).toEqual(["a38"]);
+  expect(req?.phases[0]?.tasks[1]?.agents).toEqual(["aplain"]);
+  expect(req?.phases[0]?.tasks[0]?.agents).toEqual(["a38"]);
+  const a = (id: string) => req?.agents.find((x) => x.id === id);
+  expect(a("a38")?.part).toBe("capture");
+  expect(a("a43")?.part).toBeUndefined();
+  expect(a("aplain")?.part).toBe("parts");
+});
+
+test("a helper named for a pair of tasks still joins the one of them Claude was on", () => {
+  const map = {
+    kind: "feature",
+    goal: "My Agents",
+    phases: [
+      {
+        id: "1",
+        title: "Cards",
+        tasks: [
+          { id: "t13", title: "Task 13: book plate", part: "book" },
+          { id: "t14", title: "Task 14: agent cards", part: "cards" },
+        ],
+      },
+    ],
+    parts: [
+      { id: "book", title: "Book plate", phase: "1" },
+      { id: "cards", title: "Agent cards", phase: "1" },
+    ],
+  };
+  const [req] = reduce([
+    prompt(1, "build the cards"),
+    mapCall(2, map),
+    narrateCall(3, note({ task: "t13", taskStatus: "running" })),
+    agentCall(4, "Review Tasks 13-14 agent cards"),
+    start(5, "a1"),
+  ]).requests;
+  expect(req?.phases[0]?.tasks[0]?.agents).toEqual(["a1"]);
+  expect(req?.parts.find((p) => p.id === "book")?.agents).toEqual(["a1"]);
+});

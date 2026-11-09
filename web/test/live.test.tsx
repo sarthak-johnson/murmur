@@ -591,7 +591,7 @@ describe("live screen", () => {
     expect(location.pathname).toBe("/s/s1/r/r1");
   });
 
-  it("a helper spawned during a task shows on its task row and map part", () => {
+  it("a helper spawned during a task shows on its task row", () => {
     let n = 0;
     const at = (
       hook: MurmurEvent["hook"],

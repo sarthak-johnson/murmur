@@ -11,7 +11,7 @@ import type {
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cutWords, list } from "../src/catchup";
+import { cutWords, list } from "../src/format";
 import { Live } from "../src/pages/Session";
 import { PartDetail } from "../src/part/PartDetail";
 import type { Tab } from "../src/router";
@@ -664,12 +664,12 @@ describe("story by phase", () => {
 
   it("the map is one tab away", async () => {
     show(session(request()));
-    expect(screen.queryByRole("region", { name: "Map" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Flow" })).toBeNull();
     await userEvent.click(screen.getByRole("link", { name: "Flow" }));
     expect(location.pathname).toBe("/s/s1/r/r2/flow");
     cleanup();
     show(session(request()), { requestId: "r2", tab: "flow" });
-    expect(screen.getByRole("region", { name: "Map" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Flow" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "What happened" })).toBeNull();
     await userEvent.click(screen.getByRole("link", { name: "Story" }));
     expect(location.pathname).toBe("/s/s1/r/r2");
@@ -815,10 +815,10 @@ describe("task page", () => {
     expect(
       lanes.map((l) => l.querySelector(".lane-name")?.textContent),
     ).toEqual([
-      "Agent 1Sonnet, builder",
-      "Agent 2Opus, reviewer",
-      "Agent 3Sonnet, recheck",
-      "Claude",
+      "BuilderAgent 1 · Sonnet",
+      "ReviewerAgent 2 · Opus",
+      "RecheckAgent 3 · Sonnet",
+      "Claude1 message",
     ]);
     const ticks = [...document.querySelectorAll(".axis span")].map(
       (s) => s.textContent,
@@ -866,12 +866,16 @@ describe("task page", () => {
     ]);
   });
 
-  it("Claude's lane ends with its own closing step", () => {
+  it("Claude's lane carries its message about the task as a dot", () => {
     showTask();
     const claude = within(timeline()).getAllByRole(
       "listitem",
     )[3] as HTMLElement;
-    expect(claude.textContent).toContain("Task 3 is done after one fix.");
+    const dot = claude.querySelector(".cdot") as HTMLElement;
+    expect(dot.getAttribute("aria-label")).toContain(
+      "Task 3 is done after one fix.",
+    );
+    expect(dot.className).toBe("cdot good");
   });
 
   it("groups files by what they do, tests on their own", () => {
@@ -1177,7 +1181,7 @@ describe("review fixes: stillness and order", () => {
       requests: [request({ id: "r1", goal: "Fix the login form" }), request()],
     });
     const { rerender } = show(two, { requestId: "r2", tab: "flow" });
-    expect(screen.getByRole("region", { name: "Map" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Flow" })).toBeTruthy();
     const rail = screen.getByRole("navigation", { name: "Requests" });
     expect(within(rail).getAllByRole("link")[0]?.getAttribute("href")).toBe(
       "/s/s1/r/r1",
@@ -1193,7 +1197,7 @@ describe("review fixes: stillness and order", () => {
       />,
     );
     expect(screen.getByRole("region", { name: "What happened" })).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "Map" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Flow" })).toBeNull();
   });
 });
 

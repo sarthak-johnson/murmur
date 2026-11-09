@@ -2,8 +2,10 @@
  * Helper roles, subjects and rounds, read from each helper's description, and what they
  * add up to per task, part and request. See `AgentView.role`, `subject` and `round`.
  * Rounds run across the session in start order, so a re-review in a later request
- * continues the count of the request that built the task.
+ * continues the count of the request that built the task, and a fix sent to a builder by
+ * message counts in the request that sent it.
  */
+import type { MurmurEvent } from "../events.js";
 import type {
   AgentRole,
   AgentView,
@@ -51,44 +53,94 @@ export function roleOf(description: string): AgentRole {
 // "fix round 2", "round 3", "rounds 2-3" (the last counts).
 const ROUND = /\brounds?\s+(\d+)(?:\s*[-–]\s*(\d+))?/i;
 
-/** Sets role, subject and round on every helper, in start order across the session. */
+/**
+ * Sets role, subject and round on every helper, in start order across the session.
+ * A builder resumed with a message (SendMessage) after a review is a fix round too: it
+ * counts in the request it was resumed in, though the helper belongs to an earlier one.
+ */
 export function applyRounds(
   reqs: RequestView[],
   agents: Map<string, AgentView>,
+  lists: MurmurEvent[][],
 ): void {
   const latest = new Map<string, number>(); // subject -> highest round so far
   const last = new Map<string, AgentRole>(); // subject -> role of its latest helper
-  const reviewed = new Set<string>();
-  const ordered = [...agents.values()].sort((a, b) =>
-    a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0,
-  );
-  for (const a of ordered) {
-    a.role = roleOf(a.description);
-    const s = subjectOf(a.description);
-    if (!s) continue;
-    a.subject = s;
+  const reviewed = new Set<string>(); // subjects reviewed since their last fix
+  /** The round a step of `role` on `s` is in, given its words, and it moves the count. */
+  const step = (s: string, role: AgentRole, text: string) => {
     // A new build starts the count over: a later plan reuses "Task 1", a stopped job restarts.
-    if (a.role === "build") {
+    if (role === "build") {
       latest.delete(s);
       last.delete(s);
       reviewed.delete(s);
     }
     const prev = Math.max(latest.get(s) ?? 0, 1);
-    const n = ROUND.exec(a.description);
+    const n = ROUND.exec(text);
     const named = n ? Number(n[2] ?? n[1]) + 1 : undefined;
-    const again = /\bround/i.test(a.description);
-    a.round =
+    const again = /\bround/i.test(text);
+    const round =
       named ??
-      (a.role === "recheck"
+      (role === "recheck"
         ? last.get(s) === "fix"
           ? prev
           : prev + 1
-        : a.role === "fix" && (reviewed.has(s) || again)
+        : role === "fix" && (reviewed.has(s) || again)
           ? prev + 1
           : prev);
-    latest.set(s, Math.max(latest.get(s) ?? 0, a.round));
-    last.set(s, a.role);
-    if (a.role === "review" || a.role === "recheck") reviewed.add(s);
+    latest.set(s, Math.max(latest.get(s) ?? 0, round));
+    last.set(s, role);
+    if (role === "review" || role === "recheck") reviewed.add(s);
+    if (role === "fix") reviewed.delete(s);
+    return round;
+  };
+  // Helper starts and builder resumes, in time order.
+  type Move =
+    | { ts: string; a: AgentView }
+    | { ts: string; a: AgentView; req: RequestView; text: string };
+  const moves: Move[] = [...agents.values()].map((a) => ({
+    ts: a.startedAt,
+    a,
+  }));
+  reqs.forEach((req, i) => {
+    for (const e of lists[i] ?? []) {
+      if (e.hook !== "PreToolUse" || e.payload.tool_name !== "SendMessage")
+        continue;
+      const input = e.payload.tool_input as Record<string, unknown> | undefined;
+      const a = agents.get(String(input?.to ?? ""));
+      const text = typeof input?.message === "string" ? input.message : "";
+      if (a && a.startedAt < e.ts) moves.push({ ts: e.ts, a, req, text });
+    }
+  });
+  moves.sort((x, y) => (x.ts < y.ts ? -1 : x.ts > y.ts ? 1 : 0));
+  const resumed = new Map<RequestView, Map<string, number>>(); // highest round resumed in it
+  for (const m of moves) {
+    const { a } = m;
+    if (!("req" in m)) {
+      a.role = roleOf(a.description);
+      const s = subjectOf(a.description);
+      if (!s) continue;
+      a.subject = s;
+      a.round = step(s, a.role, a.description);
+      continue;
+    }
+    // Only a builder's resume can be a fix; a reviewer resumed goes on with its review.
+    // ponytail: a builder handed another task by message is skipped, not counted for it.
+    const s = a.subject;
+    const words = fixWords(m.text);
+    const named = words === undefined ? undefined : itemOf(words);
+    // "Tasks 13+14 fix round 1" reads as Task 13, the first of "Tasks 13-14".
+    const first = (x: string) => x.replace(/^Tasks /, "Task ").split("-")[0];
+    if (
+      !s ||
+      (a.role !== "build" && a.role !== "fix") ||
+      words === undefined ||
+      (named && first(named) !== first(s))
+    )
+      continue;
+    const round = step(s, "fix", words);
+    const own = resumed.get(m.req) ?? new Map<string, number>();
+    own.set(s, Math.max(own.get(s) ?? 0, round));
+    resumed.set(m.req, own);
   }
   for (const req of reqs) {
     const counts: HelperCounts = {
@@ -105,24 +157,46 @@ export function applyRounds(
       else counts.other++;
       if (a.subject && (a.round ?? 0) > 1) back.add(a.subject);
     }
+    const own = resumed.get(req);
+    for (const [s, n] of own ?? []) if (n > 1) back.add(s);
     req.helperCounts = counts;
     req.sentBack = [...back];
     const tasks = req.phases.flatMap((ph) => ph.tasks);
+    const roundsOf = (helpers: AgentView[], s: string | undefined) => {
+      const rounds = helpers.flatMap((a) => (a.round ? [a.round] : []));
+      const more = s ? own?.get(s) : undefined;
+      if (more) rounds.push(more);
+      return rounds.length ? Math.max(...rounds) - 1 : undefined;
+    };
     for (const t of tasks) {
-      const n = roundsOf(helpersOf(req, t));
+      const n = roundsOf(helpersOf(req, t), subjectOfWork(req, t));
       if (n !== undefined) t.rounds = n;
     }
     for (const p of req.parts) {
-      const n = roundsOf(helpersOf(req, undefined, p));
+      const n = roundsOf(
+        helpersOf(req, undefined, p),
+        subjectOfWork(req, undefined, p),
+      );
       if (n !== undefined) p.rounds = n;
     }
   }
 }
 
-const roundsOf = (helpers: AgentView[]) => {
-  const rounds = helpers.flatMap((a) => (a.round ? [a.round] : []));
-  return rounds.length ? Math.max(...rounds) - 1 : undefined;
-};
+/**
+ * A message resuming a builder that sends it back to fix: its opening words, for the
+ * round they name ("Task 39 fix round 2: read ...", "Task review found issues. Fix
+ * these"). Unset for anything else: a follow-up, a note, a restart after a stop.
+ */
+function fixWords(text: string): string | undefined {
+  const [first = "", second = ""] = (text.split("\n")[0] ?? "").split(
+    /(?<=[.!?:])\s+/,
+  );
+  // "issues in round 1's fix" looks back at a round, it names none.
+  const head = first.replace(/\brounds?\s+\d+['’]s\b/gi, "");
+  return ROUND.test(head) || /\bfix (?:these|them|this|that|it)\b/i.test(second)
+    ? `${head} ${second}`
+    : undefined;
+}
 
 /** A task's subject, from its title or its part's; a part's, from its title or its one task's. */
 export function subjectOfWork(

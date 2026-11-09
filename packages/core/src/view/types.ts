@@ -163,9 +163,11 @@ export interface TaskView {
   agents: string[];
   problem?: string;
   /**
-   * Fix rounds the task took: the highest `AgentView.round` of this request's helpers on
-   * its subject ("Task 39", read from its title or its part's), less one. Unset when no
-   * helper is tied to it.
+   * Fix rounds the task took: the highest round of work on its subject ("Task 39", read
+   * from its title or its part's) in this request, less one. That is the highest
+   * `AgentView.round` of this request's helpers on it, or of a fix sent in this request
+   * to a builder an earlier request started ("Task 39 fix round 2: ..."). Unset when
+   * neither is tied to it.
    */
   rounds?: number;
 }

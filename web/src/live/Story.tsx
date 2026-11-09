@@ -11,7 +11,7 @@ import type {
   TaskView,
 } from "@murmur/core";
 import { type ReactNode, useState } from "react";
-import { cutWords } from "../catchup";
+import { cutWords } from "../format";
 import { Fold } from "../markdown";
 import { livePhase, type Mark, shortTitle, taskAgents } from "../session";
 import {

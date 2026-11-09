@@ -1,8 +1,4 @@
-/*
- * The marks the task page still shares from the old plan column. The column itself is
- * gone (the phase track replaced it); these move once the task page imports them from
- * their own file.
- */
+/* Small marks shared by the request and task pages. */
 import type { RequestView, TaskView } from "@murmur/core";
 
 /** Where the plan came from, when Claude did not lay it out live. */

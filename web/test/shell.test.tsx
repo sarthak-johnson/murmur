@@ -653,9 +653,9 @@ describe("the request's tabs", () => {
     expect(location.pathname).toBe("/s/s1/r/r3/flow");
   });
 
-  it("Flow shows the map", () => {
+  it("Flow shows the flow board", () => {
     show(session(), { requestId: "r3", tab: "flow" });
-    expect(screen.getByRole("region", { name: "Map" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Flow" })).toBeTruthy();
     expect(screen.queryByRole("complementary", { name: "Plan" })).toBeNull();
   });
 

@@ -36,7 +36,7 @@ export function reduce(events: MurmurEvent[]): SessionView {
   const lists = split.map((s) => [s.start, ...s.rest]);
   inferHistory(requests, lists, agents, started);
   applyWords(requests, lists, agents, started);
-  applyRounds(requests, agents);
+  applyRounds(requests, agents, lists);
   const needs = needsYou(sorted);
   const { lastAt, over } = quiet(sorted);
   const live = (a: AgentView) =>

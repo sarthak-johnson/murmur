@@ -1,6 +1,7 @@
 import type { MurmurEvent, RequestView, SessionView } from "@murmur/core";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { Me } from "../api";
+import { FlowBoard } from "../flow/FlowBoard";
 import { useLastLooked } from "../lastLooked";
 import { Assumptions } from "../live/Assumptions";
 import { RequestBrief } from "../live/Brief";
@@ -10,7 +11,6 @@ import { Story } from "../live/Story";
 import { FilesTab, HelpersTab, RequestTabs } from "../live/Tabs";
 import { TopBar } from "../live/TopBar";
 import { PhaseTrack } from "../live/Track";
-import { MapView } from "../map/MapView";
 import { PartDetail } from "../part/PartDetail";
 import { navigate, partPath, requestPath, type Tab } from "../router";
 import { type RequestState, requestMark, type Waiting } from "../session";
@@ -206,6 +206,8 @@ export function Live(props: {
             part ? (
               <PartDetail
                 cwd={view.cwd}
+                sessionId={sessionId}
+                requestNumber={view.requests.indexOf(req) + 1}
                 request={req}
                 part={part}
                 events={events}
@@ -297,16 +299,6 @@ function RequestMain(props: {
     ...n_(req.tally.commands, "command"),
   ];
   const from = source(req);
-  const map = (
-    <section className="map-panel" aria-label="Map">
-      <div className="sect">
-        <h2>How it ties together</h2>
-      </div>
-      <div className="map-box">
-        <MapView request={req} highlight={{}} onOpenPart={onOpenPart} />
-      </div>
-    </section>
-  );
   return (
     <>
       <div className="over">
@@ -355,7 +347,7 @@ function RequestMain(props: {
       <RequestTabs sessionId={sessionId} requestId={req.id} tab={tab} />
       <div className="tab-body">
         {tab === "flow" ? (
-          map
+          <FlowBoard sessionId={sessionId} request={req} />
         ) : tab === "files" ? (
           <FilesTab request={req} events={events} cwd={view.cwd} />
         ) : tab === "helpers" ? (

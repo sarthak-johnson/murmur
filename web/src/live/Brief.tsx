@@ -9,7 +9,7 @@ import {
   keyMoments,
   type RequestView,
 } from "@murmur/core";
-import { few } from "../catchup";
+import { few } from "../format";
 import { shortTitle, type Waiting } from "../session";
 import {
   clock,

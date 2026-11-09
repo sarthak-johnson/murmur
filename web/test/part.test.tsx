@@ -216,6 +216,7 @@ function task1(over: { agents?: Partial<AgentView>[] } = {}) {
     id: "task:1",
     title: "Task 1: Lit plate tokens",
     status: "done",
+    span: { start: at(10), end: at(15) },
     agents: ["a1", "a2", "a3"],
     steps: [
       {
@@ -273,15 +274,20 @@ describe("PartDetail", () => {
     const why = section("What it was for");
     expect(within(why).getByText("Accept alert requests")).toBeTruthy();
     expect(why.textContent).toContain("Done when the test passes");
-    expect(within(why).getByText("From Claude's narration")).toBeTruthy();
+    // Claude's own aim needs no source line.
+    expect(why.querySelector(".source")).toBeNull();
     expect(screen.getByText("Tests keep failing")).toBeTruthy();
   });
 
   it("steps keep order and failed ones are red", () => {
     show(full);
     const items = screen.getAllByRole("listitem", { name: /step/i });
+    // Claude's own steps read who, then the one-line fact.
     expect(
       items.map((i) => i.querySelector(".step-title")?.textContent),
+    ).toEqual(["Claude", "Claude", "Claude"]);
+    expect(
+      items.map((i) => i.querySelector(".step-lead")?.textContent),
     ).toEqual(["Read the code", "Wrote the route", "Running tests"]);
     expect(items.map((i) => i.querySelector(".sdot")?.className)).toEqual([
       "sdot done",
@@ -313,7 +319,7 @@ describe("PartDetail", () => {
     // Only a new file is tagged; an edited one needs no word.
     expect(row.textContent).not.toContain("edited");
     expect(row.closest(".fcard")?.querySelector("h3")?.textContent).toBe(
-      "the route",
+      "The route",
     );
     await userEvent.click(row);
     expect(row.getAttribute("aria-expanded")).toBe("true");
@@ -403,7 +409,7 @@ describe("PartDetail", () => {
 
   it("a non-assumption choice stays a choice; an assumption is left open", () => {
     show(full);
-    const choices = section("Choices it made");
+    const choices = section("Choices");
     expect(within(choices).getByText("Use polling")).toBeTruthy();
     expect(within(choices).queryByText("Ten second delay")).toBeNull();
     const open = section("Left open");
@@ -432,7 +438,7 @@ describe("PartDetail", () => {
       "How it went",
       "Files, by what they do",
       "Left open",
-      "Choices it made",
+      "Choices",
       "Checked",
       "Words used here",
       "What goes in and out",
@@ -481,7 +487,10 @@ describe("PartDetail", () => {
       />,
     );
     const title = screen.getByRole("heading", { level: 1 });
-    expect(title.textContent).toBe("Lit plate tokensinferred");
+    expect(title.textContent).toBe("Lit plate tokens");
+    expect(
+      screen.getByRole("group", { name: "Where it sits" }).textContent,
+    ).toContain("inferred");
     // The folder they share is said once, readable; each row keeps its full path as its title.
     const box = screen.getByRole("region", { name: "Files, by what they do" });
     expect(within(box).getByRole("heading", { level: 2 }).textContent).toBe(
@@ -569,7 +578,7 @@ describe("task page", () => {
     expect(why.textContent).not.toContain("`");
   });
 
-  it("a recap's aim wins and says where it came from", () => {
+  it("a recap's aim wins; the recap is said once, beside the chips", () => {
     const t = task1();
     t.p.aim = { aim: "Add the Lit plate tokens", doneWhen: "tests pass" };
     t.r.recap = true;
@@ -577,7 +586,10 @@ describe("task page", () => {
     const why = section("What it was for");
     expect(why.textContent).toContain("Add the Lit plate tokens");
     expect(why.textContent).not.toContain("This is the first task");
-    expect(within(why).getByText("From Claude's recap")).toBeTruthy();
+    expect(why.querySelector(".source")).toBeNull();
+    expect(
+      screen.getByRole("group", { name: "Where it sits" }).textContent,
+    ).toContain("Recap by Claude");
   });
 
   it("how it went: one card per step with model, time, verdict and Claude's message", () => {
@@ -587,15 +599,23 @@ describe("task page", () => {
     });
     expect(
       cards.map((c) => c.querySelector(".step-title")?.textContent),
-    ).toEqual(["Built", "Reviewed", "Re-reviewed"]);
+    ).toEqual([
+      "Built by Agent 1",
+      "Reviewed by Agent 2",
+      "Rechecked by Agent 3",
+    ]);
     const [built, reviewed, rereviewed] = cards as HTMLElement[];
-    expect(built?.textContent).toContain(`Sonnet, ${clock(at(10))}`);
+    expect(built?.textContent).toContain(
+      `Sonnet · ${clock(at(10))} to ${clock(at(11))}`,
+    );
     expect(
       within(built as HTMLElement).getByText("Done, with concerns"),
     ).toBeTruthy();
     // No message from that moment: the report's lead paragraph.
     expect(built?.textContent).toContain("The new token tests pass.");
-    expect(reviewed?.textContent).toContain(`Opus, ${clock(at(12))}`);
+    expect(reviewed?.textContent).toContain(
+      `Opus · ${clock(at(12))} to ${clock(at(13))}`,
+    );
     expect(
       within(reviewed as HTMLElement).getByText("Issues found"),
     ).toBeTruthy();
@@ -612,7 +632,7 @@ describe("task page", () => {
       name: /step/,
     })[0] as HTMLElement;
     const btn = within(built).getByRole("button", {
-      name: "Helper's full report",
+      name: "Helper's report",
     });
     expect(built.querySelector(".report-panel")).toBeNull();
     await userEvent.click(btn);
@@ -637,7 +657,7 @@ describe("task page", () => {
     })[2] as HTMLElement;
     expect(within(last).getByText("Running")).toBeTruthy();
     expect(
-      within(last).queryByRole("button", { name: "Helper's full report" }),
+      within(last).queryByRole("button", { name: "Helper's report" }),
     ).toBeNull();
   });
 
@@ -702,16 +722,20 @@ describe("task page", () => {
       items[k]?.querySelector(".step-lead")?.textContent;
     expect(lead(0)).toBe("Builder added the tokens");
     expect(items[0]?.textContent).toContain("Built by Agent 1");
-    expect(items[0]?.textContent).toContain(`Sonnet, ${clock(at(10))}`);
+    expect(items[0]?.textContent).toContain(
+      `Sonnet · ${clock(at(10))} to ${clock(at(11))}`,
+    );
     expect(lead(1)).toBe("Review found the weak values; fixed");
     expect(items[1]?.textContent).toContain("Reviewed by Agent 2");
     expect(lead(2)).toBe("Recheck passed; I confirmed the values");
     expect(items[2]?.textContent).toContain("Rechecked by Agent 3");
-    // The recap's closing line stands as a plain step, with no made-up time.
-    expect(items[3]?.querySelector(".step-title")?.textContent).toBe(
+    // The recap's closing line stands as Claude's step, with no made-up time.
+    expect(items[3]?.querySelector(".step-title")?.textContent).toBe("Claude");
+    expect(items[3]?.querySelector(".step-lead")?.textContent).toBe(
       "Done after one fix round.",
     );
     expect(items[3]?.querySelector(".step-who")).toBeNull();
+    expect(within(items[3] as HTMLElement).getByText("Done")).toBeTruthy();
     // No Details that would only repeat a recap step, and no second helper list.
     expect(within(how).queryByRole("button", { name: "Details" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Who's on it" })).toBeNull();
@@ -724,7 +748,7 @@ describe("task page", () => {
     expect(band.textContent).toContain(`${clock(at(10))} to ${clock(at(15))}`);
     await userEvent.click(
       within(items[0] as HTMLElement).getByRole("button", {
-        name: "Helper's full report",
+        name: "Helper's report",
       }),
     );
     expect(items[0]?.querySelector(".report-panel .md")).toBeTruthy();
@@ -752,8 +776,11 @@ describe("task page", () => {
       "Built by Agent 1",
       "Reviewed by Agent 2",
       "Rechecked by Agent 3",
-      "Done after one fix round.",
+      "Claude",
     ]);
+    expect(items[3]?.querySelector(".step-lead")?.textContent).toBe(
+      "Done after one fix round.",
+    );
   });
 
   it("who's on it reads who worked on it once the task is done", () => {
@@ -841,5 +868,421 @@ describe("task page", () => {
   it("a helper shown as a step card is not listed again under who's on it", () => {
     showTask1();
     expect(screen.queryByRole("region", { name: "Who's on it" })).toBeNull();
+  });
+});
+
+describe("task page (reshape)", () => {
+  /** Task 1 with its rounds, span and neighbours, the way core fills them. */
+  function reshaped(over: Partial<PartView> = {}) {
+    const t = task1();
+    const roles = ["build", "review", "recheck"] as const;
+    t.r.agents = t.r.agents.map((a, i) => ({
+      ...a,
+      role: roles[i] ?? "other",
+      subject: "Task 1",
+      round: i < 2 ? 1 : 2,
+    }));
+    Object.assign(t.p, { rounds: 1, span: { start: at(10), end: at(16) } });
+    Object.assign(t.p, over);
+    const hero = part({
+      id: "hero",
+      title: "Task 2: HeroMoney",
+      status: "now",
+      links: [{ to: "task:1", label: "reads" }],
+    });
+    const plate = part({
+      id: "plate",
+      title: "Dot field",
+      links: [{ to: "task:1", label: "reads" }],
+    });
+    t.r.parts = [t.p, hero, plate];
+    const task = (id: string, title: string, p: string) => ({
+      id,
+      title,
+      part: p,
+      status: "done" as const,
+      agents: [],
+    });
+    t.r.phases = [
+      {
+        id: "p0",
+        title: "Phase 0: foundation",
+        status: "done",
+        tasks: [
+          task("t1", "Task 1: Lit plate tokens", "task:1"),
+          { ...task("t2", "Task 2: HeroMoney", "hero"), status: "now" },
+          task("t3", "Task 3: dot field", "plate"),
+        ],
+      },
+    ];
+    for (const m of t.r.messages ?? []) m.task = "t1";
+    return t;
+  }
+  const showIt = (t = reshaped(), p = t.p) =>
+    render(
+      <PartDetail
+        sessionId="s1"
+        requestNumber={7}
+        request={t.r}
+        part={p}
+        events={t.calls}
+      />,
+    );
+  const outcome = () =>
+    (document.querySelector(".tt .verdict") as HTMLElement).textContent;
+  const marks = () =>
+    [...document.querySelectorAll(".rounds .rd")].map((m) => m.textContent);
+
+  it("the title line carries the outcome word from status and rounds", () => {
+    showIt();
+    expect(outcome()).toBe("Done after one fix round");
+    cleanup();
+    showIt(reshaped({ rounds: 2 }));
+    expect(outcome()).toBe("Done after two fix rounds");
+    cleanup();
+    showIt(reshaped({ rounds: 0 }));
+    expect(outcome()).toBe("Done");
+    cleanup();
+    showIt(reshaped({ status: "now" }));
+    expect(outcome()).toBe("In progress");
+  });
+
+  it("the facts row reads the time span from core, with how long it took", () => {
+    showIt();
+    const band = screen.getByRole("group", { name: "Summary" });
+    expect(band.textContent).toContain(
+      `${clock(at(10))} to ${clock(at(16))}, 6 m`,
+    );
+    expect(band.textContent).toContain("3 helpers");
+  });
+
+  it("round markers sit above the lanes, named by what each round did", () => {
+    showIt();
+    expect(marks()).toEqual([
+      "Round 1 · build and review",
+      "Round 2 · recheck",
+    ]);
+    cleanup();
+    // One round needs no marker.
+    const t = reshaped();
+    for (const a of t.r.agents) a.round = 1;
+    showIt(t);
+    expect(document.querySelector(".rounds")).toBeNull();
+  });
+
+  it("a builder resumed after the review fixes in the next round", () => {
+    const t = reshaped();
+    const send = {
+      ...ev("s1", { tool_name: "SendMessage", tool_input: { to: "a1" } }),
+      hook: "PreToolUse" as const,
+      ts: at(13),
+    };
+    t.calls.push(send);
+    showIt(t);
+    expect(marks()).toEqual([
+      "Round 1 · build and review",
+      "Round 2 · fix and recheck",
+    ]);
+  });
+
+  it("Claude's messages about the task are dots on Claude's lane", () => {
+    const t = reshaped();
+    t.r.messages = [
+      ...(t.r.messages ?? []),
+      {
+        id: "m2",
+        ts: at(16),
+        text: "Task 1 is done and verified.",
+        task: "t1",
+      },
+      { id: "m3", ts: at(16), text: "Unrelated: the server restarted." },
+    ];
+    showIt(t);
+    const lanes = within(
+      screen.getByRole("list", { name: "Timeline" }),
+    ).getAllByRole("listitem");
+    const claude = lanes.at(-1) as HTMLElement;
+    expect(claude.querySelector(".lane-name")?.textContent).toBe(
+      "Claude2 messages",
+    );
+    const dots = [...claude.querySelectorAll(".cdot")];
+    expect(dots.map((d) => d.getAttribute("aria-label"))).toEqual([
+      `${clock(at(13))}: The review found one real problem: the gain colours were weak.`,
+      `${clock(at(16))}: Task 1 is done and verified.`,
+    ]);
+    expect(dots.map((d) => d.getAttribute("class"))).toEqual([
+      "cdot bad",
+      "cdot good",
+    ]);
+  });
+
+  it("the inferred line shows only on a task Claude never described", () => {
+    const line =
+      "Claude hasn't described this task itself. This page is read from its helpers, files and messages.";
+    showIt();
+    expect(screen.queryByText(line)).toBeNull();
+    cleanup();
+    showIt(reshaped({ inferred: true }));
+    expect(screen.getByText(line)).toBeTruthy();
+  });
+
+  it("an aim read from the record says where it came from; Claude's own aim says nothing", () => {
+    showIt(
+      reshaped({
+        aim: {
+          aim: "It adds the design tokens every later part reads, in `index.css`.",
+          doneWhen: "Task 1 is done after one round of fixes.",
+          inferred: true,
+        },
+      }),
+    );
+    const why = section("What it was for");
+    expect(within(why).getByText("From the builder's brief")).toBeTruthy();
+    expect(within(why).getByText("read from how it ended")).toBeTruthy();
+    cleanup();
+    const t = reshaped();
+    (t.r.agents[1] as AgentView).brief =
+      "Review the chat's styles and small parts for the redesign.";
+    t.p.aim = {
+      aim: "The chat's styles and small parts for the redesign.",
+      doneWhen: "",
+      inferred: true,
+    };
+    delete (t.r.agents[0] as AgentView).brief;
+    showIt(t);
+    expect(
+      within(section("What it was for")).getByText("From the reviewer's brief"),
+    ).toBeTruthy();
+    expect(screen.queryByText("read from how it ended")).toBeNull();
+    cleanup();
+    showIt(
+      reshaped({ aim: { aim: "Add the tokens", doneWhen: "tests pass" } }),
+    );
+    const own = section("What it was for");
+    expect(own.querySelector(".source")).toBeNull();
+    expect(own.textContent).toBe("Add the tokensDone when tests pass");
+  });
+
+  it("previous and next follow the plan's order and link to their task pages", () => {
+    const t = reshaped();
+    showIt(t, t.r.parts[1]);
+    const [nav] = screen.getAllByRole("navigation", { name: "Tasks" });
+    const prev = within(nav as HTMLElement).getByRole("link", {
+      name: /Previous/,
+    });
+    const next = within(nav as HTMLElement).getByRole("link", {
+      name: /Next/,
+    });
+    expect(prev.textContent).toContain("Task 1 · Lit plate tokens");
+    expect(prev.getAttribute("href")).toBe("/s/s1/r/r1/p/task%3A1");
+    expect(next.textContent).toContain("Task 3 · Dot field");
+    expect(next.getAttribute("href")).toBe("/s/s1/r/r1/p/plate");
+    cleanup();
+    showIt();
+    const [first] = screen.getAllByRole("navigation", { name: "Tasks" });
+    const f = within(first as HTMLElement);
+    expect(f.queryByRole("link", { name: /Previous/ })).toBeNull();
+    expect(f.getByRole("link", { name: /Next/ }).textContent).toContain(
+      "Task 2 · HeroMoney (running)",
+    );
+    expect(
+      f.getByRole("link", { name: "← Request 7" }).getAttribute("href"),
+    ).toBe("/s/s1/r/r1");
+  });
+
+  it("the flow link says how many parts use this one and selects it on the flow board", () => {
+    showIt();
+    const flow = screen.getByRole("link", { name: "Flow: 2 parts use this" });
+    expect(flow.getAttribute("href")).toBe("/s/s1/r/r1/flow?part=task%3A1");
+    cleanup();
+    const t = reshaped();
+    showIt(t, t.r.parts[1]);
+    expect(
+      screen.getByRole("link", { name: "Flow: uses 1 part" }),
+    ).toBeTruthy();
+    cleanup();
+    t.r.parts[2] = { ...(t.r.parts[2] as PartView), links: [] };
+    showIt(t, t.r.parts[2]);
+    expect(screen.queryByRole("link", { name: /^Flow/ })).toBeNull();
+  });
+
+  it("a bare part draws no nav, no flow link, no rounds and no inferred line", () => {
+    const bare = part({ id: "bare", title: "Bare" });
+    render(
+      <PartDetail
+        sessionId="s1"
+        request={request([bare], { phases: [] })}
+        part={bare}
+        events={[]}
+      />,
+    );
+    expect(screen.queryByRole("navigation", { name: "Tasks" })).toBeNull();
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(document.querySelector(".rounds")).toBeNull();
+    expect(document.querySelector(".pd-read")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Choices" })).toBeNull();
+  });
+
+  it("a step reads who, when and badge; a judged helper with no verdict shows its result", () => {
+    const t = reshaped();
+    const a3 = t.r.agents[2] as AgentView;
+    a3.endedAt = at(15);
+    delete a3.report;
+    showIt(t);
+    const cards = within(section("How it went")).getAllByRole("listitem", {
+      name: /step/,
+    });
+    const hd = (k: number) =>
+      [...(cards[k]?.querySelector(".step-hd")?.children ?? [])].map(
+        (c) => c.textContent,
+      );
+    expect(hd(0)).toEqual([
+      "Built by Agent 1",
+      `Sonnet · ${clock(at(10))} to ${clock(at(11))}`,
+      "Done, with concerns",
+    ]);
+    expect(hd(2)).toEqual([
+      "Rechecked by Agent 3",
+      `Sonnet · ${clock(at(14))} to ${clock(at(15))}`,
+      "Passed",
+    ]);
+  });
+
+  it("files sit under their role with a capital and no closing stop", () => {
+    const file = (path: string, role: string, roleInferred = false) => ({
+      path,
+      role,
+      roleInferred,
+      added: 1,
+      removed: 0,
+      isNew: false,
+      eventIds: [],
+    });
+    showIt(
+      reshaped({
+        files: [
+          file("a.css", "Holds the token sets."),
+          file("b.html", "source", true),
+        ],
+      }),
+    );
+    expect(
+      [...document.querySelectorAll(".fcard h3")].map((h) => h.textContent),
+    ).toEqual(["Holds the token sets", "Source"]);
+  });
+
+  it("files grouped as tests by path join the one Tests card", () => {
+    const file = (path: string, role?: string) => ({
+      path,
+      ...(role ? { role, roleInferred: true } : {}),
+      added: 1,
+      removed: 0,
+      isNew: false,
+      eventIds: [],
+    });
+    showIt(
+      reshaped({
+        files: [file("e2e/harness.js", "tests"), file("a.test.ts")],
+      }),
+    );
+    expect(
+      [...document.querySelectorAll(".fcard h3")].map((h) => h.textContent),
+    ).toEqual(["Tests"]);
+  });
+
+  it("a step from a message a helper card already shows is not drawn twice, and has no Details", () => {
+    const t = reshaped({ inferred: true });
+    t.r.messages = [
+      ...(t.r.messages ?? []),
+      { id: "m9", ts: at(15), text: "Task 1 passed its recheck." },
+    ];
+    t.p.steps = [
+      ...t.p.steps,
+      {
+        ts: at(13),
+        text: "The review found one",
+        status: "done",
+        eventIds: ["m1"],
+      },
+      {
+        ts: at(15),
+        text: "Task 1 passed its recheck.",
+        status: "done",
+        eventIds: ["m9"],
+      },
+    ];
+    showIt(t);
+    const cards = within(section("How it went")).getAllByRole("listitem", {
+      name: /step/,
+    });
+    expect(cards).toHaveLength(4);
+    const last = cards[3] as HTMLElement;
+    expect(last.querySelector(".step-title")?.textContent).toBe("Claude");
+    expect(last.querySelector(".step-text")?.textContent).toBe(
+      "Task 1 passed its recheck.",
+    );
+    expect(within(last).queryByRole("button", { name: "Details" })).toBeNull();
+    // The step's message is one of Claude's dots too.
+    expect(document.querySelectorAll(".cdot")).toHaveLength(2);
+  });
+
+  it("core's verdict on a recheck wins over the timeline's guess, on the bar and the step", () => {
+    const t = reshaped();
+    t.p.status = "done";
+    const a3 = t.r.agents[2] as AgentView;
+    a3.endedAt = at(15);
+    delete a3.report;
+    (t.p.steps[2] as { text: string }).text = "Sent back";
+    showIt(t);
+    const lanes = within(
+      screen.getByRole("list", { name: "Timeline" }),
+    ).getAllByRole("listitem");
+    expect(lanes[2]?.querySelector(".run")?.className).toContain("bad");
+    expect(lanes[2]?.querySelector(".run")?.textContent).toBe("Sent back");
+    const card = within(section("How it went")).getAllByRole("listitem", {
+      name: /step/,
+    })[2] as HTMLElement;
+    expect(within(card).getByText("Sent back").className).toBe("pill bad");
+  });
+
+  it("the band names three commits and counts the rest", () => {
+    const t = reshaped();
+    const hashes = ["aaaaaaa1", "bbbbbbb2", "ccccccc3", "ddddddd4", "eeeeeee5"];
+    const a1 = t.r.agents[0] as AgentView;
+    a1.report = {
+      ...(a1.report as NonNullable<AgentView["report"]>),
+      text: `Commits: ${hashes.join(", ")}`,
+    };
+    showIt(t);
+    const band = screen.getByRole("group", { name: "Summary" });
+    expect(band.textContent).toContain(
+      "commits aaaaaaa1 bbbbbbb2 ccccccc3 and 3 more",
+    );
+  });
+
+  it("many helpers share one lane per role, and rounds of many subjects draw no markers", () => {
+    const t = reshaped();
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      ...(t.r.agents[i % 2] as AgentView),
+      id: `h${i}`,
+      subject: `Task ${i}`,
+      round: 1 + (i % 3),
+      startedAt: at(10 + i),
+    }));
+    t.r.agents = many;
+    t.p.agents = many.map((a) => a.id);
+    t.p.steps = [];
+    showIt(t);
+    const names = [...document.querySelectorAll(".lanes .lane-name")].map(
+      (n) => n.textContent,
+    );
+    expect(names.slice(0, 2)).toEqual([
+      "Builders6 helpers",
+      "Reviewers6 helpers",
+    ]);
+    expect(document.querySelector(".rounds")).toBeNull();
+    expect(document.querySelector(".how .hh-note")?.textContent).toBe(
+      "one lane per role, Claude's messages at the bottom",
+    );
   });
 });

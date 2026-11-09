@@ -8,15 +8,17 @@ import type {
 } from "@murmur/core";
 import { type ReactNode, useState } from "react";
 import { FileList, PathText, sharedFolder } from "../files";
-import { Glyph, PlanSource } from "../live/PlanColumn";
 import { Fold, inline, Markdown } from "../markdown";
+import { Glyph, PlanSource } from "../marks";
 import { Pill } from "../Pill";
+import { follow, partPath, requestPath } from "../router";
 import { helperKind, rounds as roundsWord, shortTitle } from "../session";
 import {
   aboutWork,
   clock,
   commitsIn,
   concernsIn,
+  duration,
   fixRounds,
   partAgents,
   recapRounds,
@@ -26,7 +28,7 @@ import {
 } from "../story";
 import { DiffView, hunksOf } from "./Diff";
 import { EventData, EventView } from "./EventView";
-import { helperLanes, Timeline } from "./Timeline";
+import { claudeSaid, helperLanes, MANY, Timeline } from "./Timeline";
 
 const MINUS = "−";
 
@@ -98,30 +100,64 @@ function StepCard(props: {
   /** A recap step's Details would only repeat its own title. */
   details?: boolean;
   /** How the helper's last run ended, as the timeline judged it. */
-  result?: Tone | undefined;
+  result?: Judged | undefined;
+  /** Claude's words to show on a step of its own (its closing message). */
+  words?: string | undefined;
+  /** The step that closed a done task: it carries the Done badge. */
+  last?: boolean;
 }) {
   const { n, step, request, agent, events, byId, cwd } = props;
-  const { timed = true, fallback, label = `step ${n}`, lead } = props;
-  const { details = true, result } = props;
+  const { timed = true, fallback, label = `step ${n}`, words } = props;
+  const { result, last } = props;
   const [open, setOpen] = useState<"report" | "brief" | "details" | null>(null);
   const call = step.eventIds.map((id) => byId.get(id)).find(Boolean);
   const helper = !!agent || call?.payload.tool_name === "Agent";
   const report = agent?.report;
-  const verdict = report
-    ? verdictOf(report)
-    : step.status === "failed"
+  const verdict =
+    (report && verdictOf(report)) ||
+    (step.status === "failed"
       ? { label: "Failed", tone: "bad" as const }
-      : agent?.status === "running" || (helper && step.status === "running")
+      : step.status === "running" || agent?.status === "running"
         ? { label: "Running", tone: "now" as const }
-        : undefined;
+        : result && (result.tone === "done" || result.tone === "bad")
+          ? result
+          : last
+            ? { label: "Done", tone: "done" as const }
+            : undefined);
+  // A step drawn from one of Claude's messages shows the message, not its first line twice.
+  const message = helper
+    ? undefined
+    : request.messages?.find((m) => m.id === step.eventIds[0]);
+  // A message's own event is the message: its Details would only repeat it.
+  const details = props.details !== false && !message;
   const said = agent
     ? request.messages?.find((m) => m.agent === agent.id)?.text
-    : undefined;
+    : (message?.text ?? words);
   // Never the prompt: Claude's word, else the report's, else a brief about the work.
   const text = said || reportLine(report) || aboutWork(fallback) || "";
-  const who = [model(call), timed && valid(step.ts) ? clock(step.ts) : ""]
-    .filter(Boolean)
-    .join(", ");
+  const title = agent
+    ? helperTitle(agent, request.agents.indexOf(agent) + 1)
+    : helper
+      ? step.text
+      : "Claude";
+  // The one-line fact: the plan's words for a helper's work, or Claude's own step.
+  const lead = helper
+    ? (props.lead ??
+      (agent && !BARE.test(step.text) && step.text !== title
+        ? step.text
+        : undefined))
+    : message
+      ? undefined
+      : step.text;
+  const end = agent ? (agent.report?.ts ?? agent.endedAt) : undefined;
+  const from = agent?.startedAt ?? step.ts;
+  const when =
+    !timed || !valid(from)
+      ? ""
+      : valid(end) && clock(end) !== clock(from)
+        ? `${clock(from)} to ${clock(end)}`
+        : clock(from);
+  const who = [model(call), when].filter(Boolean).join(" · ");
   const prompt =
     str(
       (call?.payload.tool_input as { prompt?: unknown } | undefined)?.prompt,
@@ -143,20 +179,22 @@ function StepCard(props: {
     >
       <span
         className={`sdot ${step.status}`}
-        data-tone={result && result !== "plain" ? result : verdict?.tone}
+        data-tone={
+          result && result.tone !== "plain" ? result.tone : verdict?.tone
+        }
         aria-hidden="true"
       >
         {n}
       </span>
       <div className="step-hd">
-        <span className="step-title">{step.text}</span>
+        <span className="step-title">{title}</span>
         {who && <span className="step-who">{who}</span>}
         {verdict && <Pill tone={verdict.tone}>{verdict.label}</Pill>}
       </div>
       {lead && <p className="step-lead">{lead}</p>}
       {text && <Fold text={text} className="step-text" />}
       <div className="step-acts">
-        {report && toggle("report", "Helper's full report")}
+        {report && toggle("report", "Helper's report")}
         {helper && prompt && toggle("brief", "Brief")}
         {!helper &&
           details &&
@@ -229,11 +267,15 @@ export function PartDetail(props: Parameters<typeof PartBody>[0]) {
 
 function PartBody(props: {
   cwd?: string;
+  /** For the links to the request, the flow board and the tasks either side. */
+  sessionId?: string | undefined;
+  /** The request's place in the session, for the way back. */
+  requestNumber?: number | undefined;
   request: RequestView;
   part: PartView;
   events: MurmurEvent[];
 }) {
-  const { cwd = "", request, part, events } = props;
+  const { cwd = "", sessionId, requestNumber, request, part, events } = props;
   const byId = new Map(events.map((e) => [e.id, e]));
   const problem = request.phases
     .flatMap((p) => p.tasks)
@@ -241,12 +283,14 @@ function PartBody(props: {
   const helpers = partAgents(request, part);
   const lanes = helperLanes(part, helpers, events);
   const judged = new Map(
-    lanes.map((l) => {
-      const tone = l.runs.at(-1)?.tone;
-      return [l.a.id, tone === "good" ? ("done" as const) : tone];
+    lanes.flatMap((l) => {
+      const run = l.runs.at(-1);
+      if (!run) return [];
+      const tone: Tone = run.tone === "good" ? "done" : run.tone;
+      return [[l.a.id, { label: run.label, tone }] as const];
     }),
   );
-  const rounds = fixRounds(part, helpers);
+  const rounds = part.rounds ?? fixRounds(part, helpers);
   const [label, tone]: [string, Tone] =
     part.failures >= 3
       ? ["Stuck", "bad"]
@@ -260,22 +304,7 @@ function PartBody(props: {
   const reports = helpers.flatMap((a) => (a.report ? [a.report] : []));
 
   // The band: time span, helpers, fix rounds, commits.
-  const times = [
-    ...(request.recap ? [] : part.steps.map((s) => s.ts)),
-    ...helpers.flatMap((a) => [a.startedAt, a.endedAt, a.report?.ts]),
-    // A helper sent back works on past its first stop.
-    ...lanes.flatMap((l) => l.runs.flatMap((r) => (r.running ? [] : [r.to]))),
-  ]
-    .filter(valid)
-    .sort();
-  const from = times[0];
-  const to = times.at(-1);
-  const span =
-    from && to
-      ? clock(from) === clock(to)
-        ? clock(from)
-        : `${clock(from)} to ${clock(to)}`
-      : "";
+  const span = spanOf(part.span);
   const commits = commitsIn(reports.map((r) => r.text));
   const added = part.files.reduce((n, f) => n + f.added, 0);
   const removed = part.files.reduce((n, f) => n + f.removed, 0);
@@ -283,7 +312,7 @@ function PartBody(props: {
     ...(span
       ? [
           <span key="t" className="fact num">
-            <b>{span}</b>
+            {span}
           </span>,
         ]
       : []),
@@ -315,13 +344,15 @@ function PartBody(props: {
       : []),
     ...(commits.length
       ? [
-          <span key="c" className="fact">
-            {plural(commits.length, "commit")}{" "}
-            {commits.map((c) => (
-              <code key={c} className="hash" title={c}>
-                {c.slice(0, 9)}
-              </code>
+          <span key="c" className="fact" title={commits.join(" ")}>
+            {plural(commits.length, "commit")}
+            {commits.slice(0, SHOWN).map((c) => (
+              <span key={c}>
+                {" "}
+                <code className="hash">{c.slice(0, 9)}</code>
+              </span>
             ))}
+            {commits.length > SHOWN && ` and ${commits.length - SHOWN} more`}
           </span>,
         ]
       : []),
@@ -329,13 +360,16 @@ function PartBody(props: {
 
   // What it was for: the recap's or narration's aim, else the first helper's brief.
   const briefed = helpers.find((a) => aboutWork(a.brief));
-  const purpose = part.aim
+  // Claude's own aim needs no source; one read from the record says where from.
+  const purpose:
+    | { text: string; doneWhen?: string; source?: string; ended?: boolean }
+    | undefined = part.aim
     ? {
         text: part.aim.aim,
         doneWhen: part.aim.doneWhen,
-        source: request.recap
-          ? "From Claude's recap"
-          : "From Claude's narration",
+        ...(part.aim.inferred
+          ? { source: briefSource(part.aim.aim, request.agents), ended: true }
+          : {}),
       }
     : briefed?.brief
       ? { text: briefed.brief, source: "From the helper's brief" }
@@ -403,21 +437,93 @@ function PartBody(props: {
     for (const { step, helper } of recapRounds(part.steps, others))
       if (step && helper) named.set(helper.id, step.text);
   for (const st of part.steps)
-    if (st.agentId && !named.has(st.agentId)) named.set(st.agentId, st.text);
+    if (st.agentId && !named.has(st.agentId) && !BARE.test(st.text))
+      named.set(st.agentId, st.text);
   const recapped =
     request.recap && (part.steps.length > 0 || others.length > 0);
-  const how = recapped || part.steps.length > 0;
+  // A step drawn from a message a helper's card already shows would say it twice.
+  const onCards = new Set(
+    helpers.flatMap(
+      (a) => request.messages?.find((m) => m.agent === a.id)?.id ?? [],
+    ),
+  );
+  const steps = part.steps.filter(
+    (s) => s.agentId || !onCards.has(s.eventIds[0] ?? ""),
+  );
+  const how = recapped || steps.length > 0;
   const margin =
     concerns.length > 0 ||
     assumed.length > 0 ||
+    chosen.length > 0 ||
     part.checks.length > 0 ||
     part.words.length > 0 ||
     !!part.io;
 
+  // The tasks either side, in the plan's order (else the map's), and the flow board.
+  const order = [
+    ...new Set(
+      tasks.flatMap((t) =>
+        t.part && request.parts.some((p) => p.id === t.part) ? [t.part] : [],
+      ),
+    ),
+  ];
+  const seq = order.includes(part.id) ? order : request.parts.map((p) => p.id);
+  const here = seq.indexOf(part.id);
+  const side = (id: string | undefined) => {
+    const p = request.parts.find((x) => x.id === id);
+    if (!p || !sessionId) return undefined;
+    const t = tasks.find((x) => x.part === p.id);
+    return {
+      path: partPath(sessionId, request.id, p.id),
+      text: `${t ? `Task ${tasks.indexOf(t) + 1} · ` : ""}${shortTitle(p.title)}${p.status === "now" ? " (running)" : ""}`,
+    };
+  };
+  const prev = side(seq[here - 1]);
+  const next = side(seq[here + 1]);
+  const users = request.parts.filter(
+    (p) => p.id !== part.id && p.links.some((l) => l.to === part.id),
+  ).length;
+  const uses = new Set(part.links.map((l) => l.to)).size;
+  const flow = !sessionId
+    ? undefined
+    : users
+      ? {
+          text: `Flow: ${users} ${users === 1 ? "part uses" : "parts use"} this`,
+          path: `${requestPath(sessionId, request.id, "flow")}?part=${encodeURIComponent(part.id)}`,
+        }
+      : uses
+        ? {
+            text: `Flow: uses ${uses} ${uses === 1 ? "part" : "parts"}`,
+            path: `${requestPath(sessionId, request.id, "flow")}?part=${encodeURIComponent(part.id)}`,
+          }
+        : undefined;
+  const back =
+    sessionId && requestNumber ? requestPath(sessionId, request.id) : undefined;
+  const link = (path: string, text: string, cls = "pd-btn") => (
+    <a key={path} className={cls} href={path} onClick={follow(path)}>
+      {text}
+    </a>
+  );
+  const sides = (
+    <span className="pd-nav-sides">
+      {prev && link(prev.path, `← Previous: ${prev.text}`)}
+      {next && link(next.path, `Next: ${next.text} →`)}
+    </span>
+  );
+  // Claude's closing word on a done task, for its last step of its own when no card has it.
+  const closingWords =
+    part.status === "done"
+      ? claudeSaid(request, part, helpers).findLast(
+          (m) => !m.agent && !part.steps.some((s) => s.eventIds.includes(m.id)),
+        )?.text
+      : undefined;
+  const closes = (i: number) =>
+    part.status === "done" && i === steps.length - 1 && !steps[i]?.agentId;
+
   return (
     <div className="pd">
       {/* Where the task sits; the way back is the breadcrumb in the top bar. */}
-      {(task || phase) && (
+      {(task || phase || request.recap || request.planInferred) && (
         // biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around two chips
         <div className="pd-over" role="group" aria-label="Where it sits">
           {task && (
@@ -426,13 +532,11 @@ function PartBody(props: {
             </span>
           )}
           {phase && <span className="label-chip">{phase.title}</span>}
+          <PlanSource request={request} />
         </div>
       )}
       <header className="tt">
-        <h1 className="pd-title">
-          {shortTitle(part.title)}
-          <PlanSource request={request} />
-        </h1>
+        <h1 className="pd-title">{shortTitle(part.title)}</h1>
         <span className={`verdict ${tone}`}>
           <Glyph
             status={
@@ -450,12 +554,23 @@ function PartBody(props: {
       {purpose && (
         <section className="deck" aria-label="What it was for">
           <p className="deck-text">
-            {inline(purpose.text)}{" "}
-            <span className="source">{purpose.source}</span>
+            {inline(purpose.text)}
+            {purpose.source && (
+              <>
+                {" "}
+                <span className="source">{purpose.source}</span>
+              </>
+            )}
           </p>
           {purpose.doneWhen && (
             <p className="done-when">
               <span className="lbl-inline">Done when</span> {purpose.doneWhen}
+              {purpose.ended && (
+                <>
+                  {" "}
+                  <span className="source">read from how it ended</span>
+                </>
+              )}
             </p>
           )}
         </section>
@@ -466,12 +581,32 @@ function PartBody(props: {
           {facts}
         </div>
       )}
+      {part.inferred && (
+        <p className="pd-read">
+          <Glyph status="todo" />
+          Claude hasn't described this task itself. This page is read from its
+          helpers, files and messages.
+        </p>
+      )}
       {!described && (
         <p className="muted">Claude has not described this part yet.</p>
       )}
+      {(back || flow || prev || next) && (
+        <nav className="pd-nav" aria-label="Tasks">
+          {back && link(back, `← Request ${requestNumber}`)}
+          {flow && link(flow.path, flow.text)}
+          {sides}
+        </nav>
+      )}
       {timeline && (
         <div className="how">
-          <h2 className="hh">How it went</h2>
+          <h2 className="hh">
+            How it went
+            <span className="hh-note">
+              one lane per {helpers.length > MANY ? "role" : "helper"}, Claude's
+              messages at the bottom
+            </span>
+          </h2>
           <Timeline
             request={request}
             part={part}
@@ -486,23 +621,30 @@ function PartBody(props: {
           {recapped ? (
             <Section name="How it went" bare={timeline}>
               <ol className="steps">
-                {recapRounds(part.steps, others).map(({ step, helper }, i) =>
-                  helper ? (
-                    helperCard(helper, i + 1, `step ${i + 1}`, step?.text)
-                  ) : step ? (
-                    <StepCard
-                      // biome-ignore lint/suspicious/noArrayIndexKey: steps are append-only
-                      key={`s${i}`}
-                      n={i + 1}
-                      step={step}
-                      request={request}
-                      events={events}
-                      byId={byId}
-                      cwd={cwd}
-                      timed={false}
-                      details={false}
-                    />
-                  ) : null,
+                {recapRounds(part.steps, others).map(
+                  ({ step, helper }, i, all) =>
+                    helper ? (
+                      helperCard(helper, i + 1, `step ${i + 1}`, step?.text)
+                    ) : step ? (
+                      <StepCard
+                        // biome-ignore lint/suspicious/noArrayIndexKey: steps are append-only
+                        key={`s${i}`}
+                        n={i + 1}
+                        step={step}
+                        request={request}
+                        events={events}
+                        byId={byId}
+                        cwd={cwd}
+                        timed={false}
+                        details={false}
+                        last={part.status === "done" && i === all.length - 1}
+                        words={
+                          part.status === "done" && i === all.length - 1
+                            ? closingWords
+                            : undefined
+                        }
+                      />
+                    ) : null,
                 )}
               </ol>
             </Section>
@@ -511,7 +653,7 @@ function PartBody(props: {
               {how && (
                 <Section name="How it went" bare={timeline}>
                   <ol className="steps">
-                    {part.steps.map((s, i) => (
+                    {steps.map((s, i) => (
                       <StepCard
                         // biome-ignore lint/suspicious/noArrayIndexKey: steps are append-only
                         key={i}
@@ -523,6 +665,8 @@ function PartBody(props: {
                         events={events}
                         byId={byId}
                         cwd={cwd}
+                        last={closes(i)}
+                        words={closes(i) ? closingWords : undefined}
                       />
                     ))}
                   </ol>
@@ -543,26 +687,15 @@ function PartBody(props: {
               )}
             </>
           )}
-          {chosen.length > 0 && (
-            <Section name="Choices it made">
-              <ul className="mn-list">
-                {chosen.map((c, i) => (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: Claude may repeat a choice
-                  <li key={i} className="mn plain">
-                    <span>
-                      <b>{c.choice}</b>{" "}
-                      <span className="muted">{c.reason}</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Section>
-          )}
         </div>
         {margin && (
           <aside className="margin">
             {(concerns.length > 0 || assumed.length > 0) && (
-              <Section name="Left open" small>
+              <Section
+                name="Left open"
+                small
+                count={concerns.length + assumed.length}
+              >
                 <ul className="mn-list">
                   {concerns.map((c) => (
                     <li key={`c:${c}`} className="mn">
@@ -607,6 +740,21 @@ function PartBody(props: {
                           ({c.status === "untried" ? "not tried yet" : c.status}
                           )
                         </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            )}
+            {chosen.length > 0 && (
+              <Section name="Choices" small>
+                <ul className="mn-list">
+                  {chosen.map((c, i) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: Claude may repeat a choice
+                    <li key={i} className="mn plain">
+                      <span>
+                        <b>{c.choice}</b>{" "}
+                        <span className="muted">{c.reason}</span>
                       </span>
                     </li>
                   ))}
@@ -677,6 +825,11 @@ function PartBody(props: {
           </div>
         </Section>
       )}
+      {(prev || next) && (
+        <nav className="pd-nav foot" aria-label="Tasks">
+          {sides}
+        </nav>
+      )}
     </div>
   );
 }
@@ -691,13 +844,17 @@ function fileGroups(files: FileTouch[]) {
   const tests: FileTouch[] = [];
   const rest: FileTouch[] = [];
   for (const f of files)
-    if (TEST.test(f.path)) tests.push(f);
-    else if (f.role) add(f.role, f);
+    if (TEST.test(f.path) || /^tests?\.?$/i.test(f.role ?? "")) tests.push(f);
+    else if (f.role) add(roleTitle(f.role), f);
     else rest.push(f);
   const fresh = (fs: FileTouch[]) =>
     fs.every((f) => f.isNew) ? (fs.length > 1 ? "All new" : "New") : undefined;
   return [
-    ...[...groups].map(([title, fs]) => ({ title, files: fs, why: undefined })),
+    ...[...groups].map(([title, fs]) => ({
+      title,
+      files: fs,
+      why: undefined,
+    })),
     ...(tests.length
       ? [{ title: "Tests", files: tests, why: fresh(tests) }]
       : []),
@@ -721,4 +878,66 @@ function helperTitle(a: AgentView, k: number): string {
   if (kind)
     return `${/^fix\b/i.test(a.description) && kind === "build" ? "Fixed" : DID[kind]} by Agent ${k}`;
   return `Agent ${k}${a.description ? ` · ${a.description}` : ""}`;
+}
+
+/** A role as a card title: a capital first, no closing stop. */
+function roleTitle(role: string): string {
+  const t = role.trim().replace(/\.$/, "");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+type Judged = { label: string; tone: Tone };
+
+/** Commits named in the band; the rest are in its tooltip. */
+const SHOWN = 3;
+
+/** Step words that only restate a helper's role or verdict; its badge says them. */
+const BARE =
+  /^(?:built|reviewed|re-?reviewed|rechecked|sent back|fixed|passed)\.?$/i;
+
+/** Where an aim read from the record came from: the brief of the helper that holds it. */
+function briefSource(aim: string, helpers: AgentView[]): string {
+  const core = aim.replace(/…$/, "").slice(1, 40).toLowerCase();
+  const by = helpers.find((a) => a.brief?.toLowerCase().includes(core));
+  const role = by && (by.role ?? helperKind(by));
+  return role === "build" || role === "fix"
+    ? "From the builder's brief"
+    : role === "review" || role === "recheck"
+      ? "From the reviewer's brief"
+      : role === "plan"
+        ? "From the planner's brief"
+        : "From a helper's brief";
+}
+
+const DAY = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+});
+
+/** "15:38 to 15:44, 6 m"; with the day on both ends when it ran past midnight. */
+function spanOf(span: PartView["span"]): ReactNode {
+  if (!span || !valid(span.start)) return "";
+  const { start, end } = span;
+  if (!valid(end))
+    return (
+      <>
+        since <b>{clock(start)}</b>
+      </>
+    );
+  const multi = new Date(start).toDateString() !== new Date(end).toDateString();
+  const when = (iso: string) =>
+    multi ? `${DAY.format(new Date(iso))} ${clock(iso)}` : clock(iso);
+  const [a, b] = [when(start), when(end)];
+  return (
+    <>
+      <b>{a}</b>
+      {a !== b && (
+        <>
+          {" "}
+          to <b>{b}</b>
+        </>
+      )}
+      , {duration(start, end)}
+    </>
+  );
 }
