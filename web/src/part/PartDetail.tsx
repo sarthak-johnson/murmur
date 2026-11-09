@@ -28,7 +28,7 @@ import {
 } from "../story";
 import { DiffView, hunksOf } from "./Diff";
 import { EventData, EventView } from "./EventView";
-import { claudeSaid, helperLanes, Timeline } from "./Timeline";
+import { claudeSaid, helperLanes, MANY, Timeline } from "./Timeline";
 
 const MINUS = "−";
 
@@ -603,7 +603,8 @@ function PartBody(props: {
           <h2 className="hh">
             How it went
             <span className="hh-note">
-              one lane per helper, Claude's messages at the bottom
+              one lane per {helpers.length > MANY ? "role" : "helper"}, Claude's
+              messages at the bottom
             </span>
           </h2>
           <Timeline

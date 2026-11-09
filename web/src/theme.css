@@ -3588,8 +3588,14 @@ button.task-chip:hover {
 }
 .pd .how .hh {
   margin-bottom: 14px;
+  /* A note too long for the line wraps as one block, not under the heading. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 12px;
 }
 .pd .how .hh-note {
+  margin-left: 0;
   color: var(--t3);
   font: 400 13px var(--font-ui);
   letter-spacing: 0;

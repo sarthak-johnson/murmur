@@ -90,6 +90,23 @@ describe("a timeline that reads", () => {
     expectReadable(layout, 640);
   });
 
+  it("a bar too narrow for the plan's words still says what it was", () => {
+    // Bars between 120 and 330 px wide: the plan's words are cut to fit, else the run's name.
+    const said =
+      "Builder added the tokens to the dark and light sets, Tailwind and the theme code.";
+    for (const width of [120, 150, 180, 210, 240, 270, 300, 330]) {
+      const layout = layoutTimeline(
+        [lane([[0, 10, "Built"]])],
+        width,
+        [],
+        new Map([["h1", said]]),
+      );
+      const bar = layout.bars[0]?.[0];
+      expect(bar?.label, `a label at ${width} px`).toBeDefined();
+      expectReadable(layout, width);
+    }
+  });
+
   it("a merged bar of different runs reads as its first plus how many more", () => {
     const layout = layoutTimeline(
       [

@@ -92,7 +92,7 @@ const RUNS: Record<HelperKind | "other", string> = {
 };
 
 /** Past this many helpers, one lane per role: a lane each would be taller than the page. */
-const MANY = 10;
+export const MANY = 10;
 
 /** The lanes merged by role, builders first, each run keeping its own verdict. */
 function byRole(lanes: Lane[]): Lane[] {
@@ -431,9 +431,10 @@ export function layoutTimeline(
       const w = r - x;
       // A role lane's merged bar holds many helpers' runs: counted, coloured only when they agree.
       const mixed = !!lane.count && g.length > 1;
-      let text = mixed
+      const short = mixed
         ? `${g.length} ${RUNS[lane.kind ?? "other"]}`
         : nameOf(g);
+      let text = short;
       const tones = new Set(g.map((run) => run.tone));
       // The plan's words name a lone first run when they fit, before its short name.
       const fit = Math.floor((w - 16) / 7);
@@ -482,6 +483,15 @@ export function layoutTimeline(
           placed.push(box);
           return { ...bar, label: { x: box[0], w: tw, side, text: say } };
         }
+      // The plan's words fit nowhere: the run's own short name inside, as it would be.
+      if (text !== short && labelPx(short) <= w) {
+        placed.push([x, r]);
+        return {
+          ...bar,
+          text: short,
+          label: { x: x + 8, w: textPx(short), side: "in", text: short },
+        };
+      }
       return bar;
     });
   });

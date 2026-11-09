@@ -1281,5 +1281,8 @@ describe("task page (reshape)", () => {
       "Reviewers6 helpers",
     ]);
     expect(document.querySelector(".rounds")).toBeNull();
+    expect(document.querySelector(".how .hh-note")?.textContent).toBe(
+      "one lane per role, Claude's messages at the bottom",
+    );
   });
 });
