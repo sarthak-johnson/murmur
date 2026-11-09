@@ -209,7 +209,13 @@ export function Live(props: {
               Waiting for the first prompt in this session.
             </p>
           ) : onJourney ? (
-            <Journey sessionId={sessionId} view={view} events={events} />
+            // The journey sums up the whole session: drawn from the first pages it would
+            // name the wrong "where it is now" and rise its stations in twice.
+            status === "loading" ? (
+              <Skeleton />
+            ) : (
+              <Journey sessionId={sessionId} view={view} events={events} />
+            )
           ) : partId ? (
             part ? (
               <PartDetail

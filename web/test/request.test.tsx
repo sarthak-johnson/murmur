@@ -560,6 +560,14 @@ describe("the phase track", () => {
     expect(noRegion("Phase track")).toBeNull();
   });
 
+  it("the new mark's dot is not the class markdown gives short code", () => {
+    // Markdown marks a short code token `nw` (never wrap); a dot styled `.nw` once drew
+    // every such token as a 6 px box, its letters stacked down the margin.
+    const css = readFileSync("src/theme.css", "utf8");
+    expect(css).not.toMatch(/(^|[\s,}])\.nw\s*[,{]/m);
+    expect(css).toMatch(/code\.nw\s*{[^}]*white-space: nowrap/);
+  });
+
   it("turns into a vertical list under 900 px, and draws once on first paint", () => {
     const css = readFileSync("src/theme.css", "utf8");
     const block = css.slice(css.indexOf("/* Request page (reshape) */"));

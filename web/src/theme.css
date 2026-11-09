@@ -3444,7 +3444,11 @@ a.helper:focus-visible {
   height: 22px;
   margin-top: 4px;
 }
-.nw {
+/* A short code token (markdown.tsx) never breaks across lines, at its hyphens say. */
+code.nw {
+  white-space: nowrap;
+}
+.km-new {
   display: inline-block;
   width: 6px;
   height: 6px;
@@ -5028,4 +5032,21 @@ a.helper:focus-visible {
 .vt-morph .pd .pd-title,
 .vt-morph .jr-title {
   view-transition-name: none;
+}
+/* A wide track's station is a box of no size (its mark and caption sit on the track), so
+   its dot is what the title grows out of and shrinks back into. A dot stretched to the
+   title's size is a blur, so with `vt-dot` (router.ts) both pictures keep their own size
+   while the title moves between the station and the header, the dot fading as it goes. */
+@media (min-width: 900px) {
+  .vt-morph .trk-st .vt-src {
+    view-transition-name: none;
+  }
+  .vt-morph .trk-st .vt-src .mk {
+    view-transition-name: page-title;
+  }
+  .vt-dot::view-transition-old(page-title),
+  .vt-dot::view-transition-new(page-title) {
+    inline-size: auto;
+    block-size: auto;
+  }
 }

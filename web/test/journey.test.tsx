@@ -185,6 +185,25 @@ describe("the session page is the journey", () => {
     expect(rail.querySelector(".stop.cur")).toBeNull();
   });
 
+  it("waits for every page of events before drawing the journey", () => {
+    // The first pages hold only the early requests: a journey drawn from them names the
+    // wrong "where it is now" and rises its stations in twice.
+    const { container, rerender } = render(
+      <Live
+        sessionId="s1"
+        view={session()}
+        status="loading"
+        lastLooked={null}
+      />,
+    );
+    expect(container.querySelector(".jr")).toBeNull();
+    expect(container.querySelector(".skeleton")).toBeTruthy();
+    rerender(
+      <Live sessionId="s1" view={session()} status="live" lastLooked={null} />,
+    );
+    expect(container.querySelector(".jr")).toBeTruthy();
+  });
+
   it("a request's own page still shows that request", () => {
     show(session(), "r3");
     expect(screen.getByRole("heading", { level: 1 }).textContent).toContain(
@@ -402,6 +421,24 @@ describe("the line", () => {
     expect(order.indexOf(pills[0] as HTMLElement)).toBe(2);
     expect(order.indexOf(station(3))).toBe(3);
     expect(order.indexOf(pills[1] as HTMLElement)).toBe(4);
+  });
+
+  it("a one-question session where nothing ran: one station, no strip, beats or pills", () => {
+    const view = session({
+      requests: [request({ id: "r1", kind: "question", prompt: "Why?" })],
+      journey: journey({
+        chapters: [{ title: "Why?", requestIds: ["r1"], state: "done" }],
+        pauses: [],
+        decisions: [],
+        totals: { helpers: 0, files: 0, commands: 0, sentBack: 0, pauses: 0 },
+      }),
+    });
+    show(view);
+    expect(line().querySelectorAll(".jr-st")).toHaveLength(1);
+    expect(screen.queryByRole("navigation", { name: "Chapters" })).toBeNull();
+    expect(line().querySelector(".jr-pause, .jr-dec, .jr-load")).toBeNull();
+    expect(ends().textContent).toContain("Where it ended");
+    expect(document.querySelector(".mk.pulse")).toBeNull();
   });
 
   it("works for a view built before core had a journey", () => {
