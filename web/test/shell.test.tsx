@@ -368,6 +368,15 @@ describe("the rail", () => {
     expect(requestMark(view, r as RequestView, []).mark).toBe("failed");
   });
 
+  it("shows core's left-open state as the open mark", () => {
+    const view = session();
+    const r: RequestView = {
+      ...(view.requests[0] as RequestView),
+      state: "left-open",
+    };
+    expect(requestMark(view, r, []).mark).toBe("open");
+  });
+
   it("highlights the request on screen, and only that one is the current page", () => {
     show(session(), { requestId: "r3" });
     const rows = within(requests()).getAllByRole("link");

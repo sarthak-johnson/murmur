@@ -25,6 +25,7 @@ describe("matchRoute", () => {
       tab: "story",
     });
     expect(matchRoute("/nope")).toEqual({ name: "notFound" });
+    expect(matchRoute("/s/%E0%A4/r/q")).toEqual({ name: "notFound" });
   });
   it("parses a request's tabs, and nothing else after it", () => {
     for (const tab of ["flow", "files", "helpers"] as const)

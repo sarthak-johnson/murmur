@@ -19,7 +19,12 @@ const isTab = (s: string | undefined): s is Tab =>
 
 export function matchRoute(path: string): Route {
   const url = new URL(path, "http://x");
-  const seg = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  let seg: string[];
+  try {
+    seg = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  } catch {
+    return { name: "notFound" };
+  }
   const [a, b, c, d, e] = seg;
   if (seg.length === 0) return { name: "home" };
   if (a === "device" && seg.length === 1)

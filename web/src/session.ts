@@ -217,10 +217,10 @@ const MARKS: readonly string[] = [
 ];
 
 /**
- * A request's mark and when it was last active. Core's `request.state` (coming with the
- * reshape's logic phase) replaces this reading when present. Until then: the newest
- * request runs, waits on you or is done; a finished one failed when a task of its plan
- * failed, was left open when its plan has tasks not done, else is done.
+ * A request's mark and when it was last active. Core's `request.state` wins when set.
+ * Without it (views built before core had it): the newest request runs, waits on you or
+ * is done; a finished one failed when a task of its plan failed, was left open when its
+ * plan has tasks not done, else is done.
  */
 export function requestMark(
   view: SessionView,
@@ -230,9 +230,8 @@ export function requestMark(
   const waiting = waitingOn(view, req, events);
   const { state, end } = requestState(view, req, events, waiting);
   const at = { state, end, waiting };
-  const own = (req as { state?: unknown }).state;
-  if (typeof own === "string" && MARKS.includes(own))
-    return { mark: own as Mark, ...at };
+  const own = req.state === "left-open" ? "open" : req.state;
+  if (own && MARKS.includes(own)) return { mark: own as Mark, ...at };
   if (state !== "done") return { mark: state, ...at };
   const tasks = req.phases.flatMap((p) => p.tasks);
   if (tasks.some((t) => t.status === "failed"))
@@ -263,12 +262,11 @@ export function shortOf(text: string): string {
 }
 
 /**
- * A request's short title for the rail and the breadcrumb. Core's `request.short`
- * (coming with the reshape's logic phase) replaces the cut of its goal when present.
+ * A request's short title for the rail and the breadcrumb: core's `request.short`, else
+ * a cut of its goal (views built before core had it).
  */
 export function requestShort(req: RequestView): string {
-  const own = (req as { short?: unknown }).short;
-  if (typeof own === "string" && own.trim()) return own.trim();
+  if (req.short?.trim()) return req.short.trim();
   return shortOf(req.goal || req.prompt) || "Untitled request";
 }
 
