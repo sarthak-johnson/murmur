@@ -32,6 +32,9 @@ type StartPoller = (
 
 type Obj = Record<string, unknown>;
 
+/** A server address: scheme, host and optional port, nothing else. commands/login.md checks the same. */
+const SERVER = /^https?:\/\/[A-Za-z0-9.-]+(:\d+)?\/?$/;
+
 const USAGE =
   "Usage: murmur <login [server] | logout | on | off | pause | resume | status> [folder]";
 
@@ -156,6 +159,10 @@ export async function run(
     skipText(session);
   switch (cmd) {
     case "login":
+      if (arg && !SERVER.test(arg))
+        throw new Error(
+          `"${arg}" is not a Murmur server address. Use one like https://my-mac.tail1234.ts.net or http://localhost:8787.`,
+        );
       return login(
         (arg || DEFAULT_SERVER).replace(/\/+$/, ""),
         startPoller,

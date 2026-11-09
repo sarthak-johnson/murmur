@@ -246,6 +246,7 @@ function updateSession(sessionId, patch) {
 }
 
 // src/cli.ts
+var SERVER = /^https?:\/\/[A-Za-z0-9.-]+(:\d+)?\/?$/;
 var USAGE = "Usage: murmur <login [server] | logout | on | off | pause | resume | status> [folder]";
 var spawnPoller = (...args) => {
   (0, import_node_child_process.spawn)(
@@ -327,6 +328,10 @@ async function run(args, env, startPoller = spawnPoller) {
     skipText(session);
   switch (cmd) {
     case "login":
+      if (arg && !SERVER.test(arg))
+        throw new Error(
+          `"${arg}" is not a Murmur server address. Use one like https://my-mac.tail1234.ts.net or http://localhost:8787.`
+        );
       return login(
         (arg || DEFAULT_SERVER).replace(/\/+$/, ""),
         startPoller,

@@ -156,6 +156,31 @@ describe("cli", () => {
     expect(started).toEqual([["dev-1", s.url, 3, 600]]);
   });
 
+  it.each([
+    "https://x; touch pwn",
+    "https://x/$(id)",
+    "ftp://murmur.example",
+    "murmur.example",
+    "https://murmur.example/path",
+    "https://user@murmur.example",
+    "https://murmur.example:80a",
+  ])("login refuses %s as a server address and starts nothing", async (bad) => {
+    const started: unknown[] = [];
+    await expect(
+      run(["login", bad], {}, () => started.push(1)),
+    ).rejects.toThrow(
+      `"${bad}" is not a Murmur server address. Use one like https://my-mac.tail1234.ts.net or http://localhost:8787.`,
+    );
+    expect(started).toEqual([]);
+  });
+
+  it.each(["https://my-mac.tail1234.ts.net/", "http://127.0.0.1:1"])(
+    "login accepts %s",
+    async (good) => {
+      await expect(run(["login", good], {})).rejects.toThrow(/Could not reach/);
+    },
+  );
+
   it("login says so when the server is down", async () => {
     await expect(run(["login", "http://127.0.0.1:1"], {})).rejects.toThrow(
       "Could not reach http://127.0.0.1:1",
