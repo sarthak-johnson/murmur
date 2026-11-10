@@ -25,12 +25,13 @@ import {
   tagOf,
   taskName,
 } from "./flow";
+import { RequestSteps } from "./Steps";
 
 const MINUS = "−";
 const NARROW = "(max-width: 899px)";
 
 /** Under 900 px bands stack and only the selection's links are drawn. */
-function useStacked() {
+export function useStacked() {
   const [stacked, setStacked] = useState(
     () => window.matchMedia?.(NARROW).matches ?? false,
   );
@@ -48,7 +49,7 @@ function useStacked() {
  * The frame's inner width, followed as the window resizes, and how far it is scrolled.
  * Measured once the frame exists (`ready`).
  */
-function useFrame(ready: boolean) {
+export function useFrame(ready: boolean) {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [left, setLeft] = useState(0);
@@ -186,14 +187,8 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
     els.current.get(to)?.focus();
   };
 
-  if (!req.parts.length)
-    return (
-      <section className="flow" aria-label="Flow">
-        <p className="tab-empty">
-          The flow appears when Claude describes the parts of this work.
-        </p>
-      </section>
-    );
+  // No parts: a short line of steps, never an empty board.
+  if (!req.parts.length) return <RequestSteps request={req} />;
 
   const now = new Date().toISOString();
   const touching = sel

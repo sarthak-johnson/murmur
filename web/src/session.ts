@@ -270,12 +270,32 @@ export function shortOf(text: string): string {
 }
 
 /**
+ * A prompt as text: a pasted block reads "(pasted text)", an image marker "(image)",
+ * spaces collapse. A block left open, or cut short, runs to the end.
+ */
+export function cleanPrompt(text: string): string {
+  return text
+    .replace(
+      /<pasted_content\b[^>]*(?:>[\s\S]*?(?:<\/pasted_content\b[^>]*>|$)|$)/g,
+      " (pasted text) ",
+    )
+    .replace(/\[Image #\d+\]/g, " (image) ")
+    .replace(/\s+/g, " ")
+    .replace(/\) ([.,;:!?])/g, ")$1")
+    .trim();
+}
+
+/** What a request asked, as one line of text: its goal, else its prompt, cleaned. */
+export const askOf = (req: RequestView) => cleanPrompt(req.goal || req.prompt);
+
+/**
  * A request's short title for the rail and the breadcrumb: core's `request.short`, else
- * a cut of its goal (views built before core had it).
+ * a cut of its goal (views built before core had it). Pasted blocks and images read cleaned.
  */
 export function requestShort(req: RequestView): string {
-  if (req.short?.trim()) return req.short.trim();
-  return shortOf(req.goal || req.prompt) || "Untitled request";
+  const own = req.short && cleanPrompt(req.short);
+  if (own) return own;
+  return shortOf(askOf(req)) || "Untitled request";
 }
 
 const count = (n: number, one: string, many: string) =>
