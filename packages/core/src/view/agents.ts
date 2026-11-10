@@ -4,10 +4,14 @@
  *   PostToolUse `tool_response.agentId`; until that arrives (it comes after the subagent
  *   stops), a start takes the oldest unclaimed Agent PreToolUse of the same
  *   `subagent_type`, else the oldest unclaimed one.
- * - Part: the latest part the subagent narrated, else the part current at its start.
- *   It also joins the task and part current at its start, so it shows there unnarrated.
- *   A subagent whose description names a task ("Review Task 38") joins the task and part
- *   of that subject instead, and never one of another subject Claude happened to be on.
+ * - Part: the latest part the subagent narrated, else the part it joined at its start.
+ *   It joins, so it shows there unnarrated: the task and part of the subject its
+ *   description names ("Review Task 38"); else of the one task its words match (shared
+ *   words, then shared numbers: "Build scenes 1, 2, 4" on "Scenes 1-4"; tasks tied on one
+ *   part give that part alone; tied on several, none); else of the one part they match;
+ *   else the task and part current at its start, unless Claude's latest narrate said that
+ *   task was done or blocked, or it names another subject. Else it stands on its own.
+ * - Its latest tool call is what it is doing (`doing`, in plain words as the now line).
  * - A SubagentStop with no earlier start is ignored (Claude Code's prompt-suggestion
  *   generator fires one with an empty `agent_type` after every interactive Stop).
  * - `known` spans requests, so a background subagent stopping later still closes.
@@ -15,6 +19,7 @@
  * subagent it started.
  */
 import type { MurmurEvent } from "../events.js";
+import { QUIET, TOOL_HOOKS, toolText } from "./infer.js";
 import { addOnce, type Trace } from "./requests.js";
 import { itemOf, subjectOfWork } from "./rounds.js";
 import type { AgentView, PartView, RequestView, TaskView } from "./types.js";
@@ -58,7 +63,10 @@ export function applyAgents(
         started.set(key(call), id);
       }
       const input = obj(call?.payload.tool_input);
-      const { task, at } = tiesOf(req, str(input.description), before[i]);
+      // Claude's latest word that a task is done or waits on the user moves it off it.
+      const said = narrated.findLast((x) => x.i < i)?.n.taskStatus;
+      const on = said === "done" || said === "blocked" ? undefined : before[i];
+      const { task, at } = tiesOf(req, str(input.description), on);
       const part =
         narrated.findLast((x) => x.part && x.e.payload.agent_id === id)?.part ??
         at?.id;
@@ -77,6 +85,8 @@ export function applyAgents(
       if (at) addOnce(at.agents, id);
     }
     const agent = known.get(id);
+    if (agent && TOOL_HOOKS.has(e.hook) && !QUIET.has(str(e.payload.tool_name)))
+      agent.doing = { text: toolText(e.payload).text, ts: e.ts };
     if (e.hook === "SubagentStop" && agent) {
       agent.status = "done";
       agent.endedAt = e.ts;
@@ -87,9 +97,57 @@ export function applyAgents(
   return started;
 }
 
+// Words that say what kind of work, or nothing: they never tie a helper to a task.
+const PLAIN = new Set(
+  "build implement write add draft create make port fix review rereview recheck check research investigate explore find audit plan update run test the and for with from into that this its all new more".split(
+    " ",
+  ),
+);
+const wordsOf = (s: string) =>
+  new Set(
+    (s.toLowerCase().match(/[a-z]{3,}/g) ?? [])
+      .map((w) => w.replace(/s$/, ""))
+      .filter((w) => !PLAIN.has(w)),
+  );
+/** The numbers a title names, a range ("1-4") as every number in it. */
+function numbersOf(s: string): Set<number> {
+  const out = new Set<number>();
+  for (const m of s.matchAll(/(\d+)\s*[-–]\s*(\d+)|\d+/g)) {
+    const [a, b] = [Number(m[1] ?? m[0]), Number(m[2] ?? m[0])];
+    for (let k = a; k <= b && k - a < 50; k++) out.add(k);
+    out.add(a);
+  }
+  return out;
+}
+
+/**
+ * The one item whose title best matches the words Claude gave a helper: shared words
+ * (one at least), then shared numbers ("scenes 1, 2, 4" on "Scenes 1-4"). Unset when
+ * none shares a word, or two match equally.
+ */
+function byWords<T extends { title: string }>(
+  description: string,
+  items: T[],
+): { best?: T | undefined; tied: T[] } {
+  const words = wordsOf(description);
+  const nums = numbersOf(description);
+  const score = (title: string) => {
+    const own = wordsOf(title);
+    const shared = [...words].filter((w) => own.has(w)).length;
+    const n = numbersOf(title);
+    return shared ? shared + [...nums].filter((x) => n.has(x)).length : 0;
+  };
+  const scores = items.map((it) => score(it.title));
+  const top = Math.max(0, ...scores);
+  const tied = top ? items.filter((_, i) => scores[i] === top) : [];
+  return tied.length === 1 ? { best: tied[0], tied } : { tied };
+}
+
 /**
  * The task and part a new subagent helps with: those of the task its description names,
- * else whatever Claude was on when it spawned, unless that names another task.
+ * else of the one task its words match (`byWords`; of tasks tied on one part, that part),
+ * else of the one part they match, else whatever Claude was on when it spawned, unless
+ * that names another task.
  */
 function tiesOf(
   req: RequestView,
@@ -98,6 +156,16 @@ function tiesOf(
 ): { task?: TaskView | undefined; at?: PartView | undefined } {
   const tasks = req.phases.flatMap((ph) => ph.tasks);
   const named = itemOf(description);
+  if (!named) {
+    const { best, tied } = byWords(description, tasks);
+    const parts = new Set(tied.map((t) => t.part));
+    const shared = parts.size === 1 ? [...parts][0] : undefined;
+    const part =
+      req.parts.find((p) => p.id === (best?.part ?? shared)) ??
+      (tied.length ? undefined : byWords(description, req.parts).best);
+    if (best || part) return { task: best, at: part };
+    if (tied.length) return {};
+  }
   // A range ("Tasks 13-14") may hold a lone task, so only two lone tasks can differ.
   const lone = (s: string | undefined) =>
     !!s && /^(?:Task \d+[a-z]?|B\d+)$/.test(s);

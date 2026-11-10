@@ -116,7 +116,7 @@ const BROWSER = /chrome|playwright|browser|puppeteer/i;
  * `description`, else "Running a command"; an MCP tool as "Looking at the browser" for
  * browser servers, else "Using <server>"; the raw command or tool name stays in `detail`.
  */
-function toolText(p: Record<string, unknown>): {
+export function toolText(p: Record<string, unknown>): {
   text: string;
   detail?: string;
 } {
@@ -169,10 +169,12 @@ export function inferNow(
   const last = Math.max(tool, stop);
   if (last < 0 || (trace.narrated.at(-1)?.i ?? -1) > tool) return;
   const e = events[last] as MurmurEvent;
+  const agent = stop > tool ? "" : String(e.payload.agent_id ?? "");
   req.now = {
     ...(stop > tool ? { text: "Finished this request" } : toolText(e.payload)),
     why: "",
     ts: e.ts,
     inferred: true,
+    ...(agent ? { agent } : {}),
   };
 }

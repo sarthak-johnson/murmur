@@ -128,8 +128,8 @@ describe("phases own messages by time", () => {
       ...helper(20, "Write the docs page", "a2"),
       said(30, "Docs next."),
     ]).requests;
-    // a2 has no subject and no part, so phase p1 has no window yet.
-    expect(req?.messages?.map((m) => m.phase)).toEqual(["p0", "p0", "p0"]);
+    // a2 has no subject, but its words tie it to t3 ("docs"), so it opens p1's window.
+    expect(req?.messages?.map((m) => m.phase)).toEqual(["p0", "p0", "p1"]);
     expect(req?.beyond).toBeUndefined();
   });
 

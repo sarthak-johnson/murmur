@@ -8,13 +8,14 @@
 import type { MurmurEvent } from "../events.js";
 import { QUIET, TOOL_HOOKS } from "./infer.js";
 import {
+  askIn,
   cutWords,
   firstSentence,
   moment,
   plainText,
   sentences,
 } from "./moments.js";
-import type { Narrated, Trace } from "./requests.js";
+import { type Narrated, phaseStatus, type Trace } from "./requests.js";
 import { helpersOf, itemOf, subjectOfWork } from "./rounds.js";
 import {
   fallbackGoal,
@@ -57,6 +58,8 @@ export function applyShape(
   ctx: ShapeContext,
 ): void {
   const live = trace.narrated.filter((x) => real(x.e));
+  runTied(req, ctx);
+  askTasks(req, live);
   const outcome = outcomeOf(req.messages ?? []);
   if (outcome) req.outcome = outcome;
   // The map's title first (`applyPlan` set it), then the titles run's, then Murmur's own.
@@ -96,6 +99,38 @@ export function applyShape(
       f.role = groupOf(f.path);
       f.roleInferred = true;
     }
+}
+
+/** A task not started whose helper still runs is under way, and so are its part and phase. */
+function runTied(req: RequestView, ctx: ShapeContext): void {
+  const running = new Set(req.agents.filter(ctx.live).map((a) => a.id));
+  for (const ph of req.phases) {
+    for (const t of ph.tasks)
+      if (t.status === "todo" && t.agents.some((id) => running.has(id))) {
+        t.status = "now";
+        const part = req.parts.find((p) => p.id === t.part);
+        if (part?.status === "todo") part.status = "now";
+      }
+    ph.status = phaseStatus(ph.tasks);
+  }
+}
+
+/** Each blocked task's ask: see `TaskView.ask`. */
+function askTasks(req: RequestView, live: Narrated[]): void {
+  for (const t of req.phases.flatMap((ph) => ph.tasks)) {
+    delete t.ask;
+    if (t.status !== "blocked") continue;
+    const x = live.findLast(
+      (n) => n.task === t.id && n.n.taskStatus === "blocked",
+    );
+    if (!x) continue;
+    const m = (req.messages ?? []).find(
+      (m) => m.ts >= x.e.ts && askIn(m.text) !== undefined,
+    );
+    t.ask = m
+      ? { text: askIn(m.text) as string, since: m.ts, message: m.id }
+      : { text: firstSentence(x.n.now), since: x.e.ts };
+  }
 }
 
 // Where a phrase can end and the next begin: before a small word that starts one, or
@@ -277,6 +312,19 @@ function placeMessages(
   const phaseOf = new Map(
     req.phases.flatMap((ph) => ph.tasks.map((t) => [t.id, ph.id] as const)),
   );
+  // A helper's phase: of the task it is tied to, else of its part's first task.
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  const helperPhase = (id: string) => {
+    const part = req.agents.find((a) => a.id === id)?.part;
+    const t =
+      tasks.find((t) => t.agents.includes(id)) ??
+      (part ? tasks.find((t) => t.part === part) : undefined);
+    return t && phaseOf.get(t.id);
+  };
+  // The message asking for what a blocked task waits on is about that task.
+  const asks = new Map(
+    tasks.flatMap((t) => (t.ask?.message ? [[t.ask.message, t.id]] : [])),
+  );
   for (const m of msgs) {
     delete m.phase;
     if (beyond && m.ts > beyond.since) continue;
@@ -285,7 +333,8 @@ function placeMessages(
       .filter((w) => w.start <= m.ts && m.ts <= w.end)
       .sort((a, b) => span(a) - span(b))[0];
     const phase =
-      (m.task && phaseOf.get(m.task)) ||
+      phaseOf.get(m.task ?? asks.get(m.id) ?? "") ||
+      (m.agent && helperPhase(m.agent)) ||
       holding?.id ||
       begun.findLast((w) => w.start <= m.ts)?.id ||
       req.phases[0]?.id;
@@ -293,7 +342,8 @@ function placeMessages(
   }
 }
 
-const isFailed = (s: string | undefined) => s === "failed" || s === "blocked";
+// Waiting on the user (blocked) is not a failure.
+const isFailed = (s: string | undefined) => s === "failed";
 
 function stateOf(
   req: RequestView,

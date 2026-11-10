@@ -244,7 +244,8 @@ test("a failed task makes its phase now", () => {
     narrateCall(4, note({ task: "2.1", taskStatus: "done" })),
   ]).requests;
   expect(req?.phases[0]?.tasks[0]?.status).toBe("failed");
-  expect(req?.phases.map((p) => p.status)).toEqual(["now", "todo"]);
+  // Phase 2 has one task done and one not: under way, not "not started".
+  expect(req?.phases.map((p) => p.status)).toEqual(["now", "now"]);
 });
 
 test("narrate accepts the status words Claude uses on its own", () => {
@@ -268,7 +269,7 @@ test("narrate accepts the status words Claude uses on its own", () => {
   ).toBe(false);
 });
 
-test("a blocked task is accepted and shows why it is stuck", () => {
+test("a blocked task is accepted and waits on you, not failed", () => {
   expect(
     NarrateInput.safeParse({
       now: "Waiting",
@@ -285,9 +286,11 @@ test("a blocked task is accepted and shows why it is stuck", () => {
     ),
   ]).requests;
   expect(req?.phases[0]?.tasks[0]).toMatchObject({
-    status: "failed",
-    problem: "Writes were refused",
+    status: "blocked",
+    ask: { text: "Writes were refused", since: "2026-11-06T00:00:03.000Z" },
   });
+  expect(req?.phases[0]?.tasks[0]?.problem).toBeUndefined();
+  expect(req?.phases[0]?.status).toBe("blocked");
 });
 
 test("narrate merges part detail", () => {

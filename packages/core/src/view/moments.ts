@@ -64,6 +64,84 @@ export function sentences(plain: string): string[] {
   return out;
 }
 
+/** Asked of the user: "Should I…", "Do you…", "May we…", or anything with "you". */
+const ASKS =
+  /^(?:(?:and|but|so|also|then|or)\s+)?(?:(?:should|shall|may|can|could|would|will|do|does|did|is|are|want)\s+(?:i|we|me|you)\b|want me\b)|\byou(?:rs?)?\b/i;
+
+/**
+ * The questions Claude's message leaves for you, in order. Only questions that end its
+ * last paragraph or a trailing list count, and only ones put to you: code, links and
+ * a question Claude answers itself never do. When unsure, none: a false "needs you"
+ * is worse than a missed one.
+ */
+export function questionsIn(text: string): string[] {
+  const src = text
+    .replace(/```[\s\S]*?(?:```|$)/g, "\n\n")
+    .replace(/`[^`\n]*`/g, "code")
+    .replace(/\]\([^)\s]*\)/g, "]")
+    .replace(/\b(?:https?:\/\/|www\.)\S+/g, "link");
+  const block =
+    src
+      .split(/\n\s*\n/)
+      .filter((b) => b.trim())
+      .at(-1) ?? "";
+  // A heading or a list item is a unit of its own; other lines run together.
+  type Unit = { text: string; kind: "heading" | "item" | "para" };
+  const units: Unit[] = [];
+  for (const line of block.split("\n")) {
+    const l = line.trim();
+    const item = /^(?:[-*+]|\d+[.)])\s+(.*)$/.exec(l)?.[1];
+    const last = units.at(-1);
+    if (/^#{1,6}\s/.test(l)) units.push({ text: l, kind: "heading" });
+    else if (item !== undefined) units.push({ text: item, kind: "item" });
+    else if (last?.kind === "para") last.text += ` ${l}`;
+    else units.push({ text: l, kind: "para" });
+  }
+  const tail =
+    units.at(-1)?.kind === "item"
+      ? units.slice(units.findLastIndex((u) => u.kind !== "item") + 1)
+      : units.slice(-1);
+  return tail.flatMap((u) => {
+    if (u.kind === "heading") return [];
+    // A sentence ends at . ! ? before a space, so "v1.2" stays whole.
+    const said = plainText(u.text).replace(/\s+/g, " ").trim();
+    const sentences = said.split(/(?<=[.!?])\s+/);
+    const asked: string[] = [];
+    for (const q of sentences.reverse()) {
+      if (!q.endsWith("?")) break;
+      asked.unshift(q);
+    }
+    // "Should I…? Or…?" is one choice.
+    const merged: string[] = [];
+    for (const q of asked)
+      if (/^or\b/i.test(q) && merged.length)
+        merged[merged.length - 1] += ` ${q}`;
+      else merged.push(q);
+    return merged.filter((q) => ASKS.test(q) && q.length > 3);
+  });
+}
+
+// A sentence that asks the user to act: "Please sign in", "waiting on you to sign in".
+const ASK_TO =
+  /^(?:please|kindly)\s+(.+)$|\b(?:waiting (?:on|for) you to|(?:I )?needs? you to)\s+(.+)$/i;
+
+/**
+ * What a message asks of the user, as one sentence: its first question put to you
+ * (`questionsIn`), else its first sentence asking you to act, as an instruction
+ * ("Please sign in there." and "It is waiting on you to sign in there." read "Sign in
+ * there"). Unset when it asks nothing.
+ */
+export function askIn(text: string): string | undefined {
+  const q = questionsIn(text)[0];
+  if (q) return q;
+  for (const s of sentences(plainText(text))) {
+    const m = ASK_TO.exec(s);
+    const what = (m?.[1] ?? m?.[2])?.replace(/[.!]+$/, "").trim();
+    if (what) return what.charAt(0).toUpperCase() + what.slice(1);
+  }
+  return undefined;
+}
+
 /** A text's first sentence, without its Markdown marks. */
 export function firstSentence(text: string): string {
   return sentences(plainText(text))[0] ?? "";
