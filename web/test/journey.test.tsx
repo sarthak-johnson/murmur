@@ -259,6 +259,13 @@ describe("from here to here", () => {
     );
   });
 
+  it("the header says waiting on you, not running, for a request that waits", () => {
+    show(session({}, { state: "waiting" }));
+    const facts = screen.getByRole("group", { name: "Summary" });
+    expect(facts.textContent).toMatch(/1 waiting on you/);
+    expect(facts.textContent).not.toMatch(/running now/);
+  });
+
   it("says where it ended once nothing runs", () => {
     show(session({ ended: true }, { state: "done", finished: true }));
     const to = within(ends()).getAllByRole("link")[1] as HTMLElement;
