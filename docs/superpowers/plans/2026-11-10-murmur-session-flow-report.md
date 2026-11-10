@@ -42,3 +42,20 @@ Branch `feat/session-flow`, built on origin/main with `origin/feat/titles-thread
 
 - `pnpm -s lint`, `pnpm -s typecheck`, `pnpm -s test`, `pnpm -s build:plugin` and `pnpm --filter @murmur/web -s build` each exit 0.
 - New tests: `web/test/sflow.test.tsx` (tabs, threads and fallback, drawn follows, chains, swimlane layout, links clear of cards, pauses, gutter, inferred note, headers, cards, one pulse, selection, keyboard, Escape, `?r=`, Enter, the phone list) and `web/test/steps.test.tsx` (prompt cleaning, step flow, the reply case, kind chips hidden when inferred); route tests in `web/test/router.test.ts`.
+
+## Review
+
+Reviewed on 10 Nov 2026 against the brief at 2560 x 1300, 1440 x 900, 1280 x 800 and 390 x 844, on both real sessions and the simulated storylines.
+Murmur's guessed storylines are runs of the session in time and never overlap, so a column each only stepped down and off to the right (22 columns on `8af212b5`, most with one request titled after it, like "Yes").
+They now share one column: with no titles run, the board is one timeline at a reading width (up to 960 px of card), with no column header and the note "Claude has not named this session's storylines yet, so its requests run in one line."
+Beside Claude's storylines, the guessed requests before them are one column titled "Grouped by Murmur", and Claude's storylines keep a lane each.
+In that one guessed column a click lights the request's `follows` chain, not the whole column, the hint stops promising a storyline, and the phone list drops the guessed chip.
+In one column, picking up from the request just above is the lane line, so `8af212b5` draws no links at all.
+The board no longer slides sideways by itself: it moved left and right while scrolling down (0, 162, 511, 0, 219, 1050 px), and any wheel over the board paused it, so it was both jumpy and mostly off; sticky headers, the edge fades, `?r=` and arrow keys bringing the card into view remain.
+On wide screens the flow tab moved the head and tabs 300 px left of the journey's; now only the board runs wider and the head, tabs and note keep the journey's place, and a single column keeps the normal page width.
+A clicked card takes focus, so arrows, Enter and Escape work after a click in Safari, which does not focus clicked buttons.
+The seven lint warnings are gone (a `fit` helper read as a focused test; mark sizes now come from a `--mk` variable on the container).
+New tests: one guessed column with one lane line and drawn links only for skips, a mixed board, the guessed note, hint and no header, chain-only lighting, and no guessed chip on the phone.
+The audit found nothing under 13 px, nothing under 4.5:1, no clipped text, no page sideways scroll and one pulse on a page with a running request at all four sizes.
+Left open: at 1440 the seven simulated storylines still scroll sideways inside the board and its scrollbar sits at the board's foot; a trackpad swipe or the arrow keys reach them.
+The five checks each exit 0.
