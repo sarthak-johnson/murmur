@@ -280,8 +280,11 @@ export async function runTitles(
     return { ran: 1, ok: 0 };
   }
   const last = events.reduce((a, e) => Math.max(a, Date.parse(e.ts)), 0);
+  // It speaks for the whole session, so it goes from the session's folder (the one
+  // `sending` checked), not the first prompt's, which may be one Murmur is off for.
+  const first = starts[0] as MurmurEvent;
   const { out, add } = emitter(
-    starts[0] as MurmurEvent,
+    { ...first, cwd: s.cwd ?? first.cwd },
     `murmur-titles:${new Date(last).toISOString()}`,
     last,
     { titles: true },
