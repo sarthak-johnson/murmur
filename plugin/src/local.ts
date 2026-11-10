@@ -279,6 +279,32 @@ export interface SessionState extends Narration {
    * ran in it. Its events follow this project's state, wherever the session moves.
    */
   project?: string;
+  /**
+   * The `prompt_id` of every request the hook sent (never one asked while off or paused):
+   * with the imported history (before `cutoff`), the only requests a titles run may name.
+   */
+  sent?: string[];
+}
+/** Records that the hook sent the request with this `prompt_id`. */
+export function markSent(sessionId: string, promptId: unknown): void {
+  if (typeof promptId !== "string" || !promptId) return;
+  const sent = readSession(sessionId).sent ?? [];
+  if (!sent.includes(promptId))
+    updateSession(sessionId, { sent: [...sent, promptId] });
+}
+/**
+ * Whether Murmur sent the request `start` begins (its prompt event): imported history,
+ * from before the import's cutoff, or a prompt the hook recorded (`markSent`).
+ */
+export function wasSent(
+  s: SessionState,
+  start: { ts: string; payload: Record<string, unknown> },
+): boolean {
+  const id = start.payload.prompt_id;
+  return (
+    (s.cutoff !== undefined && Date.parse(start.ts) < Date.parse(s.cutoff)) ||
+    (typeof id === "string" && (s.sent ?? []).includes(id))
+  );
 }
 /**
  * Where the refresh of a session's live plan stands (recap.ts `runRefresh`), in
@@ -336,6 +362,8 @@ export function clearRefresh(sessionId: string): void {
 export interface TitlesState {
   /** When the session was last asked about: at most once every 10 minutes. */
   at?: string;
+  /** When a Stop's child last read the transcript for it: at most once every 5 minutes. */
+  looked?: string;
   /** The requests no run had covered at that ask: a new run needs one not among them. */
   tried?: string[];
   /** What a run said of each request it covered: the next run's context. */

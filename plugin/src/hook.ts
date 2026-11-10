@@ -23,6 +23,7 @@ import {
   isNewSession,
   isPaused,
   isRevoked,
+  markSent,
   NARRATION_INSTRUCTION,
   NO_NARRATION,
   projectKey,
@@ -194,6 +195,8 @@ export function handleHook(
   // A prompt that is not a request (a task notification, /murmur:*) stays part of the
   // request before, as core reads it: no narration reset, no instruction.
   const prompt = hook === "UserPromptSubmit" && !isNotRequest(payload.prompt);
+  // Only a request sent here (or imported) may be named by a titles run later.
+  if (prompt) markSent(sessionId, payload.prompt_id);
   let stdout = trackNarration(sessionId, hook, payload, prompt);
   // SessionStart injects for every source, so the instruction survives compaction. A
   // session that started before Murmur was on gets it once, with its next prompt, and

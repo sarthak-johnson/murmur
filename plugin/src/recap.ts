@@ -27,6 +27,8 @@
  * with a plan Claude drew, an open task and something new since its last ask gets one
  * final refresh, drawn just after its last event, and never another. A history import
  * forgets every refresh (the server has none of them) and runs one pass at its end.
+ * A request Murmur did not send (asked while off or paused, see local.ts `wasSent`) is
+ * never refreshed.
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import os from "node:os";
@@ -58,6 +60,7 @@ import {
   readSession,
   sessionProjectState,
   updateSession,
+  wasSent,
   writeRefresh,
 } from "./local.js";
 import { enqueue } from "./upload.js";
@@ -733,12 +736,15 @@ function pickRequest(
   events: MurmurEvent[],
   per: Record<string, RequestRefresh>,
   t: number,
+  sent: (req: RequestView) => boolean,
 ) {
   for (let i = requests.length - 1; i >= 0; i--) {
     const req = requests[i] as RequestView;
     const next = requests[i + 1];
     const mine = per[req.id];
-    if (req.planInferred || req.recap || (next && mine?.final)) continue;
+    // One asked while Murmur was off or paused is never spoken of.
+    if (req.planInferred || req.recap || (next && mine?.final) || !sent(req))
+      continue;
     const own = events.filter(
       (e) => e.ts >= req.startedAt && (!next || e.ts < next.startedAt),
     );
@@ -818,7 +824,10 @@ export async function runRefresh(
     cutoff: iso,
   });
   const view = reduce(events);
-  const pick = pickRequest(view.requests, events, per, t);
+  const byId = new Map(events.map((e) => [e.id, e]));
+  const pick = pickRequest(view.requests, events, per, t, (r) =>
+    wasSent(s, byId.get(r.id) as MurmurEvent),
+  );
   if (!pick) return none;
   const { req, own, st, finished } = pick;
   const mine = per[req.id];

@@ -21521,10 +21521,31 @@ function isReply(prompt) {
 var LEAD = /^(?:yes|yeah|ok|okay|sure|right|done|got it|understood)\s*[,:;.!-]\s*/i;
 var firstClause = (s) => (s.split(/[,:;]\s|\s[-\u2013\u2014]\s/)[0] ?? "").replace(/[.!?]+$/, "").trim();
 var capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+var OPENER = /^(?:(?:yes|yeah|yep|yup|ok|okay|k|sure|right|no|nope|so|well|hey|hi|bro|man|meanwhile|finally|also|and|but|alright|all right|got it|understood|thanks|thank you|thx|great|perfect|cool|nice|done|waiting|still waiting|go ahead|go for it|do it|please do|sounds good|lgtm)(?:[\s,.!:;]+|$)|(?:(?:can|could|would|will) (?:you|we)|let's|let us|please)\s+)/i;
+var PLEASE = /[\s,]+please[.!?]*$/i;
+var strip = (clause) => {
+  let s = clause.replace(/\u2019/g, "'").trim();
+  for (let t = ""; t !== s; ) {
+    t = s;
+    s = s.replace(OPENER, "");
+  }
+  return s.replace(PLEASE, "").trim();
+};
+var HERE = /^here(?:'s| is| are)\s+(?:(?:a|an|the)\s+)?/i;
+var I_DID = /^i\s+(?=(?:(?!(?:need|feed|proceed|succeed|exceed)\b)\w+ed|made|wrote|rewrote|found|built|rebuilt|ran|sent|put|set|got|took|left|kept|did|gave|cut|split|began|chose|drew|broke|undid|redid)\s)/i;
+var TALK = /^(?:i|me|my|you|your|it|its|this|that|there|nothing|everything|something|here|we're|we'll|we've|we'd)\b/i;
+var TALK_INSIDE = /\b(?:i|me|my|you|your)\b/i;
+function titleClause(clause, claude = false) {
+  const s = strip(clause).replace(HERE, "").replace(I_DID, "");
+  if (TALK.test(s) || claude && TALK_INSIDE.test(s)) return void 0;
+  return s.split(/\s+/).filter(Boolean).length >= 2 ? s : void 0;
+}
+var talkOnly = (s) => s.trim() !== "" && strip(s).replace(/[.!?]+$/, "") === "";
 function fallbackGoal(prompt, outcome) {
   if (outcome && isReply(prompt)) {
     const clause = firstClause(firstSentence(outcome).replace(LEAD, ""));
-    if (clause.split(" ").length >= 2) return cutWords(capital(clause), 120);
+    const title2 = titleClause(clause, true);
+    if (title2) return cutWords(capital(title2), 120);
   }
   return cutWords(ownWords(prompt) || placeholder(prompt), 80);
 }
@@ -21584,16 +21605,21 @@ var BREAK = new Set(
 );
 var HANG = /* @__PURE__ */ new Set([
   ...BREAK,
-  ..."be been being has have had will would can could should do does did not no any there my our your its their this that these those every all some each then whether if which because while so more most also just you we they it he she i me us them".split(
+  ..."be been being has have had will would can could should do does did not no any there my our your its their this that these those every all some each then whether if which because while so more most also just you we they it he she i me us them how what why when where who".split(
     " "
   )
 ]);
+var ENDS = new Set(
+  [...BREAK].filter((w) => !/^(?:a|an|the|is|are|was|were)$/.test(w))
+);
+var FOLLOW_UP = "Follow-up";
 var OPENS = new Set("whether if that which because while".split(" "));
 var FILLER = /^(?:start|begin|continue|resume|keep|finish|carry on|proceed with|go on with)\s+/i;
 var SHORT_MAX = 32;
 function shortOf(goal) {
   const plain2 = goal.replace(/\s*\([^)]*\)/g, "");
-  let s = (plain2.split(/,|:|;|\s[-–]\s|\sand then\s/i)[0] ?? "").trim();
+  const clauses = plain2.split(/,|:|;|\s[-–]\s|\sand then\s|[.?!]\s/i).map((c) => c.trim()).filter(Boolean);
+  let s = clauses.map((c) => titleClause(c)).find((c) => c !== void 0) ?? (talkOnly(plain2) ? FOLLOW_UP : clauses[0] ?? "");
   const is = (set2, w) => set2.has((w ?? "").toLowerCase());
   const filler = FILLER.exec(s);
   const rest = filler ? s.slice(filler[0].length).split(/\s+/) : [];
@@ -21611,7 +21637,10 @@ function shortOf(goal) {
     return t2;
   };
   let hanging = false;
-  if (out && words.length < s.split(/\s+/).length) {
+  const all = s.split(/\s+/);
+  if (out && words.length < all.length && is(ENDS, all[words.length]))
+    words = trim(words);
+  else if (out && words.length < all.length) {
     const opens = words.findIndex((w, k) => k > 0 && is(OPENS, w));
     const breaks = words.findLastIndex((w, k) => k > 0 && is(BREAK, w));
     const head = trim(words.slice(0, opens > 0 ? opens : Math.max(breaks, 0)));
@@ -22168,6 +22197,16 @@ function setPaused(cwd, paused, sessionId) {
 }
 function clearProjectPause(cwd) {
   setPaused(cwd, false);
+}
+function markSent(sessionId, promptId) {
+  if (typeof promptId !== "string" || !promptId) return;
+  const sent = readSession(sessionId).sent ?? [];
+  if (!sent.includes(promptId))
+    updateSession(sessionId, { sent: [...sent, promptId] });
+}
+function wasSent(s, start) {
+  const id2 = start.payload.prompt_id;
+  return s.cutoff !== void 0 && Date.parse(start.ts) < Date.parse(s.cutoff) || typeof id2 === "string" && (s.sent ?? []).includes(id2);
 }
 var sessionFile = (sessionId) => import_node_path.default.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
 var refreshFile = (sessionId) => sessionFile(sessionId).replace(/\.json$/, ".refresh.json");
@@ -22864,12 +22903,13 @@ function requestsOf(r) {
     }
   };
 }
-function pickRequest(requests, events, per, t) {
+function pickRequest(requests, events, per, t, sent) {
   for (let i = requests.length - 1; i >= 0; i--) {
     const req = requests[i];
     const next = requests[i + 1];
     const mine = per[req.id];
-    if (req.planInferred || req.recap || next && mine?.final) continue;
+    if (req.planInferred || req.recap || next && mine?.final || !sent(req))
+      continue;
     const own2 = events.filter(
       (e) => e.ts >= req.startedAt && (!next || e.ts < next.startedAt)
     );
@@ -22917,7 +22957,14 @@ async function runRefresh(sessionId, {
     cutoff: iso
   });
   const view = reduce(events);
-  const pick2 = pickRequest(view.requests, events, per, t);
+  const byId = new Map(events.map((e) => [e.id, e]));
+  const pick2 = pickRequest(
+    view.requests,
+    events,
+    per,
+    t,
+    (r2) => wasSent(s, byId.get(r2.id))
+  );
   if (!pick2) return none;
   const { req, own: own2, st, finished } = pick2;
   const mine = per[req.id];
@@ -23053,6 +23100,7 @@ function refreshEvents(req, r, base, paths, at) {
 // src/titles.ts
 var MAX_REQUESTS2 = 80;
 var EVERY_MS = 10 * 6e4;
+var LOOK_MS = 5 * 6e4;
 var TITLES_TIMEOUT_MS = 9e4;
 var INSTRUCTIONS2 = `You name the requests of one Claude Code session for Murmur, a page that tells the person who ran the session what happened in it, and you group the requests into storylines.
 Below are the session's requests, oldest first, each with a label (r1, r2, ...) and its time. For most you see what the person typed (pasted text and images show as "(pasted text)" and "(image)"), what Claude first said and what it ended with, the files it changed and the helpers it started. A request marked "titled" already has a title; it is there so you see the whole session.
@@ -23153,17 +23201,24 @@ async function runTitles(sessionId, events, {
   const byId = new Map(events.map((e) => [e.id, e]));
   const starts = view.requests.map((r2) => byId.get(r2.id));
   const allKeys = requestKeys(starts);
+  const s = readSession(sessionId);
   const upTo = view.requests.length - (lastOpen ? 1 : 0);
-  const from = Math.max(0, upTo - MAX_REQUESTS2);
-  const reqs = view.requests.slice(from, upTo);
-  const keys = allKeys.slice(from, upTo);
+  const pick2 = view.requests.flatMap(
+    (_, i) => i < upTo && wasSent(s, starts[i]) ? [i] : []
+  ).slice(-MAX_REQUESTS2);
+  const reqs = pick2.map((i) => view.requests[i]);
+  const keys = pick2.map((i) => allKeys[i]);
   const st = readTitles(sessionId);
   const uncovered = keys.filter((k) => !st.covered?.[k]);
   const tried = new Set(st.tried ?? []);
   if (!uncovered.some((k) => !tried.has(k)) || st.at && now.getTime() - Date.parse(st.at) < EVERY_MS || !sending(sessionId, view.cwd))
     return none;
   const token = readCredentials()?.token;
-  writeTitles(sessionId, { ...st, at: now.toISOString(), tried: uncovered });
+  writeTitles(sessionId, {
+    ...readTitles(sessionId),
+    at: now.toISOString(),
+    tried: uncovered
+  });
   const r = await askTitles(titlesInput(reqs, keys, st), keys, env, timeoutMs);
   const secs = (r.ask.ms / 1e3).toFixed(1);
   const why = !r.ok ? r.why : !stillSending(sessionId, view.cwd, token) ? "Murmur stopped sending" : void 0;
@@ -23206,9 +23261,11 @@ async function runTitlesLive(sessionId, opts = {}) {
   if (off(env)) return none;
   const s = readSession(sessionId);
   const creds = readCredentials();
-  const at = readTitles(sessionId).at;
-  if (s.backfill !== "done" || !s.transcriptPath || !s.cwd || !creds || at && now.getTime() - Date.parse(at) < EVERY_MS || !sending(sessionId, s.cwd))
+  const st = readTitles(sessionId);
+  const since = (iso) => iso ? now.getTime() - Date.parse(iso) : Number.POSITIVE_INFINITY;
+  if (s.backfill !== "done" || !s.transcriptPath || !s.cwd || !creds || since(st.at) < EVERY_MS || since(st.looked) < LOOK_MS || !sending(sessionId, s.cwd))
     return none;
+  writeTitles(sessionId, { ...st, looked: now.toISOString() });
   const events = readBackfill({
     sessionId,
     machineId: creds.machineId,
@@ -23658,6 +23715,7 @@ function handleHook(payload, env, now) {
     backfill = sessionId;
   }
   const prompt = hook === "UserPromptSubmit" && !isNotRequest(payload.prompt);
+  if (prompt) markSent(sessionId, payload.prompt_id);
   let stdout = trackNarration(sessionId, hook, payload, prompt);
   if (start || prompt && !readSession(sessionId).instructed) {
     updateSession(sessionId, { instructed: true });

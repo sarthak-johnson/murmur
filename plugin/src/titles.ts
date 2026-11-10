@@ -9,12 +9,16 @@
  * `PostToolUse` event of `TITLES_TOOL`, marked `recap: true` and `titles: true`, timed a
  * millisecond after the latest event read; it never passes through the hook, and core
  * takes it out of the session before reading requests.
+ * It names only requests Murmur sent: imported history (before the import's cutoff) and
+ * prompts the hook recorded as it sent them (`markSent`); the transcript also holds those
+ * asked while Murmur was off or paused, and nothing is said of them, not even as context.
  * It runs in the detached backfill child after the recap (so imported history is titled
- * in full), and in the detached child a Stop spawns. Either way: only when a request no
- * run covered is not among those the last ask covered, at most once every 10 minutes per
- * session, and only while Murmur would send (logged in, on, not paused), checked again
- * before anything is queued. Same switches as the recap: `MURMUR_RECAP=0`, a headless
- * run or the recap's own run never asks.
+ * in full), and in the detached child a Stop spawns, which reads the transcript at most
+ * once every 5 minutes per session. Either way: only when a request no run covered is
+ * not among those the last ask covered, at most once every 10 minutes per session, and
+ * only while Murmur would send (logged in, on, not paused), checked again before anything
+ * is queued. Same switches as the recap: `MURMUR_RECAP=0`, a headless run or the recap's
+ * own run never asks.
  */
 import {
   cutWords,
@@ -35,6 +39,7 @@ import {
   readSession,
   readTitles,
   type TitlesState,
+  wasSent,
   writeTitles,
 } from "./local.js";
 import {
@@ -50,6 +55,7 @@ import { enqueue } from "./upload.js";
 
 const MAX_REQUESTS = 80;
 const EVERY_MS = 10 * 60_000;
+const LOOK_MS = 5 * 60_000;
 // 44 requests took 20 s; the Stop child also runs a refresh inside its 4 minutes.
 export const TITLES_TIMEOUT_MS = 90_000;
 
@@ -196,10 +202,17 @@ export async function runTitles(
   const byId = new Map(events.map((e) => [e.id, e]));
   const starts = view.requests.map((r) => byId.get(r.id) as MurmurEvent);
   const allKeys = requestKeys(starts);
+  // The transcript has every request, also those asked while Murmur was off or paused:
+  // only the ones Murmur sent are named, so nothing is said of the others.
+  const s = readSession(sessionId);
   const upTo = view.requests.length - (lastOpen ? 1 : 0);
-  const from = Math.max(0, upTo - MAX_REQUESTS);
-  const reqs = view.requests.slice(from, upTo);
-  const keys = allKeys.slice(from, upTo);
+  const pick = view.requests
+    .flatMap((_, i) =>
+      i < upTo && wasSent(s, starts[i] as MurmurEvent) ? [i] : [],
+    )
+    .slice(-MAX_REQUESTS);
+  const reqs = pick.map((i) => view.requests[i] as RequestView);
+  const keys = pick.map((i) => allKeys[i] as string);
   const st = readTitles(sessionId);
   const uncovered = keys.filter((k) => !st.covered?.[k]);
   const tried = new Set(st.tried ?? []);
@@ -211,9 +224,11 @@ export async function runTitles(
     return none;
   const token = readCredentials()?.token;
   // Marked before it is asked: whatever comes back, not again until something new.
-  // ponytail: two Stop children reading at the same moment can both ask once; mark
-  // before the transcript read (as the refresh's `checked`) if that ever costs much.
-  writeTitles(sessionId, { ...st, at: now.toISOString(), tried: uncovered });
+  writeTitles(sessionId, {
+    ...readTitles(sessionId),
+    at: now.toISOString(),
+    tried: uncovered,
+  });
   const r = await askTitles(titlesInput(reqs, keys, st), keys, env, timeoutMs);
   const secs = (r.ask.ms / 1000).toFixed(1);
   // Paused, off or logged out while it was asked: the answer is not sent.
@@ -258,7 +273,8 @@ export async function runTitles(
 
 /**
  * In the detached child after a Stop: reads the transcript (never in the hook) and runs
- * `runTitles`, unless the session was asked about in the last 10 minutes.
+ * `runTitles`, unless the session was asked about in the last 10 minutes or its
+ * transcript read in the last 5.
  */
 export async function runTitlesLive(
   sessionId: string,
@@ -269,16 +285,21 @@ export async function runTitlesLive(
   if (off(env)) return none;
   const s = readSession(sessionId);
   const creds = readCredentials();
-  const at = readTitles(sessionId).at;
+  const st = readTitles(sessionId);
+  const since = (iso?: string) =>
+    iso ? now.getTime() - Date.parse(iso) : Number.POSITIVE_INFINITY;
   if (
     s.backfill !== "done" ||
     !s.transcriptPath ||
     !s.cwd ||
     !creds ||
-    (at && now.getTime() - Date.parse(at) < EVERY_MS) ||
+    since(st.at) < EVERY_MS ||
+    since(st.looked) < LOOK_MS ||
     !sending(sessionId, s.cwd)
   )
     return none;
+  // Marked before the read, so a burst of Stops (helpers reporting) reads and asks once.
+  writeTitles(sessionId, { ...st, looked: now.toISOString() });
   const events = readBackfill({
     sessionId,
     machineId: creds.machineId,

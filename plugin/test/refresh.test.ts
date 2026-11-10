@@ -63,6 +63,8 @@ beforeEach(() => {
     cwd,
     project: cwd,
     transcriptPath: transcript,
+    // The hook sent both prompts of these tests (see `sent`).
+    sent: ["q1", "q2"],
   });
 });
 
@@ -123,6 +125,7 @@ function write(rest: unknown[] = [], { mapped = true } = {}) {
     {
       type: "user",
       uuid: "prompt",
+      promptId: "q1",
       timestamp: t(0),
       origin: { kind: "human" },
       message: { content: "Build the agent page" },
@@ -214,6 +217,16 @@ const onServer = (now: Date) => {
 const quiet = { log: () => {} };
 
 describe("live plan refresh", () => {
+  it("never refreshes a request asked while Murmur was off or paused", async () => {
+    write(reports(5, 6, 7));
+    fake(ANSWER);
+    updateSession(SID, { sent: [] });
+    expect(
+      await runRefresh(SID, { env: env(), now: at(10), ...quiet }),
+    ).toEqual({ ran: 0, ok: 0 });
+    expect(calls()).toHaveLength(0);
+  });
+
   it("refreshes a stale plan (3 helper reports since the last task change) and keeps its ids", async () => {
     write(reports(5, 6, 7));
     fake(ANSWER);
@@ -626,6 +639,7 @@ describe("review fixes", () => {
       {
         type: "user",
         uuid: "prompt2",
+        promptId: "q2",
         timestamp: t(15),
         origin: { kind: "human" },
         message: { content: "Now the footer" },
@@ -688,6 +702,7 @@ function twoRequests(
     {
       type: "user",
       uuid: "prompt2",
+      promptId: "q2",
       timestamp: t(10),
       origin: { kind: "human" },
       message: { content: "Now the footer" },

@@ -36868,10 +36868,13 @@ var BREAK = new Set(
 );
 var HANG = /* @__PURE__ */ new Set([
   ...BREAK,
-  ..."be been being has have had will would can could should do does did not no any there my our your its their this that these those every all some each then whether if which because while so more most also just you we they it he she i me us them".split(
+  ..."be been being has have had will would can could should do does did not no any there my our your its their this that these those every all some each then whether if which because while so more most also just you we they it he she i me us them how what why when where who".split(
     " "
   )
 ]);
+var ENDS = new Set(
+  [...BREAK].filter((w) => !/^(?:a|an|the|is|are|was|were)$/.test(w))
+);
 var OPENS = new Set("whether if that which because while".split(" "));
 
 // src/mcp.ts

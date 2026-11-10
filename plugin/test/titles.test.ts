@@ -11,14 +11,16 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { NARRATION_INSTRUCTION } from "../src/instruction.js";
 import {
   queueDir,
+  readSession,
   readTitles,
   setPaused,
   setProjectState,
   updateSession,
   writeCredentials,
+  writeSession,
   writeTitles,
 } from "../src/local.js";
-import { runTitles, titlesInput } from "../src/titles.js";
+import { runTitles, runTitlesLive, titlesInput } from "../src/titles.js";
 
 const SID = "44444444-2222-4333-8444-555555555555";
 const t = (s: number) =>
@@ -36,7 +38,14 @@ beforeEach(() => {
   cwd = path.join(dir, "repo");
   writeCredentials({ server: "http://x", token: "t", machineId: "m1" });
   setProjectState(cwd, "on");
-  updateSession(SID, { backfill: "done", cwd, project: cwd });
+  // Every prompt of these tests was sent live (see `sent`).
+  updateSession(SID, {
+    backfill: "done",
+    cwd,
+    project: cwd,
+    transcriptPath: path.join(dir, "t.jsonl"),
+    sent: Array.from({ length: 1000 }, (_, i) => `p${i}`),
+  });
 });
 
 const event = (
@@ -63,7 +72,7 @@ const EVENTS = [
   said(3, "Build 9 is uploaded to TestFlight."),
   stop(4),
   ask(10, "yes"),
-  said(11, "Drafted the note for Ankur."),
+  said(11, "Drafted the note for Priya."),
   stop(12),
 ];
 
@@ -81,7 +90,7 @@ const ANSWER = {
     {
       id: "r2",
       short: "Draft the build note",
-      goal: "Drafted the build note for Ankur.",
+      goal: "Drafted the build note for Priya.",
       kind: "feature",
       thread: "t1",
       follows: "r1",
@@ -148,15 +157,13 @@ describe("titles input", () => {
     const reqs = view([
       ask(
         1,
-        `Umang replied <pasted_content id="1">\nsecret stuff\n</pasted_content id="1"> see [Image #1] key sk-ant-${"a".repeat(30)} ${"word ".repeat(100)}`,
+        `Ravi replied <pasted_content id="1">\nsecret stuff\n</pasted_content id="1"> see [Image #1] key sk-ant-${"a".repeat(30)} ${"word ".repeat(100)}`,
       ),
       said(2, `First ${"x ".repeat(200)}`),
       said(3, `Last ${"y ".repeat(400)}`),
     ]);
     const text = titlesInput(reqs, ["p1"], {});
-    expect(text).toContain(
-      "Asked: Umang replied (pasted text) see (image) key",
-    );
+    expect(text).toContain("Asked: Ravi replied (pasted text) see (image) key");
     expect(text).not.toContain("secret stuff");
     expect(text).not.toContain("sk-ant-");
     const line = (label: string) =>
@@ -283,6 +290,27 @@ describe("titles run", () => {
     expect(calls()).toHaveLength(0);
   });
 
+  it("names only requests Murmur sent: imported, or recorded live, never one asked while paused", async () => {
+    fake("exit 3");
+    // p10 was asked while paused: the hook never sent it, so it is never named.
+    updateSession(SID, { sent: ["p1"] });
+    await run();
+    expect(stdin()).toContain("Asked: Ship build 9 to TestFlight please");
+    expect(stdin()).not.toContain("Asked: yes");
+    expect(stdin()).not.toContain("r2 (");
+    expect(readTitles(SID).tried).toEqual(["p1"]);
+    // Before the import's cutoff is imported history, sent whether recorded or not.
+    updateSession(SID, { sent: [], cutoff: t(5) });
+    fake("exit 3");
+    await run(EVENTS, {}, new Date(t(5000)));
+    expect(stdin()).toContain("Asked: Ship build 9 to TestFlight please");
+    expect(stdin()).not.toContain("Asked: yes");
+    // Nothing sent is uncovered: nothing to ask.
+    const { cutoff: _, ...rest } = readSession(SID);
+    writeSession(SID, rest);
+    expect(await run(EVENTS, {}, new Date(t(9000)))).toEqual({ ran: 0, ok: 0 });
+  });
+
   it("never asks in its own run, headless, or with MURMUR_RECAP=0", async () => {
     fake(answer(ANSWER));
     for (const extra of [
@@ -400,5 +428,48 @@ describe("titles run", () => {
     fake(answer(ANSWER));
     await run();
     expect(readTitles(SID).threads).toEqual({ t1: "Ship build 9" });
+  });
+});
+
+describe("titles run after a Stop", () => {
+  /** A transcript with one prompt per `n`, each with Claude's answer. */
+  const transcript = (...ns: number[]) =>
+    fs.writeFileSync(
+      path.join(dir, "t.jsonl"),
+      ns
+        .flatMap((n) => [
+          {
+            type: "user",
+            uuid: `u${n}`,
+            promptId: `p${n}`,
+            timestamp: t(n),
+            origin: { kind: "human" },
+            message: { content: `Request number ${n} about the app` },
+          },
+          {
+            type: "assistant",
+            uuid: `a${n}`,
+            timestamp: t(n + 1),
+            message: { content: [{ type: "text", text: `Did ${n}.` }] },
+          },
+        ])
+        .map((l) => JSON.stringify(l))
+        .join("\n"),
+    );
+  const live = (now: Date) =>
+    runTitlesLive(SID, { env: env(), now, log: () => {} });
+
+  it("reads the transcript at most once every 5 minutes, so a burst of Stops asks once", async () => {
+    transcript(1);
+    fake("exit 3");
+    const burst = await Promise.all([live(NOW), live(NOW), live(NOW)]);
+    expect(burst.map((r) => r.ran)).toEqual([1, 0, 0]);
+    expect(calls()).toHaveLength(1);
+    // Ten minutes on, nothing new: one look, no ask, and no other look for 5 minutes.
+    expect(await live(new Date(t(1700)))).toEqual({ ran: 0, ok: 0 });
+    transcript(1, 999);
+    expect(await live(new Date(t(1800)))).toEqual({ ran: 0, ok: 0 });
+    expect(await live(new Date(t(2001)))).toEqual({ ran: 1, ok: 0 });
+    expect(calls()).toHaveLength(2);
   });
 });
