@@ -334,6 +334,16 @@ describe("titles run", () => {
     expect(readTitles(SID).tried).toEqual(["p1"]);
   });
 
+  it("sends its event from the session's folder, not the folder of the first prompt", async () => {
+    fake(answer(ANSWER));
+    // The session began in a folder Murmur only asked about; its project is on.
+    const home = path.join(dir, "home");
+    setProjectState(home, "asked");
+    const first = { ...(EVENTS[0] as MurmurEvent), cwd: home };
+    expect(await run([first, ...EVENTS.slice(1)])).toEqual({ ran: 1, ok: 1 });
+    expect(queued()[0]?.cwd).toBe(cwd);
+  });
+
   it("never asks in its own run, headless, or with MURMUR_RECAP=0", async () => {
     fake(answer(ANSWER));
     for (const extra of [

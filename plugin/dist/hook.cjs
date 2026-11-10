@@ -23250,8 +23250,9 @@ async function runTitles(sessionId, events, {
     return { ran: 1, ok: 0 };
   }
   const last = events.reduce((a, e) => Math.max(a, Date.parse(e.ts)), 0);
+  const first = starts[0];
   const { out, add } = emitter(
-    starts[0],
+    { ...first, cwd: s.cwd ?? first.cwd },
     `murmur-titles:${new Date(last).toISOString()}`,
     last,
     { titles: true }
