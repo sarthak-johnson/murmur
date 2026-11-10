@@ -45,8 +45,16 @@ export interface Deps {
   clientIp?: (c: Context) => string | undefined;
 }
 
-/** /api routes that do not use the cookie: the CLI's device login, and bearer ingest. */
-const NOT_COOKIE = ["/api/device/start", "/api/device/poll", "/api/ingest"];
+/**
+ * /api routes that do not use the cookie: the CLI's device login, and bearer ingest
+ * (every /api/ingest route checks the ingest token itself).
+ */
+const NOT_COOKIE = [
+  "/api/device/start",
+  "/api/device/poll",
+  "/api/ingest",
+  "/api/ingest/*",
+];
 
 export function createApp(deps: Deps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();

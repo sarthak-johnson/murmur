@@ -43,7 +43,13 @@ afterEach(() => {
 });
 
 async function listen(handler: http.RequestListener): Promise<string> {
-  const s = http.createServer(handler);
+  // Every fake server is an older one for GETs: it cannot say which prompts it holds,
+  // so the titles run goes by the local record.
+  const s = http.createServer((req, res) => {
+    if (req.method !== "GET") return handler(req, res);
+    res.statusCode = 404;
+    res.end();
+  });
   servers.push(s);
   await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
   return `http://127.0.0.1:${(s.address() as AddressInfo).port}`;
