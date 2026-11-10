@@ -10,6 +10,7 @@ import { Brand, dayLabel, Rail, RailFoot } from "../live/Rail";
 import { SideColumn } from "../live/Side";
 import { Story } from "../live/Story";
 import { FilesTab, HelpersTab, RequestTabs, SessionTabs } from "../live/Tabs";
+import { TasksTab, tasksPulse } from "../live/Tasks";
 import { TopBar } from "../live/TopBar";
 import { PhaseTrack } from "../live/Track";
 import { PartDetail } from "../part/PartDetail";
@@ -179,6 +180,9 @@ export function Live(props: {
   const done = state === "done";
   // The session's own page: where it started and where it went.
   const onJourney = !props.requestId && !partId;
+  // A running task in the Tasks tab is the page's one loop.
+  const ownLoop =
+    !onJourney && !partId && tab === "tasks" && !!req && tasksPulse(req, done);
 
   return (
     <div className={drawer.open ? "frame drawer-open" : "frame"}>
@@ -192,6 +196,7 @@ export function Live(props: {
         currentId={onJourney ? undefined : req?.id}
         onRequestPage={!!wanted && !partId}
         onJourney={onJourney}
+        ownLoop={ownLoop}
         status={status}
         me={me}
         open={drawer.open}
@@ -261,6 +266,7 @@ export function Live(props: {
                 sessionId={sessionId}
                 requestNumber={view.requests.indexOf(req) + 1}
                 request={req}
+                running={state === "running"}
                 part={part}
                 events={events}
               />
@@ -389,9 +395,16 @@ function RequestMain(props: {
         end={end}
       />
       <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
-      <RequestTabs sessionId={sessionId} requestId={req.id} tab={tab} />
+      <RequestTabs
+        sessionId={sessionId}
+        requestId={req.id}
+        tab={tab}
+        tasks={req.phases.length > 0 || req.parts.length > 0}
+      />
       <div className="tab-body">
-        {tab === "flow" ? (
+        {tab === "tasks" ? (
+          <TasksTab sessionId={sessionId} request={req} done={done} />
+        ) : tab === "flow" ? (
           <FlowBoard sessionId={sessionId} request={req} />
         ) : tab === "files" ? (
           <FilesTab request={req} events={events} cwd={view.cwd} />

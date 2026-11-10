@@ -381,7 +381,7 @@ label {
   overflow-wrap: anywhere;
 }
 .assumption .muted {
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .decide {
   display: flex;
@@ -531,7 +531,7 @@ label {
   text-decoration-color: currentColor;
 }
 .md code {
-  font-size: 0.84em;
+  font-size: max(13px, 0.84em);
   padding: 1px 5px;
   border-radius: 4px;
   background: var(--panel-2);
@@ -544,7 +544,7 @@ label {
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow-x: auto;
-  font: 12.5px / 1.6 var(--font-code);
+  font: 13px / 1.6 var(--font-code);
 }
 .md h3,
 .md h4,
@@ -609,7 +609,7 @@ label {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 2.4em), transparent);
 }
 button.link.more {
-  font-size: 12.5px;
+  font-size: 13px;
   font-family: var(--font-ui);
 }
 
@@ -3592,7 +3592,8 @@ code.nw {
 }
 .trk-st {
   position: relative;
-  height: 42px;
+  /* The dot, then a caption of up to two lines. */
+  height: 60px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -3660,20 +3661,24 @@ code.nw {
 .trk-st .mk.running {
   box-shadow: 0 0 0 4px var(--now-tint);
 }
+/* Each caption has its station's slot (left and width set inline), centred under its
+   dot, whole words on up to two lines; an ellipsis only when two are not enough. */
 .cap {
   position: absolute;
   top: 24px;
-  left: var(--a);
-  width: var(--w);
+  display: -webkit-box;
   overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   color: var(--t3);
   font-size: 13px;
   line-height: 17px;
   /* Room between two captions side by side. */
-  padding: 0 6px;
-  text-align: var(--align, center);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding: 0 5px;
+  overflow-wrap: normal;
+  text-align: center;
+  word-break: normal;
 }
 .st.now .cap {
   color: var(--t1);
@@ -3681,12 +3686,6 @@ code.nw {
 }
 .st > a:hover .cap {
   color: var(--t1);
-}
-/* A station with no caption still names its link, out of sight. */
-.cap:not(.on) {
-  width: 1px;
-  height: 1px;
-  clip-path: inset(50%);
 }
 .trk-foot {
   display: flex;
@@ -3701,73 +3700,74 @@ code.nw {
   color: var(--t1);
   font-weight: 500;
 }
-@media (max-width: 899px) {
-  .trk-segs {
-    flex-direction: column;
-    gap: 18px;
-  }
-  .trk-seg {
-    flex: none;
-    width: 100%;
-  }
-  .trk-lbl {
-    margin-bottom: 8px;
-  }
-  .trk-n,
-  .trk-s {
-    white-space: normal;
-  }
-  .trk-st {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    height: auto;
-  }
-  .trk-st::before,
-  .trk-st::after {
-    top: 10px;
-    bottom: 10px;
-    left: 6px;
-    width: 3px;
-    height: auto;
-    transform-origin: top;
-    animation-name: trk-draw-down;
-  }
-  .trk-seg.now .trk-st::after {
-    transform: scaleY(var(--fill, 0));
-  }
-  .trk-seg.beyond .trk-st::before {
-    background: repeating-linear-gradient(
-      180deg,
-      var(--now-line) 0 6px,
-      transparent 6px 11px
-    );
-  }
-  .st > a,
-  .st > span {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-height: 32px;
-  }
-  .trk-st .mk {
-    position: relative;
-    top: auto;
-    left: auto;
-    transform: none;
-  }
-  .cap,
-  .cap:not(.on) {
-    position: static;
-    width: auto;
-    height: auto;
-    clip-path: none;
-    font-size: 14px;
-    line-height: 20px;
-    text-align: left;
-    white-space: normal;
-  }
+/* Stacked (Track.tsx sets it under 900 px, or when a phase's slots get too narrow to
+   read): the same list top to bottom, every station named on its own line. */
+:where(.trk.stack) .trk-segs {
+  flex-direction: column;
+  gap: 18px;
+}
+:where(.trk.stack) .trk-seg {
+  flex: none;
+  width: 100%;
+}
+:where(.trk.stack) .trk-lbl {
+  margin-bottom: 8px;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: the stacked track restyles every station; the state rules above still win on their own elements */
+:where(.trk.stack) .trk-n,
+:where(.trk.stack) .trk-s {
+  white-space: normal;
+}
+:where(.trk.stack) .trk-st {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: auto;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: the stacked track restyles every station; the state rules above still win on their own elements */
+:where(.trk.stack) .trk-st::before,
+/* biome-ignore lint/style/noDescendingSpecificity: as above */
+:where(.trk.stack) .trk-st::after {
+  top: 10px;
+  bottom: 10px;
+  left: 6px;
+  width: 3px;
+  height: auto;
+  transform-origin: top;
+  animation-name: trk-draw-down;
+}
+:where(.trk.stack) .trk-seg.now .trk-st::after {
+  transform: scaleY(var(--fill, 0));
+}
+:where(.trk.stack) .trk-seg.beyond .trk-st::before {
+  background: repeating-linear-gradient(
+    180deg,
+    var(--now-line) 0 6px,
+    transparent 6px 11px
+  );
+}
+:where(.trk.stack) .st > a,
+:where(.trk.stack) .st > span {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+}
+:where(.trk.stack) .trk-st .mk {
+  position: relative;
+  top: auto;
+  left: auto;
+  transform: none;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: the stacked track restyles every station; the state rules above still win on their own elements */
+:where(.trk.stack) .cap {
+  position: static;
+  display: block;
+  padding: 0;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
 }
 @keyframes trk-draw-down {
   from {
@@ -5096,6 +5096,13 @@ code.nw {
   .vt-morph .trk-st .vt-src .mk {
     view-transition-name: page-title;
   }
+  /* A stacked track's station is a row with its name, like a rail row. */
+  .vt-morph :where(.trk.stack) .trk-st .vt-src {
+    view-transition-name: page-title;
+  }
+  .vt-morph :where(.trk.stack) .trk-st .vt-src .mk {
+    view-transition-name: none;
+  }
   .vt-dot::view-transition-old(page-title),
   .vt-dot::view-transition-new(page-title) {
     inline-size: auto;
@@ -5641,5 +5648,142 @@ code.nw {
   .sf-head,
   .sf-lines path {
     transition: none;
+  }
+}
+
+/* Tasks list */
+/*
+ * The Tasks tab (Tasks.tsx): one list by phase, each row its plan number, state mark, full
+ * title on up to two lines, one quiet line and its facts; the whole row opens the task.
+ * A not-started task's page says where it sits in the plan (PartDetail's Ahead).
+ */
+.tasks {
+  max-width: 860px;
+}
+.tk-group {
+  margin-top: 32px;
+}
+.tk-group:first-child {
+  margin-top: 20px;
+}
+.tk-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 0 12px 8px;
+  box-shadow: inset 0 -1px 0 var(--s5);
+}
+.tk-h h2 {
+  margin: 0;
+  color: var(--t1);
+  font: 600 20px / 28px var(--font-ui);
+  letter-spacing: -0.01em;
+}
+.tk-meta {
+  margin-left: auto;
+  color: var(--t4);
+  font: 400 13px / 18px var(--font-code);
+}
+.tk-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tk-row {
+  display: grid;
+  grid-template-columns: 22px 16px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 14px 12px;
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+}
+/* The rule sits between rows, not on the rounded row. */
+.tk-rows li + li {
+  box-shadow: inset 0 1px 0 var(--s5);
+}
+a.tk-row:hover,
+a.tk-row:focus-visible {
+  background: var(--s2);
+  text-decoration: none;
+}
+.tk-n {
+  color: var(--t4);
+  font: 400 13px / 22px var(--font-code);
+  text-align: right;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: a task row's mark, never inside a track station */
+.tk-row > .mk {
+  margin-top: 3px;
+}
+.tk-row > .mk.running {
+  box-shadow: 0 0 0 3px var(--now-tint);
+}
+.tk-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+/* The full title in whole words; past two lines it ends in an ellipsis, never mid-word. */
+.tk-t {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  color: var(--t1);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 22px;
+  text-wrap: pretty;
+}
+.tk-line {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  color: var(--t3);
+  font-size: 15px;
+  line-height: 21px;
+}
+.tk-facts {
+  color: var(--t4);
+  font-size: 13px;
+  line-height: 18px;
+}
+.st-word.part {
+  color: var(--t3);
+}
+.pd-ahead {
+  max-width: var(--reading);
+  margin-top: 14px;
+  color: var(--t3);
+  font-size: 15px;
+  line-height: 22px;
+}
+.pd-ahead p {
+  margin: 0;
+}
+.pd-ahead p + p {
+  margin-top: 4px;
+}
+.pd-ahead a {
+  color: var(--t1);
+}
+@media (max-width: 599px) {
+  .tk-h {
+    padding: 0 4px 8px;
+  }
+  .tk-meta {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+  .tk-row {
+    grid-template-columns: 18px 16px minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px 4px;
   }
 }

@@ -321,6 +321,9 @@ async function main(): Promise<void> {
       windowsHide: true,
     }).unref();
   } else {
+    // Claude never waits on these hooks, so they read its new text themselves: while it
+    // works through tools no Stop comes, and its words would wait for one.
+    catchUpText(event.sessionId);
     await flush(creds);
   }
 }

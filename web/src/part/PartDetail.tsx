@@ -3,8 +3,10 @@ import type {
   FileTouch,
   MurmurEvent,
   PartView,
+  PhaseView,
   RequestView,
   StepView,
+  TaskView,
 } from "@murmur/core";
 import { type ReactNode, useState } from "react";
 import { FileList, PathText, sharedFolder } from "../files";
@@ -272,10 +274,13 @@ function PartBody(props: {
   /** The request's place in the session, for the way back. */
   requestNumber?: number | undefined;
   request: RequestView;
+  /** The request is still running: a task not started then says what Claude is on. */
+  running?: boolean | undefined;
   part: PartView;
   events: MurmurEvent[];
 }) {
   const { cwd = "", sessionId, requestNumber, request, part, events } = props;
+  const { running = false } = props;
   const byId = new Map(events.map((e) => [e.id, e]));
   const problem = request.phases
     .flatMap((p) => p.tasks)
@@ -517,6 +522,9 @@ function PartBody(props: {
           (m) => !m.agent && !part.steps.some((s) => s.eventIds.includes(m.id)),
         )?.text
       : undefined;
+  // Anything between the top row of links and the foot: then the foot repeats them.
+  const body = recapped || how || others.length > 0 || margin;
+  const between = timeline || body || part.files.length > 0;
   const closes = (i: number) =>
     part.status === "done" && i === steps.length - 1 && !steps[i]?.agentId;
 
@@ -588,9 +596,22 @@ function PartBody(props: {
           helpers, files and messages.
         </p>
       )}
-      {!described && (
-        <p className="muted">Claude has not described this part yet.</p>
-      )}
+      {!described &&
+        (task && phase ? (
+          <Ahead
+            request={request}
+            task={task}
+            phase={phase}
+            running={running}
+            path={(t) =>
+              t.part && sessionId
+                ? partPath(sessionId, request.id, t.part)
+                : undefined
+            }
+          />
+        ) : (
+          <p className="muted">Claude has not described this part yet.</p>
+        ))}
       {(back || flow || prev || next) && (
         <nav className="pd-nav" aria-label="Tasks">
           {back && link(back, `← Request ${requestNumber}`)}
@@ -616,184 +637,191 @@ function PartBody(props: {
           />
         </div>
       )}
-      <div className={margin ? "split" : "split solo"}>
-        <div className="split-main">
-          {recapped ? (
-            <Section name="How it went" bare={timeline}>
-              <ol className="steps">
-                {recapRounds(part.steps, others).map(
-                  ({ step, helper }, i, all) =>
-                    helper ? (
-                      helperCard(helper, i + 1, `step ${i + 1}`, step?.text)
-                    ) : step ? (
-                      <StepCard
-                        // biome-ignore lint/suspicious/noArrayIndexKey: steps are append-only
-                        key={`s${i}`}
-                        n={i + 1}
-                        step={step}
-                        request={request}
-                        events={events}
-                        byId={byId}
-                        cwd={cwd}
-                        timed={false}
-                        details={false}
-                        last={part.status === "done" && i === all.length - 1}
-                        words={
-                          part.status === "done" && i === all.length - 1
-                            ? closingWords
-                            : undefined
-                        }
-                      />
-                    ) : null,
+      {body && (
+        <div className={margin ? "split" : "split solo"}>
+          <div className="split-main">
+            {recapped ? (
+              <Section name="How it went" bare={timeline}>
+                <ol className="steps">
+                  {recapRounds(part.steps, others).map(
+                    ({ step, helper }, i, all) =>
+                      helper ? (
+                        helperCard(helper, i + 1, `step ${i + 1}`, step?.text)
+                      ) : step ? (
+                        <StepCard
+                          // biome-ignore lint/suspicious/noArrayIndexKey: steps are append-only
+                          key={`s${i}`}
+                          n={i + 1}
+                          step={step}
+                          request={request}
+                          events={events}
+                          byId={byId}
+                          cwd={cwd}
+                          timed={false}
+                          details={false}
+                          last={part.status === "done" && i === all.length - 1}
+                          words={
+                            part.status === "done" && i === all.length - 1
+                              ? closingWords
+                              : undefined
+                          }
+                        />
+                      ) : null,
+                  )}
+                </ol>
+              </Section>
+            ) : (
+              <>
+                {how && (
+                  <Section name="How it went" bare={timeline}>
+                    <ol className="steps">
+                      {steps.map((s, i) => (
+                        <StepCard
+                          // biome-ignore lint/suspicious/noArrayIndexKey: steps are append-only
+                          key={i}
+                          n={i + 1}
+                          step={s}
+                          request={request}
+                          agent={helpers.find((a) => a.id === s.agentId)}
+                          result={s.agentId ? judged.get(s.agentId) : undefined}
+                          events={events}
+                          byId={byId}
+                          cwd={cwd}
+                          last={closes(i)}
+                          words={closes(i) ? closingWords : undefined}
+                        />
+                      ))}
+                    </ol>
+                  </Section>
                 )}
-              </ol>
-            </Section>
-          ) : (
-            <>
-              {how && (
-                <Section name="How it went" bare={timeline}>
-                  <ol className="steps">
-                    {steps.map((s, i) => (
-                      <StepCard
-                        // biome-ignore lint/suspicious/noArrayIndexKey: steps are append-only
-                        key={i}
-                        n={i + 1}
-                        step={s}
-                        request={request}
-                        agent={helpers.find((a) => a.id === s.agentId)}
-                        result={s.agentId ? judged.get(s.agentId) : undefined}
-                        events={events}
-                        byId={byId}
-                        cwd={cwd}
-                        last={closes(i)}
-                        words={closes(i) ? closingWords : undefined}
-                      />
-                    ))}
-                  </ol>
-                </Section>
-              )}
-              {others.length > 0 && (
+                {others.length > 0 && (
+                  <Section
+                    name={
+                      part.status === "done"
+                        ? "Who worked on it"
+                        : "Who's on it"
+                    }
+                  >
+                    <ol className="steps">
+                      {others.map((a) =>
+                        helperCard(a, number(a), `helper ${number(a)}`),
+                      )}
+                    </ol>
+                  </Section>
+                )}
+              </>
+            )}
+          </div>
+          {margin && (
+            <aside className="margin">
+              {(concerns.length > 0 || assumed.length > 0) && (
                 <Section
-                  name={
-                    part.status === "done" ? "Who worked on it" : "Who's on it"
-                  }
+                  name="Left open"
+                  small
+                  count={concerns.length + assumed.length}
                 >
-                  <ol className="steps">
-                    {others.map((a) =>
-                      helperCard(a, number(a), `helper ${number(a)}`),
-                    )}
-                  </ol>
+                  <ul className="mn-list">
+                    {concerns.map((c) => (
+                      <li key={`c:${c}`} className="mn">
+                        <Glyph status="todo" />
+                        <span>{inline(c)}</span>
+                      </li>
+                    ))}
+                    {assumed.map((c, i) => (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: Claude may repeat a choice
+                      <li key={`a:${i}`} className="mn">
+                        <Glyph status="todo" />
+                        <span>
+                          <b>{c.choice}</b>{" "}
+                          <span className="muted">{c.reason}</span>
+                          <span className="pd-assume">
+                            Claude's assumption. You never said this.
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
                 </Section>
               )}
-            </>
+              {part.checks.length > 0 && (
+                <Section name="Checked" small>
+                  <ul className="mn-list">
+                    {part.checks.map((c) => (
+                      <li key={c.check} className={`mn pd-check ${c.status}`}>
+                        <Glyph
+                          status={
+                            c.status === "pass"
+                              ? "done"
+                              : c.status === "fail"
+                                ? "failed"
+                                : "todo"
+                          }
+                        />
+                        <span>
+                          {c.check}
+                          <span className="sr-only">
+                            {" "}
+                            (
+                            {c.status === "untried"
+                              ? "not tried yet"
+                              : c.status}
+                            )
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+              {chosen.length > 0 && (
+                <Section name="Choices" small>
+                  <ul className="mn-list">
+                    {chosen.map((c, i) => (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: Claude may repeat a choice
+                      <li key={i} className="mn plain">
+                        <span>
+                          <b>{c.choice}</b>{" "}
+                          <span className="muted">{c.reason}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+              {part.words.length > 0 && (
+                <Section name="Words used here" small>
+                  <ul className="mn-list">
+                    {part.words.map((w) => (
+                      <li key={w.term} className="mn plain">
+                        <span>
+                          <b>{w.term}</b>{" "}
+                          <span className="muted">{w.meaning}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+              {part.io && (
+                <Section name="What goes in and out" small>
+                  <ul className="mn-list">
+                    <li className="mn plain">
+                      <span>
+                        <b>Gets:</b> {part.io.gets}
+                      </span>
+                    </li>
+                    <li className="mn plain">
+                      <span>
+                        <b>Gives:</b> {part.io.gives}
+                      </span>
+                    </li>
+                  </ul>
+                </Section>
+              )}
+            </aside>
           )}
         </div>
-        {margin && (
-          <aside className="margin">
-            {(concerns.length > 0 || assumed.length > 0) && (
-              <Section
-                name="Left open"
-                small
-                count={concerns.length + assumed.length}
-              >
-                <ul className="mn-list">
-                  {concerns.map((c) => (
-                    <li key={`c:${c}`} className="mn">
-                      <Glyph status="todo" />
-                      <span>{inline(c)}</span>
-                    </li>
-                  ))}
-                  {assumed.map((c, i) => (
-                    // biome-ignore lint/suspicious/noArrayIndexKey: Claude may repeat a choice
-                    <li key={`a:${i}`} className="mn">
-                      <Glyph status="todo" />
-                      <span>
-                        <b>{c.choice}</b>{" "}
-                        <span className="muted">{c.reason}</span>
-                        <span className="pd-assume">
-                          Claude's assumption. You never said this.
-                        </span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </Section>
-            )}
-            {part.checks.length > 0 && (
-              <Section name="Checked" small>
-                <ul className="mn-list">
-                  {part.checks.map((c) => (
-                    <li key={c.check} className={`mn pd-check ${c.status}`}>
-                      <Glyph
-                        status={
-                          c.status === "pass"
-                            ? "done"
-                            : c.status === "fail"
-                              ? "failed"
-                              : "todo"
-                        }
-                      />
-                      <span>
-                        {c.check}
-                        <span className="sr-only">
-                          {" "}
-                          ({c.status === "untried" ? "not tried yet" : c.status}
-                          )
-                        </span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </Section>
-            )}
-            {chosen.length > 0 && (
-              <Section name="Choices" small>
-                <ul className="mn-list">
-                  {chosen.map((c, i) => (
-                    // biome-ignore lint/suspicious/noArrayIndexKey: Claude may repeat a choice
-                    <li key={i} className="mn plain">
-                      <span>
-                        <b>{c.choice}</b>{" "}
-                        <span className="muted">{c.reason}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </Section>
-            )}
-            {part.words.length > 0 && (
-              <Section name="Words used here" small>
-                <ul className="mn-list">
-                  {part.words.map((w) => (
-                    <li key={w.term} className="mn plain">
-                      <span>
-                        <b>{w.term}</b>{" "}
-                        <span className="muted">{w.meaning}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </Section>
-            )}
-            {part.io && (
-              <Section name="What goes in and out" small>
-                <ul className="mn-list">
-                  <li className="mn plain">
-                    <span>
-                      <b>Gets:</b> {part.io.gets}
-                    </span>
-                  </li>
-                  <li className="mn plain">
-                    <span>
-                      <b>Gives:</b> {part.io.gives}
-                    </span>
-                  </li>
-                </ul>
-              </Section>
-            )}
-          </aside>
-        )}
-      </div>
+      )}
       {part.files.length > 0 && (
         <Section
           name="Files, by what they do"
@@ -825,12 +853,78 @@ function PartBody(props: {
           </div>
         </Section>
       )}
-      {(prev || next) && (
+      {between && (prev || next) && (
         <nav className="pd-nav foot" aria-label="Tasks">
           {sides}
         </nav>
       )}
     </div>
+  );
+}
+
+const ORDINAL = [
+  "First",
+  "Second",
+  "Third",
+  "Fourth",
+  "Fifth",
+  "Sixth",
+  "Seventh",
+  "Eighth",
+  "Ninth",
+  "Tenth",
+];
+
+/**
+ * A task Claude has not described yet, in two or three quiet lines: where it sits in its
+ * phase and what comes before it, what comes next, and, while the request runs, what
+ * Claude is on. Its number in the plan is in the chip above, so it is not said again.
+ */
+function Ahead(props: {
+  request: RequestView;
+  task: TaskView;
+  phase: PhaseView;
+  running: boolean;
+  path(t: TaskView): string | undefined;
+}) {
+  const { request, task, phase, running, path } = props;
+  const tasks = request.phases.flatMap((p) => p.tasks);
+  const name = (t: TaskView) =>
+    `Task ${tasks.indexOf(t) + 1} · ${shortTitle(t.title)}`;
+  const j = phase.tasks.indexOf(task);
+  const m = phase.tasks.length;
+  const place =
+    m === 1
+      ? `The only task in ${phase.title}`
+      : `${j === m - 1 ? "Last" : (ORDINAL[j] ?? `Number ${j + 1}`)} of ${m} tasks in ${phase.title}`;
+  const k = tasks.indexOf(task);
+  const before = tasks[k - 1];
+  const after = tasks[k + 1];
+  const live = running
+    ? tasks.find((t) => t !== task && t.status === "now")
+    : undefined;
+  const livePath = live && path(live);
+  return (
+    <section className="pd-ahead" aria-label="Where it sits in the plan">
+      <p>
+        {place}
+        {before && `, after ${name(before)}`}.
+      </p>
+      {after && <p>Next is {name(after)}.</p>}
+      {live && (
+        <p>
+          Claude is on{" "}
+          {livePath ? (
+            <a href={livePath} onClick={follow(livePath)}>
+              {name(live)}
+            </a>
+          ) : (
+            name(live)
+          )}{" "}
+          now.
+        </p>
+      )}
+    </section>
   );
 }
 

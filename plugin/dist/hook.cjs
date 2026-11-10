@@ -23837,6 +23837,7 @@ async function main() {
       windowsHide: true
     }).unref();
   } else {
+    catchUpText(event.sessionId);
     await flush(creds);
   }
 }

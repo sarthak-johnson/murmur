@@ -343,14 +343,25 @@ function Rows(props: {
   ms: MessageView[];
   newestFirst: boolean;
   waiting: AgentView[];
+  /** What Claude is on, for a live section with nothing else to say yet. */
+  now?: string | undefined;
   onOpenPart(partId: string): void;
 }) {
-  const { request, ms, newestFirst, waiting, onOpenPart } = props;
+  const { request, ms, newestFirst, waiting, now: on, onOpenPart } = props;
   const groups = runs(request, ms, !newestFirst);
   if (newestFirst) groups.reverse();
   const now = new Date().toISOString();
   return (
     <ol className="st-rows">
+      {on && (
+        <li className="st-now">
+          <span className="st-t">now</span>
+          <span className="st-now-b">
+            <StateMark mark="running" />
+            <span>{on}</span>
+          </span>
+        </li>
+      )}
       {newestFirst &&
         waiting.map((a) => (
           <li key={`now:${a.id}`} className="st-now">
@@ -409,14 +420,28 @@ function phaseOf(request: RequestView, ms: MessageView[]) {
 }
 
 const STATE: Record<
-  "done" | "now" | "todo" | "open",
+  "done" | "now" | "part" | "todo" | "open",
   { mark: Mark; word: string }
 > = {
   done: { mark: "done", word: "Done" },
   now: { mark: "running", word: "Running" },
+  part: { mark: "open", word: "Partly done" },
   todo: { mark: "open", word: "Not started" },
   open: { mark: "open", word: "Left open" },
 };
+
+/**
+ * What Claude is on, said while a running request has no word in its live section yet:
+ * its last narration, else the task under way, else the next one in the plan.
+ */
+function onNow(request: RequestView, phase?: PhaseView): string {
+  if (request.now?.text) return request.now.text;
+  const doing = phase?.tasks.find((t) => t.status === "now");
+  if (doing) return `Working on ${shortTitle(doing.title)}.`;
+  const next = phase?.tasks.find((t) => t.status === "todo");
+  if (next) return `Next in the plan: ${shortTitle(next.title)}.`;
+  return "Claude has not written anything yet.";
+}
 
 function Section(props: {
   id: string;
@@ -480,9 +505,13 @@ export function Story(props: {
         ? "open"
         : ph.id === live
           ? "now"
-          : ph.status;
+          : ph.status === "todo" && ph.tasks.some((t) => t.status === "done")
+            ? "part"
+            : ph.status;
+  // A running request always says something: at least what Claude is on now.
+  const quiet = !waiting.length;
 
-  if (!ms.length && (!live || !waiting.length)) return null;
+  if (!ms.length && (over || (!live && request.phases.length > 0))) return null;
   return (
     <section className="story" aria-label="What happened">
       {request.phases.length === 0 ? (
@@ -497,6 +526,7 @@ export function Story(props: {
             ms={ms}
             newestFirst={!over}
             waiting={over ? [] : waiting}
+            now={!over && !ms.length && quiet ? onNow(request) : undefined}
             onOpenPart={onOpenPart}
           />
         </Section>
@@ -504,7 +534,7 @@ export function Story(props: {
         request.phases.map((ph) => {
           const mine = planned.filter((_, i) => of[i] === ph.id);
           const isLive = ph.id === live;
-          if (!mine.length && !(isLive && waiting.length)) return null;
+          if (!mine.length && !isLive) return null;
           const n = ph.tasks.filter((t) => t.status === "done").length;
           const meta = [
             isLive ? "newest first" : when(mine),
@@ -524,6 +554,11 @@ export function Story(props: {
                 ms={mine}
                 newestFirst={isLive}
                 waiting={isLive ? waiting : []}
+                now={
+                  isLive && !mine.length && quiet
+                    ? onNow(request, ph)
+                    : undefined
+                }
                 onOpenPart={onOpenPart}
               />
             </Section>
@@ -544,6 +579,11 @@ export function Story(props: {
               ms={after}
               newestFirst={live === "beyond"}
               waiting={live === "beyond" ? waiting : []}
+              now={
+                live === "beyond" && !after.length && quiet
+                  ? onNow(request)
+                  : undefined
+              }
               onOpenPart={onOpenPart}
             />
           </Section>

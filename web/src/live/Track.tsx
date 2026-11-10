@@ -1,16 +1,17 @@
 /*
  * The phase track: phases as segments left to right, tasks as stations that open their
- * page, and a dashed "Beyond the plan" segment when work goes on after the plan. Under
- * 900 px the same list reads top to bottom (CSS only), every station named.
+ * page, and a dashed "Beyond the plan" segment when work goes on after the plan. Every
+ * station is named under its dot. Under 900 px, or when a phase's stations get too narrow
+ * to name, the same list reads top to bottom.
  */
 import type { AgentView, PhaseView, RequestView, TaskView } from "@murmur/core";
-import type { CSSProperties } from "react";
+import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
 import { follow, partPath } from "../router";
 import { livePhase, type Mark, phaseSpan, shortTitle } from "../session";
 import { clock, duration, nOf, verdictOf } from "../story";
 import { StateMark } from "./Rail";
 
-type Shown = "done" | "now" | "todo" | "failed" | "open";
+export type Shown = "done" | "now" | "todo" | "failed" | "open";
 
 const WORD: Record<Shown, string> = {
   done: "done",
@@ -19,7 +20,7 @@ const WORD: Record<Shown, string> = {
   failed: "failed",
   open: "left open",
 };
-const MARK: Record<Shown, Mark> = {
+export const MARK: Record<Shown, Mark> = {
   done: "done",
   now: "running",
   todo: "open",
@@ -35,51 +36,24 @@ interface Station {
   part?: string | undefined;
 }
 
-/**
- * Which stations are captioned: the first, the live and the last; of two side by side
- * the live one keeps it. Each caption gets the room between its neighbours' midpoints.
- */
-function captions(stations: Station[]): Map<number, CSSProperties> {
+function Stations(props: {
+  stations: Station[];
+  href(part: string): string;
+  stacked: boolean;
+}) {
+  const { stations, href, stacked } = props;
   const n = stations.length;
-  const live = stations.findIndex((s) => s.shown === "now");
-  let on = [...new Set([0, live, n - 1])]
-    .filter((i) => i >= 0)
-    .sort((a, b) => a - b);
-  if (n > 3)
-    on = on.filter((i, k) => {
-      const near = (j: number | undefined) =>
-        j !== undefined && Math.abs(j - i) === 1;
-      return i === live || !(near(on[k - 1]) || near(on[k + 1])) || live < 0;
-    });
-  const at = (i: number) => ((i + 0.5) / n) * 100;
-  const out = new Map<number, CSSProperties>();
-  on.forEach((i, k) => {
-    const prev = on[k - 1];
-    const next = on[k + 1];
-    const a = prev === undefined ? 0 : (at(prev) + at(i)) / 2;
-    const b = next === undefined ? 100 : (at(i) + at(next)) / 2;
-    const p = (at(i) - a) / (b - a);
-    const align = p < 0.3 ? "left" : p > 0.7 ? "right" : "center";
-    out.set(i, {
-      "--a": `${a}%`,
-      "--w": `${b - a}%`,
-      "--align": align,
-    } as CSSProperties);
-  });
-  return out;
-}
-
-function Stations(props: { stations: Station[]; href(part: string): string }) {
-  const { stations, href } = props;
-  const caps = captions(stations);
   return (
     <ol className="trk-st">
       {stations.map((s, i) => {
-        const cap = caps.get(i);
+        // Each caption has its station's share of the phase, centred under its dot.
+        const slot = stacked
+          ? undefined
+          : { left: `${(i * 100) / n}%`, width: `${100 / n}%` };
         const inner = (
           <>
             <StateMark mark={MARK[s.shown]} />
-            <span className={cap ? "cap on" : "cap"} style={cap}>
+            <span className="cap" style={slot}>
               {s.name}
             </span>
             <span className="sr-only">, {WORD[s.shown]}</span>
@@ -114,17 +88,107 @@ function Stations(props: { stations: Station[]; href(part: string): string }) {
   );
 }
 
-const span = (from?: string, to?: string) =>
+export const span = (from?: string, to?: string) =>
   from && to
     ? clock(from) === clock(to)
       ? clock(from)
       : `${clock(from)} to ${clock(to)}`
     : "";
 
-function agentShown(a: AgentView, over: boolean): Shown {
+export function agentShown(a: AgentView, over: boolean): Shown {
   if (a.status === "running") return over ? "open" : "now";
   if (/failed|killed/.test(a.report?.status ?? "")) return "failed";
   return "done";
+}
+
+/** A task's state: once the request is over, one not done is left open. */
+export const taskShown = (t: TaskView, over: boolean): Shown =>
+  t.status === "failed"
+    ? "failed"
+    : t.status === "done"
+      ? "done"
+      : over
+        ? "open"
+        : t.status;
+
+/** A phase's state; `live` is the phase where the work is (`livePhase`). */
+export function phaseShown(
+  ph: PhaseView,
+  over: boolean,
+  live: PhaseView | undefined,
+): Shown {
+  if (ph.status === "done") return "done";
+  if (over) return "open";
+  if (ph === live || ph.status === "now") return "now";
+  return ph.tasks.some((t) => t.status === "failed") ? "failed" : "todo";
+}
+
+/** "2 of 5 done · 20:55 to 21:03": a phase's count and, as fits its state, its times. */
+export function phaseLine(req: RequestView, ph: PhaseView, shown: Shown) {
+  const n = ph.tasks.filter((t) => t.status === "done").length;
+  const count = `${n} of ${ph.tasks.length} done`;
+  const { from, to } = phaseSpan(req, ph);
+  if (shown === "done")
+    return [count, span(from, to)].filter(Boolean).join(" · ");
+  if (shown === "open") return `${count} · left open`;
+  if (shown === "now")
+    return from ? `${count} · started ${clock(from)}` : count;
+  // A phase with tasks done is under way, whatever its own status says.
+  return n
+    ? [count, span(from, to)].filter(Boolean).join(" · ")
+    : `${nOf(ph.tasks.length, "task")}, not started`;
+}
+
+/**
+ * A phase's share of the track's width: its stations, so every station across the track
+ * gets the same slot; a phase of one gets two, so its name and count still read.
+ */
+const weight = (n: number) => Math.max(n, 2);
+
+/** The gap between phases (`.trk-segs` in theme.css) and the narrowest readable slot. */
+const GAP = 28;
+const SLOT = 72;
+
+/**
+ * Whether the track reads top to bottom at this width: when any phase's stations, each
+ * with its share of the phase (phases share the width by `weight`), get under 72 px.
+ */
+export function stacks(width: number, counts: number[]): boolean {
+  const wts = counts.map(weight);
+  const sum = wts.reduce((a, b) => a + b, 0);
+  const room = width - GAP * (counts.length - 1);
+  return counts.some(
+    (n, i) => n > 0 && (room * (wts[i] as number)) / sum / n < SLOT,
+  );
+}
+
+/** Stacked under 900 px or when `stacks` says so, measured on every resize. */
+function useStacked(counts: number[]) {
+  const ref = useRef<HTMLOListElement>(null);
+  const [stacked, setStacked] = useState(false);
+  const key = counts.join(",");
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const narrow = window.matchMedia?.("(max-width: 899px)");
+    const measure = () =>
+      setStacked(
+        !!narrow?.matches ||
+          // Not laid out (hidden, or a test's DOM): nothing to measure.
+          (el.clientWidth > 0 &&
+            stacks(el.clientWidth, key.split(",").map(Number))),
+      );
+    measure();
+    const ro =
+      typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    narrow?.addEventListener("change", measure);
+    return () => {
+      ro?.disconnect();
+      narrow?.removeEventListener("change", measure);
+    };
+  }, [key]);
+  return { ref, stacked };
 }
 
 /** The plan as a track, with its foot line. Not drawn for a request with no plan. */
@@ -137,50 +201,24 @@ export function PhaseTrack(props: {
   end: string;
 }) {
   const { sessionId, request: req, done, stopped, end } = props;
-  if (!req.phases.length) return null;
-  const over = done || req.finished;
-  const live = livePhase(req, done);
-  const taskShown = (t: TaskView): Shown =>
-    t.status === "failed"
-      ? "failed"
-      : t.status === "done"
-        ? "done"
-        : over
-          ? "open"
-          : t.status;
-  const phaseShown = (ph: PhaseView): Shown =>
-    ph.status === "done"
-      ? "done"
-      : over
-        ? "open"
-        : ph === live || ph.status === "now"
-          ? "now"
-          : ph.tasks.some((t) => t.status === "failed")
-            ? "failed"
-            : "todo";
-  const href = (part: string) => partPath(sessionId, req.id, part);
-  const tasks = req.phases.flatMap((p) => p.tasks);
-  const doneN = tasks.filter((t) => t.status === "done").length;
   const beyond = req.beyond;
   const beyondAgents = beyond
     ? req.agents
         .filter((a) => beyond.agents.includes(a.id))
         .sort((a, b) => (a.startedAt < b.startedAt ? -1 : 1))
     : [];
+  const { ref, stacked } = useStacked([
+    ...req.phases.map((p) => p.tasks.length),
+    ...(beyond ? [beyondAgents.length] : []),
+  ]);
+  if (!req.phases.length) return null;
+  const over = done || req.finished;
+  const live = livePhase(req, done);
+  const href = (part: string) => partPath(sessionId, req.id, part);
+  const tasks = req.phases.flatMap((p) => p.tasks);
+  const doneN = tasks.filter((t) => t.status === "done").length;
   const running = req.agents.filter((a) => a.status === "running").length;
   const now = new Date().toISOString();
-
-  const sub = (ph: PhaseView, shown: Shown) => {
-    const n = ph.tasks.filter((t) => t.status === "done").length;
-    const count = `${n} of ${ph.tasks.length} done`;
-    const { from, to } = phaseSpan(req, ph);
-    if (shown === "done")
-      return [count, span(from, to)].filter(Boolean).join(" · ");
-    if (shown === "open") return `${count} · left open`;
-    if (shown === "now")
-      return from ? `${count} · started ${clock(from)}` : count;
-    return `${nOf(ph.tasks.length, "task")}, not started`;
-  };
 
   const still = [
     ...(running ? [`${nOf(running, "helper")} running`] : []),
@@ -203,10 +241,10 @@ export function PhaseTrack(props: {
   ];
 
   return (
-    <section className="trk" aria-label="Phase track">
-      <ol className="trk-segs">
+    <section className={stacked ? "trk stack" : "trk"} aria-label="Phase track">
+      <ol className="trk-segs" ref={ref}>
         {req.phases.map((ph) => {
-          const shown = phaseShown(ph);
+          const shown = phaseShown(ph, over, live);
           const fill = ph.tasks.length
             ? ph.tasks.filter((t) => t.status === "done").length /
               ph.tasks.length
@@ -217,7 +255,7 @@ export function PhaseTrack(props: {
               className={`trk-seg ${shown}`}
               style={
                 {
-                  "--wt": Math.max(ph.tasks.length, 3),
+                  "--wt": weight(ph.tasks.length),
                   "--fill": fill,
                 } as CSSProperties
               }
@@ -226,15 +264,16 @@ export function PhaseTrack(props: {
                 <span className="trk-n" title={ph.title}>
                   {ph.title}
                 </span>
-                <span className="trk-s">{sub(ph, shown)}</span>
+                <span className="trk-s">{phaseLine(req, ph, shown)}</span>
               </div>
               <Stations
                 href={href}
+                stacked={stacked}
                 stations={ph.tasks.map((t) => ({
                   key: t.id,
                   name: shortTitle(t.title),
                   title: t.problem ? `${t.title}: ${t.problem}` : t.title,
-                  shown: taskShown(t),
+                  shown: taskShown(t, over),
                   part: t.part,
                 }))}
               />
@@ -244,9 +283,7 @@ export function PhaseTrack(props: {
         {beyond && (
           <li
             className="trk-seg beyond"
-            style={
-              { "--wt": Math.max(beyondAgents.length, 3) } as CSSProperties
-            }
+            style={{ "--wt": weight(beyondAgents.length) } as CSSProperties}
           >
             <div className="trk-lbl">
               <span className="trk-n">Beyond the plan</span>
@@ -257,6 +294,7 @@ export function PhaseTrack(props: {
             </div>
             <Stations
               href={href}
+              stacked={stacked}
               stations={beyondAgents.map((a) => {
                 const verdict = verdictOf(a.report)?.label;
                 return {
