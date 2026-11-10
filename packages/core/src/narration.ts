@@ -152,3 +152,59 @@ export const RefreshInput = z
     "part and task ids are unique",
   );
 export type RefreshInput = z.infer<typeof RefreshInput>;
+
+/**
+ * Murmur's own tool name for a titles run's answer: never a real tool. The plugin queues
+ * one `PostToolUse` event per run with this `tool_name`, the answer as `tool_input`, and
+ * `recap: true` and `titles: true` on the payload, timed a millisecond after the latest
+ * event the run read. Core takes it out of the session before reading requests, so no
+ * pass sees it as work, and reads it only for titles and storylines.
+ */
+export const TITLES_TOOL = "murmur:titles";
+
+const KINDS = MapInput.shape.kind;
+const id = z.string().min(1).max(100);
+const title = (max: number) => z.string().trim().min(1).max(max);
+
+/**
+ * What a titles run asks the user's own Claude for, about up to 80 requests of one
+ * session: a name for the session, the session's storylines, and per request a title
+ * (`short`), a one-line goal, the kind, its storyline and, when it picks up a different,
+ * earlier request than the one before it in its storyline, that request (`follows`).
+ * Every storyline a request names is listed, ids are unique, and `follows` names another
+ * request of the answer. The plugin checks the request ids are the ones it asked about.
+ */
+export const TitlesInput = z
+  .object({
+    session: z.object({ title: title(48) }),
+    threads: z.array(z.object({ id, title: title(40) })).max(30),
+    requests: z
+      .array(
+        z.object({
+          id,
+          short: title(40),
+          goal: title(120),
+          kind: KINDS,
+          thread: id,
+          follows: id.optional(),
+        }),
+      )
+      .max(80),
+  })
+  .refine(({ threads, requests }) => {
+    const ids = new Set(threads.map((t) => t.id));
+    return requests.every((r) => ids.has(r.thread));
+  }, "every thread a request names is listed")
+  .refine(
+    ({ threads, requests }) =>
+      unique(threads.map((t) => t.id)) && unique(requests.map((r) => r.id)),
+    "thread and request ids are unique",
+  )
+  .refine(({ requests }) => {
+    const ids = new Set(requests.map((r) => r.id));
+    return requests.every(
+      (r) =>
+        r.follows === undefined || (r.follows !== r.id && ids.has(r.follows)),
+    );
+  }, "follows names another request of the answer");
+export type TitlesInput = z.infer<typeof TitlesInput>;
