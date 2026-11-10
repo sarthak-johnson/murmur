@@ -520,11 +520,14 @@ export async function runBackfill(
  * the next read. With no `textOffset` on record (a session imported before Murmur read
  * Claude's text) it starts at the transcript's end. Whenever Murmur would send nothing
  * (headless, the recap's own run, logged out, disconnected, off, paused) it only moves
- * the offset, so that text is never sent. Returns how many it queued.
+ * the offset, so that text is never sent. Past `budgetMs` it stops at a whole entry and
+ * the next read goes on from there. It never throws: a hook's own upload comes after it.
+ * Returns how many it queued.
  */
 export function catchUpText(
   sessionId: string,
   env: NodeJS.ProcessEnv = process.env,
+  budgetMs = Number.POSITIVE_INFINITY,
 ): number {
   const s = readSession(sessionId);
   if (s.backfill !== "done" || !s.transcriptPath || !s.cwd) return 0;
@@ -544,14 +547,22 @@ export function catchUpText(
   }
   const at = { from: s.textOffset, end: s.textOffset };
   const b = { sessionId, machineId: creds.machineId, cwd: s.cwd };
+  const deadline = Date.now() + budgetMs;
   let n = 0;
-  for (const e of readLines(s.transcriptPath, 0, at)) {
-    if (!str(e.uuid)) continue;
-    for (const { i, text } of textBlocks(e)) {
-      enqueue(entryEvent(b, e, i, "AssistantText", { text }));
-      n++;
+  try {
+    for (const e of readLines(s.transcriptPath, 0, at)) {
+      // An entry with no usable time cannot become an event; the read goes past it.
+      if (str(e.uuid) && !Number.isNaN(Date.parse(e.timestamp as string)))
+        for (const { i, text } of textBlocks(e)) {
+          enqueue(entryEvent(b, e, i, "AssistantText", { text }));
+          n++;
+        }
+      if (Date.now() > deadline) break;
     }
+    if (at.end !== s.textOffset)
+      updateSession(sessionId, { textOffset: at.end });
+  } catch {
+    // A full disk or an unwritable queue: the next read starts where this one did.
   }
-  updateSession(sessionId, { textOffset: at.end });
   return n;
 }

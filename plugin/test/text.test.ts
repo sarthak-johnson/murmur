@@ -232,6 +232,57 @@ describe("live catch-up", () => {
     expect(texts(queued())).toEqual(["New."]);
   });
 
+  it("a line with no usable time is passed over, never stops the read", () => {
+    on();
+    const bad = line({
+      type: "assistant",
+      uuid: "bad",
+      cwd,
+      message: { content: [{ type: "text", text: "No time on this one." }] },
+    });
+    fs.writeFileSync(file, said(2, "Before.") + bad + said(3, "After."));
+    expect(catchUpText(SID, ENV)).toBe(2);
+    expect(texts(queued())).toEqual(["Before.", "After."]);
+    expect(readSession(SID).textOffset).toBe(fs.statSync(file).size);
+  });
+
+  it("a failure while sending the words never reaches the hook", () => {
+    on();
+    fs.writeFileSync(file, said(2, "Words."));
+    // A file where the queue folder should be: every enqueue throws.
+    fs.rmSync(queueDir(), { recursive: true, force: true });
+    fs.writeFileSync(queueDir(), "");
+    expect(() => catchUpText(SID, ENV)).not.toThrow();
+    fs.rmSync(queueDir());
+  });
+
+  it("stops at its time budget at a whole entry and goes on from there next time", () => {
+    on();
+    fs.writeFileSync(
+      file,
+      said(2, "One.") + said(3, "Two.") + said(4, "Three."),
+    );
+    // Already past the budget: exactly one entry is handled per run.
+    expect(catchUpText(SID, ENV, -1)).toBe(1);
+    expect(texts(queued())).toEqual(["One."]);
+    expect(catchUpText(SID, ENV, -1)).toBe(1);
+    expect(catchUpText(SID, ENV, -1)).toBe(1);
+    expect(catchUpText(SID, ENV, -1)).toBe(0);
+    expect(texts(queued())).toEqual(["One.", "Two.", "Three."]);
+  });
+
+  it("writes nothing when there is nothing new", () => {
+    on();
+    fs.writeFileSync(file, said(2, "Words."));
+    catchUpText(SID, ENV);
+    const state = path.join(process.env.MURMUR_HOME as string, "sessions");
+    const inode = () =>
+      fs.readdirSync(state).map((n) => fs.statSync(path.join(state, n)).ino);
+    const before = inode();
+    expect(catchUpText(SID, ENV)).toBe(0);
+    expect(inode()).toEqual(before);
+  });
+
   it("off, paused, logged out, revoked and headless send nothing", () => {
     fs.writeFileSync(file, said(2, "Secret plans."));
     on();
