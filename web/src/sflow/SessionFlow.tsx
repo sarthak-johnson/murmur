@@ -24,8 +24,8 @@ import {
   chainOf,
   drawnFollows,
   GUTTER,
-  LEAD,
   layoutSessionFlow,
+  ONE_WIDTH,
   placed,
   type SFCard,
   threadsOf,
@@ -126,7 +126,10 @@ export function SessionFlow(props: {
       many(r.tally.files, "file"),
     ].join(" · ");
   };
-  const titleOf = new Map(shown.threads.map((t) => [t.id, t.title]));
+  // A storyline Murmur guessed is no chip: it is named after its first request.
+  const named = new Map(
+    shown.threads.filter((t) => !t.inferred).map((t) => [t.id, t.title]),
+  );
   const picksUp = new Map(
     drawnFollows(view, threads).map((f) => [f.to, f.from]),
   );
@@ -134,7 +137,8 @@ export function SessionFlow(props: {
   const inferred = threads.every((t) => t.inferred);
   const note = inferred && (
     <p className="sf-note">
-      Grouped by Murmur; Claude has not named these storylines yet.
+      Claude has not named this session's storylines yet, so its requests run in
+      one line.
     </p>
   );
 
@@ -148,7 +152,7 @@ export function SessionFlow(props: {
           markOf={markOf}
           pulsing={pulsing}
           facts={facts}
-          threadOf={(r) => titleOf.get(shown.of.get(r.id) ?? "") ?? ""}
+          threadOf={(r) => named.get(shown.of.get(r.id) ?? "")}
           picksUp={(r) => num.get(picksUp.get(r.id) ?? "")}
         />
       </section>
@@ -194,8 +198,9 @@ function Board(props: CardProps) {
     () => (sel ? chainOf(view, sel.req.id) : new Set<string>()),
     [view, sel],
   );
-  const lit = (c: SFCard) =>
-    !sel || c.thread === sel.thread || chain.has(c.req.id);
+  // Murmur's guessed column is no storyline: a selection there lights its chain alone.
+  const lane = sel && !L.cols[sel.col]?.thread.inferred ? sel.thread : "";
+  const lit = (c: SFCard) => !sel || c.thread === lane || chain.has(c.req.id);
   const linkOn = (l: { from: string; to: string }) =>
     !!sel && chain.has(l.from) && chain.has(l.to);
 
@@ -209,61 +214,6 @@ function Board(props: CardProps) {
     revealed.current = true;
     el.scrollIntoView?.({ block: "center", inline: "nearest" });
   }, [width]);
-
-  // Many storylines run off to the side: as the page scrolls down, the board slides to
-  // keep the rows on screen in view, unless the reader moved it sideways just now.
-  const moved = useRef(0);
-  useEffect(() => {
-    const el = frame.ref.current;
-    if (!el || L.width <= el.clientWidth) return;
-    const mine = () => {
-      moved.current = Date.now();
-    };
-    let raf = 0;
-    const follow = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        if (Date.now() - moved.current < 4000) return;
-        const top = -el.getBoundingClientRect().top;
-        const mid = top + window.innerHeight / 2;
-        const seen = L.cards.filter(
-          (c) => c.y + c.h > top && c.y < top + window.innerHeight,
-        );
-        if (!seen.length) return;
-        const lo = Math.min(...seen.map((c) => c.x));
-        const hi = Math.max(...seen.map((c) => c.x + c.w));
-        const from = el.scrollLeft + GUTTER + LEAD;
-        const to = el.scrollLeft + el.clientWidth;
-        if (lo >= from && hi <= to) return;
-        const room = el.clientWidth - GUTTER - LEAD;
-        // All of them when they fit, else the one nearest the middle of the screen.
-        const anchor = seen.reduce((a, c) =>
-          Math.abs(c.y + c.h / 2 - mid) < Math.abs(a.y + a.h / 2 - mid) ? c : a,
-        );
-        const x =
-          hi - lo <= room
-            ? lo < from
-              ? lo - GUTTER - LEAD
-              : hi - el.clientWidth + LEAD
-            : anchor.x - GUTTER - LEAD - (room - anchor.w) / 2;
-        const still = window.matchMedia?.(
-          "(prefers-reduced-motion: reduce)",
-        ).matches;
-        el.scrollTo({ left: x, behavior: still ? "auto" : "smooth" });
-      });
-    };
-    el.addEventListener("wheel", mine, { passive: true });
-    el.addEventListener("touchstart", mine, { passive: true });
-    el.addEventListener("keydown", mine);
-    window.addEventListener("scroll", follow, { passive: true });
-    return () => {
-      cancelAnimationFrame(raf);
-      el.removeEventListener("wheel", mine);
-      el.removeEventListener("touchstart", mine);
-      el.removeEventListener("keydown", mine);
-      window.removeEventListener("scroll", follow);
-    };
-  }, [L, frame.ref]);
 
   const choose = (id: string | undefined) => {
     setPicked(id);
@@ -294,47 +244,54 @@ function Board(props: CardProps) {
     el?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   };
   const tabStop = sel?.req.id ?? L.cards[0]?.req.id;
+  // One column of Murmur's guessed storylines needs no header: the note says it.
+  const one = L.cols.length === 1;
+  const heads = !one || !L.cols[0]?.thread.inferred;
   const less = left > 1;
   const more = left + width < L.width - 1;
 
   return (
     <section
-      aria-label="Storylines"
-      className={`sf-board${less ? " less" : ""}${more ? " more" : ""}`}
+      aria-label={heads ? "Storylines" : "Requests in time order"}
+      className={`sf-board${one ? " one" : ""}${heads ? "" : " bare"}${less ? " less" : ""}${more ? " more" : ""}`}
+      // One column reads as a timeline at a reading width, not a wide empty board.
+      style={one ? { maxWidth: ONE_WIDTH + 2 } : undefined}
       onKeyDown={onKey}
     >
-      <div className="sf-heads">
-        <div
-          className="sf-heads-in"
-          style={{ width: L.width, transform: `translateX(${-left}px)` }}
-        >
-          {L.cols.map((c) => {
-            const t = c.thread;
-            const mark = THREAD_MARK[t.state] ?? (t.state as Mark);
-            const span = gap(t.startedAt, t.lastAt);
-            const dim = sel && sel.thread !== t.id;
-            return (
-              <div
-                key={t.id}
-                className={`sf-head${dim ? " dim" : ""}${sel?.thread === t.id ? " on" : ""}`}
-                style={{ left: c.x, width: c.w }}
-              >
-                <h3 className="sf-head-t" title={t.title}>
-                  {fitWords(t.title, c.w - 10, `600 15px ${UI}`)}
-                </h3>
-                <span className="sf-head-m num">
-                  <StateMark mark={mark} />
-                  {many(t.requests.length, "request")}
-                  {t.requests.length > 1 && span !== "under a minute"
-                    ? ` · ${span}`
-                    : ""}
-                </span>
-              </div>
-            );
-          })}
+      {heads && (
+        <div className="sf-heads">
+          <div
+            className="sf-heads-in"
+            style={{ width: L.width, transform: `translateX(${-left}px)` }}
+          >
+            {L.cols.map((c) => {
+              const t = c.thread;
+              const mark = THREAD_MARK[t.state] ?? (t.state as Mark);
+              const span = gap(t.startedAt, t.lastAt);
+              const dim = sel && sel.thread !== t.id;
+              return (
+                <div
+                  key={t.id}
+                  className={`sf-head${dim ? " dim" : ""}${lane === t.id ? " on" : ""}`}
+                  style={{ left: c.x, width: c.w }}
+                >
+                  <h3 className="sf-head-t" title={t.title}>
+                    {fitWords(t.title, c.w - 10, `600 15px ${UI}`)}
+                  </h3>
+                  <span className="sf-head-m num">
+                    <StateMark mark={mark} />
+                    {many(t.requests.length, "request")}
+                    {t.requests.length > 1 && span !== "under a minute"
+                      ? ` · ${span}`
+                      : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <span className="sf-corner" style={{ width: GUTTER }} />
         </div>
-        <span className="sf-corner" style={{ width: GUTTER }} />
-      </div>
+      )}
       <div className="sf-frame" ref={frame.ref} onScroll={frame.onScroll}>
         <div
           className={sel ? "sf-canvas picked" : "sf-canvas"}
@@ -343,7 +300,7 @@ function Board(props: CardProps) {
           <div className="sf-gutter" style={{ width: GUTTER }}>
             {L.times.map((t) => (
               <span key={t.id} className="sf-time num" style={{ top: t.y }}>
-                {t.day && <b>{t.day}</b>}
+                {t.day && <b className="sf-tday">{t.day}</b>}
                 {t.time}
               </span>
             ))}
@@ -369,7 +326,7 @@ function Board(props: CardProps) {
             {L.lanes.map((l) => (
               <path
                 key={l.key}
-                className={`sf-lane${sel ? (sel.thread === l.thread ? " on" : " dim") : ""}`}
+                className={`sf-lane${sel ? (lane === l.thread ? " on" : " dim") : ""}`}
                 d={l.d}
               />
             ))}
@@ -403,7 +360,12 @@ function Board(props: CardProps) {
                 style={{ left: c.x, top: c.y, width: c.w, height: c.h }}
                 aria-pressed={isSel}
                 tabIndex={r.id === tabStop ? 0 : -1}
-                onClick={() => (isSel ? open(r.id) : choose(r.id))}
+                onClick={(e) => {
+                  if (isSel) return open(r.id);
+                  // Safari does not focus a clicked button: the keys work after a click.
+                  e.currentTarget.focus({ preventScroll: true });
+                  choose(r.id);
+                }}
               >
                 <CardBody
                   r={r}
@@ -420,8 +382,9 @@ function Board(props: CardProps) {
         </div>
       </div>
       <p className="sf-hint">
-        Click a request to light its storyline and what it picks up from; click
-        it again or press Enter to open it.
+        {heads
+          ? "Click a request to light its storyline and what it picks up from; click it again or press Enter to open it."
+          : "Click a request to light what it picks up from; click it again or press Enter to open it."}
       </p>
     </section>
   );
@@ -447,7 +410,7 @@ function CardBody(props: {
     30 -
     widthOf(String(n), `500 13px ${MONO}`) -
     (open ? widthOf("Open →", `500 13px ${UI}`) + 8 : 0);
-  const fit = (text: string, px: number, font: string) =>
+  const line = (text: string, px: number, font: string) =>
     width ? fitWords(text, px - 2, font) : text;
   return (
     <>
@@ -455,14 +418,14 @@ function CardBody(props: {
         <StateMark mark={mark} pulse={pulse} />
         <b className="sf-n num">{n}</b>
         <span className="sf-short" title={short}>
-          {fit(short, room, `600 15px ${UI}`)}
+          {line(short, room, `600 15px ${UI}`)}
         </span>
         {open && <span className="sf-open">Open →</span>}
       </span>
       {children}
       {r.outcome && (
         <span className="sf-out" title={r.outcome}>
-          {fit(r.outcome, inner, `400 15px ${UI}`)}
+          {line(r.outcome, inner, `400 15px ${UI}`)}
         </span>
       )}
       <span className="sf-fx num">{facts}</span>
@@ -492,7 +455,7 @@ function step(cards: SFCard[], from: string, key: string): string | undefined {
 
 function PhoneList(
   props: CardProps & {
-    threadOf(r: RequestView): string;
+    threadOf(r: RequestView): string | undefined;
     picksUp(r: RequestView): number | undefined;
   },
 ) {
@@ -516,6 +479,7 @@ function PhoneList(
         const pause = pauses.find((p) => p.after === r.id);
         const path = requestPath(sessionId, r.id);
         const from = picksUp(r);
+        const thread = threadOf(r);
         const mark = markOf(r);
         return [
           ...(newDay
@@ -540,12 +504,14 @@ function PhoneList(
                 pulse={r.id === pulsing}
                 facts={`${clock(r.startedAt)} · ${facts(r)}`}
               >
-                <span className="sf-tags">
-                  <span className="sf-chip">{threadOf(r)}</span>
-                  {from && (
-                    <span className="sf-from num">picks up from {from}</span>
-                  )}
-                </span>
+                {(thread || from) && (
+                  <span className="sf-tags">
+                    {thread && <span className="sf-chip">{thread}</span>}
+                    {from && (
+                      <span className="sf-from num">picks up from {from}</span>
+                    )}
+                  </span>
+                )}
               </CardBody>
             </a>
           </li>,

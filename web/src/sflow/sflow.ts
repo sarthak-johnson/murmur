@@ -30,6 +30,10 @@ export const CARD_H = 100;
 export const CARD_H_BARE = 76;
 const MIN_COL = 252;
 const MAX_COL = 560;
+/** A column alone is a timeline: wide enough to fill a laptop's page, capped on a big screen. */
+const ONE_COL = 960;
+/** The board's widest when it has one column. */
+export const ONE_WIDTH = GUTTER + LEAD + ONE_COL + PAD_R;
 
 const byStart = (view: SessionView) =>
   new Map(view.requests.map((r, i) => [r.id, i]));
@@ -78,14 +82,20 @@ export function threadsOf(view: SessionView): Thread[] {
   });
 }
 
+/** The one column Murmur's guessed storylines share. */
+export const GUESSED = "guessed";
+
 /**
- * Each request's thread, by id. A thread naming a request the view lacks skips it; a
- * request no thread names joins a last "Other requests" one.
+ * Each request's thread, by id, as the board draws them. A thread naming a request the
+ * view lacks skips it; a request no thread names joins a last "Other requests" one.
+ * Murmur's guessed storylines (its chapters) are runs of the session in time, never side
+ * by side, so they share one column: a column each would only step down and off to the
+ * right, one or two requests at a time.
  */
 export function placed(view: SessionView, threads: Thread[]) {
   const at = byStart(view);
   const of = new Map<string, string>();
-  const shown: Thread[] = [];
+  let shown: Thread[] = [];
   for (const t of threads) {
     const ids = t.requests.filter((id) => at.has(id) && !of.has(id));
     if (!ids.length) continue;
@@ -97,6 +107,15 @@ export function placed(view: SessionView, threads: Thread[]) {
     const other = grouped(view, "other", "Other requests", rest);
     for (const id of rest) of.set(id, other.id);
     shown.push(other);
+  }
+  const guessed = shown.filter((t) => t.inferred);
+  if (guessed.length > 1) {
+    const ids = guessed.flatMap((t) => t.requests);
+    for (const id of ids) of.set(id, GUESSED);
+    shown = [
+      ...shown.filter((t) => !t.inferred),
+      grouped(view, GUESSED, "Grouped by Murmur", ids),
+    ];
   }
   // In order of their first request; each thread's requests in time order.
   const first = (t: Thread) =>
@@ -235,7 +254,8 @@ export function layoutSessionFlow(
   const { threads: shown, of } = placed(view, threads);
   const n = Math.max(1, shown.length);
   const room = (opts.width || 1000) - GUTTER - LEAD - PAD_R - (n - 1) * GAP;
-  const w = Math.max(MIN_COL, Math.min(MAX_COL, Math.floor(room / n)));
+  const max = n === 1 ? ONE_COL : MAX_COL;
+  const w = Math.max(MIN_COL, Math.min(max, Math.floor(room / n)));
   const cols = shown.map((thread, i) => ({
     thread,
     x: GUTTER + LEAD + i * (w + GAP),

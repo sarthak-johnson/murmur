@@ -993,8 +993,9 @@ svg.g {
   display: inline-grid;
   flex: none;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  /* A smaller mark beside small text: its container sets --mk. */
+  width: var(--mk, 16px);
+  height: var(--mk, 16px);
   border-radius: 50%;
   font: 700 11px / 1 var(--font-ui);
 }
@@ -5114,10 +5115,18 @@ code.nw {
 .sess-tabs {
   margin-top: 22px;
 }
-/* Storylines run side by side: on a wide screen the board takes the whole column. */
+/*
+ * Storylines run side by side: on a wide screen the board runs wider than the page, while
+ * the head, tabs and note keep the journey's place, so switching tabs moves nothing.
+ */
 @media (min-width: 1600px) {
-  .main.sf-main {
+  .main.sf-main:has(.sf-board:not(.one)) {
     max-width: 2400px;
+  }
+  .main.sf-main > :not(.sf),
+  .main.sf-main .sf-note {
+    max-width: calc(var(--content) - 80px);
+    margin-inline: auto;
   }
 }
 .sess-tabs + .jr .jr-ends {
@@ -5219,15 +5228,18 @@ code.nw {
   line-height: 18px;
   white-space: nowrap;
 }
-.sf-head-m .mk,
-.sf-c1 .mk {
-  width: 14px;
-  height: 14px;
+.sf-head-m,
+.sf-c1,
+.rs-k {
+  --mk: 14px;
 }
 .sf-frame {
   overflow-x: auto;
   overflow-y: hidden;
   border-radius: 0 0 13px 13px;
+}
+.sf-board.bare .sf-frame {
+  border-radius: 13px;
 }
 .sf-canvas {
   position: relative;
@@ -5251,7 +5263,7 @@ code.nw {
   font-size: 13px;
   line-height: 22px;
 }
-.sf-time b {
+.sf-tday {
   color: var(--t2);
   font: 600 13px / 22px var(--font-ui);
   white-space: nowrap;
@@ -5546,10 +5558,6 @@ code.nw {
   font-size: 13px;
   font-weight: 600;
   line-height: 18px;
-}
-.rs-k .mk {
-  width: 14px;
-  height: 14px;
 }
 .rs-q,
 .rs-t {

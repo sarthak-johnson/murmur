@@ -333,6 +333,46 @@ describe("swimlane layout", () => {
   it("consecutive requests in a thread are joined by its lane line", () => {
     expect(L.lanes.map((l) => l.key)).toEqual(["r1>r3", "r3>r5", "r2>r4"]);
   });
+
+  it("Murmur's guessed storylines are runs in time, never side by side: they share one column", () => {
+    const old = unthreaded();
+    const one = layoutSessionFlow(old, threadsOf(old), { width: 1200 });
+    expect(one.cols).toHaveLength(1);
+    expect(one.cols[0]?.thread.inferred).toBe(true);
+    expect(new Set(one.cards.map((c) => c.x)).size).toBe(1);
+    // One lane line down the whole column, across the guessed chapters.
+    expect(one.lanes.map((l) => l.key)).toEqual([
+      "r1>r2",
+      "r2>r3",
+      "r3>r4",
+      "r4>r5",
+      "r5>r6",
+    ]);
+    // In one column, picking up from the request just above is the lane line.
+    expect(drawnFollows(old, threadsOf(old))).toEqual([
+      { from: "r1", to: "r3" },
+      { from: "r1", to: "r4" },
+      { from: "r1", to: "r5" },
+    ]);
+  });
+
+  it("beside Claude's storylines, the guessed ones before them are one column", () => {
+    const mixed = view({
+      threads: [
+        thread({ id: "chapter-1", requests: ["r1"], inferred: true }),
+        thread({ id: "chapter-2", requests: ["r2"], inferred: true }),
+        thread({ id: "t1", title: "Ship build 9", requests: ["r3", "r5"] }),
+        thread({ id: "t2", title: "Fonts", requests: ["r4", "r6"] }),
+      ],
+    });
+    const M = layoutSessionFlow(mixed, threadsOf(mixed), { width: 1200 });
+    expect(M.cols.map((c) => c.thread.title)).toEqual([
+      "Grouped by Murmur",
+      "Ship build 9",
+      "Fonts",
+    ]);
+    expect(M.cols[0]?.thread.requests).toEqual(["r1", "r2"]);
+  });
 });
 
 describe("the board", () => {
@@ -345,9 +385,14 @@ describe("the board", () => {
     show(unthreaded());
     expect(
       screen.getByText(
-        "Grouped by Murmur; Claude has not named these storylines yet.",
+        "Claude has not named this session's storylines yet, so its requests run in one line.",
       ),
     ).toBeTruthy();
+    // One column needs no header naming it, and a click lights no storyline.
+    expect(document.querySelector(".sf-head")).toBeNull();
+    expect(document.querySelector(".sf-hint")?.textContent).toBe(
+      "Click a request to light what it picks up from; click it again or press Enter to open it.",
+    );
   });
 
   it("each column has a header: title, request count, span and state", () => {
@@ -396,6 +441,12 @@ describe("selection", () => {
     fireEvent.keyDown(card(5), { key: "Escape" });
     expect(lit()).toEqual([1, 2, 3, 4, 5, 6]);
     expect(location.search).toBe("");
+  });
+
+  it("in Murmur's one guessed column a click lights its follows chain, not the whole column", async () => {
+    show(unthreaded());
+    await userEvent.click(card(5));
+    expect(lit()).toEqual([1, 5, 6]);
   });
 
   it("?r= selects on load", () => {
@@ -473,5 +524,11 @@ describe("under 900 px", () => {
     const a = items[0]?.querySelector("a");
     expect(a?.getAttribute("href")).toBe("/s/s1/r/r1");
     expect(document.querySelectorAll(".pulse")).toHaveLength(1);
+  });
+
+  it('a guessed storyline is no chip: a request named "Yes" is not a storyline', () => {
+    show(unthreaded());
+    expect(document.querySelector(".sf-chip")).toBeNull();
+    expect(document.querySelectorAll(".sf-li")).toHaveLength(6);
   });
 });
