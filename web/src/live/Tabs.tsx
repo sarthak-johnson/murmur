@@ -15,7 +15,7 @@ import {
   type Tab,
 } from "../router";
 import { modelOf, shortTitle } from "../session";
-import { clock, duration, verdictOf } from "../story";
+import { clock, duration, helperLine, verdictOf } from "../story";
 import { StateMark } from "./Rail";
 
 const MINUS = "−";
@@ -173,6 +173,7 @@ export function HelpersTab(props: {
         const part = helperPart(request, a);
         const path = part ? partPath(sessionId, request.id, part) : undefined;
         const time = duration(a.startedAt, a.endedAt ?? a.report?.ts ?? now);
+        const line = helperLine(a, a.status === "running");
         const body = (
           <>
             <StateMark mark={mark} />
@@ -189,6 +190,7 @@ export function HelpersTab(props: {
                   {time === "under a minute" ? "<1 m" : time}
                 </span>
               </span>
+              {line && <span className="h-line">{line}</span>}
             </span>
             {/* A verdict that only repeats the state word is not said twice. */}
             {verdict && verdict.label !== word && (

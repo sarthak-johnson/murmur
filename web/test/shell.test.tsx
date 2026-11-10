@@ -574,9 +574,23 @@ describe("the top bar", () => {
     const chip = within(bar()).getByRole("link", { name: /waiting on you/ });
     expect(chip.textContent).toBe("2 waiting on you4 m");
     expect(chip.className).toBe("need-chip");
-    expect(bar().querySelector(".state-pill")?.textContent).toBe(
-      "?Waiting · 4 m",
-    );
+    // One amber chip says it; a second pill would repeat it.
+    expect(bar().querySelector(".state-pill")).toBeNull();
+  });
+
+  it("waiting with helpers at work: the one chip says they are still working", () => {
+    vi.useFakeTimers({ now: new Date(day(9, 39)), toFake: ["Date"] });
+    const view = session({
+      needsYou: { reason: "input", text: "Sign in", since: day(9, 35) },
+    });
+    view.requests[3] = {
+      ...(view.requests[3] as RequestView),
+      agents: [helper("h1", { status: "running", startedAt: day(9, 20) })],
+    };
+    show(view);
+    const chip = within(bar()).getByRole("link", { name: /waiting on you/i });
+    expect(chip.textContent).toBe("Waiting on you4 m · 1 helper still working");
+    expect(bar().querySelector(".state-pill")).toBeNull();
   });
 
   it("the now line never shows a raw command or a raw tool name", () => {

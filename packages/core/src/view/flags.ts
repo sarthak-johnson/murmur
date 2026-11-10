@@ -3,6 +3,11 @@
  * - Needs-you (session wide): Notification `permission_prompt` / `elicitation_dialog` /
  *   `idle_prompt` / `agent_needs_input`, or PermissionRequest. A repeat of the same reason
  *   keeps the first. Cleared by UserPromptSubmit, PreToolUse, PostToolUse(Failure) or SessionEnd.
+ *   Also "input" at a main-thread Stop that leaves the user something to do: an ask in
+ *   Claude's last message (`askIn`), else a task this request narrated blocked on the user
+ *   (`waitsOnYou`) and has not narrated since. A Stop that asks nothing drops the ask. It replaces an idle needs-you (and an idle one never replaces it); a
+ *   new ask keeps its `since`. Only the main thread's tool calls clear it, never a helper's;
+ *   a helper's permission prompt meanwhile shows first, and the ask returns once it clears.
  * - Stuck: a run of 3 or more failures, either failed narrate steps on one part (a done or
  *   running step ends the run) or PostToolUseFailure of one tool on one `file_path` or
  *   `command` (a PostToolUse of the same tool and target ends it). One flag per run, text
@@ -14,7 +19,15 @@
  * - Assumptions: narrate choices with `assumption: true`, first copy per key.
  */
 import type { MurmurEvent } from "../events.js";
-import { cut, type Named, type Trace } from "./requests.js";
+import { NARRATE_TOOL, NarrateInput } from "../narration.js";
+import { askIn, firstSentence } from "./moments.js";
+import {
+  cut,
+  isNotRequest,
+  type Named,
+  type Trace,
+  waitsOnYou,
+} from "./requests.js";
 import type { Flag, NeedsYou, RequestView } from "./types.js";
 
 const NOTIFY: Record<string, NeedsYou["reason"]> = {
@@ -36,17 +49,52 @@ const obj = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 
 export function needsYou(events: MurmurEvent[]): NeedsYou | null {
+  // From Claude Code's prompts and notices; a helper's work clears a helper's.
   let out = null as NeedsYou | null;
+  // What Claude's last turn left the user to do; only the main thread clears it.
+  let ask = null as NeedsYou | null;
+  // This request's blocked tasks, by id: the narrate's words.
+  const blocked = new Map<string, string>();
+  let said = "";
   for (const e of events) {
     const p = e.payload;
+    const main = !p.agent_id;
+    if (e.hook === "UserPromptSubmit" && !isNotRequest(p.prompt))
+      blocked.clear();
+    const n =
+      e.hook === "PostToolUse" && p.tool_name === NARRATE_TOOL
+        ? NarrateInput.safeParse(p.tool_input).data
+        : undefined;
+    if (n?.task && n.taskStatus === "blocked" && waitsOnYou(n.now))
+      blocked.set(n.task, firstSentence(n.now));
+    else if (n?.task && n.taskStatus) blocked.delete(n.task);
+    if (e.hook === "AssistantText" && main) said = str(p.text) ?? "";
     const reason =
       e.hook === "PermissionRequest"
         ? "permission"
         : e.hook === "Notification"
           ? NOTIFY[str(p.notification_type) ?? ""]
           : undefined;
-    if (CLEARS.has(e.hook)) out = null;
-    else if (reason && out?.reason !== reason) {
+    if (e.hook === "Stop" && main) {
+      // Claude's turn is over: does it leave the user something to do?
+      const text =
+        askIn(str(p.last_assistant_message) || said) ??
+        [...blocked.values()].at(-1);
+      ask = text ? { reason: "input", text, since: ask?.since ?? e.ts } : null;
+      // Claude Code's idle prompt says less than the ask.
+      if (ask && out?.reason === "idle") out = null;
+      said = "";
+    } else if (CLEARS.has(e.hook)) {
+      out = null;
+      if (main) {
+        ask = null;
+        said = "";
+      }
+    } else if (
+      reason &&
+      out?.reason !== reason &&
+      !(ask && reason === "idle")
+    ) {
       const tool = str(p.tool_name);
       const text =
         e.hook === "PermissionRequest"
@@ -55,7 +103,7 @@ export function needsYou(events: MurmurEvent[]): NeedsYou | null {
       out = { reason, text, since: e.ts };
     }
   }
-  return out;
+  return out ?? ask;
 }
 
 /** 32-bit FNV-1a over UTF-16 code units, as 8 hex digits. */

@@ -64,7 +64,7 @@ function Message(props: {
   const { m, task, onOpenPart } = props;
   const kind = moment(m.text);
   return (
-    <li className="st-msg st-in">
+    <li id={`m-${m.id}`} className="st-msg st-in">
       <time className="st-t" dateTime={m.ts}>
         {clock(m.ts)}
       </time>
@@ -351,6 +351,20 @@ function Rows(props: {
   const groups = runs(request, ms, !newestFirst);
   if (newestFirst) groups.reverse();
   const now = new Date().toISOString();
+  // What is at work now reads at the newest end of the section, whichever way it runs.
+  const helpersNow = waiting.map((a) => (
+    <li key={`now:${a.id}`} className="st-now">
+      <span className="st-t">now</span>
+      <span className="st-now-b">
+        <StateMark mark="running" />
+        <span>
+          {a.description || "A helper"}, running for{" "}
+          <span className="num">{duration(a.startedAt, now)}</span>. No report
+          yet.
+        </span>
+      </span>
+    </li>
+  ));
   return (
     <ol className="st-rows">
       {on && (
@@ -362,20 +376,7 @@ function Rows(props: {
           </span>
         </li>
       )}
-      {newestFirst &&
-        waiting.map((a) => (
-          <li key={`now:${a.id}`} className="st-now">
-            <span className="st-t">now</span>
-            <span className="st-now-b">
-              <StateMark mark="running" />
-              <span>
-                {a.description || "A helper"}, running for{" "}
-                <span className="num">{duration(a.startedAt, now)}</span>. No
-                report yet.
-              </span>
-            </span>
-          </li>
-        ))}
+      {newestFirst && helpersNow}
       {groups.map((g, i) => {
         const head = g.ms[0] as MessageView;
         // Keyed by its oldest message, so a row stays put (and open) as newer ones join.
@@ -397,6 +398,7 @@ function Rows(props: {
           />
         );
       })}
+      {!newestFirst && helpersNow}
     </ol>
   );
 }
@@ -420,12 +422,12 @@ function phaseOf(request: RequestView, ms: MessageView[]) {
 }
 
 const STATE: Record<
-  "done" | "now" | "part" | "todo" | "open",
+  "done" | "now" | "blocked" | "todo" | "open",
   { mark: Mark; word: string }
 > = {
   done: { mark: "done", word: "Done" },
   now: { mark: "running", word: "Running" },
-  part: { mark: "open", word: "Partly done" },
+  blocked: { mark: "waiting", word: "Waiting on you" },
   todo: { mark: "open", word: "Not started" },
   open: { mark: "open", word: "Left open" },
 };
@@ -503,11 +505,22 @@ export function Story(props: {
       ? "done"
       : over
         ? "open"
-        : ph.id === live
-          ? "now"
-          : ph.status === "todo" && ph.tasks.some((t) => t.status === "done")
-            ? "part"
+        : ph.status === "blocked"
+          ? "blocked"
+          : ph.id === live
+            ? "now"
             : ph.status;
+  // A running helper reads under the phase of the task it is on, else the live one.
+  const phaseOfHelper = (a: AgentView) =>
+    request.phases.find((p) =>
+      p.tasks.some(
+        (t) => t.agents.includes(a.id) || (a.part && t.part === a.part),
+      ),
+    )?.id ?? live;
+  const helpersIn = (id: string) =>
+    over || live === "beyond"
+      ? []
+      : waiting.filter((a) => phaseOfHelper(a) === id);
   // A running request always says something: at least what Claude is on now.
   const quiet = !waiting.length;
 
@@ -534,7 +547,8 @@ export function Story(props: {
         request.phases.map((ph) => {
           const mine = planned.filter((_, i) => of[i] === ph.id);
           const isLive = ph.id === live;
-          if (!mine.length && !isLive) return null;
+          const here = helpersIn(ph.id);
+          if (!mine.length && !here.length && !isLive) return null;
           const n = ph.tasks.filter((t) => t.status === "done").length;
           const meta = [
             isLive ? "newest first" : when(mine),
@@ -553,9 +567,9 @@ export function Story(props: {
                 request={request}
                 ms={mine}
                 newestFirst={isLive}
-                waiting={isLive ? waiting : []}
+                waiting={here}
                 now={
-                  isLive && !mine.length && quiet
+                  isLive && !mine.length && !here.length
                     ? onNow(request, ph)
                     : undefined
                 }

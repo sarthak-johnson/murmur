@@ -259,6 +259,13 @@ describe("from here to here", () => {
     );
   });
 
+  it("the header says waiting on you, not running, for a request that waits", () => {
+    show(session({}, { state: "waiting" }));
+    const facts = screen.getByRole("group", { name: "Summary" });
+    expect(facts.textContent).toMatch(/1 waiting on you/);
+    expect(facts.textContent).not.toMatch(/running now/);
+  });
+
   it("says where it ended once nothing runs", () => {
     show(session({ ended: true }, { state: "done", finished: true }));
     const to = within(ends()).getAllByRole("link")[1] as HTMLElement;
@@ -289,6 +296,21 @@ describe("totals", () => {
       ["24", "tasks sent back after review"],
       ["2", "pauses over an hour, the longest 3 days"],
     ]);
+  });
+
+  it("leaves out a zero: it says nothing", () => {
+    const totals = {
+      helpers: 3,
+      files: 12,
+      commands: 158,
+      sentBack: 0,
+      pauses: 0,
+    };
+    show(session({ journey: journey({ totals, pauses: [] }) }));
+    const list = screen.getByRole("list", { name: "Totals" });
+    expect(
+      [...list.querySelectorAll(".jr-tot-l")].map((l) => l.textContent),
+    ).toEqual(["helpers ran", "files changed", "commands run"]);
   });
 });
 

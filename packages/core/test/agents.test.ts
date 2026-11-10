@@ -152,6 +152,7 @@ test("feature.jsonl links its subagent; interactive prompt suggestions are ignor
       startedAt: "2026-11-06T00:00:12.000Z",
       endedAt: "2026-11-06T00:00:16.000Z",
       lastText: "hello world",
+      doing: { text: "Reading greet.txt", ts: "2026-11-06T00:00:15.000Z" },
       role: "other",
     },
   ]);

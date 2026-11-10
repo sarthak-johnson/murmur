@@ -83,11 +83,13 @@ function taskRow(req: RequestView, t: TaskView, over: boolean): Row {
   const aim = own ? part.aim?.aim : undefined;
   const last = own ? part.steps.at(-1)?.text : undefined;
   const line =
-    shown === "failed"
-      ? (t.problem ?? outcome(req, t) ?? last)
-      : shown === "done"
-        ? (outcome(req, t) ?? last ?? aim)
-        : aim;
+    shown === "blocked"
+      ? (t.ask?.text ?? aim)
+      : shown === "failed"
+        ? (t.problem ?? outcome(req, t) ?? last)
+        : shown === "done"
+          ? (outcome(req, t) ?? last ?? aim)
+          : aim;
   return {
     key: t.id,
     n: String(tasks.indexOf(t) + 1),

@@ -277,7 +277,10 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
             {layout.bands.map((b, i) => {
               const prev = layout.bands[i - 1];
               const mark = bandMark(req, b.band);
-              const line = bandLine(b.band, mark === "running");
+              const line = bandLine(
+                b.band,
+                mark === "running" || mark === "waiting",
+              );
               return (
                 <div key={b.band.id}>
                   {prev && !stacked && (

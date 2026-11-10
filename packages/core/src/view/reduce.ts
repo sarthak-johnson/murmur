@@ -5,7 +5,7 @@ import { applyFlags, needsYou } from "./flags.js";
 import { inferHistory, quiet } from "./history.js";
 import { applyInference, inferNow } from "./infer.js";
 import { journeyOf, storylines } from "./journey.js";
-import { applyPlan, newRequest, type Trace } from "./requests.js";
+import { applyPlan, isNotRequest, newRequest, type Trace } from "./requests.js";
 import { applyRounds } from "./rounds.js";
 import { applyShape } from "./shape.js";
 import {
@@ -35,9 +35,10 @@ export function reduce(events: MurmurEvent[]): SessionView {
     traces.push(trace);
     applyInference(req, rest);
     inferNow(req, rest, trace);
-    applyFiles(req, rest, trace);
+    // Helpers first: a helper's file changes go to the part it is tied to.
     for (const [use, id] of applyAgents(req, rest, trace, agents))
       started.set(use, id);
+    applyFiles(req, rest, trace, agents);
     applyFlags(req, rest, trace, i < all.length - 1);
     // A resumed session goes on after its SessionEnd, so only a last one counts.
     req.finished = i < all.length - 1 || rest.at(-1)?.hook === "SessionEnd";
@@ -110,14 +111,7 @@ function sortEvents(events: MurmurEvent[]): MurmurEvent[] {
     .filter((e) => !seen.has(e.id) && seen.add(e.id));
 }
 
-/**
- * Prompts that are not a person asking for work: /murmur:on and the like switch
- * Murmur itself, and Claude Code submits a `<task-notification>` when a background
- * helper finishes.
- */
-export const isNotRequest = (prompt: unknown): boolean =>
-  typeof prompt === "string" &&
-  /^\s*(\/murmur:\w+(\s|$)|<task-notification>)/.test(prompt);
+export { isNotRequest };
 
 /**
  * Each UserPromptSubmit starts a request, except `isNotRequest` ones, whose events

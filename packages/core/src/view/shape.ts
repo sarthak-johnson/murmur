@@ -6,15 +6,17 @@
  * their times say nothing: windows, beyond and spans read only real events.
  */
 import type { MurmurEvent } from "../events.js";
+import { matchScore } from "./agents.js";
 import { QUIET, TOOL_HOOKS } from "./infer.js";
 import {
+  askIn,
   cutWords,
   firstSentence,
   moment,
   plainText,
   sentences,
 } from "./moments.js";
-import type { Narrated, Trace } from "./requests.js";
+import { type Narrated, phaseStatus, type Trace } from "./requests.js";
 import { helpersOf, itemOf, subjectOfWork } from "./rounds.js";
 import {
   fallbackGoal,
@@ -30,6 +32,7 @@ import type {
   RequestState,
   RequestView,
   StepView,
+  TaskView,
 } from "./types.js";
 
 export interface ShapeContext {
@@ -57,6 +60,8 @@ export function applyShape(
   ctx: ShapeContext,
 ): void {
   const live = trace.narrated.filter((x) => real(x.e));
+  runTied(req, ctx);
+  askTasks(req, live);
   const outcome = outcomeOf(req.messages ?? []);
   if (outcome) req.outcome = outcome;
   // The map's title first (`applyPlan` set it), then the titles run's, then Murmur's own.
@@ -96,6 +101,72 @@ export function applyShape(
       f.role = groupOf(f.path);
       f.roleInferred = true;
     }
+}
+
+/**
+ * A task Claude never gave a status follows the helpers tied to it: under way while one
+ * still runs, done once they all finished well and one's words clearly name the task (a
+ * helper tied only because Claude was on that task is no proof). Claude's own status wins.
+ */
+function runTied(req: RequestView, ctx: ShapeContext): void {
+  const running = new Set(req.agents.filter(ctx.live).map((a) => a.id));
+  const fine = (id: string) => {
+    const a = req.agents.find((x) => x.id === id);
+    return (
+      a?.status === "done" &&
+      !a.report?.interim &&
+      !/failed|killed/.test(a.report?.status ?? "")
+    );
+  };
+  const isItsWork = (t: TaskView) => (id: string) =>
+    matchScore(
+      req.agents.find((x) => x.id === id)?.description ?? "",
+      t.title,
+    ) >= 2;
+  for (const ph of req.phases) {
+    for (const t of ph.tasks) {
+      if (t.status !== "todo" || !t.agents.length) continue;
+      if (t.agents.some((id) => running.has(id))) t.status = "now";
+      else if (t.agents.every(fine) && t.agents.some(isItsWork(t)))
+        t.status = "done";
+      else continue;
+      const part = req.parts.find((p) => p.id === t.part);
+      if (!part) continue;
+      const own = req.phases
+        .flatMap((p) => p.tasks)
+        .filter((x) => x.part === part.id);
+      if (own.every((x) => x.status === "done")) part.status = "done";
+      else if (part.status === "todo") part.status = "now";
+    }
+    ph.status = phaseStatus(ph.tasks);
+  }
+}
+
+/** Each blocked task's ask: see `TaskView.ask`. */
+function askTasks(req: RequestView, live: Narrated[]): void {
+  for (const t of req.phases.flatMap((ph) => ph.tasks)) {
+    delete t.ask;
+    if (t.status !== "blocked") continue;
+    const x = live.findLast(
+      (n) => n.task === t.id && n.n.taskStatus === "blocked",
+    );
+    if (!x) continue;
+    const asks = (req.messages ?? []).filter(
+      (m) => m.ts >= x.e.ts && askIn(m.text) !== undefined,
+    );
+    // Its clearest words stand alone: "Sign in there" leans on the sentence before it.
+    const m =
+      asks.find(
+        (m) => !/\b(?:there|that|this|it)\b/i.test(askIn(m.text) as string),
+      ) ?? asks[0];
+    t.ask = m
+      ? {
+          text: askIn(m.text) as string,
+          since: (asks[0] as MessageView).ts,
+          message: m.id,
+        }
+      : { text: firstSentence(x.n.now), since: x.e.ts };
+  }
 }
 
 // Where a phrase can end and the next begin: before a small word that starts one, or
@@ -277,6 +348,19 @@ function placeMessages(
   const phaseOf = new Map(
     req.phases.flatMap((ph) => ph.tasks.map((t) => [t.id, ph.id] as const)),
   );
+  // A helper's phase: of the task it is tied to, else of its part's first task.
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  const helperPhase = (id: string) => {
+    const part = req.agents.find((a) => a.id === id)?.part;
+    const t =
+      tasks.find((t) => t.agents.includes(id)) ??
+      (part ? tasks.find((t) => t.part === part) : undefined);
+    return t && phaseOf.get(t.id);
+  };
+  // The message asking for what a blocked task waits on is about that task.
+  const asks = new Map(
+    tasks.flatMap((t) => (t.ask?.message ? [[t.ask.message, t.id]] : [])),
+  );
   for (const m of msgs) {
     delete m.phase;
     if (beyond && m.ts > beyond.since) continue;
@@ -285,7 +369,8 @@ function placeMessages(
       .filter((w) => w.start <= m.ts && m.ts <= w.end)
       .sort((a, b) => span(a) - span(b))[0];
     const phase =
-      (m.task && phaseOf.get(m.task)) ||
+      phaseOf.get(m.task ?? asks.get(m.id) ?? "") ||
+      (m.agent && helperPhase(m.agent)) ||
       holding?.id ||
       begun.findLast((w) => w.start <= m.ts)?.id ||
       req.phases[0]?.id;
@@ -293,7 +378,8 @@ function placeMessages(
   }
 }
 
-const isFailed = (s: string | undefined) => s === "failed" || s === "blocked";
+// Waiting on the user (blocked) is not a failure.
+const isFailed = (s: string | undefined) => s === "failed";
 
 function stateOf(
   req: RequestView,
@@ -486,11 +572,14 @@ function fillPart(
         eventIds: [m.id],
       })),
     ].sort(byTs);
-    // Claude's latest word on a part still under way is what it is doing.
+    // Claude's latest word on a part still under way is what it is doing, unless it waits on you.
     const lastStep = steps.at(-1);
     if (
       lastStep &&
       part.status === "now" &&
+      !req.phases.some((ph) =>
+        ph.tasks.some((t) => t.part === part.id && t.status === "blocked"),
+      ) &&
       notes.some((x) => x.e.id === lastStep.eventIds[0])
     )
       lastStep.status = "running";

@@ -639,7 +639,7 @@ describe("waiting on you", () => {
       "Should I default snooze to ten minutes?",
       "And may I drop the old list view?",
     ]);
-    expect(within(bar()).getByText("Waiting")).toBeTruthy();
+    expect(bar().querySelector(".state-pill")).toBeNull();
     expect(
       within(bar()).getByRole("link", { name: /waiting on you/ }).textContent,
     ).toContain("2 waiting on you");

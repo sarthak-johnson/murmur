@@ -595,7 +595,7 @@ function changedPaths(events: MurmurEvent[]): Map<string, string> {
 
 /** Where the plan of a request stands, from its own events and the last refresh's answer. */
 interface PlanState {
-  /** Each task's status as Murmur last heard it (running, failed or done), or none yet. */
+  /** Each task's status as Murmur last heard it (running, blocked, failed or done), or none yet. */
   statuses: Map<string, string>;
   /** When a task's status last changed, else when the map came. */
   changed: number;
@@ -605,9 +605,15 @@ interface PlanState {
   latest: number;
 }
 
-// Claude's own "blocked" reads as failed; a status only moves forward, and done stays.
-const RANK: Record<string, number> = { running: 1, failed: 2, done: 3 };
-const settled = (s: string | undefined) => s === "done" || s === "failed";
+// Waiting on the user is not a failure, but it settles a task as failed does; a status
+// only moves forward, and done stays.
+const RANK: Record<string, number> = {
+  running: 1,
+  blocked: 2,
+  failed: 2,
+  done: 3,
+};
+const settled = (s: string | undefined) => (RANK[s ?? ""] ?? 0) >= 2;
 const forward = (from: string | undefined, to: string) =>
   (RANK[to] ?? 0) > (from === undefined ? 0 : (RANK[from] ?? 0));
 
@@ -658,8 +664,7 @@ function planState(events: MurmurEvent[], prior?: RequestRefresh): PlanState {
     reports: 0,
     latest: NaN,
   };
-  const set = (task: string, said: string, ts: string) => {
-    const status = said === "blocked" ? "failed" : said;
+  const set = (task: string, status: string, ts: string) => {
     const was = st.statuses.get(task);
     if (was === status || was === "done") return;
     st.statuses.set(task, status);
@@ -709,7 +714,7 @@ Answer with one JSON object and nothing else, in exactly this shape:
     "files": [{ "path": "<copied exactly from the file list>", "role": "what it does" }]
   }]
 }
-Rules: use only the task and part ids in the plan, exactly as written; never add, rename or drop one. The tasks under "done" are finished: say nothing of them. Give one entry in "tasks" for every task in the plan that has started. A task is "done" only when the material shows it finished (a helper reported it done, Claude said so, a commit or review passed); "running" while it is under way; "failed" when it was given up or is blocked. Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
+Rules: use only the task and part ids in the plan, exactly as written; never add, rename or drop one. The tasks under "done" are finished: say nothing of them. Give one entry in "tasks" for every task in the plan that has started. A task is "done" only when the material shows it finished (a helper reported it done, Claude said so, a commit or review passed); "running" while it is under way; "failed" only when it was given up; a task waiting on the person or on anything else is still "running". Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
 
 /** Each request's refresh state, reading the one-request state of the first version too. */
 function requestsOf(r?: RefreshState): Record<string, RequestRefresh> {

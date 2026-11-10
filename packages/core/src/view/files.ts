@@ -6,7 +6,10 @@
  *   counts each file's hunk lines the same way; a file whose only hunk starts at line 0
  *   of 0 lines is new.
  * - A helper's touch goes to the part that helper narrated latest before it, else first
- *   after it (the recap narrates for each helper it puts on a part).
+ *   after it (the recap narrates for each helper it puts on a part), else the helper's own
+ *   part (`AgentView.part`), else the part of a narrate naming the path (as below), else
+ *   `looseFiles`: never to the part the main thread narrated last. The helper lists the
+ *   path in its `files` too.
  * - Any other touch goes to the part of the latest narrate before it naming the path in
  *   `files`, else the first such narrate after it, else the latest narrate before it, else
  *   `looseFiles`.
@@ -14,8 +17,8 @@
  * - Narrate's role-only entries take a touch's counts, and are dropped if none arrives.
  */
 import type { MurmurEvent } from "../events.js";
-import { relPath, type Trace } from "./requests.js";
-import type { FileTouch, RequestView } from "./types.js";
+import { addOnce, relPath, type Trace } from "./requests.js";
+import type { AgentView, FileTouch, RequestView } from "./types.js";
 
 type Touch = Omit<FileTouch, "role">;
 
@@ -23,6 +26,7 @@ export function applyFiles(
   req: RequestView,
   events: MurmurEvent[],
   { before, narrated }: Trace,
+  agents: Map<string, AgentView> = new Map(),
 ): void {
   const naming = new Map<string, Trace["narrated"]>();
   for (const x of narrated)
@@ -42,9 +46,16 @@ export function applyFiles(
     for (const t of touchesOf(e)) addAt(t, i, String(e.payload.agent_id ?? ""));
   });
   function addAt(t: Touch, i: number, agentId: string) {
-    const by =
-      near(helpers.get(agentId) ?? [], i) ?? near(naming.get(t.path) ?? [], i);
-    const partId = by?.part ?? before[i]?.part;
+    const agent = agentId ? agents.get(agentId) : undefined;
+    if (agent) {
+      agent.files ??= [];
+      addOnce(agent.files, t.path);
+    }
+    const said = () => near(naming.get(t.path) ?? [], i)?.part;
+    // A helper's change never goes where the main thread happened to be.
+    const partId = agentId
+      ? (near(helpers.get(agentId) ?? [], i)?.part ?? agent?.part ?? said())
+      : (said() ?? before[i]?.part);
     const part = req.parts.find((p) => p.id === partId);
     addTouch(part ? part.files : req.looseFiles, t);
   }

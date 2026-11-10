@@ -3,15 +3,17 @@
  * you, done), what Claude asked, the now line, the plan's names and times, and a helper's
  * runs. All read from the view and its events; nothing here is stored.
  */
-import type {
-  AgentView,
-  MurmurEvent,
-  PhaseView,
-  RequestView,
-  SessionView,
-  TaskView,
+import {
+  type AgentView,
+  type MurmurEvent,
+  type PhaseView,
+  questionsIn,
+  type RequestView,
+  type SessionView,
+  type TaskView,
 } from "@murmur/core";
-import { plainText } from "./markdown";
+
+export { questionsIn };
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const obj = (v: unknown): Record<string, unknown> =>
@@ -41,6 +43,8 @@ export interface Waiting {
   text: string;
   /** Claude Code is holding a tool call until you allow it. */
   permission?: boolean;
+  /** Claude ended its turn asking for this (`NeedsYou` reason "input"). */
+  asked?: boolean;
 }
 
 /** An AskUserQuestion call on the main thread with no result yet. */
@@ -77,63 +81,6 @@ function askQuestions(ask: MurmurEvent): Question[] {
     return [
       { question, ...(labels.length ? { detail: labels.join(" or ") } : {}) },
     ];
-  });
-}
-
-/** Asked of the user: "Should I…", "Do you…", "May we…", or anything with "you". */
-const ASKS =
-  /^(?:(?:and|but|so|also|then|or)\s+)?(?:(?:should|shall|may|can|could|would|will|do|does|did|is|are|want)\s+(?:i|we|me|you)\b|want me\b)|\byou(?:rs?)?\b/i;
-
-/**
- * The questions Claude's message leaves for you, in order. Only questions that end its
- * last paragraph or a trailing list count, and only ones put to you: code, links and
- * a question Claude answers itself never do. When unsure, none: a false "needs you"
- * is worse than a missed one.
- */
-export function questionsIn(text: string): string[] {
-  const src = text
-    .replace(/```[\s\S]*?(?:```|$)/g, "\n\n")
-    .replace(/`[^`\n]*`/g, "code")
-    .replace(/\]\([^)\s]*\)/g, "]")
-    .replace(/\b(?:https?:\/\/|www\.)\S+/g, "link");
-  const block =
-    src
-      .split(/\n\s*\n/)
-      .filter((b) => b.trim())
-      .at(-1) ?? "";
-  // A heading or a list item is a unit of its own; other lines run together.
-  type Unit = { text: string; kind: "heading" | "item" | "para" };
-  const units: Unit[] = [];
-  for (const line of block.split("\n")) {
-    const l = line.trim();
-    const item = /^(?:[-*+]|\d+[.)])\s+(.*)$/.exec(l)?.[1];
-    const last = units.at(-1);
-    if (/^#{1,6}\s/.test(l)) units.push({ text: l, kind: "heading" });
-    else if (item !== undefined) units.push({ text: item, kind: "item" });
-    else if (last?.kind === "para") last.text += ` ${l}`;
-    else units.push({ text: l, kind: "para" });
-  }
-  const tail =
-    units.at(-1)?.kind === "item"
-      ? units.slice(units.findLastIndex((u) => u.kind !== "item") + 1)
-      : units.slice(-1);
-  return tail.flatMap((u) => {
-    if (u.kind === "heading") return [];
-    // A sentence ends at . ! ? before a space, so "v1.2" stays whole.
-    const said = plainText(u.text).replace(/\s+/g, " ").trim();
-    const sentences = said.split(/(?<=[.!?])\s+/);
-    const asked: string[] = [];
-    for (const q of sentences.reverse()) {
-      if (!q.endsWith("?")) break;
-      asked.unshift(q);
-    }
-    // "Should I…? Or…?" is one choice.
-    const merged: string[] = [];
-    for (const q of asked)
-      if (/^or\b/i.test(q) && merged.length)
-        merged[merged.length - 1] += ` ${q}`;
-      else merged.push(q);
-    return merged.filter((q) => ASKS.test(q) && q.length > 3);
   });
 }
 
@@ -174,6 +121,7 @@ export function waitingOn(
       questions: n.reason === "permission" ? [] : fromMessage,
       text: n.text,
       ...(n.reason === "permission" ? { permission: true } : {}),
+      ...(n.reason === "input" ? { asked: true } : {}),
     };
   if (stopped && last && asked.length)
     return { since: last.ts, questions: fromMessage, text: "" };
@@ -192,9 +140,8 @@ export function requestState(
   const { last, stopped } = lastActivity(view, req, events);
   const next = view.requests[view.requests.indexOf(req) + 1];
   const end = last?.ts ?? next?.startedAt ?? view.lastEventAt;
-  const helping = req.agents.some((a) => a.status === "running");
-  if (waiting && !helping) return { state: "waiting", end };
-  if (waiting) return { state: "running", end };
+  // Waiting on you stands even while helpers work on.
+  if (waiting) return { state: "waiting", end };
   const done = req.finished || view.ended || stopped;
   return { state: done ? "done" : "running", end };
 }
@@ -360,7 +307,10 @@ export function nowLine(
     }
     const command =
       src?.payload.tool_name === "Bash" || /^Running\b/.test(now.text);
-    const text = command ? desc || "Running a command" : tool(now.text);
+    const said = command ? desc || "Running a command" : tool(now.text);
+    // A helper's action says whose it is.
+    const helper = req.agents.find((a) => a.id === now.agent);
+    const text = helper ? `${helperName(helper)}: ${said}` : said;
     return { label, text, ...(src ? { src } : {}) };
   }
   return { label, text: now.text, ...(now.why ? { why: now.why } : {}) };
@@ -446,6 +396,17 @@ export function modelOf(a: AgentView, events: MurmurEvent[]): string {
   );
   const m = str(obj(call?.payload.tool_input).model);
   return m ? m.charAt(0).toUpperCase() + m.slice(1) : "";
+}
+
+/** A helper by what it works on: "Build demo scenes 3, 5" reads "Demo scenes 3, 5". */
+export function helperName(a: AgentView): string {
+  const d = a.description.trim();
+  const rest = d.replace(
+    /^(?:implement|build|write|add|draft|create|make|fix|review|re-?review|re-?check)\s+/i,
+    "",
+  );
+  const name = rest || d || "A helper";
+  return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
 export type HelperKind = "build" | "review" | "recheck";

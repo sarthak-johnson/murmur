@@ -342,7 +342,11 @@ describe("live screen", () => {
         lastLooked={null}
       />,
     );
-    expect(kids(".top-right")).toEqual(["need-chip", ...bar]);
+    // Waiting on you stands even with a helper still at work.
+    expect(kids(".top-right")).toEqual([
+      "need-chip",
+      ...bar.filter((c) => !c.startsWith("state-pill")),
+    ]);
     expect(kids(".main")).toEqual(main);
     // The wait joins the brief at its foot; the cells above it stay put.
     expect(kids(".rb")).toEqual([...brief, "rb-need"]);

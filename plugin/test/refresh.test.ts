@@ -545,7 +545,7 @@ describe("review fixes", () => {
     ).toBe(0);
   });
 
-  it("Claude's blocked, read as failed, is no news for an answer that says failed", async () => {
+  it("Claude's blocked is no news for an answer that says failed or running", async () => {
     write([...narrate("toolu_n2", 4.5, "t2", "blocked"), ...reports(5, 6, 7)]);
     fake({
       tasks: [

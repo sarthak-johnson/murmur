@@ -369,6 +369,17 @@ describe("the brief", () => {
     expect(figs).toEqual(["elapsed"]);
   });
 
+  it("an ask Claude ended its turn on says to reply, not only to answer", () => {
+    show(
+      session(running({ agents: [], beyond: undefined, state: "waiting" }), {
+        needsYou: { reason: "input", text: "Sign in first", since: at(9) },
+      }),
+    );
+    expect(
+      region("Waiting on you").querySelector(".rb-where")?.textContent,
+    ).toBe("Reply to Claude in the terminal");
+  });
+
   it("asks in amber only when Claude waits on you, with where to answer", () => {
     show(session(running()));
     expect(noRegion("Waiting on you")).toBeNull();

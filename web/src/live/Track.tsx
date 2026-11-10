@@ -11,11 +11,12 @@ import { livePhase, type Mark, phaseSpan, shortTitle } from "../session";
 import { clock, duration, nOf, verdictOf } from "../story";
 import { PIECES, StateMark, Words } from "./Rail";
 
-export type Shown = "done" | "now" | "todo" | "failed" | "open";
+export type Shown = "done" | "now" | "todo" | "failed" | "blocked" | "open";
 
 export const WORD: Record<Shown, string> = {
   done: "done",
   now: "in progress",
+  blocked: "waiting on you",
   todo: "not started",
   failed: "failed",
   open: "left open",
@@ -25,6 +26,7 @@ export const MARK: Record<Shown, Mark> = {
   now: "running",
   todo: "open",
   failed: "failed",
+  blocked: "waiting",
   open: "open",
 };
 
@@ -119,6 +121,8 @@ export function phaseShown(
 ): Shown {
   if (ph.status === "done") return "done";
   if (over) return "open";
+  // Waiting on you outranks running: it is the one thing the reader can do.
+  if (ph.status === "blocked") return "blocked";
   if (ph === live || ph.status === "now") return "now";
   return ph.tasks.some((t) => t.status === "failed") ? "failed" : "todo";
 }
@@ -131,12 +135,10 @@ export function phaseLine(req: RequestView, ph: PhaseView, shown: Shown) {
   if (shown === "done")
     return [count, span(from, to)].filter(Boolean).join(" · ");
   if (shown === "open") return `${count} · left open`;
+  if (shown === "blocked") return `${count} · waiting on you`;
   if (shown === "now")
     return from ? `${count} · started ${clock(from)}` : count;
-  // A phase with tasks done is under way, whatever its own status says.
-  return n
-    ? [count, span(from, to)].filter(Boolean).join(" · ")
-    : `${nOf(ph.tasks.length, "task")}, not started`;
+  return `${nOf(ph.tasks.length, "task")}, not started`;
 }
 
 /**
@@ -311,7 +313,11 @@ export function PhaseTrack(props: {
                 stations={ph.tasks.map((t) => ({
                   key: t.id,
                   name: shortTitle(t.title),
-                  title: t.problem ? `${t.title}: ${t.problem}` : t.title,
+                  title: t.ask
+                    ? `${t.title}. Waiting on you: ${t.ask.text}`
+                    : t.problem
+                      ? `${t.title}: ${t.problem}`
+                      : t.title,
                   shown: taskShown(t, over),
                   part: t.part,
                 }))}

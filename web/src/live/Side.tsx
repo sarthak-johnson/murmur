@@ -13,7 +13,14 @@ import {
 } from "@murmur/core";
 import { follow, requestPath } from "../router";
 import { type Mark, modelOf } from "../session";
-import { clock, duration, nOf, thousands, verdictOf } from "../story";
+import {
+  clock,
+  duration,
+  helperLine,
+  nOf,
+  thousands,
+  verdictOf,
+} from "../story";
 import { StateMark } from "./Rail";
 
 const MINUS = "−";
@@ -87,6 +94,7 @@ function Helpers(props: {
     mark: Mark;
     from: string;
     to: string;
+    line?: string;
   };
   let rows: Row[];
   if (agents.length <= ONE_EACH) {
@@ -112,6 +120,7 @@ function Helpers(props: {
         mark,
         from: a.startedAt,
         to: stop(a),
+        line: helperLine(a, mark === "running"),
       };
     });
   } else {
@@ -170,6 +179,7 @@ function Helpers(props: {
             <div className="hl-b-wrap">
               <div className="hl-n">{r.name}</div>
               <div className="hl-s">{r.sub}</div>
+              {r.line && <div className="hl-do">{r.line}</div>}
               <div className="hl-b" aria-hidden="true">
                 <i className={r.mark} style={bar(r.from, r.to, t0, t1)} />
               </div>

@@ -1,11 +1,13 @@
 /*
  * Plan and part status rules, applied once after every event of a request:
- * - Task: narrate `taskStatus` running -> now, done -> done, failed -> failed.
- *   A task with no status yet is `now` only when the latest narrate names it, else `todo`.
- * - Part: `now` if any of its tasks is now; else `done` if it has tasks and all are done,
+ * - Task: narrate `taskStatus` running -> now, done -> done, failed -> failed, blocked ->
+ *   blocked (now when it waits on a job, not the user). A task with no status yet is `now` only when the latest narrate names it, else
+ *   `todo` (shape.ts later runs it while a helper tied to it runs).
+ * - Part: `now` if any of its tasks is now or blocked; else `done` if it has tasks and all are done,
  *   or a step on it is done and no later step is running; else `now` if the latest narrate
  *   names it; otherwise `todo`. (The latest narrate never overrides `done`.)
- * - Phase: `now` if any task in it is now or failed; `done` if it has tasks and all are done; else `todo`.
+ * - Phase: `blocked` if a task in it is blocked; `done` if it has tasks and all are done;
+ *   `now` if any task in it is not `todo` (now, failed, or done beside ones not done); else `todo`.
  * A narrate naming a task but no part lands on that task's part.
  * A refresh's narrate (`refresh: true`, the plugin's catch-up of a plan Claude drew) sets
  * statuses, steps and detail like any other, but is never the latest narrate: "now", and
@@ -19,7 +21,7 @@ import {
   NARRATE_TOOL,
   NarrateInput,
 } from "../narration.js";
-import type { PartView, RequestView, TaskView } from "./types.js";
+import type { PartView, PhaseView, RequestView, TaskView } from "./types.js";
 
 export const cut = (s: string, n: number) => s.slice(0, n);
 
@@ -27,8 +29,31 @@ const TASK_STATUS = {
   running: "now",
   done: "done",
   failed: "failed",
-  blocked: "failed",
+  blocked: "blocked",
 } as const;
+
+// Blocked on a job or a schedule ("waiting for the scheduled job"), not on the user.
+const WAITS_ON_A_THING =
+  /\bwait(?:s|ing)\s+(?:for|on)\s+(?:the|a|an)\s+(?!user\b|author\b|owner\b)/i;
+
+/** Whether a blocked narrate waits on the user; a job that will come back by itself does not. */
+export const waitsOnYou = (now: string) => !WAITS_ON_A_THING.test(now);
+
+/**
+ * Prompts that are not a person asking for work: /murmur:on and the like switch
+ * Murmur itself, and Claude Code submits a `<task-notification>` when a background
+ * helper finishes.
+ */
+export const isNotRequest = (prompt: unknown): boolean =>
+  typeof prompt === "string" &&
+  /^\s*(\/murmur:\w+(\s|$)|<task-notification>)/.test(prompt);
+
+/** A phase's status from its tasks: see `PhaseView.status`. */
+export function phaseStatus(tasks: TaskView[]): PhaseView["status"] {
+  if (tasks.some((t) => t.status === "blocked")) return "blocked";
+  if (tasks.length && tasks.every((t) => t.status === "done")) return "done";
+  return tasks.some((t) => t.status !== "todo") ? "now" : "todo";
+}
 
 /** The part and task the latest narrate resolved to. */
 export interface Named {
@@ -49,11 +74,17 @@ export interface Trace {
   narrated: Narrated[];
 }
 
-/** A path as shown: relative to `cwd` when inside it, no leading `./`. */
-export const relPath = (path: string, cwd: string) =>
-  path.startsWith(`${cwd}/`)
-    ? path.slice(cwd.length + 1)
-    : path.replace(/^\.\//, "");
+/**
+ * A path as shown: relative to `cwd` when inside it, no leading `./`. A leading `~/` (as
+ * Claude narrates one) is the home folder `cwd` is in.
+ */
+export function relPath(path: string, cwd: string): string {
+  const home = /^\/(?:Users|home)\/[^/]+/.exec(cwd)?.[0];
+  const full = home && path.startsWith("~/") ? home + path.slice(1) : path;
+  return full.startsWith(`${cwd}/`)
+    ? full.slice(cwd.length + 1)
+    : full.replace(/^\.\//, "");
+}
 
 const str = (v: unknown) => (typeof v === "string" ? v : undefined);
 
@@ -181,8 +212,11 @@ function applyNarrate(
     req.now = { text: n.now, why: n.why, ts: e.ts };
     if (part) req.now.part = part.id;
   }
-  if (task && n.taskStatus) task.status = TASK_STATUS[n.taskStatus];
-  if (task && n.taskStatus === "blocked") task.problem = n.now;
+  if (task && n.taskStatus)
+    task.status =
+      n.taskStatus === "blocked" && !waitsOnYou(n.now)
+        ? "now"
+        : TASK_STATUS[n.taskStatus];
   if (task && agentId) addOnce(task.agents, agentId);
   if (part) {
     if (n.step)
@@ -240,7 +274,8 @@ function setStatuses(req: RequestView, last: Named): void {
     const done = p.steps.findLastIndex((s) => s.status === "done");
     const stepDone =
       done >= 0 && !p.steps.slice(done).some((s) => s.status === "running");
-    p.status = own.some((t) => t.status === "now")
+    // A task waiting on you keeps its part open, whatever its steps said.
+    p.status = own.some((t) => t.status === "now" || t.status === "blocked")
       ? "now"
       : allDone(own) || stepDone
         ? "done"
@@ -248,13 +283,5 @@ function setStatuses(req: RequestView, last: Named): void {
           ? "now"
           : "todo";
   }
-  for (const ph of req.phases) {
-    ph.status = ph.tasks.some(
-      (t) => t.status === "now" || t.status === "failed",
-    )
-      ? "now"
-      : allDone(ph.tasks)
-        ? "done"
-        : "todo";
-  }
+  for (const ph of req.phases) ph.status = phaseStatus(ph.tasks);
 }

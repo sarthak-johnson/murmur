@@ -140,7 +140,8 @@ export interface RequestView {
   titledBy?: "claude";
   /**
    * Where the request stands, read from its last events (first match wins):
-   * - "waiting": the session's `needsYou` came during this request.
+   * - "waiting": the session's `needsYou` came during this request, even while its
+   *   helpers still run.
    * - "running": it is the last request and its last event is not a Stop, or one of its
    *   helpers still runs (not quiet for over 10 minutes before the session's latest event).
    * - "left-open": a later request exists and plan tasks remain not done.
@@ -218,7 +219,9 @@ export interface MessageView {
   agent?: string;
   /**
    * The phase (`PhaseView.id`) the message belongs to: its `task`'s phase when it names
-   * one, else the phase whose time window holds it. A phase's window runs from the first
+   * one or is a blocked task's ask (`TaskView.ask`), else its `agent`'s (the phase of the
+   * task that helper is tied to, else of its part's first task), else the phase whose
+   * time window holds it. A phase's window runs from the first
    * event tied to any of its tasks (a live narrate naming it, a helper on it or named for
    * its subject, a message naming it, a file change on its part) to the next window's
    * start. Messages before every window go to the first phase. Unset on a request with
@@ -230,7 +233,11 @@ export interface MessageView {
 export interface PhaseView {
   id: string;
   title: string;
-  status: Status;
+  /**
+   * From its tasks: "blocked" when one waits on the user, "done" when all are done, "now"
+   * when one runs or failed, or some are done and some not; else "todo".
+   */
+  status: Status | "blocked";
   tasks: TaskView[];
 }
 
@@ -238,9 +245,27 @@ export interface TaskView {
   id: string;
   title: string;
   part?: string;
-  status: Status | "failed";
+  /**
+   * Narrate `taskStatus` running reads "now", done "done", failed "failed", and blocked
+   * (Claude waits on the user) "blocked". A task with no status yet is "now" while the
+   * latest narrate names it or a helper tied to it still runs, else "todo".
+   */
+  status: Status | "failed" | "blocked";
+  /**
+   * Helpers on it: one that narrated it, one whose description names its subject ("Task
+   * 39"), else one whose description shares words and numbers with its title more than
+   * with any other task's ("Build scenes 1, 2, 4" on "Scenes 1-4"), else one started while
+   * Claude was on it.
+   */
   agents: string[];
+  /** Why it failed or got stuck; never set for a blocked task (see `ask`). */
   problem?: string;
+  /**
+   * What Claude asked of the user while the task is blocked: the ask in the first message
+   * after the blocking narrate that asks for something (see `NeedsYou`), with that
+   * message's id and time, else the narrate's own words and time. Unset unless blocked.
+   */
+  ask?: { text: string; since: string; message?: string };
   /**
    * Fix rounds the task took: the highest round of work on its subject ("Task 39", read
    * from its title or its part's) in this request, less one. That is the highest
@@ -300,6 +325,8 @@ export interface NowView {
   ts: string;
   /** Read from the latest tool call or Stop because no narrate came after it. */
   inferred?: boolean;
+  /** The helper (`AgentView.id`) whose tool call an inferred `text` was read from. */
+  agent?: string;
   /** The raw command (or tool name) an inferred `text` stands for, one click away. */
   detail?: string;
 }
@@ -335,6 +362,10 @@ export interface AgentView {
   brief?: string;
   /** The helper's report back to Claude, once one arrived. */
   report?: AgentReport;
+  /** Distinct paths it changed, first changed first. Unset when none. */
+  files?: string[];
+  /** Its latest tool call in plain words, as an inferred `NowView.text` reads. */
+  doing?: { text: string; ts: string };
   /**
    * The kind of work, from `description`: "recheck" (re-review, recheck), "fix" (Fix ...,
    * a fix round), "review", "plan", "build" (implement, build, write, add, draft, create),
@@ -386,6 +417,18 @@ export interface AgentReport {
   interim: boolean;
 }
 
+/**
+ * Claude waits on the user. From Claude Code: a permission prompt, a question dialog, an
+ * idle prompt or a helper needing input (reasons "permission", "question", "idle",
+ * "input"). Also "input" when Claude's turn ends (a main-thread Stop) asking for
+ * something, even while helpers work on: its last message puts a question to the user
+ * ("Should I push it?"), or a sentence in it asks ("Please sign in there"; "waiting on
+ * you to sign in" reads "Sign in"), else a task is blocked (in its narrate's words). The
+ * text is that one sentence. A later Stop's ask, with nothing clearing it between,
+ * replaces the text and keeps `since`.
+ * Cleared by the next prompt, SessionEnd or a tool call; a helper's work never clears
+ * the main thread's ask, and a helper's permission prompt shows over it until it clears.
+ */
 export interface NeedsYou {
   reason: "permission" | "question" | "idle" | "input";
   text: string;
