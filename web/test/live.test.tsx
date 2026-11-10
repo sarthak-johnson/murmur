@@ -377,7 +377,7 @@ describe("live screen", () => {
     }
   });
 
-  it("a guessed request kind is tagged inferred", async () => {
+  it("a guessed request kind shows no chip; a named one does", async () => {
     const view = session();
     view.requests[0] = {
       ...(view.requests[0] as RequestView),
@@ -386,8 +386,7 @@ describe("live screen", () => {
     show(view, { requestId: "r1" });
     const kind = () =>
       document.querySelector(".over .label-chip") as HTMLElement;
-    expect(kind().textContent).toBe("Bug huntinferred");
-    expect(within(kind()).getByText("inferred").className).toBe("inferred");
+    expect(kind()).toBeNull();
     cleanup();
     show(view, { requestId: "r2" });
     expect(kind().textContent).toBe("Feature");

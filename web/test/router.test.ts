@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { matchRoute, navigate, requestPath } from "../src/router";
+import { matchRoute, navigate, requestPath, sessionPath } from "../src/router";
 
 describe("matchRoute", () => {
   it("parses part route", () => {
@@ -17,7 +17,11 @@ describe("matchRoute", () => {
       code: "ABCD-1234",
     });
     expect(matchRoute("/settings")).toEqual({ name: "settings" });
-    expect(matchRoute("/s/abc")).toEqual({ name: "session", sessionId: "abc" });
+    expect(matchRoute("/s/abc")).toEqual({
+      name: "session",
+      sessionId: "abc",
+      tab: "journey",
+    });
     expect(matchRoute("/s/abc/r/q")).toEqual({
       name: "request",
       sessionId: "abc",
@@ -38,6 +42,18 @@ describe("matchRoute", () => {
     // Story is the bare path, never a second URL for the same page.
     expect(matchRoute("/s/abc/r/q/story")).toEqual({ name: "notFound" });
     expect(matchRoute("/s/abc/r/q/map")).toEqual({ name: "notFound" });
+  });
+  it("parses the session's tabs: the journey is the bare path, the flow its own", () => {
+    expect(matchRoute("/s/abc/flow?r=q")).toEqual({
+      name: "session",
+      sessionId: "abc",
+      tab: "flow",
+    });
+    expect(matchRoute("/s/abc/journey")).toEqual({ name: "notFound" });
+    expect(matchRoute("/s/abc/flow/x")).toEqual({ name: "notFound" });
+    expect(sessionPath("a b")).toBe("/s/a%20b");
+    expect(sessionPath("a", "journey")).toBe("/s/a");
+    expect(sessionPath("a", "flow")).toBe("/s/a/flow");
   });
   it("builds a request's path per tab", () => {
     expect(requestPath("a b", "q")).toBe("/s/a%20b/r/q");

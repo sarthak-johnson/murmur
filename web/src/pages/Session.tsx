@@ -5,16 +5,30 @@ import { FlowBoard } from "../flow/FlowBoard";
 import { useLastLooked } from "../lastLooked";
 import { Assumptions } from "../live/Assumptions";
 import { RequestBrief } from "../live/Brief";
-import { Journey } from "../live/Journey";
+import { Journey, SessionHead } from "../live/Journey";
 import { Brand, dayLabel, Rail, RailFoot } from "../live/Rail";
 import { SideColumn } from "../live/Side";
 import { Story } from "../live/Story";
-import { FilesTab, HelpersTab, RequestTabs } from "../live/Tabs";
+import { FilesTab, HelpersTab, RequestTabs, SessionTabs } from "../live/Tabs";
 import { TopBar } from "../live/TopBar";
 import { PhaseTrack } from "../live/Track";
 import { PartDetail } from "../part/PartDetail";
-import { navigate, partPath, requestPath, type Tab } from "../router";
-import { KIND, type RequestState, requestMark, type Waiting } from "../session";
+import {
+  navigate,
+  partPath,
+  requestPath,
+  type SessionTab,
+  type Tab,
+} from "../router";
+import {
+  askOf,
+  cleanPrompt,
+  KIND,
+  type RequestState,
+  requestMark,
+  type Waiting,
+} from "../session";
+import { SessionFlow } from "../sflow/SessionFlow";
 import { clock, fixRoundCount, sentBack, thousands } from "../story";
 import { type SessionStatus, useSession } from "../useSession";
 
@@ -23,6 +37,7 @@ export function SessionPage(props: {
   requestId?: string | undefined;
   partId?: string | undefined;
   tab?: Tab | undefined;
+  sessionTab?: SessionTab | undefined;
   me?: Me;
   onSignOut?(): void;
 }) {
@@ -120,6 +135,8 @@ export function Live(props: {
   /** A task's page inside the same frame. */
   partId?: string | undefined;
   tab?: Tab | undefined;
+  /** The session page's tab; unset reads as the journey. */
+  sessionTab?: SessionTab | undefined;
   view: SessionView | null;
   events?: MurmurEvent[];
   status: SessionStatus;
@@ -129,6 +146,7 @@ export function Live(props: {
 }) {
   const { sessionId, view, events = [], status, lastLooked } = props;
   const { partId, me, onSignOut, tab = "story" } = props;
+  const { sessionTab = "journey" } = props;
   // Relative times ("14 m ago") move on even when no events arrive.
   const [, tick] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
@@ -200,7 +218,15 @@ export function Live(props: {
           onSignOut={onSignOut}
         />
         <main
-          className={tab === "flow" && !partId ? "main wide" : "main"}
+          className={
+            onJourney
+              ? sessionTab === "flow"
+                ? "main wide sf-main"
+                : "main"
+              : tab === "flow" && !partId
+                ? "main wide"
+                : "main"
+          }
           id="main"
           tabIndex={-1}
         >
@@ -214,7 +240,19 @@ export function Live(props: {
             status === "loading" ? (
               <Skeleton />
             ) : (
-              <Journey sessionId={sessionId} view={view} events={events} />
+              <>
+                <SessionHead view={view} events={events} />
+                <SessionTabs sessionId={sessionId} tab={sessionTab} />
+                {sessionTab === "flow" ? (
+                  <SessionFlow
+                    sessionId={sessionId}
+                    view={view}
+                    events={events}
+                  />
+                ) : (
+                  <Journey sessionId={sessionId} view={view} events={events} />
+                )}
+              </>
             )
           ) : partId ? (
             part ? (
@@ -309,18 +347,18 @@ function RequestMain(props: {
   return (
     <>
       <div className="over">
-        <span className="label-chip">
-          {KIND[req.kind]}
-          {req.kindInferred && <span className="inferred">inferred</span>}
-        </span>
+        {/* A kind Murmur guessed is not worth a chip: "yes" is no feature. */}
+        {!req.kindInferred && (
+          <span className="label-chip">{KIND[req.kind]}</span>
+        )}
         <span className="num">
           Request {view.requests.indexOf(req) + 1} of {view.requests.length} ·
           asked {dayLabel(req.startedAt)}, {clock(req.startedAt)}
           {from && ` · ${from}`}
         </span>
       </div>
-      <h1 className="ask live-title" title={req.prompt}>
-        {req.goal || req.prompt}
+      <h1 className="ask live-title" title={cleanPrompt(req.prompt)}>
+        {askOf(req)}
       </h1>
       {facts.length > 0 && (
         // biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the facts

@@ -161,6 +161,7 @@ export function App() {
           requestId={route.name === "session" ? undefined : route.requestId}
           partId={route.name === "part" ? route.partId : undefined}
           tab={route.name === "request" ? route.tab : undefined}
+          sessionTab={route.name === "session" ? route.tab : undefined}
           me={me}
           onSignOut={signOut}
         />

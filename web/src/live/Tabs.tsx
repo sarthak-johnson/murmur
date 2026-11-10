@@ -6,7 +6,14 @@ import type {
 } from "@murmur/core";
 import { FileList, PathText } from "../files";
 import { Pill } from "../Pill";
-import { follow, partPath, requestPath, type Tab } from "../router";
+import {
+  follow,
+  partPath,
+  requestPath,
+  type SessionTab,
+  sessionPath,
+  type Tab,
+} from "../router";
 import { modelOf, shortTitle } from "../session";
 import { clock, duration, verdictOf } from "../story";
 import { StateMark } from "./Rail";
@@ -39,6 +46,32 @@ export function RequestTabs(props: {
             onClick={follow(path)}
           >
             {LABEL[t]}
+          </a>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** Journey · Flow under the session's title, styled as the request's tabs. */
+export function SessionTabs(props: { sessionId: string; tab: SessionTab }) {
+  const { sessionId, tab } = props;
+  const tabs: [SessionTab, string][] = [
+    ["journey", "Journey"],
+    ["flow", "Flow"],
+  ];
+  return (
+    <nav className="tabs sess-tabs" aria-label="Views of this session">
+      {tabs.map(([t, label]) => {
+        const path = sessionPath(sessionId, t);
+        return (
+          <a
+            key={t}
+            href={path}
+            aria-current={t === tab ? "page" : undefined}
+            onClick={follow(path)}
+          >
+            {label}
           </a>
         );
       })}

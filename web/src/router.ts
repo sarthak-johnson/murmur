@@ -4,12 +4,14 @@ import { flushSync } from "react-dom";
 /** The views of a request page, each its own URL: Story is the bare request path. */
 export const TABS = ["story", "flow", "files", "helpers"] as const;
 export type Tab = (typeof TABS)[number];
+/** The views of a session's page: Journey is the bare session path. */
+export type SessionTab = "journey" | "flow";
 
 export type Route =
   | { name: "home" }
   | { name: "device"; code: string }
   | { name: "settings" }
-  | { name: "session"; sessionId: string }
+  | { name: "session"; sessionId: string; tab: SessionTab }
   | { name: "request"; sessionId: string; requestId: string; tab: Tab }
   | { name: "part"; sessionId: string; requestId: string; partId: string }
   | { name: "notFound" };
@@ -31,7 +33,10 @@ export function matchRoute(path: string): Route {
     return { name: "device", code: url.searchParams.get("code") ?? "" };
   if (a === "settings" && seg.length === 1) return { name: "settings" };
   if (a === "s" && b) {
-    if (seg.length === 2) return { name: "session", sessionId: b };
+    if (seg.length === 2)
+      return { name: "session", sessionId: b, tab: "journey" };
+    if (c === "flow" && seg.length === 3)
+      return { name: "session", sessionId: b, tab: "flow" };
     if (c === "r" && d && seg.length === 4)
       return { name: "request", sessionId: b, requestId: d, tab: "story" };
     if (c === "r" && d && seg.length === 5 && isTab(e))
@@ -45,8 +50,9 @@ export function matchRoute(path: string): Route {
 
 const enc = encodeURIComponent;
 
-/** A session's path. */
-export const sessionPath = (sessionId: string) => `/s/${enc(sessionId)}`;
+/** A session's path, with its tab: `/s/:sid` (the journey) or `/s/:sid/flow`. */
+export const sessionPath = (sessionId: string, tab?: SessionTab) =>
+  `/s/${enc(sessionId)}${tab === "flow" ? "/flow" : ""}`;
 
 /** A request's path, with its tab: `/s/:sid/r/:rid`, `/s/:sid/r/:rid/flow` and so on. */
 export function requestPath(sessionId: string, requestId: string, tab?: Tab) {

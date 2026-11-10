@@ -993,8 +993,9 @@ svg.g {
   display: inline-grid;
   flex: none;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  /* A smaller mark beside small text: its container sets --mk. */
+  width: var(--mk, 16px);
+  height: var(--mk, 16px);
   border-radius: 50%;
   font: 700 11px / 1 var(--font-ui);
 }
@@ -5099,5 +5100,528 @@ code.nw {
   .vt-dot::view-transition-new(page-title) {
     inline-size: auto;
     block-size: auto;
+  }
+}
+
+/* Session flow */
+/*
+ * The session's storylines as swimlanes, time running down (sflow.ts lays them out): a
+ * sticky header per column, a time gutter that stays at the left, cards as tall as their
+ * three lines, lane lines and `follows` links behind them, long pauses as dashed rules.
+ * Selecting a card lights its thread and chain and dims the rest to 42 percent in 200 ms;
+ * reduced motion is instant. Under 900 px: one list. Also the step flow of a request
+ * with no parts, and the session's Journey · Flow tabs.
+ */
+.sess-tabs {
+  margin-top: 22px;
+}
+/*
+ * Storylines run side by side: on a wide screen the board runs wider than the page, while
+ * the head, tabs and note keep the journey's place, so switching tabs moves nothing.
+ */
+@media (min-width: 1600px) {
+  .main.sf-main:has(.sf-board:not(.one)) {
+    max-width: 2400px;
+  }
+  .main.sf-main > :not(.sf),
+  .main.sf-main .sf-note {
+    max-width: calc(var(--content) - 80px);
+    margin-inline: auto;
+  }
+}
+.sess-tabs + .jr .jr-ends {
+  margin-top: 28px;
+}
+.sf {
+  margin-top: 22px;
+}
+.sf-note {
+  margin: 0 0 14px;
+  color: var(--t3);
+  font-size: 15px;
+  line-height: 22px;
+}
+.sf-board {
+  position: relative;
+  border: 1px solid var(--s6);
+  border-radius: 14px;
+  background: var(--s2);
+  animation: fade-in 200ms ease-out;
+}
+/* More of the board lies past the right or left edge: that edge fades. */
+.sf-board.more::after,
+.sf-board.less::before {
+  content: "";
+  position: absolute;
+  z-index: 8;
+  top: 0;
+  bottom: 38px;
+  width: 56px;
+  pointer-events: none;
+}
+.sf-board.more::after {
+  right: 0;
+  border-radius: 0 13px 0 0;
+  background: linear-gradient(to right, transparent, var(--s2));
+}
+.sf-board.less::before {
+  left: 88px;
+  background: linear-gradient(to left, transparent, var(--s2));
+}
+.sf-heads {
+  position: sticky;
+  z-index: 7;
+  top: var(--top);
+  height: 66px;
+  overflow: hidden;
+  border-radius: 13px 13px 0 0;
+  background: var(--s2);
+  box-shadow: inset 0 -1px 0 var(--s6);
+}
+.sf-heads-in {
+  position: relative;
+  height: 100%;
+}
+.sf-corner {
+  position: absolute;
+  top: 0;
+  bottom: 1px;
+  left: 0;
+  background: var(--s2);
+}
+.sf-head {
+  position: absolute;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  height: 100%;
+  min-width: 0;
+  padding-right: 8px;
+  transition: opacity 200ms ease-out;
+}
+.sf-head.dim {
+  opacity: 0.42;
+}
+.sf-head-t {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--t1);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+.sf-head.on .sf-head-t {
+  color: var(--now);
+}
+.sf-head-m {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--t3);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.sf-head-m,
+.sf-c1,
+.rs-k {
+  --mk: 14px;
+}
+.sf-frame {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-radius: 0 0 13px 13px;
+}
+.sf-board.bare .sf-frame {
+  border-radius: 13px;
+}
+.sf-canvas {
+  position: relative;
+}
+/* The times stay at the left while the columns scroll under them. */
+.sf-gutter {
+  position: sticky;
+  z-index: 4;
+  left: 0;
+  height: 100%;
+  background: var(--s2);
+  box-shadow: inset -1px 0 0 var(--s5);
+}
+.sf-time {
+  position: absolute;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  padding-top: 12px;
+  color: var(--t4);
+  font-size: 13px;
+  line-height: 22px;
+}
+.sf-tday {
+  color: var(--t2);
+  font: 600 13px / 22px var(--font-ui);
+  white-space: nowrap;
+}
+.sf-gap {
+  position: absolute;
+  right: 0;
+  left: 16px;
+  border-top: 1px dashed var(--s8);
+}
+.sf-pause {
+  position: absolute;
+  height: 24px;
+  margin-top: -12px;
+}
+.sf-pause::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  z-index: 1;
+  border-top: 1px dashed var(--s8);
+}
+.sf-pause-t {
+  position: sticky;
+  z-index: 5;
+  left: 100px;
+  display: inline-block;
+  padding: 0 10px;
+  margin-left: 12px;
+  background: var(--s2);
+  color: var(--t3);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 24px;
+}
+.sf-lines {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+.sf-lines path {
+  fill: none;
+  transition:
+    stroke 200ms ease-out,
+    opacity 200ms ease-out;
+}
+.sf-lane {
+  stroke: var(--s7);
+  stroke-width: 2;
+}
+.sf-lane.on {
+  stroke: var(--now-line);
+}
+.sf-link path {
+  stroke: var(--s8);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sf-link.on path {
+  stroke: var(--now);
+  stroke-width: 2;
+}
+.sf-lane.dim,
+.sf-link.dim {
+  opacity: 0.42;
+}
+.sf-card {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--s6);
+  border-radius: 12px;
+  background: var(--s3);
+  color: var(--t2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    opacity 200ms ease-out,
+    border-color 150ms ease-out,
+    background-color 150ms ease-out,
+    box-shadow 150ms ease-out;
+}
+.sf-card:hover {
+  border-color: var(--s8);
+  background: var(--s4);
+}
+.sf-card.running {
+  border-color: var(--now-line);
+}
+.sf-card.waiting {
+  border-color: var(--need-line);
+}
+.sf-card.failed {
+  border-color: var(--bad-line);
+}
+.sf-card.sel {
+  border-color: var(--now);
+  box-shadow:
+    0 0 0 1px var(--now),
+    0 0 0 6px var(--now-tint);
+}
+.sf-card.dim {
+  opacity: 0.42;
+}
+.sf-c1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.sf-n {
+  flex: none;
+  color: var(--t4);
+  font: 500 13px / 22px var(--font-code);
+}
+/* One line, cut after a whole word. */
+.sf-short,
+.sf-out {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+.sf-short {
+  flex: 1;
+  color: var(--t1);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+}
+.sf-open {
+  flex: none;
+  color: var(--now);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 22px;
+}
+.sf-out {
+  margin-top: 4px;
+  color: var(--t3);
+  font-size: 15px;
+  line-height: 22px;
+}
+.sf-fx {
+  margin-top: auto;
+  overflow: hidden;
+  color: var(--t4);
+  font-size: 13px;
+  line-height: 18px;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+.sf-hint {
+  margin: 0;
+  padding: 10px 16px;
+  border-top: 1px solid var(--s5);
+  color: var(--t4);
+  font-size: 13px;
+  line-height: 18px;
+}
+/* Under 900 px: one list in time order, each card naming its storyline. */
+.sf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sf-day {
+  margin-top: 10px;
+  color: var(--t2);
+  font: 600 13px / 18px var(--font-ui);
+}
+.sf-day:first-child {
+  margin-top: 0;
+}
+.sf-lcard {
+  position: static;
+  color: var(--t2);
+  text-decoration: none;
+}
+.sf-lcard:hover,
+.sf-lcard:focus-visible {
+  color: var(--t2);
+  text-decoration: none;
+}
+.sf-lcard[aria-current="true"] {
+  border-color: var(--now);
+}
+/* The list has room to say each line whole: nothing is cut. */
+.sf-lcard .sf-short,
+.sf-lcard .sf-out {
+  display: block;
+  overflow-wrap: break-word;
+}
+.sf-lcard .sf-fx {
+  margin-top: 8px;
+}
+.sf-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+}
+.sf-chip {
+  max-width: 100%;
+  padding: 1px 8px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--s4);
+  box-shadow: inset 0 0 0 1px var(--s6);
+  color: var(--t2);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sf-from {
+  color: var(--t3);
+  font-size: 13px;
+  line-height: 20px;
+}
+/* A dashed rule either side of its words. */
+.sf-list .sf-pause {
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: auto;
+  margin: 2px 0;
+  color: var(--t3);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 24px;
+}
+.sf-list .sf-pause::before,
+.sf-list .sf-pause::after {
+  content: "";
+  position: static;
+  flex: 1;
+  border-top: 1px dashed var(--s8);
+}
+/* The step flow of a request with no parts: steps left to right, joined by a line. */
+.rs-steps {
+  display: grid;
+  grid-auto-columns: minmax(200px, 340px);
+  grid-auto-flow: column;
+  align-items: start;
+  gap: 32px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rs-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--s6);
+  border-radius: 12px;
+  background: var(--s2);
+}
+.rs-step + .rs-step::before {
+  content: "";
+  position: absolute;
+  top: 24px;
+  left: -33px;
+  width: 32px;
+  border-top: 2px solid var(--s7);
+}
+.rs-k {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--t3);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+.rs-q,
+.rs-t {
+  color: var(--t1);
+  font-size: 15px;
+  line-height: 22px;
+  overflow-wrap: break-word;
+}
+.rs-t {
+  color: var(--t2);
+}
+.rs-files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.rs-file {
+  max-width: 100%;
+  padding: 1px 7px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--s4);
+  color: var(--t2);
+  font: 400 13px / 20px var(--font-code);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rs-more {
+  color: var(--t3);
+  font-size: 13px;
+}
+.rs-end.done {
+  border-color: var(--done-line);
+}
+.rs-end.running {
+  border-color: var(--now-line);
+}
+.rs-end.failed {
+  border-color: var(--bad-line);
+}
+@media (max-width: 899px) {
+  .rs-steps {
+    grid-auto-columns: auto;
+    grid-auto-flow: row;
+    gap: 20px;
+  }
+  .rs-step + .rs-step::before {
+    top: -21px;
+    left: 28px;
+    width: 0;
+    height: 20px;
+    border-top: 0;
+    border-left: 2px solid var(--s7);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sf-board {
+    animation: none;
+  }
+  .sf-card,
+  .sf-head,
+  .sf-lines path {
+    transition: none;
   }
 }

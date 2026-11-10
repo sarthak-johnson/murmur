@@ -14,7 +14,7 @@ import {
 } from "@murmur/core";
 import { type CSSProperties, useEffect, useRef } from "react";
 import { follow, requestPath } from "../router";
-import { KIND, type Mark, requestMark } from "../session";
+import { askOf, cleanPrompt, KIND, type Mark, requestMark } from "../session";
 import { clock, duration, thousands } from "../story";
 import { dayLabel, StateMark, sessionSpan } from "./Rail";
 
@@ -23,12 +23,12 @@ const many = (n: number, one: string, more = `${one}s`) =>
   `${n} ${n === 1 ? one : more}`;
 /** "Mon 2 Nov 17:43". */
 const when = (iso: string) => `${dayLabel(iso)} ${clock(iso)}`;
-const took = (from: string, to: string) => {
+export const took = (from: string, to: string) => {
   const d = duration(from, to);
   return d === "under a minute" ? "<1 m" : d;
 };
 /** A gap in words: "3 days", "11 h 39 m". */
-function gap(from: string, to: string): string {
+export function gap(from: string, to: string): string {
   const ms = Date.parse(to) - Date.parse(from);
   return ms >= DAY_MS
     ? many(Math.floor(ms / DAY_MS), "day")
@@ -36,7 +36,7 @@ function gap(from: string, to: string): string {
 }
 const sameDay = (a: string, b: string) =>
   new Date(a).toDateString() === new Date(b).toDateString();
-const live = (m: Mark | undefined) => m === "running" || m === "waiting";
+export const live = (m: Mark | undefined) => m === "running" || m === "waiting";
 
 /** How the last request stands, after its number: "running 40 m", "done in 2 h 03 m". */
 const STANDS: Record<Mark, string> = {
@@ -51,6 +51,71 @@ const STANDS: Record<Mark, string> = {
 const STAGGER = 10;
 /** Sessions whose journey has risen in once: coming back to it never replays that. */
 const risen = new Set<string>();
+
+/**
+ * The session's head, the same on each of its tabs: where and when, its name, and its
+ * span, requests and chapters. The tabs sit under it.
+ */
+export function SessionHead(props: {
+  view: SessionView;
+  events: MurmurEvent[];
+}) {
+  const { view, events } = props;
+  const reqs = view.requests;
+  const start = reqs[0];
+  const folder = view.cwd.split("/").filter(Boolean).pop();
+  const firstDay = start ? dayLabel(start.startedAt) : "";
+  const lastDay = dayLabel(view.lastEventAt);
+  const running = reqs.filter((r) =>
+    live(requestMark(view, r, events).mark),
+  ).length;
+  const chapters = view.journey?.chapters.length ?? 0;
+  const span = sessionSpan(view);
+  const days = /^(\d+) (days?)$/.exec(span);
+  return (
+    <>
+      <div className="over jr-over">
+        <span className="label-chip">Session</span>
+        <span className="num">
+          {folder && `${folder} · `}
+          {firstDay === lastDay ? firstDay : `${firstDay} to ${lastDay}`}
+        </span>
+      </div>
+      <h1
+        className="jr-title"
+        title={start ? cleanPrompt(start.prompt) : undefined}
+      >
+        {view.title ? cleanPrompt(view.title) : "Untitled session"}
+      </h1>
+      {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the facts */}
+      <div className="asked" role="group" aria-label="Summary">
+        <span>
+          {days ? (
+            <>
+              <b className="num">{days[1]}</b> {days[2]}
+            </>
+          ) : (
+            span
+          )}
+        </span>
+        <span>
+          <b className="num">{reqs.length}</b>{" "}
+          {reqs.length === 1 ? "request" : "requests"}
+        </span>
+        {chapters > 1 && (
+          <span>
+            <b className="num">{chapters}</b> chapters
+          </span>
+        )}
+        {running > 0 && (
+          <span>
+            <b className="num">{running}</b> running now
+          </span>
+        )}
+      </div>
+    </>
+  );
+}
 
 export function Journey(props: {
   sessionId: string;
@@ -97,12 +162,8 @@ export function Journey(props: {
   const pulsing = reqs.findLast((r) => marks.get(r.id)?.mark === "running");
   const endOf = (r: RequestView) =>
     live(marks.get(r.id)?.mark) ? now : (marks.get(r.id)?.end ?? now);
-  const folder = view.cwd.split("/").filter(Boolean).pop();
-  const lastDay = dayLabel(view.lastEventAt);
   const firstDay = dayLabel(start.startedAt);
-  const running = reqs.filter((r) => live(marks.get(r.id)?.mark)).length;
   const span = sessionSpan(view);
-  const days = /^(\d+) (days?)$/.exec(span);
   const asked = lastMark?.mark === "waiting";
   const askedN = asked
     ? last.waiting?.length || lastMark?.waiting?.questions.length || 0
@@ -110,43 +171,6 @@ export function Journey(props: {
 
   return (
     <div className="jr">
-      <div className="over jr-over">
-        <span className="label-chip">Session</span>
-        <span className="num">
-          {folder && `${folder} · `}
-          {firstDay === lastDay ? firstDay : `${firstDay} to ${lastDay}`}
-        </span>
-      </div>
-      <h1 className="jr-title" title={start.prompt}>
-        {view.title || "Untitled session"}
-      </h1>
-      {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the facts */}
-      <div className="asked" role="group" aria-label="Summary">
-        <span>
-          {days ? (
-            <>
-              <b className="num">{days[1]}</b> {days[2]}
-            </>
-          ) : (
-            span
-          )}
-        </span>
-        <span>
-          <b className="num">{reqs.length}</b>{" "}
-          {reqs.length === 1 ? "request" : "requests"}
-        </span>
-        {chapters.length > 1 && (
-          <span>
-            <b className="num">{chapters.length}</b> chapters
-          </span>
-        )}
-        {running > 0 && (
-          <span>
-            <b className="num">{running}</b> running now
-          </span>
-        )}
-      </div>
-
       {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the cards */}
       <div
         className={rise ? "jr-ends jr-in" : "jr-ends"}
@@ -162,13 +186,15 @@ export function Journey(props: {
           <span className="jr-k">
             Where it started · {firstDay}, {clock(start.startedAt)}
           </span>
-          <q className="jr-q">
-            {cutWords(start.prompt.replace(/\s+/g, " ").trim(), 220)}
-          </q>
-          <span className="jr-end-meta">
-            {KIND[start.kind]}
-            {start.outcome && ` · ${start.outcome}`}
-          </span>
+          <q className="jr-q">{cutWords(cleanPrompt(start.prompt), 220)}</q>
+          {(start.outcome || !start.kindInferred) && (
+            <span className="jr-end-meta">
+              {[
+                ...(start.kindInferred ? [] : [KIND[start.kind]]),
+                ...(start.outcome ? [start.outcome] : []),
+              ].join(" · ")}
+            </span>
+          )}
         </a>
         <div className="jr-join">
           <span className="jr-join-t num">
@@ -185,9 +211,7 @@ export function Journey(props: {
             {live(lastMark?.mark) ? "Where it is now" : "Where it ended"} ·{" "}
             {dayLabel(endOf(last))}, {clock(endOf(last))}
           </span>
-          <span className="jr-now">
-            {last.outcome || last.goal || last.prompt}
-          </span>
+          <span className="jr-now">{last.outcome || askOf(last)}</span>
           <span className="jr-end-meta">
             Request {num(last)}, {STANDS[lastMark?.mark ?? "done"]}{" "}
             {took(last.startedAt, endOf(last))}.
@@ -435,8 +459,10 @@ function Station(props: {
         data-morph=""
       >
         <span className="jr-card-head">
-          <span className="label-chip">{KIND[r.kind]}</span>
-          <span className="jr-card-ttl">{r.goal || r.prompt}</span>
+          {!r.kindInferred && (
+            <span className="label-chip">{KIND[r.kind]}</span>
+          )}
+          <span className="jr-card-ttl">{askOf(r)}</span>
         </span>
         {(r.outcome || going) && (
           <span className="jr-out">
