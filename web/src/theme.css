@@ -60,6 +60,30 @@
   --top: 56px;
   --content: 1120px;
   --content-wide: 1360px;
+  --side: 300px;
+  --reading: 680px;
+}
+/* Wide screens: the page grows in steps and sits centred; text keeps a reading width. */
+@media (min-width: 1600px) {
+  :root {
+    --content: 1240px;
+    --content-wide: var(--content);
+    --side: 340px;
+  }
+}
+@media (min-width: 1920px) {
+  :root {
+    --rail: 300px;
+    --content: 1400px;
+    --side: 380px;
+    --reading: 720px;
+  }
+}
+@media (min-width: 2400px) {
+  :root {
+    --rail: 320px;
+    --content: 1640px;
+  }
 }
 * {
   box-sizing: border-box;
@@ -1679,6 +1703,7 @@ svg.g {
   width: 100%;
   max-width: var(--content);
   min-width: 0;
+  margin-inline: auto;
   padding: 28px 40px 72px;
   container-type: inline-size;
 }
@@ -3760,7 +3785,7 @@ code.nw {
 }
 @media (min-width: 1200px) {
   .req-split {
-    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-columns: minmax(0, 1fr) var(--side);
     gap: 40px;
     align-items: start;
   }
@@ -3854,7 +3879,7 @@ code.nw {
   margin-bottom: 8px;
 }
 .story .story-text {
-  max-width: 680px;
+  max-width: var(--reading);
   color: var(--t2);
   font: 400 16px / 25px var(--font-ui);
 }
@@ -4618,8 +4643,34 @@ code.nw {
   display: flex;
   gap: 6px;
   margin: 0;
-  padding: 0;
+  padding: 0 0 8px;
   list-style: none;
+  overflow-x: auto;
+}
+/* When the strip scrolls, its right edge fades until the end is reached. */
+@property --jr-fade {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes jr-fade {
+  from {
+    --jr-fade: 64px;
+  }
+  to {
+    --jr-fade: 0px;
+  }
+}
+@supports (animation-timeline: scroll()) {
+  .jr-segs {
+    mask-image: linear-gradient(
+      90deg,
+      #000 calc(100% - var(--jr-fade)),
+      transparent
+    );
+    animation: jr-fade linear both;
+    animation-timeline: scroll(x self);
+  }
 }
 .jr-segi {
   flex: var(--w) 1 0;
