@@ -32,6 +32,7 @@ import type {
   RequestState,
   RequestView,
   StepView,
+  TaskView,
 } from "./types.js";
 
 export interface ShapeContext {
@@ -571,11 +572,14 @@ function fillPart(
         eventIds: [m.id],
       })),
     ].sort(byTs);
-    // Claude's latest word on a part still under way is what it is doing.
+    // Claude's latest word on a part still under way is what it is doing, unless it waits on you.
     const lastStep = steps.at(-1);
     if (
       lastStep &&
       part.status === "now" &&
+      !req.phases.some((ph) =>
+        ph.tasks.some((t) => t.part === part.id && t.status === "blocked"),
+      ) &&
       notes.some((x) => x.e.id === lastStep.eventIds[0])
     )
       lastStep.status = "running";

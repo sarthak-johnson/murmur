@@ -22044,7 +22044,9 @@ function fillPart(req, part, at, starts, live2, ctx) {
       }))
     ].sort(byTs);
     const lastStep = steps.at(-1);
-    if (lastStep && part.status === "now" && notes.some((x) => x.e.id === lastStep.eventIds[0]))
+    if (lastStep && part.status === "now" && !req.phases.some(
+      (ph) => ph.tasks.some((t) => t.part === part.id && t.status === "blocked")
+    ) && notes.some((x) => x.e.id === lastStep.eventIds[0]))
       lastStep.status = "running";
     if (steps.length) {
       part.steps = steps;

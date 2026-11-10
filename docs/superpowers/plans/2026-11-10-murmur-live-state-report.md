@@ -75,6 +75,14 @@ Its web-side "Partly done" phase and its phase-line workaround are removed, beca
 
 ## Left open
 
-- The task page says "Sign in there and tell me when you're done", Claude's first words on it; "there" leans on the sentence before.
-- The journey header still says "1 running now" for a request waiting on you.
-- The recap path (`plugin/src/recap.ts`) still reads a blocked task as failed, for imported history.
+- A question or sign-in ask written in another language is not read as an ask; only a blocked narrate raises needs-you there.
+- Claude Code's own idle notification, unchanged by this branch, still reads "waiting on you" on a live session's newest request after a minute, however the turn ended.
+
+## Review follow-up
+
+Ordinary endings no longer read as waiting: manners ("please note"), offers of more work ("Want me to open a PR?"), conditionals, negations and quoted lines.
+A task blocked on a job or schedule, not on the user, reads as under way.
+The one helper in request 44 that stands alone is right: it is exactly what the brief asks ("when the helper has none, to the helper"), and its four files stay listed under it.
+The other request 44 helper, "Map server chat stream contract", was a regression from one shared word; a match now needs half of the shorter side.
+A task Claude never gave a status finishes when its clearly matched helpers all finished well, which closes "Scenes 5-7" on request 7.
+The journey header now says "1 waiting on you", and a blocked task's page draws no "Running" step.

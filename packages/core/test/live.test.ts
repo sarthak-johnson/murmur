@@ -122,6 +122,7 @@ describe("a task waiting on the user", () => {
       "The voice site needs a sign-in",
     ]);
     expect(voice?.steps.map((s) => s.status)).not.toContain("failed");
+    expect(voice?.steps.map((s) => s.status)).not.toContain("running");
   });
 
   test("turning running again drops the ask", () => {

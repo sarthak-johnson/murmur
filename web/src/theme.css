@@ -1331,6 +1331,7 @@ svg.g {
 }
 .crumbs li:not(:last-child) {
   flex-shrink: 3;
+  min-width: 64px;
   max-width: 240px;
 }
 /* Where you are reads whole; the levels above it give way first. */
