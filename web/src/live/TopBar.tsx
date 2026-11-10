@@ -386,24 +386,22 @@ export function TopBar(props: {
             <NeedIcon />
             {waitingLabel(waiting)}
             <span className="num">{took(waiting.since, now)}</span>
+            {helping > 0 && (
+              <span className="num">
+                {" · "}
+                {nOf(helping, "helper")}
+                <span className="pill-more"> still working</span>
+              </span>
+            )}
           </a>
         )}
-        {request && (
+        {/* The chip already says it waits; a second amber pill would repeat it. */}
+        {request && !(state === "waiting" && waiting) && (
           <span className={`state-pill ${mark}`}>
             <StateMark mark={mark} />
             <span className="num">
-              <span className={helping ? "pill-more" : undefined}>
-                <span>{PILL[mark]}</span>
-                {" · "}
-              </span>
-              {helping ? (
-                <>
-                  {nOf(helping, "helper")}
-                  <span className="pill-more"> still working</span>
-                </>
-              ) : (
-                took(since, state === "done" ? end : now)
-              )}
+              <span>{PILL[mark]}</span> ·{" "}
+              {took(since, state === "done" ? end : now)}
             </span>
           </span>
         )}

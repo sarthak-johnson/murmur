@@ -215,7 +215,11 @@ function Waits(props: {
           ))}
         </ul>
       )}
-      <p className="rb-where">Answer in the terminal</p>
+      <p className="rb-where">
+        {waiting.asked
+          ? "Reply to Claude in the terminal"
+          : "Answer in the terminal"}
+      </p>
     </section>
   );
 }

@@ -162,7 +162,7 @@ describe("waiting on you while helpers work", () => {
     expect(stands.textContent).toContain("Sign in to it");
     const call = screen.getByRole("region", { name: "Waiting on you" });
     expect(call.textContent).not.toContain("Sign in to it");
-    expect(document.querySelector(".state-pill")?.textContent).toContain(
+    expect(document.querySelector(".need-chip")?.textContent).toContain(
       "1 helper still working",
     );
   });

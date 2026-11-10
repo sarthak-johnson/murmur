@@ -478,7 +478,7 @@ describe("request page, story first", () => {
         needsYou: { reason: "permission", text: "Allow Bash?", since: at(9) },
       }),
     );
-    expect(bar().getByText("Waiting")).toBeTruthy();
+    expect(document.querySelector(".state-pill")).toBeNull();
     expect(bar().getByRole("link", { name: /Permission needed/ })).toBeTruthy();
   });
 
