@@ -399,7 +399,7 @@ export function TopBar(props: {
               {helping ? (
                 <>
                   {nOf(helping, "helper")}
-                  <span className="pill-more"> still</span> working
+                  <span className="pill-more"> still working</span>
                 </>
               ) : (
                 took(since, state === "done" ? end : now)
