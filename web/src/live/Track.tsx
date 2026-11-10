@@ -10,11 +10,12 @@ import { livePhase, type Mark, phaseSpan, shortTitle } from "../session";
 import { clock, duration, nOf, verdictOf } from "../story";
 import { StateMark } from "./Rail";
 
-type Shown = "done" | "now" | "todo" | "failed" | "open";
+type Shown = "done" | "now" | "todo" | "failed" | "blocked" | "open";
 
 const WORD: Record<Shown, string> = {
   done: "done",
   now: "in progress",
+  blocked: "waiting on you",
   todo: "not started",
   failed: "failed",
   open: "left open",
@@ -24,6 +25,7 @@ const MARK: Record<Shown, Mark> = {
   now: "running",
   todo: "open",
   failed: "failed",
+  blocked: "waiting",
   open: "open",
 };
 
@@ -148,16 +150,19 @@ export function PhaseTrack(props: {
         : over
           ? "open"
           : t.status;
+  // Waiting on you outranks running: it is the one thing the reader can do.
   const phaseShown = (ph: PhaseView): Shown =>
     ph.status === "done"
       ? "done"
       : over
         ? "open"
-        : ph === live || ph.status === "now"
-          ? "now"
-          : ph.tasks.some((t) => t.status === "failed")
-            ? "failed"
-            : "todo";
+        : ph.status === "blocked"
+          ? "blocked"
+          : ph === live || ph.status === "now"
+            ? "now"
+            : ph.tasks.some((t) => t.status === "failed")
+              ? "failed"
+              : "todo";
   const href = (part: string) => partPath(sessionId, req.id, part);
   const tasks = req.phases.flatMap((p) => p.tasks);
   const doneN = tasks.filter((t) => t.status === "done").length;
@@ -177,6 +182,7 @@ export function PhaseTrack(props: {
     if (shown === "done")
       return [count, span(from, to)].filter(Boolean).join(" · ");
     if (shown === "open") return `${count} · left open`;
+    if (shown === "blocked") return `${count} · waiting on you`;
     if (shown === "now")
       return from ? `${count} · started ${clock(from)}` : count;
     return `${nOf(ph.tasks.length, "task")}, not started`;
@@ -233,7 +239,11 @@ export function PhaseTrack(props: {
                 stations={ph.tasks.map((t) => ({
                   key: t.id,
                   name: shortTitle(t.title),
-                  title: t.problem ? `${t.title}: ${t.problem}` : t.title,
+                  title: t.ask
+                    ? `${t.title}. Waiting on you: ${t.ask.text}`
+                    : t.problem
+                      ? `${t.title}: ${t.problem}`
+                      : t.title,
                   shown: taskShown(t),
                   part: t.part,
                 }))}

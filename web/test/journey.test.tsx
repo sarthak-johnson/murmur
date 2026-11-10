@@ -290,6 +290,21 @@ describe("totals", () => {
       ["2", "pauses over an hour, the longest 3 days"],
     ]);
   });
+
+  it("leaves out a zero: it says nothing", () => {
+    const totals = {
+      helpers: 3,
+      files: 12,
+      commands: 158,
+      sentBack: 0,
+      pauses: 0,
+    };
+    show(session({ journey: journey({ totals, pauses: [] }) }));
+    const list = screen.getByRole("list", { name: "Totals" });
+    expect(
+      [...list.querySelectorAll(".jr-tot-l")].map((l) => l.textContent),
+    ).toEqual(["helpers ran", "files changed", "commands run"]);
+  });
 });
 
 describe("chapters", () => {

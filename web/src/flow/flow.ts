@@ -3,7 +3,7 @@
  * each band, the facts every card shows, and where cards, folds and links sit. Pure, so
  * the board lays out the same in tests as in a browser.
  */
-import type { PartView, PhaseView, RequestView } from "@murmur/core";
+import type { PartView, PhaseView, RequestView, TaskView } from "@murmur/core";
 import { type Mark, rounds } from "../session";
 import { clock, duration } from "../story";
 
@@ -155,12 +155,17 @@ export function taskName(tag: string | undefined): string {
   return `${t.includes("-") ? "Tasks" : "Task"} ${t}`;
 }
 
-/** A part's mark: failed when a plan task of it failed, open once the request is over. */
+/**
+ * A part's mark: failed when a plan task of it failed, waiting while one waits on you
+ * (only in a request still going), open once the request is over.
+ */
 export function partMark(req: RequestView, p: PartView): Mark {
-  const failed = req.phases.some((ph) =>
-    ph.tasks.some((t) => t.part === p.id && t.status === "failed"),
-  );
-  if (failed) return "failed";
+  const has = (status: TaskView["status"]) =>
+    req.phases.some((ph) =>
+      ph.tasks.some((t) => t.part === p.id && t.status === status),
+    );
+  if (has("failed")) return "failed";
+  if (has("blocked") && !req.finished) return "waiting";
   if (p.status === "done") return "done";
   if (p.status === "now" && !req.finished) return "running";
   return "open";
@@ -176,6 +181,7 @@ export function stateWord(req: RequestView, p: PartView, long = false): string {
   }
   if (mark === "running") return "Running";
   if (mark === "failed") return "Failed";
+  if (mark === "waiting") return "Waiting on you";
   return req.finished ? "Left open" : "Not started";
 }
 
@@ -188,7 +194,12 @@ export function bandMark(req: RequestView, b: Band): Mark {
         ? "now"
         : "todo");
   if (status === "done") return "done";
-  return status === "now" && !req.finished ? "running" : "open";
+  if (req.finished) return "open";
+  return status === "blocked"
+    ? "waiting"
+    : status === "now"
+      ? "running"
+      : "open";
 }
 
 export const MARK_WORDS: Record<Mark, string> = {

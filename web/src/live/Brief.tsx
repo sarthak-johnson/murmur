@@ -178,12 +178,16 @@ function Waits(props: {
   request: RequestView;
   waiting: Waiting;
   risky: Flag[];
+  /** The ask "Where it stands" already leads with, not said twice. */
+  lead?: string | undefined;
 }) {
-  const { request, waiting, risky } = props;
+  const { request, waiting, risky, lead } = props;
   const now = new Date().toISOString();
   const items = waiting.questions.length
     ? waiting.questions.map((q) => ({ text: q.question, detail: q.detail }))
     : (request.waiting ?? []).map((text) => ({ text, detail: undefined }));
+  // One ask is said once, at the lead; several stay listed together.
+  const left = items.length === 1 && items[0]?.text === lead ? [] : items;
   return (
     <section className="rb-need" id="needs" aria-label="Waiting on you">
       <h2 className="k">
@@ -195,10 +199,12 @@ function Waits(props: {
           </span>
         </span>
       </h2>
-      {!items.length && waiting.text && <p className="rb-q">{waiting.text}</p>}
-      {(items.length > 0 || risky.length > 0) && (
+      {!items.length && waiting.text && waiting.text !== lead && (
+        <p className="rb-q">{waiting.text}</p>
+      )}
+      {(left.length > 0 || risky.length > 0) && (
         <ul className="rb-qs">
-          {items.map((q) => (
+          {left.map((q) => (
             <li key={q.text}>
               {q.text}
               {q.detail && <span className="rb-d"> {q.detail}</span>}
@@ -235,11 +241,21 @@ export function RequestBrief(props: {
   );
   const risky = req.flags.filter((f) => f.kind === "risky" && f.pending);
   const stands = done ? "What came out of it" : "Where it stands";
+  // What Claude's turn ended asking; a permission or a dialog is the panel's to say.
+  const ask = waiting?.asked
+    ? (waiting.questions[0]?.question ?? waiting.text)
+    : undefined;
   return (
     <section className="rb" aria-label="The brief">
-      {(outcome || edge) && (
+      {(ask || outcome || edge) && (
         <section className="rb-cell rb-stands" aria-label={stands}>
           <h2 className="k">{stands}</h2>
+          {ask && (
+            <p className="rb-ask">
+              <NeedIcon />
+              <span>{ask}</span>
+            </p>
+          )}
           {outcome && <p className="rb-out">{outcome}</p>}
           {edge && <p className="rb-edge">{edge}</p>}
         </section>
@@ -287,7 +303,9 @@ export function RequestBrief(props: {
         </section>
       )}
       <Numbers request={req} end={stopped ? end : now} done={done} />
-      {waiting && <Waits request={req} waiting={waiting} risky={risky} />}
+      {waiting && (
+        <Waits request={req} waiting={waiting} risky={risky} lead={ask} />
+      )}
     </section>
   );
 }

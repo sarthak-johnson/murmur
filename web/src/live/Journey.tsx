@@ -390,9 +390,12 @@ function Totals(props: {
         : `pauses over an hour${away ? `, the longest ${away}` : ""}`,
     ],
   ];
+  // A zero says nothing, so its tile is left out.
+  const shown = items.filter(([n]) => n > 0);
+  if (!shown.length) return null;
   return (
     <ul className={rise ? "jr-totals jr-in" : "jr-totals"} aria-label="Totals">
-      {items.map(([n, label]) => (
+      {shown.map(([n, label]) => (
         <li key={label} className="jr-tot">
           <b className="jr-tot-v num">{thousands(n)}</b>
           <span className="jr-tot-l">{label}</span>

@@ -2,13 +2,15 @@
  * Plain readings of a request's story: what kind of moment a message is, how a task
  * ended, how many rounds a task took, and what a helper's report says in a word.
  */
-import type {
-  AgentReport,
-  AgentView,
-  Moment,
-  PartView,
-  RequestView,
-  TaskView,
+import {
+  type AgentReport,
+  type AgentView,
+  cutWords,
+  firstSentence,
+  type Moment,
+  type PartView,
+  type RequestView,
+  type TaskView,
 } from "@murmur/core";
 import { plainText } from "./markdown";
 
@@ -160,6 +162,21 @@ export function aboutWork(brief: string | undefined): string | undefined {
   if (!b || /^(you are|you're|your (job|task|role)|you will|act as)\b/i.test(b))
     return undefined;
   return b;
+}
+
+/**
+ * What a helper is at, in a line: while it runs, its latest action and the files it has
+ * changed so far; once finished, the first sentence of its report (else of its last
+ * words). Empty when there is nothing to say.
+ */
+export function helperLine(a: AgentView, running: boolean): string {
+  const files = a.files?.length ?? 0;
+  if (running)
+    return [a.doing?.text, files ? `${nOf(files, "file")} so far` : ""]
+      .filter(Boolean)
+      .join(" · ");
+  const said = firstSentence(reportLine(a.report) || a.lastText || "");
+  return cutWords(said, 160);
 }
 
 /** A report in a line: its lead paragraph, else its summary unless that only says it finished. */

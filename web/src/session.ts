@@ -43,6 +43,8 @@ export interface Waiting {
   text: string;
   /** Claude Code is holding a tool call until you allow it. */
   permission?: boolean;
+  /** Claude ended its turn asking for this (`NeedsYou` reason "input"). */
+  asked?: boolean;
 }
 
 /** An AskUserQuestion call on the main thread with no result yet. */
@@ -119,6 +121,7 @@ export function waitingOn(
       questions: n.reason === "permission" ? [] : fromMessage,
       text: n.text,
       ...(n.reason === "permission" ? { permission: true } : {}),
+      ...(n.reason === "input" ? { asked: true } : {}),
     };
   if (stopped && last && asked.length)
     return { since: last.ts, questions: fromMessage, text: "" };
@@ -137,9 +140,8 @@ export function requestState(
   const { last, stopped } = lastActivity(view, req, events);
   const next = view.requests[view.requests.indexOf(req) + 1];
   const end = last?.ts ?? next?.startedAt ?? view.lastEventAt;
-  const helping = req.agents.some((a) => a.status === "running");
-  if (waiting && !helping) return { state: "waiting", end };
-  if (waiting) return { state: "running", end };
+  // Waiting on you stands even while helpers work on.
+  if (waiting) return { state: "waiting", end };
   const done = req.finished || view.ended || stopped;
   return { state: done ? "done" : "running", end };
 }
@@ -305,7 +307,10 @@ export function nowLine(
     }
     const command =
       src?.payload.tool_name === "Bash" || /^Running\b/.test(now.text);
-    const text = command ? desc || "Running a command" : tool(now.text);
+    const said = command ? desc || "Running a command" : tool(now.text);
+    // A helper's action says whose it is.
+    const helper = req.agents.find((a) => a.id === now.agent);
+    const text = helper ? `${helperName(helper)}: ${said}` : said;
     return { label, text, ...(src ? { src } : {}) };
   }
   return { label, text: now.text, ...(now.why ? { why: now.why } : {}) };
@@ -391,6 +396,17 @@ export function modelOf(a: AgentView, events: MurmurEvent[]): string {
   );
   const m = str(obj(call?.payload.tool_input).model);
   return m ? m.charAt(0).toUpperCase() + m.slice(1) : "";
+}
+
+/** A helper by what it works on: "Build demo scenes 3, 5" reads "Demo scenes 3, 5". */
+export function helperName(a: AgentView): string {
+  const d = a.description.trim();
+  const rest = d.replace(
+    /^(?:implement|build|write|add|draft|create|make|fix|review|re-?review|re-?check)\s+/i,
+    "",
+  );
+  const name = rest || d || "A helper";
+  return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
 export type HelperKind = "build" | "review" | "recheck";

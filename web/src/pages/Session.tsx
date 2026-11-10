@@ -287,7 +287,12 @@ export function Live(props: {
               request={req}
               waiting={waiting}
               done={done}
-              stopped={state !== "running"}
+              // Waiting on you with helpers still at work: the clock runs on.
+              stopped={
+                state === "done" ||
+                (state === "waiting" &&
+                  !req.agents.some((a) => a.status === "running"))
+              }
               end={end}
               onOpenPart={(p) => navigate(partPath(sessionId, req.id, p))}
             />

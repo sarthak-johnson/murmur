@@ -32,6 +32,24 @@ export function Glyph({ status }: { status: Shown }) {
         />
       ) : status === "now" ? (
         <circle cx="8" cy="8" r="3.5" fill="currentColor" />
+      ) : status === "blocked" ? (
+        <>
+          <circle
+            cx="8"
+            cy="8"
+            r="6.2"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+          />
+          <path
+            d="M8 4.6v4.2"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+          <circle cx="8" cy="11.2" r="1" fill="currentColor" />
+        </>
       ) : (
         <circle
           cx="8"

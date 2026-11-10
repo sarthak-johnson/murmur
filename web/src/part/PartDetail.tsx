@@ -8,6 +8,7 @@ import type {
 } from "@murmur/core";
 import { type ReactNode, useState } from "react";
 import { FileList, PathText, sharedFolder } from "../files";
+import { NeedIcon } from "../live/TopBar";
 import { Fold, inline, Markdown } from "../markdown";
 import { Glyph, PlanSource } from "../marks";
 import { Pill } from "../Pill";
@@ -291,8 +292,14 @@ function PartBody(props: {
     }),
   );
   const rounds = part.rounds ?? fixRounds(part, helpers);
-  const [label, tone]: [string, Tone] =
-    part.failures >= 3
+  const blocked = request.phases
+    .flatMap((p) => p.tasks)
+    .find((t) => t.part === part.id && t.status === "blocked");
+  // A later prompt moved on from what it asked: the task was left, nothing waits now.
+  const asking = !request.finished ? blocked : undefined;
+  const [label, tone]: [string, Tone] = blocked
+    ? [asking ? "Waiting on you" : "Left open", "plain"]
+    : part.failures >= 3
       ? ["Stuck", "bad"]
       : part.status === "done" && rounds
         ? [`Done after ${roundsWord(rounds)}`, "done"]
@@ -537,20 +544,44 @@ function PartBody(props: {
       )}
       <header className="tt">
         <h1 className="pd-title">{shortTitle(part.title)}</h1>
-        <span className={`verdict ${tone}`}>
+        <span className={`verdict ${asking ? "need" : tone}`}>
           <Glyph
             status={
-              tone === "bad"
-                ? "failed"
-                : tone === "plain"
-                  ? "todo"
-                  : part.status
+              asking
+                ? "blocked"
+                : tone === "bad"
+                  ? "failed"
+                  : tone === "plain"
+                    ? "todo"
+                    : part.status
             }
           />
           {label}
         </span>
         {problem && <Pill tone="bad">{problem}</Pill>}
       </header>
+      {asking?.ask && (
+        <section className="pd-ask" aria-label="Waiting on you">
+          <h2 className="k">
+            <NeedIcon />
+            <span>
+              Waiting on you{" "}
+              <span className="num">· asked {clock(asking.ask.since)}</span>
+            </span>
+          </h2>
+          <p>{asking.ask.text}</p>
+          {asking.ask.message && sessionId && (
+            <a
+              href={`${requestPath(sessionId, request.id)}#m-${asking.ask.message}`}
+              onClick={follow(
+                `${requestPath(sessionId, request.id)}#m-${asking.ask.message}`,
+              )}
+            >
+              Read Claude's message
+            </a>
+          )}
+        </section>
+      )}
       {purpose && (
         <section className="deck" aria-label="What it was for">
           <p className="deck-text">

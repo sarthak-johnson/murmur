@@ -17,7 +17,7 @@ import {
   type Waiting,
   waitingLabel,
 } from "../session";
-import { duration } from "../story";
+import { duration, nOf } from "../story";
 import { StateMark } from "./Rail";
 
 /** The amber "needs you" mark: a ring with a dot. */
@@ -328,6 +328,10 @@ export function TopBar(props: {
     state === "waiting" && waiting
       ? waiting.since
       : (request?.startedAt ?? view.startedAt);
+  const helping =
+    state === "waiting"
+      ? (request?.agents.filter((a) => a.status === "running").length ?? 0)
+      : 0;
   return (
     <header className={`top ${state}`}>
       <button
@@ -390,7 +394,9 @@ export function TopBar(props: {
             <span className="num">
               <span>{PILL[mark]}</span>
               {" · "}
-              {took(since, state === "done" ? end : now)}
+              {helping
+                ? `${nOf(helping, "helper")} still working`
+                : took(since, state === "done" ? end : now)}
             </span>
           </span>
         )}
