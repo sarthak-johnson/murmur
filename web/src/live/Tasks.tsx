@@ -15,8 +15,8 @@ import {
   outcome,
   verdictOf,
 } from "../story";
-import { StateMark } from "./Rail";
-import { agentShown, MARK, type Shown, span, taskShown } from "./Track";
+import { StateMark, Words } from "./Rail";
+import { agentShown, MARK, type Shown, span, taskShown, WORD } from "./Track";
 
 interface Row {
   key: string;
@@ -225,9 +225,14 @@ export function TasksTab(props: {
                   <StateMark mark={MARK[r.shown]} pulse={r === pulse} />
                   <span className="tk-main">
                     <span className="tk-t" data-morph={path}>
-                      {r.title}
+                      <Words text={r.title} />
                     </span>
-                    {r.line && <span className="tk-line">{r.line}</span>}
+                    <span className="sr-only">, {WORD[r.shown]}</span>
+                    {r.line && (
+                      <span className="tk-line">
+                        <Words text={r.line} />
+                      </span>
+                    )}
                     {r.facts.length > 0 && (
                       <span className="tk-facts num">
                         {r.facts.join(" · ")}

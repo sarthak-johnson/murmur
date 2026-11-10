@@ -39,7 +39,8 @@ Fixed in two places:
   Phases now share the width by station count (at least two), so every slot on a track is the same width.
   `stacks()` decides from the measured width (a `ResizeObserver`) whether any slot gets under 72 px; then the track reads top to bottom, the layout it already used under 900 px.
   That layout is now the `.trk.stack` class, set by `Track.tsx` under 900 px too, instead of a media query.
-  At 2560 and 1440 both test requests stay horizontal; at 1280 request 15 of the long session (14 tasks in one phase) stacks.
+  A word too wide for its slot also stacks the track, since it would otherwise be cut.
+  At 2560 both test requests stay horizontal; at 1440 and 1280 request 15 of the long session (14 tasks in one phase) stacks.
 - **One Previous/Next row.**
   The foot row is drawn only when the page has something between it and the top row (how it went, helpers, the margin, files); empty wrappers are no longer drawn either.
 - **A task not started says what it will be.**

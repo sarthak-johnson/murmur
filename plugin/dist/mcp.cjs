@@ -36862,7 +36862,7 @@ var RULES = [
 
 // ../packages/core/src/view/agents.ts
 var PLAIN = new Set(
-  "build implement write add draft create make port fix review rereview recheck check research investigate explore find audit plan update run test the and for with from into that this its all new more".split(
+  "build implement write add draft create make port fix review rereview recheck check research investigate explore find audit plan update run test the and for with from into that this its all new more page screen file code app task".split(
     " "
   )
 );

@@ -9,11 +9,11 @@ import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
 import { follow, partPath } from "../router";
 import { livePhase, type Mark, phaseSpan, shortTitle } from "../session";
 import { clock, duration, nOf, verdictOf } from "../story";
-import { StateMark } from "./Rail";
+import { PIECES, StateMark, Words } from "./Rail";
 
 export type Shown = "done" | "now" | "todo" | "failed" | "blocked" | "open";
 
-const WORD: Record<Shown, string> = {
+export const WORD: Record<Shown, string> = {
   done: "done",
   now: "in progress",
   blocked: "waiting on you",
@@ -56,7 +56,7 @@ function Stations(props: {
           <>
             <StateMark mark={MARK[s.shown]} />
             <span className="cap" style={slot}>
-              {s.name}
+              <Words text={s.name} />
             </span>
             <span className="sr-only">, {WORD[s.shown]}</span>
           </>
@@ -147,40 +147,79 @@ export function phaseLine(req: RequestView, ph: PhaseView, shown: Shown) {
  */
 const weight = (n: number) => Math.max(n, 2);
 
-/** The gap between phases (`.trk-segs` in theme.css) and the narrowest readable slot. */
+/** The gap between phases (`.trk-segs` in theme.css), the narrowest readable slot, and a caption's side padding (`.cap`). */
 const GAP = 28;
 const SLOT = 72;
+const PAD = 10;
 
 /**
  * Whether the track reads top to bottom at this width: when any phase's stations, each
- * with its share of the phase (phases share the width by `weight`), get under 72 px.
+ * with its share of the phase (phases share the width by `weight`), get under 72 px, or
+ * under `widest[i]`, the phase's widest word, which would otherwise be cut.
  */
-export function stacks(width: number, counts: number[]): boolean {
+export function stacks(
+  width: number,
+  counts: number[],
+  widest: number[] = [],
+): boolean {
   const wts = counts.map(weight);
   const sum = wts.reduce((a, b) => a + b, 0);
   const room = width - GAP * (counts.length - 1);
   return counts.some(
-    (n, i) => n > 0 && (room * (wts[i] as number)) / sum / n < SLOT,
+    (n, i) =>
+      n > 0 &&
+      (room * (wts[i] as number)) / sum / n <
+        Math.max(SLOT, (widest[i] ?? 0) + PAD),
+  );
+}
+
+/** Each phase's widest piece of a caption, in the caption's own type (`.cap`), in px. */
+function widestWords(el: Element, names: string[][]): number[] {
+  const g = document.createElement("canvas").getContext("2d");
+  if (!g) return [];
+  g.font = `500 13px ${getComputedStyle(el).fontFamily}`;
+  return names.map((phase) =>
+    Math.max(
+      0,
+      ...phase
+        .flatMap((name) => name.match(PIECES) ?? [])
+        .filter((p) => p.trim())
+        .map((p) => g.measureText(p).width),
+    ),
   );
 }
 
 /** Stacked under 900 px or when `stacks` says so, measured on every resize. */
-function useStacked(counts: number[]) {
+function useStacked(captions: string[][]) {
   const ref = useRef<HTMLOListElement>(null);
   const [stacked, setStacked] = useState(false);
-  const key = counts.join(",");
+  const key = JSON.stringify(captions);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
+    const names = JSON.parse(key) as string[][];
     const narrow = window.matchMedia?.("(max-width: 899px)");
-    const measure = () =>
+    let widest: number[] | undefined;
+    const measure = () => {
+      // Not laid out (hidden, or a test's DOM): nothing to measure.
+      if (!narrow?.matches && el.clientWidth > 0)
+        widest ??= widestWords(el, names);
       setStacked(
         !!narrow?.matches ||
-          // Not laid out (hidden, or a test's DOM): nothing to measure.
           (el.clientWidth > 0 &&
-            stacks(el.clientWidth, key.split(",").map(Number))),
+            stacks(
+              el.clientWidth,
+              names.map((n) => n.length),
+              widest,
+            )),
       );
+    };
     measure();
+    // The first measure can run on the fallback font.
+    document.fonts?.ready.then(() => {
+      widest = undefined;
+      measure();
+    });
     const ro =
       typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
     ro?.observe(el);
@@ -210,8 +249,8 @@ export function PhaseTrack(props: {
         .sort((a, b) => (a.startedAt < b.startedAt ? -1 : 1))
     : [];
   const { ref, stacked } = useStacked([
-    ...req.phases.map((p) => p.tasks.length),
-    ...(beyond ? [beyondAgents.length] : []),
+    ...req.phases.map((p) => p.tasks.map((t) => shortTitle(t.title))),
+    ...(beyond ? [beyondAgents.map((a) => a.description || "A helper")] : []),
   ]);
   if (!req.phases.length) return null;
   const over = done || req.finished;

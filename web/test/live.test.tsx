@@ -244,7 +244,13 @@ describe("live screen", () => {
     const track = screen.getByRole("region", { name: "Phase track" });
     const first = track.querySelector(".trk-seg") as HTMLElement;
     expect(first.querySelector(".trk-s")?.textContent).toBe("2 of 2 done");
-    expect(within(first).getByText("Read how watchlists work")).toBeTruthy();
+    expect(
+      within(first).getByText(
+        (_, e) =>
+          e?.className === "cap" &&
+          e.textContent === "Read how watchlists work",
+      ),
+    ).toBeTruthy();
   });
 
   it("the live task is the live station, its problem on hover; its helper is in the side", () => {

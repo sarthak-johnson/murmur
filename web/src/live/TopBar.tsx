@@ -18,7 +18,7 @@ import {
   waitingLabel,
 } from "../session";
 import { duration, nOf } from "../story";
-import { StateMark } from "./Rail";
+import { StateMark, Words } from "./Rail";
 
 /** The amber "needs you" mark: a ring with a dot. */
 export function NeedIcon() {
@@ -357,11 +357,11 @@ export function TopBar(props: {
                   title={c.title ?? c.label}
                   onClick={follow(c.href)}
                 >
-                  {c.label}
+                  <Words text={c.label} />
                 </a>
               ) : (
                 <span aria-current="page" title={c.title ?? c.label}>
-                  {c.label}
+                  <Words text={c.label} />
                 </span>
               )}
             </li>

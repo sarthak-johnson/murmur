@@ -20,6 +20,26 @@ export const MARK_WORD: Record<Mark, string> = {
  * `pulse` is set, the one loop on screen), an amber question mark for waiting on you,
  * a hollow ring for left open, a red cross for failed.
  */
+// A run of letters up to and including a slash or hyphen, or up to a space: where a line may break.
+export const PIECES = /[^\s/-]*[/-]|[^\s/-]+|\s+/g;
+
+/**
+ * Text whose lines and ellipsis break only between words: each word (and each part of a
+ * path or a hyphenated word) is a box the browser keeps whole or leaves out whole.
+ */
+export function Words({ text }: { text: string }) {
+  return (text.match(PIECES) ?? []).map((p, i) =>
+    /^\s/.test(p) ? (
+      p
+    ) : (
+      // biome-ignore lint/suspicious/noArrayIndexKey: the pieces of one fixed string
+      <span key={i} className="w">
+        {p}
+      </span>
+    ),
+  );
+}
+
 export function StateMark(props: { mark: Mark; pulse?: boolean }) {
   const { mark, pulse } = props;
   return (
@@ -315,7 +335,7 @@ export function Rail(props: {
                         <span className="stop-txt">
                           <span className="stop-ttl">
                             <b className="num stop-n">{n}</b>
-                            {short}
+                            <Words text={short} />
                           </span>
                           {showSub && (
                             <span className="stop-sub">

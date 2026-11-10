@@ -445,9 +445,15 @@ describe("phase track", () => {
     );
     // "Task 1:" and "Bug B1:" are dropped, the task's own words kept.
     expect(
-      within(first as HTMLElement).getByText("Reminder table"),
+      within(first as HTMLElement).getByText(
+        (_, e) => e?.className === "cap" && e.textContent === "Reminder table",
+      ),
     ).toBeTruthy();
-    expect(within(second as HTMLElement).getByText("Times drift")).toBeTruthy();
+    expect(
+      within(second as HTMLElement).getByText(
+        (_, e) => e?.className === "cap" && e.textContent === "Times drift",
+      ),
+    ).toBeTruthy();
   });
 
   it("only the live phase's tasks read as in progress", () => {
@@ -537,7 +543,11 @@ describe("phase track", () => {
     show(session(request()), { requestId: "r2", partId: "maths" });
     const here = within(
       screen.getByRole("navigation", { name: "Breadcrumb" }),
-    ).getByText(/Schedule maths/);
+    ).getByText(
+      (_, e) =>
+        e?.getAttribute("aria-current") === "page" &&
+        /Schedule maths/.test(e.textContent ?? ""),
+    );
     expect(here.getAttribute("aria-current")).toBe("page");
   });
 });

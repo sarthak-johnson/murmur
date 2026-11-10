@@ -20042,6 +20042,8 @@ var TASK_STATUS = {
   failed: "failed",
   blocked: "blocked"
 };
+var WAITS_ON_A_THING = /\bwait(?:s|ing)\s+(?:for|on)\s+(?:the|a|an)\s+(?!user\b|author\b|owner\b)/i;
+var waitsOnYou = (now) => !WAITS_ON_A_THING.test(now);
 var isNotRequest = (prompt) => typeof prompt === "string" && /^\s*(\/murmur:\w+(\s|$)|<task-notification>)/.test(prompt);
 function phaseStatus(tasks) {
   if (tasks.some((t) => t.status === "blocked")) return "blocked";
@@ -20160,7 +20162,8 @@ function applyNarrate(req, e, n, setsNow = true) {
     req.now = { text: n.now, why: n.why, ts: e.ts };
     if (part) req.now.part = part.id;
   }
-  if (task && n.taskStatus) task.status = TASK_STATUS[n.taskStatus];
+  if (task && n.taskStatus)
+    task.status = n.taskStatus === "blocked" && !waitsOnYou(n.now) ? "now" : TASK_STATUS[n.taskStatus];
   if (task && agentId) addOnce(task.agents, agentId);
   if (part) {
     if (n.step)
@@ -20211,7 +20214,7 @@ function setStatuses(req, last) {
     const own2 = tasks.filter((t) => t.part === p.id);
     const done = p.steps.findLastIndex((s) => s.status === "done");
     const stepDone = done >= 0 && !p.steps.slice(done).some((s) => s.status === "running");
-    p.status = own2.some((t) => t.status === "now") ? "now" : allDone(own2) || stepDone ? "done" : p.id === last.part ? "now" : "todo";
+    p.status = own2.some((t) => t.status === "now" || t.status === "blocked") ? "now" : allDone(own2) || stepDone ? "done" : p.id === last.part ? "now" : "todo";
   }
   for (const ph of req.phases) ph.status = phaseStatus(ph.tasks);
 }
@@ -20372,8 +20375,10 @@ function sentences(plain2) {
   return out;
 }
 var ASKS = /^(?:(?:and|but|so|also|then|or)\s+)?(?:(?:should|shall|may|can|could|would|will|do|does|did|is|are|want)\s+(?:i|we|me|you)\b|want me\b)|\byou(?:rs?)?\b/i;
+var OFFER = /^(?:(?:and|but|so|also|then)\s+)?(?:(?:do you )?want me to|would you like me to|shall (?:i|we))\b(?!.*\bor\b)/i;
+var unquoted = (text3) => text3.replace(/^\s*>.*$/gm, "");
 function questionsIn(text3) {
-  const src = text3.replace(/```[\s\S]*?(?:```|$)/g, "\n\n").replace(/`[^`\n]*`/g, "code").replace(/\]\([^)\s]*\)/g, "]").replace(/\b(?:https?:\/\/|www\.)\S+/g, "link");
+  const src = unquoted(text3).replace(/```[\s\S]*?(?:```|$)/g, "\n\n").replace(/`[^`\n]*`/g, "code").replace(/\]\([^)\s]*\)/g, "]").replace(/\b(?:https?:\/\/|www\.)\S+/g, "link");
   const block = src.split(/\n\s*\n/).filter((b) => b.trim()).at(-1) ?? "";
   const units = [];
   for (const line of block.split("\n")) {
@@ -20400,14 +20405,16 @@ function questionsIn(text3) {
       if (/^or\b/i.test(q) && merged.length)
         merged[merged.length - 1] += ` ${q}`;
       else merged.push(q);
-    return merged.filter((q) => ASKS.test(q) && q.length > 3);
+    return merged.filter((q) => ASKS.test(q) && !OFFER.test(q) && q.length > 3);
   });
 }
-var ASK_TO = /^(?:please|kindly)\s+(.+)$|\b(?:waiting (?:on|for) you to|(?:I )?needs? you to)\s+(.+)$/i;
+var ASK_TO = /^(?:please|kindly)\s+(?!(?:let me know|note|see|ignore|excuse|be aware|bear with|feel free)\b)(.+)$|\b(?:waiting (?:on|for) you to|(?:I )?needs? you to)\s+(.+)$/i;
+var NOT_ASKING = /^(?:if|when|once|whenever|unless|in case)\b|\b(?:not|never|no longer|n't|nothing|no one)\b[^,]*\b(?:needs?|waiting)\b|\b(?:was|were)\s+waiting\b/i;
 function askIn(text3) {
   const q = questionsIn(text3)[0];
   if (q) return q;
-  for (const s of sentences(plainText(text3))) {
+  for (const s of sentences(plainText(unquoted(text3)))) {
+    if (NOT_ASKING.test(s)) continue;
     const m = ASK_TO.exec(s);
     const what = (m?.[1] ?? m?.[2])?.replace(/[.!]+$/, "").trim();
     if (what) return what.charAt(0).toUpperCase() + what.slice(1);
@@ -20458,14 +20465,14 @@ function needsYou(events) {
     if (e.hook === "UserPromptSubmit" && !isNotRequest(p.prompt))
       blocked.clear();
     const n = e.hook === "PostToolUse" && p.tool_name === NARRATE_TOOL ? NarrateInput.safeParse(p.tool_input).data : void 0;
-    if (n?.task && n.taskStatus === "blocked")
+    if (n?.task && n.taskStatus === "blocked" && waitsOnYou(n.now))
       blocked.set(n.task, firstSentence(n.now));
     else if (n?.task && n.taskStatus) blocked.delete(n.task);
     if (e.hook === "AssistantText" && main2) said2 = str2(p.text) ?? "";
     const reason = e.hook === "PermissionRequest" ? "permission" : e.hook === "Notification" ? NOTIFY[str2(p.notification_type) ?? ""] : void 0;
     if (e.hook === "Stop" && main2) {
       const text3 = askIn(str2(p.last_assistant_message) || said2) ?? [...blocked.values()].at(-1);
-      if (text3) ask2 = { reason: "input", text: text3, since: ask2?.since ?? e.ts };
+      ask2 = text3 ? { reason: "input", text: text3, since: ask2?.since ?? e.ts } : null;
       if (ask2 && out?.reason === "idle") out = null;
       said2 = "";
     } else if (CLEARS.has(e.hook)) {
@@ -20959,7 +20966,7 @@ function applyAgents(req, events, { before, narrated }, known) {
   return started;
 }
 var PLAIN = new Set(
-  "build implement write add draft create make port fix review rereview recheck check research investigate explore find audit plan update run test the and for with from into that this its all new more".split(
+  "build implement write add draft create make port fix review rereview recheck check research investigate explore find audit plan update run test the and for with from into that this its all new more page screen file code app task".split(
     " "
   )
 );
@@ -20975,16 +20982,16 @@ function numbersOf(s) {
   }
   return out;
 }
-function byWords(description, items) {
+function matchScore(description, title2) {
   const words = wordsOf(description);
-  const nums = numbersOf(description);
-  const score = (title2) => {
-    const own2 = wordsOf(title2);
-    const shared = [...words].filter((w) => own2.has(w)).length;
-    const n = numbersOf(title2);
-    return shared ? shared + [...nums].filter((x) => n.has(x)).length : 0;
-  };
-  const scores = items.map((it) => score(it.title));
+  const own2 = wordsOf(title2);
+  const shared = [...words].filter((w) => own2.has(w)).length;
+  if (!shared || shared * 2 < Math.min(words.size, own2.size)) return 0;
+  const n = numbersOf(title2);
+  return shared + [...numbersOf(description)].filter((x) => n.has(x)).length;
+}
+function byWords(description, items) {
+  const scores = items.map((it) => matchScore(description, it.title));
   const top = Math.max(0, ...scores);
   const tied = top ? items.filter((_, i) => scores[i] === top) : [];
   return tied.length === 1 ? { best: tied[0], tied } : { tied };
@@ -20992,19 +20999,23 @@ function byWords(description, items) {
 function tiesOf(req, description, on) {
   const tasks = req.phases.flatMap((ph) => ph.tasks);
   const named = itemOf(description);
-  if (!named) {
-    const { best, tied } = byWords(description, tasks);
+  const lone = (s) => !!s && /^(?:Task \d+[a-z]?|B\d+)$/.test(s);
+  const other = (s) => lone(named) && lone(s) && s !== named;
+  const mine = named ? tasks.find((t) => subjectOfWork(req, t) === named) : void 0;
+  const namedPart = named ? req.parts.find((p) => subjectOfWork(req, void 0, p) === named) : void 0;
+  if (!named || lone(named) && !mine && !namedPart) {
+    const { best, tied } = byWords(
+      description,
+      tasks.filter((t) => !other(subjectOfWork(req, t)))
+    );
     const parts = new Set(tied.map((t) => t.part));
     const shared = parts.size === 1 ? [...parts][0] : void 0;
     const part = req.parts.find((p) => p.id === (best?.part ?? shared)) ?? (tied.length ? void 0 : byWords(description, req.parts).best);
     if (best || part) return { task: best, at: part };
     if (tied.length) return {};
   }
-  const lone = (s) => !!s && /^(?:Task \d+[a-z]?|B\d+)$/.test(s);
-  const other = (s) => lone(named) && lone(s) && s !== named;
-  const mine = named ? tasks.find((t) => subjectOfWork(req, t) === named) : void 0;
   const task = mine ?? tasks.find((t) => t.id === on?.task && !other(subjectOfWork(req, t)));
-  const at = named && (req.parts.find((p) => subjectOfWork(req, void 0, p) === named) ?? req.parts.find((p) => p.id === mine?.part)) || req.parts.find(
+  const at = named && (namedPart ?? req.parts.find((p) => p.id === mine?.part)) || req.parts.find(
     (p) => p.id === on?.part && !other(subjectOfWork(req, void 0, p))
   );
   return { task, at };
@@ -21721,13 +21732,27 @@ function applyShape(req, events, trace, ctx) {
 }
 function runTied(req, ctx) {
   const running = new Set(req.agents.filter(ctx.live).map((a) => a.id));
+  const fine = (id2) => {
+    const a = req.agents.find((x) => x.id === id2);
+    return a?.status === "done" && !a.report?.interim && !/failed|killed/.test(a.report?.status ?? "");
+  };
+  const isItsWork = (t) => (id2) => matchScore(
+    req.agents.find((x) => x.id === id2)?.description ?? "",
+    t.title
+  ) >= 2;
   for (const ph of req.phases) {
-    for (const t of ph.tasks)
-      if (t.status === "todo" && t.agents.some((id2) => running.has(id2))) {
-        t.status = "now";
-        const part = req.parts.find((p) => p.id === t.part);
-        if (part?.status === "todo") part.status = "now";
-      }
+    for (const t of ph.tasks) {
+      if (t.status !== "todo" || !t.agents.length) continue;
+      if (t.agents.some((id2) => running.has(id2))) t.status = "now";
+      else if (t.agents.every(fine) && t.agents.some(isItsWork(t)))
+        t.status = "done";
+      else continue;
+      const part = req.parts.find((p) => p.id === t.part);
+      if (!part) continue;
+      const own2 = req.phases.flatMap((p) => p.tasks).filter((x) => x.part === part.id);
+      if (own2.every((x) => x.status === "done")) part.status = "done";
+      else if (part.status === "todo") part.status = "now";
+    }
     ph.status = phaseStatus(ph.tasks);
   }
 }
@@ -21739,10 +21764,17 @@ function askTasks(req, live2) {
       (n) => n.task === t.id && n.n.taskStatus === "blocked"
     );
     if (!x) continue;
-    const m = (req.messages ?? []).find(
+    const asks = (req.messages ?? []).filter(
       (m2) => m2.ts >= x.e.ts && askIn(m2.text) !== void 0
     );
-    t.ask = m ? { text: askIn(m.text), since: m.ts, message: m.id } : { text: firstSentence(x.n.now), since: x.e.ts };
+    const m = asks.find(
+      (m2) => !/\b(?:there|that|this|it)\b/i.test(askIn(m2.text))
+    ) ?? asks[0];
+    t.ask = m ? {
+      text: askIn(m.text),
+      since: asks[0].ts,
+      message: m.id
+    } : { text: firstSentence(x.n.now), since: x.e.ts };
   }
 }
 var BREAK = new Set(
@@ -22963,8 +22995,13 @@ function changedPaths(events) {
   }
   return out;
 }
-var RANK = { running: 1, failed: 2, done: 3 };
-var settled = (s) => s === "done" || s === "failed";
+var RANK = {
+  running: 1,
+  blocked: 2,
+  failed: 2,
+  done: 3
+};
+var settled = (s) => (RANK[s ?? ""] ?? 0) >= 2;
 var forward = (from, to) => (RANK[to] ?? 0) > (from === void 0 ? 0 : RANK[from] ?? 0);
 function reportOf2(e) {
   if (e.hook === "UserPromptSubmit") {
@@ -22998,8 +23035,7 @@ function planState(events, prior) {
     reports: 0,
     latest: NaN
   };
-  const set2 = (task, said2, ts) => {
-    const status2 = said2 === "blocked" ? "failed" : said2;
+  const set2 = (task, status2, ts) => {
     const was = st.statuses.get(task);
     if (was === status2 || was === "done") return;
     st.statuses.set(task, status2);
@@ -23045,7 +23081,7 @@ Answer with one JSON object and nothing else, in exactly this shape:
     "files": [{ "path": "<copied exactly from the file list>", "role": "what it does" }]
   }]
 }
-Rules: use only the task and part ids in the plan, exactly as written; never add, rename or drop one. The tasks under "done" are finished: say nothing of them. Give one entry in "tasks" for every task in the plan that has started. A task is "done" only when the material shows it finished (a helper reported it done, Claude said so, a commit or review passed); "running" while it is under way; "failed" when it was given up or is blocked. Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
+Rules: use only the task and part ids in the plan, exactly as written; never add, rename or drop one. The tasks under "done" are finished: say nothing of them. Give one entry in "tasks" for every task in the plan that has started. A task is "done" only when the material shows it finished (a helper reported it done, Claude said so, a commit or review passed); "running" while it is under way; "failed" only when it was given up; a task waiting on the person or on anything else is still "running". Only say what the material shows; leave a field out rather than guess. Plain words, short. Every text at most 300 characters, "ended" at most 200, at most 20 items in any list.`;
 function requestsOf(r) {
   if (r?.requests) return r.requests;
   if (!r?.request) return {};
@@ -23767,7 +23803,7 @@ async function runBackfill(sessionId, {
     await flush(creds, { budgetMs: Math.max(1e3, left()), ...opts });
   return events.length;
 }
-function catchUpText(sessionId, env = process.env) {
+function catchUpText(sessionId, env = process.env, budgetMs = Number.POSITIVE_INFINITY) {
   const s = readSession(sessionId);
   if (s.backfill !== "done" || !s.transcriptPath || !s.cwd) return 0;
   const creds = readCredentials();
@@ -23777,15 +23813,21 @@ function catchUpText(sessionId, env = process.env) {
   }
   const at = { from: s.textOffset, end: s.textOffset };
   const b = { sessionId, machineId: creds.machineId, cwd: s.cwd };
+  const deadline = Date.now() + budgetMs;
   let n = 0;
-  for (const e of readLines(s.transcriptPath, 0, at)) {
-    if (!str7(e.uuid)) continue;
-    for (const { i, text: text3 } of textBlocks(e)) {
-      enqueue(entryEvent(b, e, i, "AssistantText", { text: text3 }));
-      n++;
+  try {
+    for (const e of readLines(s.transcriptPath, 0, at)) {
+      if (str7(e.uuid) && !Number.isNaN(Date.parse(e.timestamp)))
+        for (const { i, text: text3 } of textBlocks(e)) {
+          enqueue(entryEvent(b, e, i, "AssistantText", { text: text3 }));
+          n++;
+        }
+      if (Date.now() > deadline) break;
     }
+    if (at.end !== s.textOffset)
+      updateSession(sessionId, { textOffset: at.end });
+  } catch {
   }
-  updateSession(sessionId, { textOffset: at.end });
   return n;
 }
 
@@ -23992,7 +24034,7 @@ async function main() {
       windowsHide: true
     }).unref();
   } else {
-    catchUpText(event.sessionId);
+    catchUpText(event.sessionId, process.env, 1e3);
     await flush(creds);
   }
 }

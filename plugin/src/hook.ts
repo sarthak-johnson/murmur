@@ -322,8 +322,9 @@ async function main(): Promise<void> {
     }).unref();
   } else {
     // Claude never waits on these hooks, so they read its new text themselves: while it
-    // works through tools no Stop comes, and its words would wait for one.
-    catchUpText(event.sessionId);
+    // works through tools no Stop comes, and its words would wait for one. The read is
+    // synchronous, so the 5 s timer below cannot cut it short: it gets its own 1 s.
+    catchUpText(event.sessionId, process.env, 1000);
     await flush(creds);
   }
 }
