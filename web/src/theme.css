@@ -5405,12 +5405,23 @@ code.nw {
   font-weight: 600;
   line-height: 22px;
 }
+.sf-short.two {
+  -webkit-line-clamp: 2;
+  overflow-wrap: normal;
+}
+.sf-c1:has(.sf-short.two) {
+  align-items: flex-start;
+}
+/* Level with the first line of a two-line title (22 px line, 14 px mark). */
+.sf-c1:has(.sf-short.two) > .mk {
+  margin-top: 4px;
+}
 .sf-open {
   flex: none;
   color: var(--now);
   font-size: 13px;
   font-weight: 500;
-  line-height: 22px;
+  line-height: 18px;
 }
 .sf-out {
   margin-top: 4px;
@@ -5419,13 +5430,20 @@ code.nw {
   line-height: 22px;
 }
 .sf-fx {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
   margin-top: auto;
-  overflow: hidden;
   color: var(--t4);
   font-size: 13px;
   line-height: 18px;
-  text-overflow: clip;
   white-space: nowrap;
+}
+.sf-fx-t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
 }
 .sf-hint {
   margin: 0;

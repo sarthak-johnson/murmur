@@ -7,6 +7,7 @@ import {
   chainOf,
   drawnFollows,
   layoutSessionFlow,
+  TITLE_LINE,
   threadsOf,
 } from "../src/sflow/sflow";
 
@@ -255,6 +256,18 @@ describe("swimlane layout", () => {
   const v = view();
   const L = layoutSessionFlow(v, threadsOf(v), { width: 1200 });
   const at = (id: string) => L.cards.find((c) => c.req.id === id);
+
+  it("a card whose title needs two lines is one line taller, and rows below move down", () => {
+    const two = layoutSessionFlow(v, threadsOf(v), {
+      width: 1200,
+      titleLines: (r) => (r.id === v.requests[0]?.id ? 2 : 1),
+    });
+    const [a, b] = [two.cards[0], two.cards[1]];
+    const [a1, b1] = [L.cards[0], L.cards[1]];
+    expect(a && a1 && a.h - a1.h).toBe(TITLE_LINE);
+    expect(b && b1 && b.y - b1.y).toBe(TITLE_LINE);
+    expect(b && b1 && b.h).toBe(b1?.h);
+  });
 
   it("one column per thread in order of first request, a card in its thread's column", () => {
     expect(L.cols.map((c) => c.thread.id)).toEqual(["t1", "t2", "t3"]);

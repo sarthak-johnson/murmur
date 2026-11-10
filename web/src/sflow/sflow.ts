@@ -28,6 +28,8 @@ const PAUSE_H = 44;
 export const CARD_H = 100;
 /** A card with no outcome to say. */
 export const CARD_H_BARE = 76;
+/** A title's second line, when it does not fit on one. */
+export const TITLE_LINE = 22;
 const MIN_COL = 252;
 const MAX_COL = 560;
 /** A column alone is a timeline: wide enough to fill a laptop's page, capped on a big screen. */
@@ -249,7 +251,11 @@ export interface SFLayout {
 export function layoutSessionFlow(
   view: SessionView,
   threads: Thread[],
-  opts: { width: number },
+  opts: {
+    width: number;
+    /** How many lines (1 or 2) a request's title takes on a card `cardW` wide. */
+    titleLines?: (req: RequestView, cardW: number) => number;
+  },
 ): SFLayout {
   const { threads: shown, of } = placed(view, threads);
   const n = Math.max(1, shown.length);
@@ -271,7 +277,8 @@ export function layoutSessionFlow(
   let lastDay = "";
   view.requests.forEach((req, i) => {
     const col = colOf.get(of.get(req.id) ?? "") ?? 0;
-    const h = req.outcome ? CARD_H : CARD_H_BARE;
+    const lines = Math.min(2, Math.max(1, opts.titleLines?.(req, w) ?? 1));
+    const h = (req.outcome ? CARD_H : CARD_H_BARE) + (lines - 1) * TITLE_LINE;
     cards.push({
       req,
       n: i + 1,

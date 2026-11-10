@@ -58,6 +58,21 @@ function widthOf(text: string, font: string): number {
   return pen.measureText(text).width;
 }
 
+const TITLE_FONT = `600 15px ${UI}`;
+/**
+ * The room for a card's title, `width` wide: inside padding and border (30), the mark and
+ * the gaps beside the number (30), and the widest number. "Open →" sits on the facts
+ * line, so selecting a card never moves its title.
+ */
+function titleRoom(width: number, count: number): number {
+  return width - 60 - widthOf(String(count), `500 13px ${MONO}`);
+}
+/** 1 when the title fits on one line of its card, else 2 (the second line wraps). */
+function titleLines(short: string, width: number, count: number): number {
+  // The same 2 px of slack `line` cuts with, so both agree on a title at the edge.
+  return widthOf(short, TITLE_FONT) <= titleRoom(width, count) - 2 ? 1 : 2;
+}
+
 /**
  * The text cut after its last whole word that fits `px` in `font`, with "…": a one-line
  * clamp cuts mid-word when the ellipsis lands on one. Whole when it fits or cannot be
@@ -186,7 +201,12 @@ function Board(props: CardProps) {
   const { width, left } = frame;
   const threads = useMemo(() => threadsOf(view), [view]);
   const L = useMemo(
-    () => layoutSessionFlow(view, threads, { width }),
+    () =>
+      layoutSessionFlow(view, threads, {
+        width,
+        titleLines: (r, w) =>
+          titleLines(requestShort(r), w, view.requests.length),
+      }),
     [view, threads, width],
   );
   const [picked, setPicked] = useState(
@@ -375,6 +395,7 @@ function Board(props: CardProps) {
                   facts={facts(r)}
                   open={isSel}
                   width={c.w}
+                  count={view.requests.length}
                 />
               </button>
             );
@@ -399,28 +420,27 @@ function CardBody(props: {
   open?: boolean;
   /** The card's width on the board, where lines are cut to fit; unset in the phone list, where they wrap. */
   width?: number;
+  /** The session's request count, for the room the widest number takes. */
+  count?: number;
   children?: React.ReactNode;
 }) {
-  const { r, n, mark, pulse, facts, open, width, children } = props;
+  const { r, n, mark, pulse, facts, open, width, count = n, children } = props;
   const short = requestShort(r);
-  // Inside: padding and border (30), the mark (14) and the gaps beside the number (16).
   const inner = (width ?? 0) - 30;
-  const room =
-    inner -
-    30 -
-    widthOf(String(n), `500 13px ${MONO}`) -
-    (open ? widthOf("Open →", `500 13px ${UI}`) + 8 : 0);
+  const room = titleRoom(width ?? 0, count);
+  const two = !!width && titleLines(short, width, count) === 2;
   const line = (text: string, px: number, font: string) =>
     width ? fitWords(text, px - 2, font) : text;
+  // Two lines wrap whole words; a title too long even for two is clamped by CSS.
+  const title = two ? short : line(short, room, TITLE_FONT);
   return (
     <>
       <span className="sf-c1">
         <StateMark mark={mark} pulse={pulse} />
         <b className="sf-n num">{n}</b>
-        <span className="sf-short" title={short}>
-          {line(short, room, `600 15px ${UI}`)}
+        <span className={two ? "sf-short two" : "sf-short"} title={short}>
+          {title}
         </span>
-        {open && <span className="sf-open">Open →</span>}
       </span>
       {children}
       {r.outcome && (
@@ -428,7 +448,10 @@ function CardBody(props: {
           {line(r.outcome, inner, `400 15px ${UI}`)}
         </span>
       )}
-      <span className="sf-fx num">{facts}</span>
+      <span className="sf-fx num">
+        <span className="sf-fx-t">{facts}</span>
+        {open && <span className="sf-open">Open →</span>}
+      </span>
     </>
   );
 }
