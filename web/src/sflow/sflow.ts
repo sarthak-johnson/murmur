@@ -12,6 +12,8 @@ import { clock } from "../story";
 
 /** The time gutter on the left. */
 export const GUTTER = 88;
+/** Room between the gutter and the first column. */
+export const LEAD = 16;
 /** The corridor between two columns, where links run down. */
 export const GAP = 40;
 /** Room right of the last column for a link that runs down beside it. */
@@ -232,11 +234,11 @@ export function layoutSessionFlow(
 ): SFLayout {
   const { threads: shown, of } = placed(view, threads);
   const n = Math.max(1, shown.length);
-  const room = (opts.width || 1000) - GUTTER - PAD_R - (n - 1) * GAP;
+  const room = (opts.width || 1000) - GUTTER - LEAD - PAD_R - (n - 1) * GAP;
   const w = Math.max(MIN_COL, Math.min(MAX_COL, Math.floor(room / n)));
   const cols = shown.map((thread, i) => ({
     thread,
-    x: GUTTER + i * (w + GAP),
+    x: GUTTER + LEAD + i * (w + GAP),
     w,
   }));
   const colOf = new Map(shown.map((t, i) => [t.id, i]));
@@ -346,7 +348,7 @@ export function layoutSessionFlow(
     links,
     pauses: out,
     times,
-    width: GUTTER + n * w + (n - 1) * GAP + PAD_R,
+    width: GUTTER + LEAD + n * w + (n - 1) * GAP + PAD_R,
     height: y - ROW_GAP + PAD_B,
   };
 }

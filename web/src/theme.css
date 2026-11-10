@@ -5114,6 +5114,12 @@ code.nw {
 .sess-tabs {
   margin-top: 22px;
 }
+/* Storylines run side by side: on a wide screen the board takes the whole column. */
+@media (min-width: 1600px) {
+  .main.sf-main {
+    max-width: 2400px;
+  }
+}
 .sess-tabs + .jr .jr-ends {
   margin-top: 28px;
 }
@@ -5138,7 +5144,7 @@ code.nw {
 .sf-board.less::before {
   content: "";
   position: absolute;
-  z-index: 6;
+  z-index: 8;
   top: 0;
   bottom: 38px;
   width: 56px;
@@ -5447,8 +5453,11 @@ code.nw {
 .sf-lcard[aria-current="true"] {
   border-color: var(--now);
 }
+/* The list has room to say each line whole: nothing is cut. */
+.sf-lcard .sf-short,
 .sf-lcard .sf-out {
-  -webkit-line-clamp: 2;
+  display: block;
+  overflow-wrap: break-word;
 }
 .sf-lcard .sf-fx {
   margin-top: 8px;
@@ -5479,21 +5488,32 @@ code.nw {
   font-size: 13px;
   line-height: 20px;
 }
+/* A dashed rule either side of its words. */
 .sf-list .sf-pause {
-  position: relative;
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   height: auto;
   margin: 2px 0;
   color: var(--t3);
   font-size: 13px;
   font-weight: 500;
   line-height: 24px;
-  text-align: center;
+}
+.sf-list .sf-pause::before,
+.sf-list .sf-pause::after {
+  content: "";
+  position: static;
+  flex: 1;
+  border-top: 1px dashed var(--s8);
 }
 /* The step flow of a request with no parts: steps left to right, joined by a line. */
 .rs-steps {
   display: grid;
   grid-auto-columns: minmax(200px, 340px);
   grid-auto-flow: column;
+  align-items: start;
   gap: 32px;
   margin: 0;
   padding: 0;

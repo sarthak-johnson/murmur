@@ -24,6 +24,7 @@ import {
   chainOf,
   drawnFollows,
   GUTTER,
+  LEAD,
   layoutSessionFlow,
   placed,
   type SFCard,
@@ -42,6 +43,63 @@ function writeR(id: string | undefined) {
 }
 
 const THREAD_MARK: Record<string, Mark> = { "left-open": "open" };
+
+const UI = 'Geist, system-ui, -apple-system, "Segoe UI", sans-serif';
+const MONO = '"Geist Mono", ui-monospace, "SF Mono", Menlo, monospace';
+let pen: CanvasRenderingContext2D | null | undefined;
+/** How wide `text` is in `font`; 0 where nothing can measure it (tests). */
+function widthOf(text: string, font: string): number {
+  if (pen === undefined)
+    pen = /jsdom/.test(navigator.userAgent)
+      ? null
+      : document.createElement("canvas").getContext("2d");
+  if (!pen) return 0;
+  pen.font = font;
+  return pen.measureText(text).width;
+}
+
+/**
+ * The text cut after its last whole word that fits `px` in `font`, with "…": a one-line
+ * clamp cuts mid-word when the ellipsis lands on one. Whole when it fits or cannot be
+ * measured.
+ */
+export function fitWords(text: string, px: number, font: string): string {
+  if (widthOf(text, font) <= px) return text;
+  const words = text.split(" ");
+  let lo = 1;
+  let hi = words.length - 1;
+  let best = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const cut = `${words
+      .slice(0, mid)
+      .join(" ")
+      .replace(/[\s,;:.!?-]+$/, "")}…`;
+    if (widthOf(cut, font) <= px) {
+      best = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  // A first word too long for the line is left to the clip.
+  return best
+    ? `${words
+        .slice(0, best)
+        .join(" ")
+        .replace(/[\s,;:.!?-]+$/, "")}…`
+    : text;
+}
+
+/** Fonts land after the first paint: measure again once they have. */
+function useFonts() {
+  const [, set] = useState(0);
+  useEffect(() => {
+    let on = true;
+    document.fonts?.ready.then(() => on && set(1));
+    return () => {
+      on = false;
+    };
+  }, []);
+}
 
 export function SessionFlow(props: {
   sessionId: string;
@@ -73,7 +131,7 @@ export function SessionFlow(props: {
     drawnFollows(view, threads).map((f) => [f.to, f.from]),
   );
   const num = new Map(view.requests.map((r, i) => [r.id, i + 1]));
-  const inferred = threads.some((t) => t.inferred);
+  const inferred = threads.every((t) => t.inferred);
   const note = inferred && (
     <p className="sf-note">
       Grouped by Murmur; Claude has not named these storylines yet.
@@ -119,6 +177,7 @@ interface CardProps {
 
 function Board(props: CardProps) {
   const { sessionId, view, markOf, pulsing, facts } = props;
+  useFonts();
   const frame = useFrame(true);
   const { width, left } = frame;
   const threads = useMemo(() => threadsOf(view), [view]);
@@ -150,6 +209,61 @@ function Board(props: CardProps) {
     revealed.current = true;
     el.scrollIntoView?.({ block: "center", inline: "nearest" });
   }, [width]);
+
+  // Many storylines run off to the side: as the page scrolls down, the board slides to
+  // keep the rows on screen in view, unless the reader moved it sideways just now.
+  const moved = useRef(0);
+  useEffect(() => {
+    const el = frame.ref.current;
+    if (!el || L.width <= el.clientWidth) return;
+    const mine = () => {
+      moved.current = Date.now();
+    };
+    let raf = 0;
+    const follow = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        if (Date.now() - moved.current < 4000) return;
+        const top = -el.getBoundingClientRect().top;
+        const mid = top + window.innerHeight / 2;
+        const seen = L.cards.filter(
+          (c) => c.y + c.h > top && c.y < top + window.innerHeight,
+        );
+        if (!seen.length) return;
+        const lo = Math.min(...seen.map((c) => c.x));
+        const hi = Math.max(...seen.map((c) => c.x + c.w));
+        const from = el.scrollLeft + GUTTER + LEAD;
+        const to = el.scrollLeft + el.clientWidth;
+        if (lo >= from && hi <= to) return;
+        const room = el.clientWidth - GUTTER - LEAD;
+        // All of them when they fit, else the one nearest the middle of the screen.
+        const anchor = seen.reduce((a, c) =>
+          Math.abs(c.y + c.h / 2 - mid) < Math.abs(a.y + a.h / 2 - mid) ? c : a,
+        );
+        const x =
+          hi - lo <= room
+            ? lo < from
+              ? lo - GUTTER - LEAD
+              : hi - el.clientWidth + LEAD
+            : anchor.x - GUTTER - LEAD - (room - anchor.w) / 2;
+        const still = window.matchMedia?.(
+          "(prefers-reduced-motion: reduce)",
+        ).matches;
+        el.scrollTo({ left: x, behavior: still ? "auto" : "smooth" });
+      });
+    };
+    el.addEventListener("wheel", mine, { passive: true });
+    el.addEventListener("touchstart", mine, { passive: true });
+    el.addEventListener("keydown", mine);
+    window.addEventListener("scroll", follow, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      el.removeEventListener("wheel", mine);
+      el.removeEventListener("touchstart", mine);
+      el.removeEventListener("keydown", mine);
+      window.removeEventListener("scroll", follow);
+    };
+  }, [L, frame.ref]);
 
   const choose = (id: string | undefined) => {
     setPicked(id);
@@ -206,7 +320,7 @@ function Board(props: CardProps) {
                 style={{ left: c.x, width: c.w }}
               >
                 <h3 className="sf-head-t" title={t.title}>
-                  {t.title}
+                  {fitWords(t.title, c.w - 10, `600 15px ${UI}`)}
                 </h3>
                 <span className="sf-head-m num">
                   <StateMark mark={mark} />
@@ -298,6 +412,7 @@ function Board(props: CardProps) {
                   pulse={r.id === pulsing}
                   facts={facts(r)}
                   open={isSel}
+                  width={c.w}
                 />
               </button>
             );
@@ -319,24 +434,35 @@ function CardBody(props: {
   pulse: boolean;
   facts: string;
   open?: boolean;
+  /** The card's width on the board, where lines are cut to fit; unset in the phone list, where they wrap. */
+  width?: number;
   children?: React.ReactNode;
 }) {
-  const { r, n, mark, pulse, facts, open, children } = props;
+  const { r, n, mark, pulse, facts, open, width, children } = props;
   const short = requestShort(r);
+  // Inside: padding and border (30), the mark (14) and the gaps beside the number (16).
+  const inner = (width ?? 0) - 30;
+  const room =
+    inner -
+    30 -
+    widthOf(String(n), `500 13px ${MONO}`) -
+    (open ? widthOf("Open →", `500 13px ${UI}`) + 8 : 0);
+  const fit = (text: string, px: number, font: string) =>
+    width ? fitWords(text, px - 2, font) : text;
   return (
     <>
       <span className="sf-c1">
         <StateMark mark={mark} pulse={pulse} />
         <b className="sf-n num">{n}</b>
         <span className="sf-short" title={short}>
-          {short}
+          {fit(short, room, `600 15px ${UI}`)}
         </span>
         {open && <span className="sf-open">Open →</span>}
       </span>
       {children}
       {r.outcome && (
         <span className="sf-out" title={r.outcome}>
-          {r.outcome}
+          {fit(r.outcome, inner, `400 15px ${UI}`)}
         </span>
       )}
       <span className="sf-fx num">{facts}</span>
