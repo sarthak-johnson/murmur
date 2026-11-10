@@ -5,8 +5,13 @@ export type Status = "todo" | "now" | "done";
 export interface SessionView {
   sessionId: string;
   cwd: string;
-  /** The first prompt, spaces collapsed, cut at a word within 48 characters. */
+  /**
+   * The session's name: Claude's, from the titles run (see `titledBy`), else the first
+   * prompt, spaces collapsed, cut at a word within 48 characters.
+   */
   title: string;
+  /** "claude" when Claude named the session in a titles run; unset when `title` is the first prompt. */
+  titledBy?: "claude";
   startedAt: string;
   lastEventAt: string;
   ended: boolean;
@@ -18,6 +23,29 @@ export interface SessionView {
    * so views built before it still type-check.
    */
   journey?: Journey;
+  /**
+   * The session's storylines, for the session flow: requests about the same work, in
+   * order of their first request. Threads can interleave in time. From Claude's titles run
+   * when it has covered the requests (`inferred` false), else one thread per journey
+   * chapter (`inferred` true). Core always sets it; optional only so views built before
+   * it still type-check.
+   */
+  threads?: Thread[];
+}
+
+/** One storyline of the session: see `SessionView.threads`. */
+export interface Thread {
+  id: string;
+  /** What the storyline is about, in 2 to 5 words ("Ship build 9", "Agent creation redesign"). */
+  title: string;
+  /** Its requests' ids, in time order. */
+  requests: string[];
+  /** Its last request's state. */
+  state: RequestState;
+  startedAt: string;
+  lastAt: string;
+  /** Murmur grouped these requests itself; Claude never named this storyline. */
+  inferred: boolean;
 }
 
 export interface RequestView {
@@ -39,6 +67,29 @@ export interface RequestView {
   finished: boolean;
   /** Helpers started, distinct files changed and commands run in this request. */
   tally: { helpers: number; files: number; commands: number };
+  /**
+   * What Claude did, counted by kind of tool call (Read; Grep and Glob; Edit, Write and
+   * NotebookEdit; Bash; WebFetch and WebSearch; MCP tools other than Murmur's own), for
+   * the small flow of a request that has no parts. Core always sets it; optional only so
+   * views built before it still type-check.
+   */
+  activity?: {
+    reads: number;
+    searches: number;
+    edits: number;
+    commands: number;
+    web: number;
+    tools: number;
+  };
+  /** The id of the thread (storyline) this request belongs to: see `SessionView.threads`. */
+  thread?: string;
+  /**
+   * The id of the earlier request this one picks up from, when it is not simply the one
+   * before it in its thread: Claude's titles run says so, or Murmur infers it from a reply
+   * ("Yes", "Go ahead") to the request just before. Unset for a thread's first request
+   * that starts fresh work.
+   */
+  follows?: string;
   /**
    * What Claude wrote to the user, in time order: every `AssistantText` between this
    * request's prompt and the next request's. Core always sets it (empty when none);
