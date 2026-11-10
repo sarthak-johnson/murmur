@@ -5,12 +5,14 @@
 import type { MurmurEvent } from "../events.js";
 import { cutWords, firstSentence, moment } from "./moments.js";
 import { itemOf } from "./rounds.js";
+import type { TitleEntry } from "./titles.js";
 import type {
   Chapter,
   Decision,
   Journey,
   Pause,
   RequestView,
+  Thread,
 } from "./types.js";
 import { subjectsOf } from "./words.js";
 
@@ -81,18 +83,84 @@ function chaptersOf(reqs: RequestView[]): Chapter[] {
       for (const i of k.items) g.keys.items.add(i);
     } else groups.push({ reqs: [req], keys: k });
   }
-  return groups.map(({ reqs: rs, keys }) => {
-    const states = rs.map((r) => r.state ?? "done");
+  return groups.map(({ reqs: rs, keys }) => chapter(titleOf(rs, keys), rs));
+}
+
+function chapter(title: string, rs: RequestView[]): Chapter {
+  const states = rs.map((r) => r.state ?? "done");
+  return {
+    title,
+    requestIds: rs.map((r) => r.id),
+    state: states.includes("waiting")
+      ? "waiting"
+      : states.includes("running")
+        ? "running"
+        : (states.at(-1) ?? "done"),
+  };
+}
+
+/**
+ * The session's chapters and storylines (see `Journey.chapters` and
+ * `SessionView.threads`), and each request's `thread`. From the first request a titles
+ * run covered, threads are Claude's and a chapter is a run of one thread; a request no
+ * run covered joins the thread before it. Requests before that one keep Murmur's own
+ * chapters, one inferred thread each.
+ */
+export function storylines(
+  reqs: RequestView[],
+  lists: MurmurEvent[][],
+  /** What the titles runs said of each request, by index; undefined where none did. */
+  said: (TitleEntry | undefined)[],
+  names: Map<string, string>,
+): { chapters: Chapter[]; threads: Thread[] } {
+  const first = said.findIndex((t) => t !== undefined);
+  const chapters = chaptersOf(first < 0 ? reqs : reqs.slice(0, first));
+  const lastAt = new Map(
+    reqs.map((r, i) => [r.id, lists[i]?.at(-1)?.ts ?? r.startedAt]),
+  );
+  const thread = (
+    id: string,
+    title: string,
+    rs: RequestView[],
+    inferred: boolean,
+  ): Thread => {
+    for (const r of rs) r.thread = id;
+    const last = rs.at(-1) as RequestView;
     return {
-      title: titleOf(rs, keys),
-      requestIds: rs.map((r) => r.id),
-      state: states.includes("waiting")
-        ? "waiting"
-        : states.includes("running")
-          ? "running"
-          : (states.at(-1) ?? "done"),
+      id,
+      title,
+      requests: rs.map((r) => r.id),
+      state: last.state ?? "done",
+      startedAt: (rs[0] as RequestView).startedAt,
+      lastAt: lastAt.get(last.id) ?? last.startedAt,
+      inferred,
     };
+  };
+  const byId = new Map(reqs.map((r) => [r.id, r]));
+  const threads = chapters.map((c, i) =>
+    thread(
+      `chapter-${i + 1}`,
+      c.title,
+      c.requestIds.map((id) => byId.get(id) as RequestView),
+      true,
+    ),
+  );
+  if (first < 0) return { chapters, threads };
+  const own = new Map<string, RequestView[]>();
+  const runs: { id: string; rs: RequestView[] }[] = [];
+  let current = "";
+  reqs.forEach((r, i) => {
+    if (i < first) return;
+    current = said[i]?.thread ?? current;
+    own.set(current, [...(own.get(current) ?? []), r]);
+    const run = runs.at(-1);
+    if (run?.id === current) run.rs.push(r);
+    else runs.push({ id: current, rs: [r] });
   });
+  const name = (id: string) => names.get(id) ?? id;
+  for (const run of runs) chapters.push(chapter(name(run.id), run.rs));
+  for (const [id, rs] of own) threads.push(thread(id, name(id), rs, false));
+  return { chapters, threads };
 }
 
 function titleOf(rs: RequestView[], keys: Keys): string {
@@ -160,6 +228,7 @@ function decisionsOf(reqs: RequestView[]): Decision[] {
 export function journeyOf(
   reqs: RequestView[],
   lists: MurmurEvent[][],
+  chapters: Chapter[],
 ): Journey {
   const pauses = pausesOf(reqs, lists);
   const files = new Set(
@@ -170,7 +239,7 @@ export function journeyOf(
   const sum = (key: "helpers" | "commands") =>
     reqs.reduce((n, r) => n + r.tally[key], 0);
   return {
-    chapters: chaptersOf(reqs),
+    chapters,
     pauses,
     decisions: decisionsOf(reqs),
     totals: {

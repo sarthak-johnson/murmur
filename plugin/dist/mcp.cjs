@@ -2236,10 +2236,10 @@ var require_resolve = __commonJS({
       }
       return count;
     }
-    function getFullPath(resolver, id = "", normalize) {
+    function getFullPath(resolver, id2 = "", normalize) {
       if (normalize !== false)
-        id = normalizeId(id);
-      const p = resolver.parse(id);
+        id2 = normalizeId(id2);
+      const p = resolver.parse(id2);
       return _getFullPath(resolver, p);
     }
     exports2.getFullPath = getFullPath;
@@ -2249,13 +2249,13 @@ var require_resolve = __commonJS({
     }
     exports2._getFullPath = _getFullPath;
     var TRAILING_SLASH_HASH = /#\/?$/;
-    function normalizeId(id) {
-      return id ? id.replace(TRAILING_SLASH_HASH, "") : "";
+    function normalizeId(id2) {
+      return id2 ? id2.replace(TRAILING_SLASH_HASH, "") : "";
     }
     exports2.normalizeId = normalizeId;
-    function resolveUrl(resolver, baseId, id) {
-      id = normalizeId(id);
-      return resolver.resolve(baseId, id);
+    function resolveUrl(resolver, baseId, id2) {
+      id2 = normalizeId(id2);
+      return resolver.resolve(baseId, id2);
     }
     exports2.resolveUrl = resolveUrl;
     var ANCHOR = /^[a-z_][-a-z0-9._]*$/i;
@@ -3025,8 +3025,8 @@ var require_compile = __commonJS({
       if (Object.keys(root.schema).length > 0 && refPath === baseId) {
         return getJsonPointer.call(this, p, root);
       }
-      const id = (0, resolve_1.normalizeId)(refPath);
-      const schOrRef = this.refs[id] || this.schemas[id];
+      const id2 = (0, resolve_1.normalizeId)(refPath);
+      const schOrRef = this.refs[id2] || this.schemas[id2];
       if (typeof schOrRef == "string") {
         const sch = resolveSchema.call(this, root, schOrRef);
         if (typeof (sch === null || sch === void 0 ? void 0 : sch.schema) !== "object")
@@ -3037,7 +3037,7 @@ var require_compile = __commonJS({
         return;
       if (!schOrRef.validate)
         compileSchema.call(this, schOrRef);
-      if (id === (0, resolve_1.normalizeId)(ref)) {
+      if (id2 === (0, resolve_1.normalizeId)(ref)) {
         const { schema } = schOrRef;
         const { schemaId } = this.opts;
         const schId = schema[schemaId];
@@ -4520,15 +4520,15 @@ var require_core = __commonJS({
             this.addSchema(sch, void 0, _meta, _validateSchema);
           return this;
         }
-        let id;
+        let id2;
         if (typeof schema === "object") {
           const { schemaId } = this.opts;
-          id = schema[schemaId];
-          if (id !== void 0 && typeof id != "string") {
+          id2 = schema[schemaId];
+          if (id2 !== void 0 && typeof id2 != "string") {
             throw new Error(`schema ${schemaId} must be string`);
           }
         }
-        key = (0, resolve_1.normalizeId)(key || id);
+        key = (0, resolve_1.normalizeId)(key || id2);
         this._checkUnique(key);
         this.schemas[key] = this._addSchema(schema, _meta, key, _validateSchema, true);
         return this;
@@ -4607,11 +4607,11 @@ var require_core = __commonJS({
           case "object": {
             const cacheKey = schemaKeyRef;
             this._cache.delete(cacheKey);
-            let id = schemaKeyRef[this.opts.schemaId];
-            if (id) {
-              id = (0, resolve_1.normalizeId)(id);
-              delete this.schemas[id];
-              delete this.refs[id];
+            let id2 = schemaKeyRef[this.opts.schemaId];
+            if (id2) {
+              id2 = (0, resolve_1.normalizeId)(id2);
+              delete this.schemas[id2];
+              delete this.refs[id2];
             }
             return this;
           }
@@ -4718,10 +4718,10 @@ var require_core = __commonJS({
         }
       }
       _addSchema(schema, meta3, baseId, validateSchema = this.opts.validateSchema, addSchema = this.opts.addUsedSchema) {
-        let id;
+        let id2;
         const { schemaId } = this.opts;
         if (typeof schema == "object") {
-          id = schema[schemaId];
+          id2 = schema[schemaId];
         } else {
           if (this.opts.jtd)
             throw new Error("schema must be object");
@@ -4731,7 +4731,7 @@ var require_core = __commonJS({
         let sch = this._cache.get(schema);
         if (sch !== void 0)
           return sch;
-        baseId = (0, resolve_1.normalizeId)(id || baseId);
+        baseId = (0, resolve_1.normalizeId)(id2 || baseId);
         const localRefs = resolve_1.getSchemaRefs.call(this, schema, baseId);
         sch = new compile_1.SchemaEnv({ schema, schemaId, meta: meta3, baseId, localRefs });
         this._cache.set(sch.schema, sch);
@@ -4744,9 +4744,9 @@ var require_core = __commonJS({
           this.validateSchema(schema, true);
         return sch;
       }
-      _checkUnique(id) {
-        if (this.schemas[id] || this.refs[id]) {
-          throw new Error(`schema with key or id "${id}" already exists`);
+      _checkUnique(id2) {
+        if (this.schemas[id2] || this.refs[id2]) {
+          throw new Error(`schema with key or id "${id2}" already exists`);
         }
       }
       _compileSchemaEnv(sch) {
@@ -14513,15 +14513,15 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
     const syms = normalized.symbolKeys;
     const doc = new Doc(["payload", "ctx"], { shape, inst, memo: memo2, syms });
     const parseStr = (k) => `shape[${k}]._zod.run({ value: input[${k}], issues: [] }, ctx)`;
-    const prefixStr = (id, k) => `
-          let ${id}_ab = false;
-          for (let i = 0; i < ${id}.issues.length; i++) {
-            const iss = ${id}.issues[i];
+    const prefixStr = (id2, k) => `
+          let ${id2}_ab = false;
+          for (let i = 0; i < ${id2}.issues.length; i++) {
+            const iss = ${id2}.issues[i];
             iss.path = iss.path ? [${k}, ...iss.path] : [${k}];
             payload.issues.push(iss);
-            if (iss.continue !== true) ${id}_ab = true;
+            if (iss.continue !== true) ${id2}_ab = true;
           }
-          if (${id}_ab && ctx && ctx.abortEarly) {
+          if (${id2}_ab && ctx && ctx.abortEarly) {
             payload.value = newResult;
             return payload;
           }`;
@@ -14535,34 +14535,34 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
     for (const key of normalized.allKeys) {
       if (key === "__proto__")
         continue;
-      const id = ids[key];
+      const id2 = ids[key];
       const k = typeof key === "symbol" ? `syms[${syms.indexOf(key)}]` : esc(key);
       const isPresent = `${k} in input`;
       const schema = shape[key];
       const optin = schema?._zod?.optin;
       const isOptionalIn = optin !== void 0;
       const isOptionalOut = schema?._zod?.optout === "optional";
-      doc.write(`const ${id} = ${parseStr(k)};`);
+      doc.write(`const ${id2} = ${parseStr(k)};`);
       if (isOptionalIn && isOptionalOut) {
-        const assign = optin === "optional" ? `${id}_present` : `${id}.value !== undefined || ${id}_present`;
+        const assign = optin === "optional" ? `${id2}_present` : `${id2}.value !== undefined || ${id2}_present`;
         doc.write(`
-        const ${id}_present = ${isPresent};
-        if (!${id}.issues.length || ${id}_present) {
-          if (${id}.issues.length) {${prefixStr(id, k)}
+        const ${id2}_present = ${isPresent};
+        if (!${id2}.issues.length || ${id2}_present) {
+          if (${id2}.issues.length) {${prefixStr(id2, k)}
           }
 
           if (${assign}) {
-            newResult[${k}] = ${id}.value;
+            newResult[${k}] = ${id2}.value;
           }
         }
 
       `);
       } else if (!isOptionalIn) {
         doc.write(`
-        const ${id}_present = ${isPresent};
-        if (${id}.issues.length) {${prefixStr(id, k)}
+        const ${id2}_present = ${isPresent};
+        if (${id2}.issues.length) {${prefixStr(id2, k)}
         }
-        if (!${id}_present && !${id}.issues.length) {
+        if (!${id2}_present && !${id2}.issues.length) {
           payload.issues.push({
             code: "invalid_type",
             expected: "nonoptional",
@@ -14575,22 +14575,22 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
           }
         }
 
-        if (${id}_present) {
-          newResult[${k}] = ${id}.value;
+        if (${id2}_present) {
+          newResult[${k}] = ${id2}.value;
         }
 
       `);
       } else {
         doc.write(`
-        if (${id}.issues.length) {${prefixStr(id, k)}
+        if (${id2}.issues.length) {${prefixStr(id2, k)}
         }
       `);
         if (optin === "defaulted") {
-          doc.write(`newResult[${k}] = ${id}.value;`);
+          doc.write(`newResult[${k}] = ${id2}.value;`);
         } else {
           doc.write(`
-        if (${id}.value !== undefined || ${isPresent}) {
-          newResult[${k}] = ${id}.value;
+        if (${id2}.value !== undefined || ${isPresent}) {
+          newResult[${k}] = ${id2}.value;
         }
       `);
         }
@@ -26618,26 +26618,26 @@ function extractDefs(ctx, schema) {
     return;
   const idToSchema = /* @__PURE__ */ new Map();
   for (const entry of ctx.seen.entries()) {
-    const id = ctx.metadataRegistry.get(entry[0])?.id;
-    if (id) {
-      const existing = idToSchema.get(id);
+    const id2 = ctx.metadataRegistry.get(entry[0])?.id;
+    if (id2) {
+      const existing = idToSchema.get(id2);
       if (existing && existing !== entry[0]) {
-        throw new Error(`Duplicate schema id "${id}" detected during JSON Schema conversion. Two different schemas cannot share the same id when converted together.`);
+        throw new Error(`Duplicate schema id "${id2}" detected during JSON Schema conversion. Two different schemas cannot share the same id when converted together.`);
       }
-      idToSchema.set(id, entry[0]);
+      idToSchema.set(id2, entry[0]);
     }
   }
   const makeURI = (entry) => {
     const defsSegment = ctx.target === "draft-2020-12" ? "$defs" : "definitions";
     if (ctx.external) {
       const externalId = ctx.external.registry.get(entry[0])?.id;
-      const uriGenerator = ctx.external.uri ?? ((id2) => id2);
+      const uriGenerator = ctx.external.uri ?? ((id3) => id3);
       if (externalId) {
         return { ref: uriGenerator(externalId) };
       }
-      const id = entry[1].defId ?? entry[1].schema.id ?? `schema${ctx.counter++}`;
-      entry[1].defId = id;
-      return { defId: id, ref: `${uriGenerator("__shared")}#/${defsSegment}/${encodeJSONPointerSegment(id)}` };
+      const id2 = entry[1].defId ?? entry[1].schema.id ?? `schema${ctx.counter++}`;
+      entry[1].defId = id2;
+      return { defId: id2, ref: `${uriGenerator("__shared")}#/${defsSegment}/${encodeJSONPointerSegment(id2)}` };
     }
     const uriPrefix = `#`;
     const defUriPrefix = `${uriPrefix}/${defsSegment}/`;
@@ -26685,8 +26685,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         continue;
       }
     }
-    const id = ctx.metadataRegistry.get(entry[0])?.id;
-    if (id) {
+    const id2 = ctx.metadataRegistry.get(entry[0])?.id;
+    if (id2) {
       extractToDef(entry);
       continue;
     }
@@ -26919,10 +26919,10 @@ function finalize(ctx, schema) {
   } else {
   }
   if (ctx.external?.uri) {
-    const id = ctx.external.registry.get(schema)?.id;
-    if (!id)
+    const id2 = ctx.external.registry.get(schema)?.id;
+    if (!id2)
       throw new Error("Schema is missing an `id` property");
-    result.$id = ctx.external.uri(id);
+    result.$id = ctx.external.uri(id2);
   }
   assignProps(result, root.defId ? root.schema : root.def ?? root.schema);
   const rootMetaId = ctx.metadataRegistry.get(schema)?.id;
@@ -27528,7 +27528,7 @@ function stringifyKeyNames(bySchema, json2, visited) {
   const values = json2.enum ?? (json2.const !== void 0 ? [json2.const] : void 0);
   if (!numericType && !values?.some((v) => typeof v === "number"))
     return json2;
-  const { minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, format, id, ...rest } = json2;
+  const { minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, format, id: id2, ...rest } = json2;
   if (rest.enum)
     rest.enum = rest.enum.map((v) => typeof v === "number" ? String(v) : v);
   else if (typeof rest.const === "number")
@@ -33874,9 +33874,9 @@ var zodToJsonSchema = (schema, options) => {
     ...refs,
     currentPath: [...refs.basePath, refs.definitionPath, name]
   }, false) ?? parseAnyDef(refs);
-  const title = typeof options === "object" && options.name !== void 0 && options.nameStrategy === "title" ? options.name : void 0;
-  if (title !== void 0) {
-    main.title = title;
+  const title2 = typeof options === "object" && options.name !== void 0 && options.nameStrategy === "title" ? options.name : void 0;
+  if (title2 !== void 0) {
+    main.title = title2;
   }
   if (refs.flags.hasReferencedOpenAiAnyType) {
     if (!definitions) {
@@ -35096,7 +35096,7 @@ var ExperimentalServerTasks = class {
       if (hasPreviousToolUse) {
         const toolUseIds = new Set(previousContent.filter((c) => c.type === "tool_use").map((c) => c.id));
         const toolResultIds = new Set(lastContent.filter((c) => c.type === "tool_result").map((c) => c.toolUseId));
-        if (toolUseIds.size !== toolResultIds.size || ![...toolUseIds].every((id) => toolResultIds.has(id))) {
+        if (toolUseIds.size !== toolResultIds.size || ![...toolUseIds].every((id2) => toolResultIds.has(id2))) {
           throw new Error("ids of tool_result blocks and tool_use blocks from previous message do not match");
         }
       }
@@ -35521,7 +35521,7 @@ var Server = class extends Protocol {
       if (hasPreviousToolUse) {
         const toolUseIds = new Set(previousContent.filter((c) => c.type === "tool_use").map((c) => c.id));
         const toolResultIds = new Set(lastContent.filter((c) => c.type === "tool_result").map((c) => c.toolUseId));
-        if (toolUseIds.size !== toolResultIds.size || ![...toolUseIds].every((id) => toolResultIds.has(id))) {
+        if (toolUseIds.size !== toolResultIds.size || ![...toolUseIds].every((id2) => toolResultIds.has(id2))) {
           throw new Error("ids of tool_result blocks and tool_use blocks from previous message do not match");
         }
       }
@@ -36207,10 +36207,10 @@ var McpServer = class {
       return registeredResourceTemplate;
     }
   }
-  _createRegisteredResource(name, title, uri, metadata, readCallback) {
+  _createRegisteredResource(name, title2, uri, metadata, readCallback) {
     const registeredResource = {
       name,
-      title,
+      title: title2,
       metadata,
       readCallback,
       enabled: true,
@@ -36239,10 +36239,10 @@ var McpServer = class {
     this._registeredResources[uri] = registeredResource;
     return registeredResource;
   }
-  _createRegisteredResourceTemplate(name, title, template, metadata, readCallback) {
+  _createRegisteredResourceTemplate(name, title2, template, metadata, readCallback) {
     const registeredResourceTemplate = {
       resourceTemplate: template,
-      title,
+      title: title2,
       metadata,
       readCallback,
       enabled: true,
@@ -36276,9 +36276,9 @@ var McpServer = class {
     }
     return registeredResourceTemplate;
   }
-  _createRegisteredPrompt(name, title, description, argsSchema, callback) {
+  _createRegisteredPrompt(name, title2, description, argsSchema, callback) {
     const registeredPrompt = {
-      title,
+      title: title2,
       description,
       argsSchema: argsSchema === void 0 ? void 0 : objectFromShape(argsSchema),
       callback,
@@ -36317,10 +36317,10 @@ var McpServer = class {
     }
     return registeredPrompt;
   }
-  _createRegisteredTool(name, title, description, inputSchema, outputSchema, annotations, execution, _meta, handler) {
+  _createRegisteredTool(name, title2, description, inputSchema, outputSchema, annotations, execution, _meta, handler) {
     validateAndWarnToolName(name);
     const registeredTool = {
-      title,
+      title: title2,
       description,
       inputSchema: getZodSchemaObject(inputSchema),
       outputSchema: getZodSchemaObject(outputSchema),
@@ -36403,8 +36403,8 @@ var McpServer = class {
     if (this._registeredTools[name]) {
       throw new Error(`Tool ${name} is already registered`);
     }
-    const { title, description, inputSchema, outputSchema, annotations, _meta } = config2;
-    return this._createRegisteredTool(name, title, description, inputSchema, outputSchema, annotations, { taskSupport: "forbidden" }, _meta, cb);
+    const { title: title2, description, inputSchema, outputSchema, annotations, _meta } = config2;
+    return this._createRegisteredTool(name, title2, description, inputSchema, outputSchema, annotations, { taskSupport: "forbidden" }, _meta, cb);
   }
   prompt(name, ...rest) {
     if (this._registeredPrompts[name]) {
@@ -36431,8 +36431,8 @@ var McpServer = class {
     if (this._registeredPrompts[name]) {
       throw new Error(`Prompt ${name} is already registered`);
     }
-    const { title, description, argsSchema } = config2;
-    const registeredPrompt = this._createRegisteredPrompt(name, title, description, argsSchema, cb);
+    const { title: title2, description, argsSchema } = config2;
+    const registeredPrompt = this._createRegisteredPrompt(name, title2, description, argsSchema, cb);
     this.setPromptRequestHandlers();
     this.sendPromptListChanged();
     return registeredPrompt;
@@ -36713,7 +36713,8 @@ var status = external_exports.preprocess(said, external_exports.enum(["running",
 var MapInput = external_exports.object({
   kind: external_exports.enum(["feature", "bug", "refactor", "question"]),
   goal: text,
-  // The request in 2 to 4 words, for a list of requests ("Restyle the app").
+  // What the request does in 2 to 5 words, for a list of requests ("Restyle the app"),
+  // never the user's own words ("Yes").
   short: external_exports.string().max(60).optional(),
   phases: list(
     external_exports.object({
@@ -36794,6 +36795,34 @@ var RefreshInput = external_exports.object({ tasks: external_exports.array(TaskE
   ({ parts, tasks }) => unique(parts.map((p) => p.id)) && unique(tasks.map((t) => t.id)),
   "part and task ids are unique"
 );
+var KINDS = MapInput.shape.kind;
+var id = external_exports.string().min(1).max(100);
+var title = (max) => external_exports.string().trim().min(1).max(max);
+var TitlesInput = external_exports.object({
+  session: external_exports.object({ title: title(48) }),
+  threads: external_exports.array(external_exports.object({ id, title: title(40) })).max(30),
+  requests: external_exports.array(
+    external_exports.object({
+      id,
+      short: title(40),
+      goal: title(120),
+      kind: KINDS,
+      thread: id,
+      follows: id.optional()
+    })
+  ).max(80)
+}).refine(({ threads, requests }) => {
+  const ids = new Set(threads.map((t) => t.id));
+  return requests.every((r) => ids.has(r.thread));
+}, "every thread a request names is listed").refine(
+  ({ threads, requests }) => unique(threads.map((t) => t.id)) && unique(requests.map((r) => r.id)),
+  "thread and request ids are unique"
+).refine(({ requests }) => {
+  const ids = new Set(requests.map((r) => r.id));
+  return requests.every(
+    (r) => r.follows === void 0 || r.follows !== r.id && ids.has(r.follows)
+  );
+}, "follows names another request of the answer");
 
 // ../packages/core/src/scrub.ts
 var MAX_STRING = 262144;
@@ -36832,11 +36861,21 @@ var RULES = [
 ];
 
 // ../packages/core/src/view/shape.ts
-var STOP = new Set(
-  "a an the to of and or for with in on at by from into as is my our your its their this that these those every all some each then".split(
+var BREAK = new Set(
+  "a an the to of and or for with in on at by from into as than but without about after before over under through between across via per is are was were".split(
     " "
   )
 );
+var HANG = /* @__PURE__ */ new Set([
+  ...BREAK,
+  ..."be been being has have had will would can could should do does did not no any there my our your its their this that these those every all some each then whether if which because while so more most also just you we they it he she i me us them how what why when where who".split(
+    " "
+  )
+]);
+var ENDS = new Set(
+  [...BREAK].filter((w) => !/^(?:a|an|the|is|are|was|were)$/.test(w))
+);
+var OPENS = new Set("whether if that which because while".split(" "));
 
 // src/mcp.ts
 var noted = async () => ({
@@ -36847,7 +36886,7 @@ function createServer() {
   server.registerTool(
     "map",
     {
-      description: "Show the user the shape of this request: its kind, a one-line goal, the plan as phases with tasks, and the parts and how they connect. Call once at the start of each request and again when the plan or parts change.",
+      description: "Show the user the shape of this request: its kind, a one-line goal, a 2 to 5 word title of what it does, the plan as phases with tasks, and the parts and how they connect. Call once at the start of each request and again when the plan or parts change.",
       inputSchema: MapInput
     },
     noted

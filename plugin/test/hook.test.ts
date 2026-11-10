@@ -120,6 +120,34 @@ describe("handleHook", () => {
     expect(handleHook(s2, ENV, NOW).event?.sessionId).toBe("s2");
   });
 
+  it("records the prompts it sends, never one asked while paused", () => {
+    login();
+    setProjectState(repo, "on");
+    handleHook(start(), ENV, NOW);
+    const ask = (id: string) =>
+      payload("UserPromptSubmit", {
+        prompt: "Fix the login bug",
+        prompt_id: id,
+      });
+    handleHook(ask("p1"), ENV, NOW);
+    setPaused(repo, true, "s1");
+    handleHook(ask("p2"), ENV, NOW);
+    setPaused(repo, false, "s1");
+    handleHook(ask("p3"), ENV, NOW);
+    // A prompt typed while Claude works shares its turn's id: kept once.
+    handleHook(ask("p3"), ENV, NOW);
+    // A helper's report is no request.
+    handleHook(
+      payload("UserPromptSubmit", {
+        prompt: "<task-notification>done</task-notification>",
+        prompt_id: "p4",
+      }),
+      ENV,
+      NOW,
+    );
+    expect(readSession("s1").sent).toEqual(["p1", "p3"]);
+  });
+
   it("headless session is skipped unless MURMUR_ALLOW_HEADLESS=1", () => {
     login();
     const headless = [

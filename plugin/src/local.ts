@@ -279,6 +279,32 @@ export interface SessionState extends Narration {
    * ran in it. Its events follow this project's state, wherever the session moves.
    */
   project?: string;
+  /**
+   * The `prompt_id` of every request the hook sent (never one asked while off or paused):
+   * with the imported history (before `cutoff`), the only requests a titles run may name.
+   */
+  sent?: string[];
+}
+/** Records that the hook sent the request with this `prompt_id`. */
+export function markSent(sessionId: string, promptId: unknown): void {
+  if (typeof promptId !== "string" || !promptId) return;
+  const sent = readSession(sessionId).sent ?? [];
+  if (!sent.includes(promptId))
+    updateSession(sessionId, { sent: [...sent, promptId] });
+}
+/**
+ * Whether Murmur sent the request `start` begins (its prompt event): imported history,
+ * from before the import's cutoff, or a prompt the hook recorded (`markSent`).
+ */
+export function wasSent(
+  s: SessionState,
+  start: { ts: string; payload: Record<string, unknown> },
+): boolean {
+  const id = start.payload.prompt_id;
+  return (
+    (s.cutoff !== undefined && Date.parse(start.ts) < Date.parse(s.cutoff)) ||
+    (typeof id === "string" && (s.sent ?? []).includes(id))
+  );
 }
 /**
  * Where the refresh of a session's live plan stands (recap.ts `runRefresh`), in
@@ -328,6 +354,34 @@ export function clearRefresh(sessionId: string): void {
   fs.rmSync(path.join(murmurDir(), refreshFile(sessionId)), { force: true });
   const { refresh: _, ...rest } = readSession(sessionId);
   if (_) writeSession(sessionId, rest);
+}
+/**
+ * What the titles runs of a session did (titles.ts `runTitles`), in
+ * sessions/<id>.titles.json. Requests by key (core's `requestKeys`).
+ */
+export interface TitlesState {
+  /** When the session was last asked about: at most once every 10 minutes. */
+  at?: string;
+  /** When a Stop's child last read the transcript for it: at most once every 5 minutes. */
+  looked?: string;
+  /** The requests no run had covered at that ask: a new run needs one not among them. */
+  tried?: string[];
+  /** What a run said of each request it covered: the next run's context. */
+  covered?: Record<string, { short: string; goal: string; thread: string }>;
+  /** Every storyline named so far, by id, so the next run keeps their ids. */
+  threads?: Record<string, string>;
+}
+const titlesFile = (sessionId: string) =>
+  sessionFile(sessionId).replace(/\.json$/, ".titles.json");
+export function readTitles(sessionId: string): TitlesState {
+  return readJson<TitlesState>(titlesFile(sessionId), {});
+}
+export function writeTitles(sessionId: string, t: TitlesState): void {
+  writeJson(titlesFile(sessionId), t);
+}
+/** Forgets every titles run of a session: a history import gives the server none of them. */
+export function clearTitles(sessionId: string): void {
+  fs.rmSync(path.join(murmurDir(), titlesFile(sessionId)), { force: true });
 }
 export const NO_NARRATION: Narration = {
   mapped: false,

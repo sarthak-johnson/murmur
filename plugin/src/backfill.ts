@@ -4,6 +4,7 @@ import path from "node:path";
 import { type HookName, type MurmurEvent, scrubEvent } from "@murmur/core";
 import {
   clearRefresh,
+  clearTitles,
   isHeadless,
   isPaused,
   isRevoked,
@@ -16,6 +17,7 @@ import {
   writeSession,
 } from "./local.js";
 import { lastRequestOpen, runRecap, runRefresh } from "./recap.js";
+import { runTitles, TITLES_TIMEOUT_MS } from "./titles.js";
 import { enqueue, type FlushOptions, flush } from "./upload.js";
 
 // A week-long session with whole diffs and Claude's messages is ~19,000 events and
@@ -448,6 +450,7 @@ export async function runBackfill(
   // ponytail: a backfill retried after its child died forgets them too, so a request
   // may be asked once more; key the reset on a real re-import if that ever costs much.
   clearRefresh(sessionId);
+  clearTitles(sessionId);
   let events: MurmurEvent[] = [];
   // The live read starts where this read ends; Claude's text from the cutoff to here is
   // in this import, so nothing is read twice or missed.
@@ -488,6 +491,19 @@ export async function runBackfill(
     budgetMs: Math.min(150_000, left() - 70_000),
   });
   if (recap.ok && same())
+    await flush(creds, { budgetMs: Math.max(1000, left()), ...opts });
+  // Then the whole history is named and grouped into storylines, when its ask can end
+  // with time left to send; else the next Stop's child does it.
+  if (
+    left() > TITLES_TIMEOUT_MS + 15_000 &&
+    (
+      await runTitles(sessionId, events, {
+        env,
+        lastOpen: lastRequestOpen(s.triggerHook),
+      })
+    ).ok &&
+    same()
+  )
     await flush(creds, { budgetMs: Math.max(1000, left()), ...opts });
   // Then one refresh pass, under the same caps, so a stale plan Claude drew in the
   // history is caught up too; only when its ask (60 s) can end with time left to send.

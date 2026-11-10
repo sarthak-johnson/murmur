@@ -27,6 +27,8 @@
  * with a plan Claude drew, an open task and something new since its last ask gets one
  * final refresh, drawn just after its last event, and never another. A history import
  * forgets every refresh (the server has none of them) and runs one pass at its end.
+ * A request Murmur did not send (asked while off or paused, see local.ts `wasSent`) is
+ * never refreshed.
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import os from "node:os";
@@ -58,6 +60,7 @@ import {
   readSession,
   sessionProjectState,
   updateSession,
+  wasSent,
   writeRefresh,
 } from "./local.js";
 import { enqueue } from "./upload.js";
@@ -132,7 +135,7 @@ Answer with one JSON object and nothing else, in exactly this shape:
   "map": {
     "kind": "feature" | "bug" | "refactor" | "question",
     "goal": "the request in a few plain words",
-    "short": "the request in 2 to 4 words, like a title",
+    "short": "what the request did in 2 to 5 words, like a title, never the person's own words",
     "phases": [{ "id": "p1", "title": "...", "tasks": [{ "id": "t1", "title": "...", "part": "<part id>" }] }],
     "parts": [{ "id": "<short id>", "title": "...", "phase": "p1", "links": [{ "to": "<part id>", "label": "uses" }] }]
   },
@@ -217,10 +220,10 @@ export function recapInput(
 type Answer =
   | { ok: true; json: unknown; cost?: number }
   | { ok: false; why: string };
-type Ask = Answer & { ms: number };
+export type Ask = Answer & { ms: number };
 
 /** Runs the user's `claude -p` once with `input` on stdin. Never throws. */
-function ask(
+export function ask(
   input: string,
   env: NodeJS.ProcessEnv,
   timeoutMs: number,
@@ -308,11 +311,11 @@ function parse(stdout: string): Answer {
 }
 
 /** What the ask cost, as `claude -p` reported it, for the log line. */
-const costOf = (r: Ask) =>
+export const costOf = (r: Ask) =>
   r.ok && r.cost !== undefined ? `, $${r.cost.toFixed(4)}` : "";
 
 /** Why a zod check refused the answer, for the one log line. */
-const refused = (
+export const refused = (
   what: string,
   r: { error?: { issues: { path: PropertyKey[] }[] } } | undefined,
 ) => `the answer is not ${what} (${r?.error?.issues[0]?.path.join(".")})`;
@@ -375,7 +378,7 @@ const cut = (s: string) => s.slice(0, 200);
  * Queues nothing itself: builds hook events for Murmur's own tool calls, marked
  * `recap: true`, a millisecond apart from `at`, ids from `key` and their order.
  */
-function emitter(
+export function emitter(
   base: MurmurEvent,
   key: string,
   at: number,
@@ -443,13 +446,13 @@ function detailNarrate(
 }
 
 /** `sending`, and still the login it started with. */
-const stillSending = (sessionId: string, cwd: string, token?: string) =>
+export const stillSending = (sessionId: string, cwd: string, token?: string) =>
   token !== undefined &&
   readCredentials()?.token === token &&
   sending(sessionId, cwd);
 
 /** Whether Murmur would send for this session now: logged in, on, not paused. */
-function sending(sessionId: string, cwd: string): boolean {
+export function sending(sessionId: string, cwd: string): boolean {
   const s = readSession(sessionId);
   const at = s.cwd ?? cwd;
   return (
@@ -733,12 +736,15 @@ function pickRequest(
   events: MurmurEvent[],
   per: Record<string, RequestRefresh>,
   t: number,
+  sent: (req: RequestView) => boolean,
 ) {
   for (let i = requests.length - 1; i >= 0; i--) {
     const req = requests[i] as RequestView;
     const next = requests[i + 1];
     const mine = per[req.id];
-    if (req.planInferred || req.recap || (next && mine?.final)) continue;
+    // One asked while Murmur was off or paused is never spoken of.
+    if (req.planInferred || req.recap || (next && mine?.final) || !sent(req))
+      continue;
     const own = events.filter(
       (e) => e.ts >= req.startedAt && (!next || e.ts < next.startedAt),
     );
@@ -818,7 +824,10 @@ export async function runRefresh(
     cutoff: iso,
   });
   const view = reduce(events);
-  const pick = pickRequest(view.requests, events, per, t);
+  const byId = new Map(events.map((e) => [e.id, e]));
+  const pick = pickRequest(view.requests, events, per, t, (r) =>
+    wasSent(s, byId.get(r.id) as MurmurEvent),
+  );
   if (!pick) return none;
   const { req, own, st, finished } = pick;
   const mine = per[req.id];

@@ -13,5 +13,6 @@ export {
 } from "./view/moments.js";
 export * from "./view/reduce.js";
 export { relPath } from "./view/requests.js";
+export { isReply, markPasted, requestKeys } from "./view/titles.js";
 export * from "./view/types.js";
 export { briefOf, parseNotification } from "./view/words.js";

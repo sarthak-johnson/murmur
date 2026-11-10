@@ -487,6 +487,7 @@ JSON
       {
         type: "user",
         uuid: "u1",
+        promptId: "q1",
         timestamp: ago(30),
         origin: { kind: "human" },
         message: { content: "Build the agent page" },
@@ -539,6 +540,8 @@ JSON
         transcriptPath: transcript,
         cwd: repo,
         textOffset: fs.statSync(transcript).size,
+        // The hook sent that prompt live.
+        sent: ["q1"],
       }),
     );
     // A fake claude that runs the plugin's hook with the env it was given, as the recap test's.

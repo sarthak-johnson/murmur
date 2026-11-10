@@ -16,6 +16,12 @@ import {
 } from "./moments.js";
 import type { Narrated, Trace } from "./requests.js";
 import { helpersOf, itemOf, subjectOfWork } from "./rounds.js";
+import {
+  fallbackGoal,
+  type TitleEntry,
+  talkOnly,
+  titleClause,
+} from "./titles.js";
 import type {
   AgentView,
   Beyond,
@@ -33,6 +39,8 @@ export interface ShapeContext {
   waiting: boolean;
   /** The helper still runs: not stopped, and not quiet for over 10 minutes. */
   live: (a: AgentView) => boolean;
+  /** What a titles run said of this request, if one covered it. */
+  title?: TitleEntry | undefined;
 }
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -49,6 +57,20 @@ export function applyShape(
   ctx: ShapeContext,
 ): void {
   const live = trace.narrated.filter((x) => real(x.e));
+  const outcome = outcomeOf(req.messages ?? []);
+  if (outcome) req.outcome = outcome;
+  // The map's title first (`applyPlan` set it), then the titles run's, then Murmur's own.
+  if (req.short) req.titledBy = "claude";
+  const t = ctx.title;
+  if (t) {
+    if (req.planInferred) req.goal = t.goal;
+    if (!req.short) req.short = t.short;
+    req.titledBy = "claude";
+    if (req.kindInferred) {
+      req.kind = t.kind;
+      req.kindInferred = false;
+    }
+  } else if (req.planInferred) req.goal = fallbackGoal(req.prompt, outcome);
   if (!req.short) {
     const short = shortOf(req.goal);
     if (short) req.short = short;
@@ -57,8 +79,6 @@ export function applyShape(
   if (beyond) req.beyond = beyond;
   placeMessages(req, live, events, beyond);
   req.state = stateOf(req, events, live, ctx);
-  const outcome = outcomeOf(req.messages ?? []);
-  if (outcome) req.outcome = outcome;
   if (req.state === "waiting") {
     const asked = waitingOf(req, events);
     if (asked.length) req.waiting = asked;
@@ -78,12 +98,30 @@ export function applyShape(
     }
 }
 
-// Words a short title neither starts its subject with nor ends on.
-const STOP = new Set(
-  "a an the to of and or for with in on at by from into as is my our your its their this that these those every all some each then".split(
+// Where a phrase can end and the next begin: before a small word that starts one, or
+// before "is" ("Find out why the disk | is 92% full").
+const BREAK = new Set(
+  "a an the to of and or for with in on at by from into as than but without about after before over under through between across via per is are was were".split(
     " ",
   ),
 );
+// Words a cut title never ends on: those, and ones that leave it hanging ("was", "any").
+const HANG = new Set([
+  ...BREAK,
+  ..."be been being has have had will would can could should do does did not no any there my our your its their this that these those every all some each then whether if which because while so more most also just you we they it he she i me us them how what why when where who".split(
+    " ",
+  ),
+]);
+// A cut just before one of these ends at a whole phrase ("Page with 12 screens of build
+// 9 | as it looks now"): nothing to back off from.
+const ENDS = new Set(
+  [...BREAK].filter((w) => !/^(?:a|an|the|is|are|was|were)$/.test(w)),
+);
+// A reply with nothing to say of the work ("Yes", "Waiting"): it picks up the one before.
+const FOLLOW_UP = "Follow-up";
+// Words that open a clause ("whether build 9 was ..."): a cut inside one backs off to
+// before it, when that keeps three words.
+const OPENS = new Set("whether if that which because while".split(" "));
 const FILLER =
   /^(?:start|begin|continue|resume|keep|finish|carry on|proceed with|go on with)\s+/i;
 const SHORT_MAX = 32;
@@ -92,11 +130,19 @@ const SHORT_MAX = 32;
 export function shortOf(goal: string): string {
   // An aside in brackets is the first thing a few words can do without.
   const plain = goal.replace(/\s*\([^)]*\)/g, "");
-  let s = (plain.split(/,|:|\s[-–]\s|\sand then\s/i)[0] ?? "").trim();
+  // The first clause that reads as a title (`titleClause`), else the first, as typed.
+  const clauses = plain
+    .split(/,|:|;|\s[-–]\s|\sand then\s|[.?!]\s/i)
+    .map((c) => c.trim())
+    .filter(Boolean);
+  let s =
+    clauses.map((c) => titleClause(c)).find((c) => c !== undefined) ??
+    (talkOnly(plain) ? FOLLOW_UP : (clauses[0] ?? ""));
+  const is = (set: Set<string>, w: string | undefined) =>
+    set.has((w ?? "").toLowerCase());
   const filler = FILLER.exec(s);
   const rest = filler ? s.slice(filler[0].length).split(/\s+/) : [];
-  if (rest.length >= 2 && !STOP.has((rest[0] as string).toLowerCase()))
-    s = rest.join(" ");
+  if (rest.length >= 2 && !is(HANG, rest[0])) s = rest.join(" ");
   let out = "";
   for (const w of s.split(/\s+/)) {
     const next = out ? `${out} ${w}` : w;
@@ -106,20 +152,28 @@ export function shortOf(goal: string): string {
   let words = (out || s.slice(0, SHORT_MAX)).split(" ");
   const trim = (ws: string[]) => {
     const t = [...ws];
-    while (t.length > 1 && STOP.has((t.at(-1) as string).toLowerCase()))
-      t.pop();
+    while (t.length > 1 && is(HANG, t.at(-1))) t.pop();
     return t;
   };
-  // A cut phrase ("Track every phase of the Lit") backs off to before its last small
-  // word ("Track every phase"), unless that leaves under two words.
-  if (out && words.length < s.split(/\s+/).length) {
-    const i = words.findLastIndex((w, k) => k > 0 && STOP.has(w.toLowerCase()));
-    const head = i > 0 ? trim(words.slice(0, i)) : [];
-    if (head.length >= 2) words = head;
+  let hanging = false;
+  // A cut just before a small word that starts a phrase keeps what it has. Else it backs
+  // off to a whole phrase: to before a clause it cut into ("Check the login flow | if
+  // anything changed"), else before its last small word ("Track every phase | of the
+  // Lit") when two words or more are left. Else it ends with "…" rather than on a word
+  // that leaves it hanging ("Confirm whether build 9 | was").
+  const all = s.split(/\s+/);
+  if (out && words.length < all.length && is(ENDS, all[words.length]))
+    words = trim(words);
+  else if (out && words.length < all.length) {
+    const opens = words.findIndex((w, k) => k > 0 && is(OPENS, w));
+    const breaks = words.findLastIndex((w, k) => k > 0 && is(BREAK, w));
+    const head = trim(words.slice(0, opens > 0 ? opens : Math.max(breaks, 0)));
+    if (head.length >= (opens > 0 ? 3 : 2)) words = head;
+    else hanging = opens > 0 || is(HANG, words.at(-1));
+    words = trim(words);
   }
-  words = trim(words);
   const t = words.join(" ").replace(/[.;]+$/, "");
-  return t.charAt(0).toUpperCase() + t.slice(1);
+  return `${t.charAt(0).toUpperCase()}${t.slice(1)}${hanging ? "…" : ""}`;
 }
 
 /** When the whole plan last became done, from real status changes; unset when it is not. */
