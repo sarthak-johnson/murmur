@@ -49,3 +49,31 @@ The first prompt gave category storylines ("TestFlight builds and PRs", "Message
 ## Checks
 
 `pnpm -s lint`, `pnpm -s typecheck`, `pnpm -s test`, `pnpm -s build:plugin` and `pnpm --filter @murmur/web -s build` each exit 0.
+
+## Review
+
+Reviewed by an independent agent on 10 Nov 2026; fixes are in the commits after `7b4fbc3`.
+
+### Found and fixed
+
+- Privacy: the titles run read the whole transcript, which also holds requests asked while Murmur was off or paused, and uploaded a title and goal for each, and let them shape the session's name and storylines.
+- The hook now records the `prompt_id` of every request it sends (`markSent`, `SessionState.sent`), and a titles run names only those and the imported history (before the import's cutoff); the others are not even given to Claude as context.
+- The plan refresh had the same hole (it reads the whole transcript too), so it now skips a request Murmur did not send.
+- A burst of Stops (helpers reporting) could start several Stop children that each read the transcript and passed the 10-minute mark together, so each asked; a child now marks the session before it reads and reads at most once every 5 minutes.
+- Fallback titles read as Claude's talk on real outcomes ("I renamed", "Here's the page", "I'll message you when", "Your wait is running", "Nothing is ready to see yet", "It's a message I drafted") or stopped on the ask ("Can you check").
+- A clause now has to read as a title: openers ("Ok", "Meanwhile", "Can you", "Let's") and a trailing "please" are dropped, "Here's the X" gives "X", "I renamed the tab" gives "Renamed the tab", and a clause that is talk gives way to the next clause or to the prompt.
+- A reply with nothing better ("Yes", "Waiting") is titled "Follow-up", which is honest: it picks up the request before it.
+- A cut just before a word that starts a phrase ("as", "for") keeps what it has, so "Page with 12 screens of build 9" no longer backs off to "Page with 12 screens".
+- Tests no longer quote the author's own prompts or colleagues' names.
+
+### Checked and kept
+
+- The titles run never uploads from its own run (the recap's isolated `ask`), never runs headless, off, paused or logged out, scrubs what it sends, is killed on exit and timed out, and never runs in the hook itself.
+- An invalid answer, a crash or a request the answer leaves out is marked tried, so nothing is asked again until a new request comes; the 10-minute spacing and the 80-request cap hold.
+- Matching by `prompt_id` holds between live and transcript events; a prompt typed while Claude works is a queued attachment in the transcript, so no run covers it and it keeps Murmur's own title and the thread before it.
+- Threads stay put when a new request starts after a run (it joins the thread before it), and chapters follow Claude's threads.
+- The session's fallback name stays the first prompt that is not a reply: the folder and dates are already printed beside the title on the journey and in the session list, so a name made of them would repeat the line above it, and a titles run replaces it after one ask.
+
+### Left open
+
+- A session imported before this change has no record of which live prompts were sent, so its live requests from before the update keep Murmur's own titles; only imported history and new prompts are named.
