@@ -261,6 +261,109 @@ describe("needs-you after the turn ends", () => {
   });
 });
 
+describe("waiting on you means you are needed", () => {
+  const ends = (last: string) =>
+    reduce([prompt(1, "go"), text(2, last), turnEnds(3, last)]).needsYou;
+
+  test.each([
+    "Done. All 40 tests pass. Let me know if you want changes.",
+    "Please let me know if you want changes.",
+    "The tests pass. Please note the old build still runs on staging.",
+    "Please see the report for the details.",
+    "Done. You don't need to do anything else: it no longer needs you to sign in.",
+    "If the sign-in lapses, I will need you to run the login again.",
+    "It was waiting on you to sign in, and now it is through.",
+    "All merged. Want me to open a PR?",
+    "All merged. Would you like me to write the changelog?",
+    "Done. Shall I start the next build?",
+    "He wrote:\n\n> Please sign in first",
+    "From the review:\n\n> Should you ship this?",
+    "Why did it fail? The cache was stale, so I cleared it.",
+  ])("%s", (last) => {
+    expect(ends(last)).toBeNull();
+  });
+
+  test.each([
+    ["Should I expire it, or keep it?", "Should I expire it, or keep it?"],
+    ["Want me to keep it, or drop it?", "Want me to keep it, or drop it?"],
+    ["Blocked. Please paste the key.", "Paste the key"],
+    ["It needs you to sign in.", "Sign in"],
+    [
+      "Do you want snooze at ten minutes?",
+      "Do you want snooze at ten minutes?",
+    ],
+  ])("%s", (last, ask) => {
+    expect(ends(last)).toMatchObject({ reason: "input", text: ask });
+  });
+
+  test("a turn that ends without an ask drops the last turn's", () => {
+    const view = reduce([
+      prompt(1, "go"),
+      turnEnds(2, "Please sign in."),
+      turnEnds(3, "Never mind, I found a saved login and carried on."),
+    ]);
+    expect(view.needsYou).toBeNull();
+  });
+
+  test("a stale ask never shows on a later request", () => {
+    const events = [
+      ...live(),
+      prompt(20, "signed in"),
+      turnEnds(21, "Voice is done."),
+    ];
+    const view = reduce(events);
+    expect(view.needsYou).toBeNull();
+    expect(view.requests[1]?.state).toBe("done");
+  });
+
+  test("a task blocked on a job, not on you, is under way and asks nothing", () => {
+    const events = [
+      prompt(1, "go"),
+      mapCall(2, PLAN),
+      narrateCall(3, {
+        now: "The recording is waiting for the scheduled job",
+        why: "the limit resets tomorrow",
+        task: "t6",
+        taskStatus: "blocked",
+      }),
+      turnEnds(4, "Scheduled for tomorrow; nothing to do until then."),
+    ];
+    const view = reduce(events);
+    expect(view.needsYou).toBeNull();
+    expect(tasksOf(events).t6).toBe("now");
+  });
+
+  test("a part with a blocked task is not done, whatever its steps said", () => {
+    const req = reduce([
+      prompt(1, "go"),
+      mapCall(2, PLAN),
+      narrateCall(3, {
+        now: "Tried the voice site",
+        why: "why",
+        part: "voice",
+        step: { text: "Opened the site", status: "done" },
+      }),
+      say(4, "t6", "blocked", "The voice site needs a sign-in"),
+      turnEnds(5, "Please sign in to the voice site."),
+    ]).requests[0];
+    expect(req?.parts.find((p) => p.id === "voice")?.status).toBe("now");
+  });
+
+  test("the task's ask is the clearest sentence Claude wrote", () => {
+    const clear = "It is waiting on you to sign in to the voice site.";
+    const view = reduce([
+      ...live(),
+      text(16, "Still building."),
+      text(17, clear),
+    ]);
+    expect(view.requests[0]?.phases[1]?.tasks[0]?.ask).toEqual({
+      text: "Sign in to the voice site",
+      since: "2026-11-06T00:00:10.000Z",
+      message: "e17",
+    });
+  });
+});
+
 describe("helpers tied to the tasks they do", () => {
   test("numbers and words in the description pick the task", () => {
     const req = reduce(live()).requests[0];
@@ -276,8 +379,122 @@ describe("helpers tied to the tasks they do", () => {
 
   test("a task a running helper does reads running", () => {
     expect(tasksOf(live())).toMatchObject({ t3: "now", t4: "now" });
+  });
+
+  test("a helper that finished fine finishes the task Claude said nothing of", () => {
     const over = [...live(), stop(15, "h1"), stop(16, "h2")];
-    expect(tasksOf(over)).toMatchObject({ t3: "todo", t4: "todo" });
+    expect(tasksOf(over)).toMatchObject({ t3: "done", t4: "done" });
+    const req = reduce(over).requests[0];
+    expect(req?.parts.find((p) => p.id === "scenes")?.status).toBe("done");
+    expect(req?.phases[0]?.status).toBe("done");
+  });
+
+  test("a helper matched on one word alone does not finish the task", () => {
+    const plan: MapInput = {
+      ...PLAN,
+      phases: [
+        {
+          id: "p1",
+          title: "One",
+          tasks: [{ id: "a", title: "Apply value fixes", part: "audit" }],
+        },
+      ],
+    };
+    const events = [
+      prompt(1, "go"),
+      mapCall(2, plan),
+      agentCall(3, "Check values in demo"),
+      start(4, "h1"),
+      stop(5, "h1"),
+    ];
+    expect(tasksOf(events).a).toBe("todo");
+  });
+
+  test("Claude's own status wins over its helper finishing", () => {
+    const over = [...live(), say(14.5, "t4", "failed"), stop(15, "h2")];
+    expect(tasksOf(over).t4).toBe("failed");
+    const open = [...live(), say(14.5, "t3", "running"), stop(15, "h1")];
+    expect(tasksOf(open).t3).toBe("now");
+  });
+
+  test("one of two helpers still running keeps the task under way", () => {
+    const events = [
+      ...live(),
+      agentCall(15, "Build scenes 1, 2"),
+      start(16, "h3"),
+      stop(17, "h1"),
+    ];
+    expect(tasksOf(events).t3).toBe("now");
+  });
+
+  test("a helper whose report failed leaves the task open", () => {
+    const failed = prompt(
+      16,
+      "<task-notification>\n<task-id>h1</task-id>\n<tool-use-id>t5</tool-use-id>\n<status>failed</status>\n<summary>Agent failed</summary>\n<result>Could not build.</result>\n</task-notification>",
+    );
+    expect(tasksOf([...live(), stop(15, "h1"), failed]).t3).toBe("todo");
+  });
+
+  test("one common word in a long description is no match", () => {
+    const plan: MapInput = {
+      ...PLAN,
+      phases: [
+        {
+          id: "p1",
+          title: "One",
+          tasks: [
+            {
+              id: "a",
+              title: "Read screen, machine, cards, contracts",
+              part: "audit",
+            },
+            {
+              id: "b",
+              title: "Widgets: draw server cards in chat",
+              part: "engine",
+            },
+          ],
+        },
+      ],
+    };
+    const req = reduce([
+      prompt(1, "go"),
+      mapCall(2, plan),
+      say(3, "a", "running"),
+      agentCall(4, "Map server chat stream contract"),
+      start(5, "h1"),
+    ]).requests[0];
+    expect(req?.phases[0]?.tasks.map((t) => t.agents)).toEqual([["h1"], []]);
+  });
+
+  test("a generic word like page is no match", () => {
+    const req = reduce([
+      prompt(1, "go"),
+      mapCall(2, PLAN),
+      agentCall(3, "Update the home page"),
+      start(4, "h1"),
+    ]).requests[0];
+    expect(req?.agents[0]?.part).toBeUndefined();
+  });
+
+  test("a helper naming a task the plan lacks still matches on its words", () => {
+    const plan: MapInput = {
+      ...PLAN,
+      phases: [
+        {
+          id: "p1",
+          title: "One",
+          tasks: [{ id: "a", title: "Conversation page", part: "engine" }],
+        },
+      ],
+    };
+    const req = reduce([
+      prompt(1, "go"),
+      mapCall(2, plan),
+      agentCall(3, "Build Task 61: conversation page"),
+      start(4, "h1"),
+    ]).requests[0];
+    expect(req?.phases[0]?.tasks[0]?.agents).toEqual(["h1"]);
   });
 
   test("no shared word: the helper stands on its own", () => {

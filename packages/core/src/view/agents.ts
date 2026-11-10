@@ -99,7 +99,7 @@ export function applyAgents(
 
 // Words that say what kind of work, or nothing: they never tie a helper to a task.
 const PLAIN = new Set(
-  "build implement write add draft create make port fix review rereview recheck check research investigate explore find audit plan update run test the and for with from into that this its all new more".split(
+  "build implement write add draft create make port fix review rereview recheck check research investigate explore find audit plan update run test the and for with from into that this its all new more page screen file code app task".split(
     " ",
   ),
 );
@@ -121,23 +121,28 @@ function numbersOf(s: string): Set<number> {
 }
 
 /**
- * The one item whose title best matches the words Claude gave a helper: shared words
- * (one at least), then shared numbers ("scenes 1, 2, 4" on "Scenes 1-4"). Unset when
- * none shares a word, or two match equally.
+ * How well a helper's words fit a title: shared words, then shared numbers ("scenes 1, 2,
+ * 4" on "Scenes 1-4"). Zero unless the words shared are at least half of the shorter side,
+ * since one common word in a long title proves nothing.
+ */
+export function matchScore(description: string, title: string): number {
+  const words = wordsOf(description);
+  const own = wordsOf(title);
+  const shared = [...words].filter((w) => own.has(w)).length;
+  if (!shared || shared * 2 < Math.min(words.size, own.size)) return 0;
+  const n = numbersOf(title);
+  return shared + [...numbersOf(description)].filter((x) => n.has(x)).length;
+}
+
+/**
+ * The one item whose title best matches the words Claude gave a helper (`matchScore`).
+ * Unset when none matches, or two match equally.
  */
 function byWords<T extends { title: string }>(
   description: string,
   items: T[],
 ): { best?: T | undefined; tied: T[] } {
-  const words = wordsOf(description);
-  const nums = numbersOf(description);
-  const score = (title: string) => {
-    const own = wordsOf(title);
-    const shared = [...words].filter((w) => own.has(w)).length;
-    const n = numbersOf(title);
-    return shared ? shared + [...nums].filter((x) => n.has(x)).length : 0;
-  };
-  const scores = items.map((it) => score(it.title));
+  const scores = items.map((it) => matchScore(description, it.title));
   const top = Math.max(0, ...scores);
   const tied = top ? items.filter((_, i) => scores[i] === top) : [];
   return tied.length === 1 ? { best: tied[0], tied } : { tied };
@@ -156,16 +161,6 @@ function tiesOf(
 ): { task?: TaskView | undefined; at?: PartView | undefined } {
   const tasks = req.phases.flatMap((ph) => ph.tasks);
   const named = itemOf(description);
-  if (!named) {
-    const { best, tied } = byWords(description, tasks);
-    const parts = new Set(tied.map((t) => t.part));
-    const shared = parts.size === 1 ? [...parts][0] : undefined;
-    const part =
-      req.parts.find((p) => p.id === (best?.part ?? shared)) ??
-      (tied.length ? undefined : byWords(description, req.parts).best);
-    if (best || part) return { task: best, at: part };
-    if (tied.length) return {};
-  }
   // A range ("Tasks 13-14") may hold a lone task, so only two lone tasks can differ.
   const lone = (s: string | undefined) =>
     !!s && /^(?:Task \d+[a-z]?|B\d+)$/.test(s);
@@ -174,13 +169,28 @@ function tiesOf(
   const mine = named
     ? tasks.find((t) => subjectOfWork(req, t) === named)
     : undefined;
+  const namedPart = named
+    ? req.parts.find((p) => subjectOfWork(req, undefined, p) === named)
+    : undefined;
+  // A task id the plan lacks says nothing, so its words decide.
+  if (!named || (lone(named) && !mine && !namedPart)) {
+    const { best, tied } = byWords(
+      description,
+      tasks.filter((t) => !other(subjectOfWork(req, t))),
+    );
+    const parts = new Set(tied.map((t) => t.part));
+    const shared = parts.size === 1 ? [...parts][0] : undefined;
+    const part =
+      req.parts.find((p) => p.id === (best?.part ?? shared)) ??
+      (tied.length ? undefined : byWords(description, req.parts).best);
+    if (best || part) return { task: best, at: part };
+    if (tied.length) return {};
+  }
   const task =
     mine ??
     tasks.find((t) => t.id === on?.task && !other(subjectOfWork(req, t)));
   const at =
-    (named &&
-      (req.parts.find((p) => subjectOfWork(req, undefined, p) === named) ??
-        req.parts.find((p) => p.id === mine?.part))) ||
+    (named && (namedPart ?? req.parts.find((p) => p.id === mine?.part))) ||
     req.parts.find(
       (p) => p.id === on?.part && !other(subjectOfWork(req, undefined, p)),
     );

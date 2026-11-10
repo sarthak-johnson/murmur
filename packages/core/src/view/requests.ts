@@ -1,9 +1,9 @@
 /*
  * Plan and part status rules, applied once after every event of a request:
  * - Task: narrate `taskStatus` running -> now, done -> done, failed -> failed, blocked ->
- *   blocked. A task with no status yet is `now` only when the latest narrate names it, else
+ *   blocked (now when it waits on a job, not the user). A task with no status yet is `now` only when the latest narrate names it, else
  *   `todo` (shape.ts later runs it while a helper tied to it runs).
- * - Part: `now` if any of its tasks is now; else `done` if it has tasks and all are done,
+ * - Part: `now` if any of its tasks is now or blocked; else `done` if it has tasks and all are done,
  *   or a step on it is done and no later step is running; else `now` if the latest narrate
  *   names it; otherwise `todo`. (The latest narrate never overrides `done`.)
  * - Phase: `blocked` if a task in it is blocked; `done` if it has tasks and all are done;
@@ -31,6 +31,13 @@ const TASK_STATUS = {
   failed: "failed",
   blocked: "blocked",
 } as const;
+
+// Blocked on a job or a schedule ("waiting for the scheduled job"), not on the user.
+const WAITS_ON_A_THING =
+  /\bwait(?:s|ing)\s+(?:for|on)\s+(?:the|a|an)\s+(?!user\b|author\b|owner\b)/i;
+
+/** Whether a blocked narrate waits on the user; a job that will come back by itself does not. */
+export const waitsOnYou = (now: string) => !WAITS_ON_A_THING.test(now);
 
 /**
  * Prompts that are not a person asking for work: /murmur:on and the like switch
@@ -205,7 +212,11 @@ function applyNarrate(
     req.now = { text: n.now, why: n.why, ts: e.ts };
     if (part) req.now.part = part.id;
   }
-  if (task && n.taskStatus) task.status = TASK_STATUS[n.taskStatus];
+  if (task && n.taskStatus)
+    task.status =
+      n.taskStatus === "blocked" && !waitsOnYou(n.now)
+        ? "now"
+        : TASK_STATUS[n.taskStatus];
   if (task && agentId) addOnce(task.agents, agentId);
   if (part) {
     if (n.step)
@@ -263,7 +274,8 @@ function setStatuses(req: RequestView, last: Named): void {
     const done = p.steps.findLastIndex((s) => s.status === "done");
     const stepDone =
       done >= 0 && !p.steps.slice(done).some((s) => s.status === "running");
-    p.status = own.some((t) => t.status === "now")
+    // A task waiting on you keeps its part open, whatever its steps said.
+    p.status = own.some((t) => t.status === "now" || t.status === "blocked")
       ? "now"
       : allDone(own) || stepDone
         ? "done"

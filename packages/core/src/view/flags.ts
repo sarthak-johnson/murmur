@@ -4,8 +4,8 @@
  *   `idle_prompt` / `agent_needs_input`, or PermissionRequest. A repeat of the same reason
  *   keeps the first. Cleared by UserPromptSubmit, PreToolUse, PostToolUse(Failure) or SessionEnd.
  *   Also "input" at a main-thread Stop that leaves the user something to do: an ask in
- *   Claude's last message (`askIn`), else a task this request narrated blocked and has not
- *   narrated since. It replaces an idle needs-you (and an idle one never replaces it); a
+ *   Claude's last message (`askIn`), else a task this request narrated blocked on the user
+ *   (`waitsOnYou`) and has not narrated since. A Stop that asks nothing drops the ask. It replaces an idle needs-you (and an idle one never replaces it); a
  *   new ask keeps its `since`. Only the main thread's tool calls clear it, never a helper's;
  *   a helper's permission prompt meanwhile shows first, and the ask returns once it clears.
  * - Stuck: a run of 3 or more failures, either failed narrate steps on one part (a done or
@@ -21,7 +21,13 @@
 import type { MurmurEvent } from "../events.js";
 import { NARRATE_TOOL, NarrateInput } from "../narration.js";
 import { askIn, firstSentence } from "./moments.js";
-import { cut, isNotRequest, type Named, type Trace } from "./requests.js";
+import {
+  cut,
+  isNotRequest,
+  type Named,
+  type Trace,
+  waitsOnYou,
+} from "./requests.js";
 import type { Flag, NeedsYou, RequestView } from "./types.js";
 
 const NOTIFY: Record<string, NeedsYou["reason"]> = {
@@ -59,7 +65,7 @@ export function needsYou(events: MurmurEvent[]): NeedsYou | null {
       e.hook === "PostToolUse" && p.tool_name === NARRATE_TOOL
         ? NarrateInput.safeParse(p.tool_input).data
         : undefined;
-    if (n?.task && n.taskStatus === "blocked")
+    if (n?.task && n.taskStatus === "blocked" && waitsOnYou(n.now))
       blocked.set(n.task, firstSentence(n.now));
     else if (n?.task && n.taskStatus) blocked.delete(n.task);
     if (e.hook === "AssistantText" && main) said = str(p.text) ?? "";
@@ -74,7 +80,7 @@ export function needsYou(events: MurmurEvent[]): NeedsYou | null {
       const text =
         askIn(str(p.last_assistant_message) || said) ??
         [...blocked.values()].at(-1);
-      if (text) ask = { reason: "input", text, since: ask?.since ?? e.ts };
+      ask = text ? { reason: "input", text, since: ask?.since ?? e.ts } : null;
       // Claude Code's idle prompt says less than the ask.
       if (ask && out?.reason === "idle") out = null;
       said = "";

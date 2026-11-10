@@ -6,6 +6,7 @@
  * their times say nothing: windows, beyond and spans read only real events.
  */
 import type { MurmurEvent } from "../events.js";
+import { matchScore } from "./agents.js";
 import { QUIET, TOOL_HOOKS } from "./infer.js";
 import {
   askIn,
@@ -101,16 +102,41 @@ export function applyShape(
     }
 }
 
-/** A task not started whose helper still runs is under way, and so are its part and phase. */
+/**
+ * A task Claude never gave a status follows the helpers tied to it: under way while one
+ * still runs, done once they all finished well and one's words clearly name the task (a
+ * helper tied only because Claude was on that task is no proof). Claude's own status wins.
+ */
 function runTied(req: RequestView, ctx: ShapeContext): void {
   const running = new Set(req.agents.filter(ctx.live).map((a) => a.id));
+  const fine = (id: string) => {
+    const a = req.agents.find((x) => x.id === id);
+    return (
+      a?.status === "done" &&
+      !a.report?.interim &&
+      !/failed|killed/.test(a.report?.status ?? "")
+    );
+  };
+  const isItsWork = (t: TaskView) => (id: string) =>
+    matchScore(
+      req.agents.find((x) => x.id === id)?.description ?? "",
+      t.title,
+    ) >= 2;
   for (const ph of req.phases) {
-    for (const t of ph.tasks)
-      if (t.status === "todo" && t.agents.some((id) => running.has(id))) {
-        t.status = "now";
-        const part = req.parts.find((p) => p.id === t.part);
-        if (part?.status === "todo") part.status = "now";
-      }
+    for (const t of ph.tasks) {
+      if (t.status !== "todo" || !t.agents.length) continue;
+      if (t.agents.some((id) => running.has(id))) t.status = "now";
+      else if (t.agents.every(fine) && t.agents.some(isItsWork(t)))
+        t.status = "done";
+      else continue;
+      const part = req.parts.find((p) => p.id === t.part);
+      if (!part) continue;
+      const own = req.phases
+        .flatMap((p) => p.tasks)
+        .filter((x) => x.part === part.id);
+      if (own.every((x) => x.status === "done")) part.status = "done";
+      else if (part.status === "todo") part.status = "now";
+    }
     ph.status = phaseStatus(ph.tasks);
   }
 }
@@ -124,11 +150,20 @@ function askTasks(req: RequestView, live: Narrated[]): void {
       (n) => n.task === t.id && n.n.taskStatus === "blocked",
     );
     if (!x) continue;
-    const m = (req.messages ?? []).find(
+    const asks = (req.messages ?? []).filter(
       (m) => m.ts >= x.e.ts && askIn(m.text) !== undefined,
     );
+    // Its clearest words stand alone: "Sign in there" leans on the sentence before it.
+    const m =
+      asks.find(
+        (m) => !/\b(?:there|that|this|it)\b/i.test(askIn(m.text) as string),
+      ) ?? asks[0];
     t.ask = m
-      ? { text: askIn(m.text) as string, since: m.ts, message: m.id }
+      ? {
+          text: askIn(m.text) as string,
+          since: (asks[0] as MessageView).ts,
+          message: m.id,
+        }
       : { text: firstSentence(x.n.now), since: x.e.ts };
   }
 }

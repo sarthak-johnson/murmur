@@ -68,6 +68,14 @@ export function sentences(plain: string): string[] {
 const ASKS =
   /^(?:(?:and|but|so|also|then|or)\s+)?(?:(?:should|shall|may|can|could|would|will|do|does|did|is|are|want)\s+(?:i|we|me|you)\b|want me\b)|\byou(?:rs?)?\b/i;
 
+// An offer of more work leaves nothing waiting: "Want me to open a PR?". A choice does.
+// ponytail: an offer mid-plan reads the same; tell them apart by open tasks if it misleads.
+const OFFER =
+  /^(?:(?:and|but|so|also|then)\s+)?(?:(?:do you )?want me to|would you like me to|shall (?:i|we))\b(?!.*\bor\b)/i;
+
+/** Claude's own words: not what it quotes in a Markdown blockquote. */
+const unquoted = (text: string) => text.replace(/^\s*>.*$/gm, "");
+
 /**
  * The questions Claude's message leaves for you, in order. Only questions that end its
  * last paragraph or a trailing list count, and only ones put to you: code, links and
@@ -75,7 +83,7 @@ const ASKS =
  * is worse than a missed one.
  */
 export function questionsIn(text: string): string[] {
-  const src = text
+  const src = unquoted(text)
     .replace(/```[\s\S]*?(?:```|$)/g, "\n\n")
     .replace(/`[^`\n]*`/g, "code")
     .replace(/\]\([^)\s]*\)/g, "]")
@@ -117,13 +125,16 @@ export function questionsIn(text: string): string[] {
       if (/^or\b/i.test(q) && merged.length)
         merged[merged.length - 1] += ` ${q}`;
       else merged.push(q);
-    return merged.filter((q) => ASKS.test(q) && q.length > 3);
+    return merged.filter((q) => ASKS.test(q) && !OFFER.test(q) && q.length > 3);
   });
 }
 
 // A sentence that asks the user to act: "Please sign in", "waiting on you to sign in".
+// "Please note" and "please let me know" are manners; "if", "not" and "was" ask nothing now.
 const ASK_TO =
-  /^(?:please|kindly)\s+(.+)$|\b(?:waiting (?:on|for) you to|(?:I )?needs? you to)\s+(.+)$/i;
+  /^(?:please|kindly)\s+(?!(?:let me know|note|see|ignore|excuse|be aware|bear with|feel free)\b)(.+)$|\b(?:waiting (?:on|for) you to|(?:I )?needs? you to)\s+(.+)$/i;
+const NOT_ASKING =
+  /^(?:if|when|once|whenever|unless|in case)\b|\b(?:not|never|no longer|n't|nothing|no one)\b[^,]*\b(?:needs?|waiting)\b|\b(?:was|were)\s+waiting\b/i;
 
 /**
  * What a message asks of the user, as one sentence: its first question put to you
@@ -134,7 +145,8 @@ const ASK_TO =
 export function askIn(text: string): string | undefined {
   const q = questionsIn(text)[0];
   if (q) return q;
-  for (const s of sentences(plainText(text))) {
+  for (const s of sentences(plainText(unquoted(text)))) {
+    if (NOT_ASKING.test(s)) continue;
     const m = ASK_TO.exec(s);
     const what = (m?.[1] ?? m?.[2])?.replace(/[.!]+$/, "").trim();
     if (what) return what.charAt(0).toUpperCase() + what.slice(1);
