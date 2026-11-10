@@ -5651,6 +5651,14 @@ code.nw {
   }
 }
 
+/* A word kept whole by line breaks and ellipses (Words in Track.tsx); one wider than the
+   whole line, a long path, still wraps rather than being clipped. */
+.w {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 /* Tasks list */
 /*
  * The Tasks tab (Tasks.tsx): one list by phase, each row its plan number, state mark, full

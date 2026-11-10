@@ -267,6 +267,19 @@ describe("the Tasks tab", () => {
     expect(rows()[1]?.querySelector(".tk-line")).toBeNull();
   });
 
+  it("says each row's state in words for a screen reader, its title never cut mid-word", () => {
+    show(guide(), "tasks");
+    const name = (href: string) =>
+      rows().find((r) => r.getAttribute("href") === href)?.textContent;
+    expect(name("/s/s1/r/r1/p/outline")).toContain(", done");
+    expect(name("/s/s1/r/r1/p/water")).toContain(", in progress");
+    expect(name("/s/s1/r/r1/p/photos")).toContain(", not started");
+    expect(name("/s/s1/r/r1/p/send")).toContain(", failed");
+    const title = rows()[1]?.querySelector(".tk-t");
+    expect(title?.querySelectorAll(".w").length).toBeGreaterThan(1);
+    expect(title?.textContent).toBe("Write the watering section");
+  });
+
   it("opens each task's page, rows in order as links, the running one the only pulse", () => {
     show(guide(), "tasks");
     expect(rows().map((r) => r.getAttribute("href"))).toEqual([
@@ -351,6 +364,86 @@ describe("the phase track", () => {
     expect(stacks(1100, [5, 1, 2])).toBe(false);
     // Twelve stations in 700 px leave 40 px each.
     expect(stacks(700, [12, 1])).toBe(true);
+    // A word wider than its slot is cut wherever it sits, so that stacks too.
+    expect(stacks(1100, [5, 1, 2], [150, 0, 0])).toBe(true);
+    expect(stacks(1100, [5, 1, 2], [90, 0, 0])).toBe(false);
+  });
+
+  describe("measured in the page", () => {
+    const widthAt = (px: number) => {
+      vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(px);
+      // 8 px a character.
+      vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+        measureText: (t: string) => ({ width: t.length * 8 }),
+      } as unknown as RenderingContext);
+    };
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+    const withTitle = (title: string) =>
+      guide({
+        phases: [
+          {
+            id: "p1",
+            title: "Draft",
+            status: "now",
+            tasks: [task("t1", title, "now", { part: "water" })],
+          },
+        ],
+      });
+
+    it("lies flat when every slot is readable", () => {
+      widthAt(1100);
+      show(guide());
+      expect(track().classList.contains("stack")).toBe(false);
+    });
+
+    it("stacks when the slots are too narrow, whatever the viewport says", () => {
+      widthAt(200);
+      show(guide());
+      expect(track().classList.contains("stack")).toBe(true);
+    });
+
+    it("stacks when a caption holds a word wider than its slot", () => {
+      widthAt(1100);
+      show(withTitle(`src/${"a".repeat(160)}`));
+      expect(track().classList.contains("stack")).toBe(true);
+    });
+
+    it("counts a path's folders as words, so it can wrap at a slash", () => {
+      widthAt(1100);
+      show(withTitle(`${"a".repeat(50)}/${"b".repeat(50)}/${"c".repeat(50)}`));
+      expect(track().classList.contains("stack")).toBe(false);
+    });
+  });
+
+  it("breaks a caption only between words, at a path's slash or after a hyphen", () => {
+    show(
+      guide({
+        phases: [
+          {
+            id: "p1",
+            title: "Draft",
+            status: "now",
+            tasks: [
+              task("t1", "Src/features/idea buy-flow bugs", "now", {
+                part: "water",
+              }),
+            ],
+          },
+        ],
+      }),
+    );
+    const cap = track().querySelector(".cap") as HTMLElement;
+    expect(cap.textContent).toBe("Src/features/idea buy-flow bugs");
+    expect([...cap.querySelectorAll(".w")].map((w) => w.textContent)).toEqual([
+      "Src/",
+      "features/",
+      "idea",
+      "buy-",
+      "flow",
+      "bugs",
+    ]);
   });
 });
 
