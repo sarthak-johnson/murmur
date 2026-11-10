@@ -3655,15 +3655,15 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
     const syms = normalized.symbolKeys;
     const doc = new Doc(["payload", "ctx"], { shape, inst, memo: memo2, syms });
     const parseStr = (k) => `shape[${k}]._zod.run({ value: input[${k}], issues: [] }, ctx)`;
-    const prefixStr = (id, k) => `
-          let ${id}_ab = false;
-          for (let i = 0; i < ${id}.issues.length; i++) {
-            const iss = ${id}.issues[i];
+    const prefixStr = (id2, k) => `
+          let ${id2}_ab = false;
+          for (let i = 0; i < ${id2}.issues.length; i++) {
+            const iss = ${id2}.issues[i];
             iss.path = iss.path ? [${k}, ...iss.path] : [${k}];
             payload.issues.push(iss);
-            if (iss.continue !== true) ${id}_ab = true;
+            if (iss.continue !== true) ${id2}_ab = true;
           }
-          if (${id}_ab && ctx && ctx.abortEarly) {
+          if (${id2}_ab && ctx && ctx.abortEarly) {
             payload.value = newResult;
             return payload;
           }`;
@@ -3677,34 +3677,34 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
     for (const key of normalized.allKeys) {
       if (key === "__proto__")
         continue;
-      const id = ids[key];
+      const id2 = ids[key];
       const k = typeof key === "symbol" ? `syms[${syms.indexOf(key)}]` : esc(key);
       const isPresent = `${k} in input`;
       const schema = shape[key];
       const optin = schema?._zod?.optin;
       const isOptionalIn = optin !== void 0;
       const isOptionalOut = schema?._zod?.optout === "optional";
-      doc.write(`const ${id} = ${parseStr(k)};`);
+      doc.write(`const ${id2} = ${parseStr(k)};`);
       if (isOptionalIn && isOptionalOut) {
-        const assign = optin === "optional" ? `${id}_present` : `${id}.value !== undefined || ${id}_present`;
+        const assign = optin === "optional" ? `${id2}_present` : `${id2}.value !== undefined || ${id2}_present`;
         doc.write(`
-        const ${id}_present = ${isPresent};
-        if (!${id}.issues.length || ${id}_present) {
-          if (${id}.issues.length) {${prefixStr(id, k)}
+        const ${id2}_present = ${isPresent};
+        if (!${id2}.issues.length || ${id2}_present) {
+          if (${id2}.issues.length) {${prefixStr(id2, k)}
           }
 
           if (${assign}) {
-            newResult[${k}] = ${id}.value;
+            newResult[${k}] = ${id2}.value;
           }
         }
 
       `);
       } else if (!isOptionalIn) {
         doc.write(`
-        const ${id}_present = ${isPresent};
-        if (${id}.issues.length) {${prefixStr(id, k)}
+        const ${id2}_present = ${isPresent};
+        if (${id2}.issues.length) {${prefixStr(id2, k)}
         }
-        if (!${id}_present && !${id}.issues.length) {
+        if (!${id2}_present && !${id2}.issues.length) {
           payload.issues.push({
             code: "invalid_type",
             expected: "nonoptional",
@@ -3717,22 +3717,22 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
           }
         }
 
-        if (${id}_present) {
-          newResult[${k}] = ${id}.value;
+        if (${id2}_present) {
+          newResult[${k}] = ${id2}.value;
         }
 
       `);
       } else {
         doc.write(`
-        if (${id}.issues.length) {${prefixStr(id, k)}
+        if (${id2}.issues.length) {${prefixStr(id2, k)}
         }
       `);
         if (optin === "defaulted") {
-          doc.write(`newResult[${k}] = ${id}.value;`);
+          doc.write(`newResult[${k}] = ${id2}.value;`);
         } else {
           doc.write(`
-        if (${id}.value !== undefined || ${isPresent}) {
-          newResult[${k}] = ${id}.value;
+        if (${id2}.value !== undefined || ${isPresent}) {
+          newResult[${k}] = ${id2}.value;
         }
       `);
         }
@@ -15760,26 +15760,26 @@ function extractDefs(ctx, schema) {
     return;
   const idToSchema = /* @__PURE__ */ new Map();
   for (const entry of ctx.seen.entries()) {
-    const id = ctx.metadataRegistry.get(entry[0])?.id;
-    if (id) {
-      const existing = idToSchema.get(id);
+    const id2 = ctx.metadataRegistry.get(entry[0])?.id;
+    if (id2) {
+      const existing = idToSchema.get(id2);
       if (existing && existing !== entry[0]) {
-        throw new Error(`Duplicate schema id "${id}" detected during JSON Schema conversion. Two different schemas cannot share the same id when converted together.`);
+        throw new Error(`Duplicate schema id "${id2}" detected during JSON Schema conversion. Two different schemas cannot share the same id when converted together.`);
       }
-      idToSchema.set(id, entry[0]);
+      idToSchema.set(id2, entry[0]);
     }
   }
   const makeURI = (entry) => {
     const defsSegment = ctx.target === "draft-2020-12" ? "$defs" : "definitions";
     if (ctx.external) {
       const externalId = ctx.external.registry.get(entry[0])?.id;
-      const uriGenerator = ctx.external.uri ?? ((id2) => id2);
+      const uriGenerator = ctx.external.uri ?? ((id3) => id3);
       if (externalId) {
         return { ref: uriGenerator(externalId) };
       }
-      const id = entry[1].defId ?? entry[1].schema.id ?? `schema${ctx.counter++}`;
-      entry[1].defId = id;
-      return { defId: id, ref: `${uriGenerator("__shared")}#/${defsSegment}/${encodeJSONPointerSegment(id)}` };
+      const id2 = entry[1].defId ?? entry[1].schema.id ?? `schema${ctx.counter++}`;
+      entry[1].defId = id2;
+      return { defId: id2, ref: `${uriGenerator("__shared")}#/${defsSegment}/${encodeJSONPointerSegment(id2)}` };
     }
     const uriPrefix = `#`;
     const defUriPrefix = `${uriPrefix}/${defsSegment}/`;
@@ -15827,8 +15827,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         continue;
       }
     }
-    const id = ctx.metadataRegistry.get(entry[0])?.id;
-    if (id) {
+    const id2 = ctx.metadataRegistry.get(entry[0])?.id;
+    if (id2) {
       extractToDef(entry);
       continue;
     }
@@ -16061,10 +16061,10 @@ function finalize(ctx, schema) {
   } else {
   }
   if (ctx.external?.uri) {
-    const id = ctx.external.registry.get(schema)?.id;
-    if (!id)
+    const id2 = ctx.external.registry.get(schema)?.id;
+    if (!id2)
       throw new Error("Schema is missing an `id` property");
-    result.$id = ctx.external.uri(id);
+    result.$id = ctx.external.uri(id2);
   }
   assignProps(result, root.defId ? root.schema : root.def ?? root.schema);
   const rootMetaId = ctx.metadataRegistry.get(schema)?.id;
@@ -16670,7 +16670,7 @@ function stringifyKeyNames(bySchema, json2, visited) {
   const values = json2.enum ?? (json2.const !== void 0 ? [json2.const] : void 0);
   if (!numericType && !values?.some((v) => typeof v === "number"))
     return json2;
-  const { minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, format, id, ...rest } = json2;
+  const { minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, format, id: id2, ...rest } = json2;
   if (rest.enum)
     rest.enum = rest.enum.map((v) => typeof v === "number" ? String(v) : v);
   else if (typeof rest.const === "number")
@@ -19888,6 +19888,35 @@ var RefreshInput = external_exports.object({ tasks: external_exports.array(TaskE
   ({ parts, tasks }) => unique(parts.map((p) => p.id)) && unique(tasks.map((t) => t.id)),
   "part and task ids are unique"
 );
+var TITLES_TOOL = "murmur:titles";
+var KINDS = MapInput.shape.kind;
+var id = external_exports.string().min(1).max(100);
+var title = (max) => external_exports.string().trim().min(1).max(max);
+var TitlesInput = external_exports.object({
+  session: external_exports.object({ title: title(48) }),
+  threads: external_exports.array(external_exports.object({ id, title: title(40) })).max(30),
+  requests: external_exports.array(
+    external_exports.object({
+      id,
+      short: title(40),
+      goal: title(120),
+      kind: KINDS,
+      thread: id,
+      follows: id.optional()
+    })
+  ).max(80)
+}).refine(({ threads, requests }) => {
+  const ids = new Set(threads.map((t) => t.id));
+  return requests.every((r) => ids.has(r.thread));
+}, "every thread a request names is listed").refine(
+  ({ threads, requests }) => unique(threads.map((t) => t.id)) && unique(requests.map((r) => r.id)),
+  "thread and request ids are unique"
+).refine(({ requests }) => {
+  const ids = new Set(requests.map((r) => r.id));
+  return requests.every(
+    (r) => r.follows === void 0 || r.follows !== r.id && ids.has(r.follows)
+  );
+}, "follows names another request of the answer");
 
 // ../packages/core/src/scrub.ts
 var MAX_STRING = 262144;
@@ -20154,7 +20183,7 @@ function applyNarrate(req, e, n, setsNow = true) {
   }
   return { part: part?.id, task: task?.id };
 }
-var addOnce = (list2, id) => list2.includes(id) || list2.push(id);
+var addOnce = (list2, id2) => list2.includes(id2) || list2.push(id2);
 function upsert(list2, items, key) {
   for (const item of items ?? []) {
     const i = list2.findIndex((x) => key(x) === key(item));
@@ -20191,9 +20220,9 @@ function applyFiles(req, events, { before, narrated }) {
     }
   const helpers = /* @__PURE__ */ new Map();
   for (const x of narrated) {
-    const id = x.e.payload.agent_id;
-    if (typeof id === "string" && id && x.part)
-      helpers.set(id, [...helpers.get(id) ?? [], x]);
+    const id2 = x.e.payload.agent_id;
+    if (typeof id2 === "string" && id2 && x.part)
+      helpers.set(id2, [...helpers.get(id2) ?? [], x]);
   }
   const near = (list2, i) => list2.findLast((x) => x.i < i) ?? list2.find((x) => x.i > i);
   events.forEach((e, i) => {
@@ -20514,8 +20543,8 @@ function itemOf(text3) {
   const m = ITEM.exec(text3);
   if (!m) return void 0;
   if (m[2]) return `B${m[2]}`;
-  const id = m[1].replace(/\s*[-–]\s*/, "-").toLowerCase();
-  return `${id.includes("-") ? "Tasks" : "Task"} ${id}`;
+  const id2 = m[1].replace(/\s*[-–]\s*/, "-").toLowerCase();
+  return `${id2.includes("-") ? "Tasks" : "Task"} ${id2}`;
 }
 function subjectOf(text3) {
   const phase = PHASE.exec(text3)?.[1];
@@ -20670,29 +20699,29 @@ function applyAgents(req, events, { before, narrated }, known) {
   const linked = /* @__PURE__ */ new Map();
   for (const e of events)
     if (e.hook === "PostToolUse" && isAgent(e)) {
-      const id = str3(obj3(e.payload.tool_response).agentId);
+      const id2 = str3(obj3(e.payload.tool_response).agentId);
       const use = str3(e.payload.tool_use_id);
-      if (id && use) linked.set(id, use);
+      if (id2 && use) linked.set(id2, use);
     }
   const claimed = new Set(linked.values());
   const started = /* @__PURE__ */ new Map();
   events.forEach((e, i) => {
-    const id = str3(e.payload.agent_id);
-    if (e.hook === "SubagentStart" && id && !known.has(id)) {
+    const id2 = str3(e.payload.agent_id);
+    if (e.hook === "SubagentStart" && id2 && !known.has(id2)) {
       const type = str3(e.payload.agent_type);
       const free = calls.filter((c) => !claimed.has(key(c)));
-      const call = calls.find((c) => key(c) === linked.get(id)) ?? free.find(
+      const call = calls.find((c) => key(c) === linked.get(id2)) ?? free.find(
         (c) => str3(obj3(c.payload.tool_input).subagent_type) === type
       ) ?? free[0];
       if (call) {
         claimed.add(key(call));
-        started.set(key(call), id);
+        started.set(key(call), id2);
       }
       const input3 = obj3(call?.payload.tool_input);
       const { task, at } = tiesOf(req, str3(input3.description), before[i]);
-      const part = narrated.findLast((x) => x.part && x.e.payload.agent_id === id)?.part ?? at?.id;
+      const part = narrated.findLast((x) => x.part && x.e.payload.agent_id === id2)?.part ?? at?.id;
       const agent2 = {
-        id,
+        id: id2,
         type,
         description: str3(input3.description),
         prompt: str3(input3.prompt),
@@ -20700,12 +20729,12 @@ function applyAgents(req, events, { before, narrated }, known) {
         status: "running",
         startedAt: e.ts
       };
-      known.set(id, agent2);
+      known.set(id2, agent2);
       req.agents.push(agent2);
-      if (task) addOnce(task.agents, id);
-      if (at) addOnce(at.agents, id);
+      if (task) addOnce(task.agents, id2);
+      if (at) addOnce(at.agents, id2);
     }
-    const agent = known.get(id);
+    const agent = known.get(id2);
     if (e.hook === "SubagentStop" && agent) {
       agent.status = "done";
       agent.endedAt = e.ts;
@@ -20747,15 +20776,15 @@ var obj4 = (v) => v && typeof v === "object" ? v : {};
 var isTool = (e, hook, name) => e.hook === hook && e.payload.tool_name === name;
 var describe3 = (e) => str4(obj4(e.payload.tool_input).description).trim();
 function subject(description) {
-  const id = itemOf(description);
-  if (!id) return void 0;
-  return id.startsWith("B") ? `item:${id}` : `task:${id.replace(/^Tasks? /, "")}`;
+  const id2 = itemOf(description);
+  if (!id2) return void 0;
+  return id2.startsWith("B") ? `item:${id2}` : `task:${id2.replace(/^Tasks? /, "")}`;
 }
 function quiet(all) {
   const lastAt = /* @__PURE__ */ new Map();
   for (const e of all) {
-    const id = str4(e.payload.agent_id);
-    if (id) lastAt.set(id, e.ts);
+    const id2 = str4(e.payload.agent_id);
+    if (id2) lastAt.set(id2, e.ts);
   }
   const latest = Date.parse(all.at(-1)?.ts ?? "");
   const endAt = all.findLast((e) => e.hook === "SessionEnd")?.ts ?? "";
@@ -20787,22 +20816,22 @@ function inferHistory(reqs, events, agents, started) {
       if (!isTool(e, "PreToolUse", "Agent")) continue;
       const use = str4(e.payload.tool_use_id);
       const description = describe3(e);
-      const id = subject(description) ?? `run:${use || e.id}`;
+      const id2 = subject(description) ?? `run:${use || e.id}`;
       const agentId = started.get(use || e.id);
       const agent = agentId ? agents.get(agentId) : void 0;
       const status2 = failed.has(use) ? "failed" : agent?.status === "done" || returned.has(use) || req.finished && over(lastAt.get(agentId ?? "") ?? e.ts) ? "done" : "running";
       if (status2 !== "running" && agent?.status === "running")
         agent.status = "done";
       const review = REVIEW.test(description);
-      let b = out.get(id);
+      let b = out.get(id2);
       if (!b) {
         b = {
-          part: newPart(id, description),
+          part: newPart(id2, description),
           start: e.ts,
           lastFailed: false,
           titled: !review
         };
-        out.set(id, b);
+        out.set(id2, b);
       } else if (!b.titled && !review) {
         b.part.title = titleOf(description);
         b.titled = true;
@@ -20883,11 +20912,38 @@ function inferHistory(reqs, events, agents, started) {
       files: paths.size,
       commands: count("Bash")
     };
+    const activity = {
+      reads: 0,
+      searches: 0,
+      edits: 0,
+      commands: 0,
+      web: 0,
+      tools: 0
+    };
+    for (const e of list2) {
+      if (e.hook !== "PreToolUse") continue;
+      const kind = ACTIVITY[str4(e.payload.tool_name) ?? ""];
+      if (kind) activity[kind]++;
+      else if (/^mcp__(?!plugin_murmur_murmur__)/.test(str4(e.payload.tool_name) ?? ""))
+        activity.tools++;
+    }
+    req.activity = activity;
   });
 }
-function newPart(id, description) {
+var ACTIVITY = {
+  Read: "reads",
+  Grep: "searches",
+  Glob: "searches",
+  Edit: "edits",
+  Write: "edits",
+  NotebookEdit: "edits",
+  Bash: "commands",
+  WebFetch: "web",
+  WebSearch: "web"
+};
+function newPart(id2, description) {
   return {
-    id,
+    id: id2,
     title: titleOf(description),
     status: "todo",
     links: [],
@@ -20967,12 +21023,12 @@ function applyInference(req, events) {
     if (e.hook !== "TaskCreated" && e.hook !== "TaskCompleted") continue;
     const p = e.payload;
     const t = obj5(p.task);
-    const id = text2(p.task_id, t.id, p.id);
-    if (!id) continue;
-    let task = tasks.find((x) => x.id === id);
+    const id2 = text2(p.task_id, t.id, p.id);
+    if (!id2) continue;
+    let task = tasks.find((x) => x.id === id2);
     if (!task) {
       task = {
-        id,
+        id: id2,
         title: text2(
           p.task_subject,
           p.subject,
@@ -20980,7 +21036,7 @@ function applyInference(req, events) {
           p.title,
           p.task_description,
           p.description
-        ) ?? id,
+        ) ?? id2,
         status: "todo",
         agents: []
       };
@@ -21216,7 +21272,7 @@ ${partTitle(t)}`);
     return hit.size === 1 ? [...hit][0]?.id : void 0;
   }
   if (req.planInferred) return void 0;
-  const has = (title) => title.length >= 8 && text3.toLowerCase().includes(title.toLowerCase());
+  const has = (title2) => title2.length >= 8 && text3.toLowerCase().includes(title2.toLowerCase());
   const byTask = tasks.filter((t) => has(t.title));
   if (byTask.length === 1) return byTask[0]?.id;
   if (byTask.length > 1) return void 0;
@@ -21274,9 +21330,9 @@ function keysOf(req) {
         items.add(`T${n}`);
   }
   for (const a of req.agents) {
-    const id = itemOf(a.description);
-    const n = /^Tasks? (\d+)/.exec(id ?? "")?.[1];
-    if (id?.startsWith("B")) items.add(id);
+    const id2 = itemOf(a.description);
+    const n = /^Tasks? (\d+)/.exec(id2 ?? "")?.[1];
+    if (id2?.startsWith("B")) items.add(id2);
     else if (n) items.add(`T${n}`);
   }
   return { phases, items };
@@ -21295,14 +21351,59 @@ function chaptersOf(reqs) {
       for (const i of k.items) g.keys.items.add(i);
     } else groups.push({ reqs: [req], keys: k });
   }
-  return groups.map(({ reqs: rs, keys }) => {
-    const states = rs.map((r) => r.state ?? "done");
+  return groups.map(({ reqs: rs, keys }) => chapter(titleOf2(rs, keys), rs));
+}
+function chapter(title2, rs) {
+  const states = rs.map((r) => r.state ?? "done");
+  return {
+    title: title2,
+    requestIds: rs.map((r) => r.id),
+    state: states.includes("waiting") ? "waiting" : states.includes("running") ? "running" : states.at(-1) ?? "done"
+  };
+}
+function storylines(reqs, lists, titles) {
+  const first = reqs.findIndex((r) => titles.requests.has(r.id));
+  const chapters = chaptersOf(first < 0 ? reqs : reqs.slice(0, first));
+  const lastAt = new Map(
+    reqs.map((r, i) => [r.id, lists[i]?.at(-1)?.ts ?? r.startedAt])
+  );
+  const thread = (id2, title2, rs, inferred) => {
+    for (const r of rs) r.thread = id2;
+    const last = rs.at(-1);
     return {
-      title: titleOf2(rs, keys),
-      requestIds: rs.map((r) => r.id),
-      state: states.includes("waiting") ? "waiting" : states.includes("running") ? "running" : states.at(-1) ?? "done"
+      id: id2,
+      title: title2,
+      requests: rs.map((r) => r.id),
+      state: last.state ?? "done",
+      startedAt: rs[0].startedAt,
+      lastAt: lastAt.get(last.id) ?? last.startedAt,
+      inferred
     };
-  });
+  };
+  const byId = new Map(reqs.map((r) => [r.id, r]));
+  const threads = chapters.map(
+    (c, i) => thread(
+      `chapter-${i + 1}`,
+      c.title,
+      c.requestIds.map((id2) => byId.get(id2)),
+      true
+    )
+  );
+  if (first < 0) return { chapters, threads };
+  const own2 = /* @__PURE__ */ new Map();
+  const runs = [];
+  let current = "";
+  for (const r of reqs.slice(first)) {
+    current = titles.requests.get(r.id)?.thread ?? current;
+    own2.set(current, [...own2.get(current) ?? [], r]);
+    const run = runs.at(-1);
+    if (run?.id === current) run.rs.push(r);
+    else runs.push({ id: current, rs: [r] });
+  }
+  const name = (id2) => titles.threads.get(id2) ?? id2;
+  for (const run of runs) chapters.push(chapter(name(run.id), run.rs));
+  for (const [id2, rs] of own2) threads.push(thread(id2, name(id2), rs, false));
+  return { chapters, threads };
 }
 function titleOf2(rs, keys) {
   const nums = [...keys.phases].map(Number).sort((a, b) => a - b);
@@ -21361,7 +21462,7 @@ function decisionsOf(reqs) {
   }
   return out;
 }
-function journeyOf(reqs, lists) {
+function journeyOf(reqs, lists, chapters) {
   const pauses = pausesOf(reqs, lists);
   const files = new Set(
     reqs.flatMap(
@@ -21370,7 +21471,7 @@ function journeyOf(reqs, lists) {
   );
   const sum = (key) => reqs.reduce((n, r) => n + r.tally[key], 0);
   return {
-    chapters: chaptersOf(reqs),
+    chapters,
     pauses,
     decisions: decisionsOf(reqs),
     totals: {
@@ -21383,6 +21484,44 @@ function journeyOf(reqs, lists) {
   };
 }
 
+// ../packages/core/src/view/titles.ts
+var isTitles = (e) => e.hook === "PostToolUse" && e.payload.tool_name === TITLES_TOOL;
+function titlesOf(events) {
+  const out = { threads: /* @__PURE__ */ new Map(), requests: /* @__PURE__ */ new Map() };
+  for (const e of events) {
+    const run = TitlesInput.safeParse(e.payload.tool_input);
+    if (!run.success) continue;
+    out.session = run.data.session.title;
+    for (const t of run.data.threads) out.threads.set(t.id, t.title);
+    for (const r of run.data.requests) out.requests.set(r.id, r);
+  }
+  return out;
+}
+var PASTED = /<pasted_content\b[^>]*>[\s\S]*?(?:<\/pasted_content[^>]*>|$)|\[Pasted text #\d+[^\]]*\]/g;
+var IMAGE = /\[Image #\d+\]/g;
+var markPasted = (prompt) => prompt.replace(PASTED, " (pasted text) ").replace(IMAGE, " (image) ");
+var ownWords = (prompt) => prompt.replace(PASTED, " ").replace(IMAGE, " ").replace(/\s+/g, " ").trim().replace(/^[-*•]\s+/, "");
+var REPLY_WORD = /^(?:yes|yeah|yep|yup|ok|okay|k|sure|go ahead|go for it|do it|done|thanks|thank you|thx|waiting|still waiting|great|perfect|cool|nice|alright|all right|fine|sounds good|lgtm|please do)\b/i;
+function isReply(prompt) {
+  const own2 = ownWords(prompt);
+  return own2.split(" ").filter(Boolean).length <= 4 || REPLY_WORD.test(own2);
+}
+var LEAD = /^(?:yes|yeah|ok|okay|sure|right|done|got it|understood)\s*[,:;.!-]\s*/i;
+var firstClause = (s) => (s.split(/[,:;]\s|\s[-–—]\s/)[0] ?? "").replace(/[.!?]+$/, "").trim();
+var capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+function fallbackGoal(prompt, outcome) {
+  if (outcome && isReply(prompt)) {
+    const clause = firstClause(firstSentence(outcome).replace(LEAD, ""));
+    if (clause.split(" ").length >= 2) return cutWords(capital(clause), 120);
+  }
+  return cutWords(ownWords(prompt) || placeholder(prompt), 80);
+}
+var placeholder = (prompt) => markPasted(prompt).replace(/\s+/g, " ").trim();
+function fallbackTitle(prompts) {
+  const p = prompts.find((x) => !isReply(x)) ?? prompts[0] ?? "";
+  return cutWords(ownWords(p) || placeholder(p), 48);
+}
+
 // ../packages/core/src/view/shape.ts
 var str6 = (v) => typeof v === "string" ? v : "";
 var obj7 = (v) => v && typeof v === "object" ? v : {};
@@ -21390,6 +21529,19 @@ var real = (e) => e.payload.recap !== true;
 var byTs = (a, b) => a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0;
 function applyShape(req, events, trace, ctx) {
   const live2 = trace.narrated.filter((x) => real(x.e));
+  const outcome = outcomeOf(req.messages ?? []);
+  if (outcome) req.outcome = outcome;
+  if (req.short) req.titledBy = "claude";
+  const t = ctx.title;
+  if (t) {
+    if (req.planInferred) req.goal = t.goal;
+    if (!req.short) req.short = t.short;
+    req.titledBy = "claude";
+    if (req.kindInferred) {
+      req.kind = t.kind;
+      req.kindInferred = false;
+    }
+  } else if (req.planInferred) req.goal = fallbackGoal(req.prompt, outcome);
   if (!req.short) {
     const short = shortOf(req.goal);
     if (short) req.short = short;
@@ -21398,8 +21550,6 @@ function applyShape(req, events, trace, ctx) {
   if (beyond) req.beyond = beyond;
   placeMessages(req, live2, events, beyond);
   req.state = stateOf(req, events, live2, ctx);
-  const outcome = outcomeOf(req.messages ?? []);
-  if (outcome) req.outcome = outcome;
   if (req.state === "waiting") {
     const asked = waitingOf(req, events);
     if (asked.length) req.waiting = asked;
@@ -21415,20 +21565,27 @@ function applyShape(req, events, trace, ctx) {
       f.roleInferred = true;
     }
 }
-var STOP = new Set(
-  "a an the to of and or for with in on at by from into as is my our your its their this that these those every all some each then".split(
+var BREAK = new Set(
+  "a an the to of and or for with in on at by from into as than but without about after before over under through between across via per is are was were".split(
     " "
   )
 );
+var HANG = /* @__PURE__ */ new Set([
+  ...BREAK,
+  ..."be been being has have had will would can could should do does did not no any there my our your its their this that these those every all some each then whether if which because while so more most also just you we they it he she i me us them".split(
+    " "
+  )
+]);
+var OPENS = new Set("whether if that which because while".split(" "));
 var FILLER = /^(?:start|begin|continue|resume|keep|finish|carry on|proceed with|go on with)\s+/i;
 var SHORT_MAX = 32;
 function shortOf(goal) {
   const plain2 = goal.replace(/\s*\([^)]*\)/g, "");
-  let s = (plain2.split(/,|:|\s[-–]\s|\sand then\s/i)[0] ?? "").trim();
+  let s = (plain2.split(/,|:|;|\s[-–]\s|\sand then\s/i)[0] ?? "").trim();
+  const is = (set2, w) => set2.has((w ?? "").toLowerCase());
   const filler = FILLER.exec(s);
   const rest = filler ? s.slice(filler[0].length).split(/\s+/) : [];
-  if (rest.length >= 2 && !STOP.has(rest[0].toLowerCase()))
-    s = rest.join(" ");
+  if (rest.length >= 2 && !is(HANG, rest[0])) s = rest.join(" ");
   let out = "";
   for (const w of s.split(/\s+/)) {
     const next = out ? `${out} ${w}` : w;
@@ -21438,18 +21595,20 @@ function shortOf(goal) {
   let words = (out || s.slice(0, SHORT_MAX)).split(" ");
   const trim = (ws) => {
     const t2 = [...ws];
-    while (t2.length > 1 && STOP.has(t2.at(-1).toLowerCase()))
-      t2.pop();
+    while (t2.length > 1 && is(HANG, t2.at(-1))) t2.pop();
     return t2;
   };
+  let hanging = false;
   if (out && words.length < s.split(/\s+/).length) {
-    const i = words.findLastIndex((w, k) => k > 0 && STOP.has(w.toLowerCase()));
-    const head = i > 0 ? trim(words.slice(0, i)) : [];
-    if (head.length >= 2) words = head;
+    const opens = words.findIndex((w, k) => k > 0 && is(OPENS, w));
+    const breaks = words.findLastIndex((w, k) => k > 0 && is(BREAK, w));
+    const head = trim(words.slice(0, opens > 0 ? opens : Math.max(breaks, 0)));
+    if (head.length >= (opens > 0 ? 3 : 2)) words = head;
+    else hanging = opens > 0 || is(HANG, words.at(-1));
+    words = trim(words);
   }
-  words = trim(words);
   const t = words.join(" ").replace(/[.;]+$/, "");
-  return t.charAt(0).toUpperCase() + t.slice(1);
+  return `${t.charAt(0).toUpperCase()}${t.slice(1)}${hanging ? "\u2026" : ""}`;
 }
 function doneAt(req, events, trace) {
   const tasks = req.phases.flatMap((ph) => ph.tasks);
@@ -21507,7 +21666,7 @@ function placeMessages(req, live2, events, beyond) {
           (a) => [a.startedAt, a.endedAt ?? [], a.report?.ts ?? []].flat()
         ),
         ...(part?.files ?? []).flatMap(
-          (f) => f.eventIds.flatMap((id) => tsOf.get(id) ?? [])
+          (f) => f.eventIds.flatMap((id2) => tsOf.get(id2) ?? [])
         )
       ];
     }).sort();
@@ -21673,7 +21832,7 @@ function fillPart(req, part, at, starts, live2, ctx) {
       return !e || real(e) ? [s.ts] : [];
     }),
     ...part.files.flatMap(
-      (f) => f.eventIds.flatMap((id) => at.get(id)?.ts ?? [])
+      (f) => f.eventIds.flatMap((id2) => at.get(id2)?.ts ?? [])
     ),
     ...about.map((m) => m.ts),
     ...notes.map((x) => x.e.ts)
@@ -21740,7 +21899,9 @@ function groupOf(path4) {
 
 // ../packages/core/src/view/reduce.ts
 function reduce(events) {
-  const sorted = sortEvents(events);
+  const every = sortEvents(events);
+  const titles = titlesOf(every.filter(isTitles));
+  const sorted = every.filter((e) => !isTitles(e));
   const agents = /* @__PURE__ */ new Map();
   const started = /* @__PURE__ */ new Map();
   const ended = sorted.some((e) => e.hook === "SessionEnd");
@@ -21753,8 +21914,8 @@ function reduce(events) {
     applyInference(req, rest);
     inferNow(req, rest, trace);
     applyFiles(req, rest, trace);
-    for (const [use, id] of applyAgents(req, rest, trace, agents))
-      started.set(use, id);
+    for (const [use, id2] of applyAgents(req, rest, trace, agents))
+      started.set(use, id2);
     applyFlags(req, rest, trace, i < all.length - 1);
     req.finished = i < all.length - 1 || rest.at(-1)?.hook === "SessionEnd";
     return req;
@@ -21771,25 +21932,33 @@ function reduce(events) {
     applyShape(req, lists[i] ?? [], traces[i], {
       later: i < requests.length - 1,
       waiting: i === asking,
-      live: live2
+      live: live2,
+      title: titles.requests.get(req.id)
     });
   });
+  requests.forEach((req, i) => {
+    const t = titles.requests.get(req.id);
+    const before = requests.slice(0, i);
+    if (t?.follows && before.some((r) => r.id === t.follows))
+      req.follows = t.follows;
+    else if (!t && i > 0 && isReply(req.prompt))
+      req.follows = before[i - 1].id;
+  });
+  const { chapters, threads } = storylines(requests, lists, titles);
   const first = sorted[0];
   return {
     sessionId: first?.sessionId ?? "",
     cwd: first?.cwd ?? "",
-    // Claude Code gives a session no name and Murmur invents none: the first prompt,
-    // cut at a word.
-    title: cutWords(
-      (requests[0]?.prompt ?? "").replace(/\s+/g, " ").trim(),
-      48
-    ),
+    // Claude's name from a titles run, else the first prompt that is not a reply.
+    title: titles.session ?? fallbackTitle(requests.map((r) => r.prompt)),
+    ...titles.session ? { titledBy: "claude" } : {},
     startedAt: first?.ts ?? "",
     lastEventAt: sorted.at(-1)?.ts ?? "",
     ended,
     requests,
     needsYou: needs,
-    journey: journeyOf(requests, lists)
+    journey: journeyOf(requests, lists, chapters),
+    threads
   };
 }
 var cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
@@ -22391,9 +22560,9 @@ function recapEvents(req, recap, helperIds, base, paths = /* @__PURE__ */ new Ma
   add(MAP_TOOL, recap.map);
   const tasks = recap.map.phases.flatMap((ph) => ph.tasks);
   for (const p of recap.parts) {
-    const title = recap.map.parts.find((x) => x.id === p.id)?.title ?? p.id;
+    const title2 = recap.map.parts.find((x) => x.id === p.id)?.title ?? p.id;
     const { steps, helpers, ...detail } = p;
-    add(NARRATE_TOOL, detailNarrate(title, detail, paths));
+    add(NARRATE_TOOL, detailNarrate(title2, detail, paths));
     for (const step of steps ?? [])
       add(NARRATE_TOOL, { now: cut2(step.text), why: "", part: p.id, step });
     for (const h of helpers ?? []) {
@@ -22401,7 +22570,7 @@ function recapEvents(req, recap, helperIds, base, paths = /* @__PURE__ */ new Ma
       if (agentId)
         add(
           NARRATE_TOOL,
-          { now: cut2(title), why: "", part: p.id },
+          { now: cut2(title2), why: "", part: p.id },
           { agent_id: agentId }
         );
     }
@@ -22450,11 +22619,11 @@ function emitter(base, key, at, mark = {}) {
   };
   return { out, add };
 }
-function detailNarrate(title, { id, files, ...detail }, paths) {
+function detailNarrate(title2, { id: id2, files, ...detail }, paths) {
   return {
-    now: cut2(title),
+    now: cut2(title2),
     why: "",
-    part: id,
+    part: id2,
     ...detail,
     // Named by the path it was changed at, so it matches whatever cwd reads it.
     ...files ? {
@@ -22613,8 +22782,8 @@ function planState(events, prior) {
   };
   let pending = prior?.at && prior.tasks ? prior : void 0;
   const overlay = () => {
-    for (const [id, s] of Object.entries(pending?.tasks ?? {}))
-      set2(id, s, pending?.at);
+    for (const [id2, s] of Object.entries(pending?.tasks ?? {}))
+      set2(id2, s, pending?.at);
     pending = void 0;
   };
   for (const e of events) {
@@ -22730,7 +22899,7 @@ async function runRefresh(sessionId, {
       [req.id]: { ...mine, tried: iso, ...finished ? { final: true } : {} }
     }
   });
-  const done = (id) => st.statuses.get(id) === "done";
+  const done = (id2) => st.statuses.get(id2) === "done";
   const plan = {
     goal: req.goal,
     done: tasks.filter((x) => done(x.id)).map((x) => x.title),
@@ -22775,7 +22944,7 @@ ${reportsInput(own2)}`,
   const reason = !r.ok ? r.why : !answer?.success ? refused("a refresh", answer) : [
     ...answer.data.tasks.map((x) => `task:${x.id}`),
     ...answer.data.parts.map((p) => `part:${p.id}`)
-  ].find((id) => !ids.has(id)) ? "it names an id the plan does not have" : (
+  ].find((id2) => !ids.has(id2)) ? "it names an id the plan does not have" : (
     // Paused, off or logged out while it was asked.
     !stillSending(sessionId, s.cwd, creds.token) ? "Murmur stopped sending" : void 0
   );
@@ -23028,20 +23197,20 @@ function readBackfill(b, {
         const block = obj8(raw);
         if (!block) return;
         if (e.type === "assistant" && block.type === "tool_use") {
-          const id = str7(block.id);
-          if (!id) return;
-          uses.set(id, block);
+          const id2 = str7(block.id);
+          if (!id2) return;
+          uses.set(id2, block);
           emit(e, i, "PreToolUse", {
             ...agent,
             tool_name: block.name,
             tool_input: block.input,
-            tool_use_id: id
+            tool_use_id: id2
           });
         } else if (e.type === "user" && block.type === "tool_result") {
-          const id = str7(block.tool_use_id);
-          const use = id ? uses.get(id) : void 0;
-          if (!use || !id) return;
-          if (obj8(e.toolUseResult)?.status !== "async_launched") ended.add(id);
+          const id2 = str7(block.tool_use_id);
+          const use = id2 ? uses.get(id2) : void 0;
+          if (!use || !id2) return;
+          if (obj8(e.toolUseResult)?.status !== "async_launched") ended.add(id2);
           emit(
             e,
             i,
@@ -23050,7 +23219,7 @@ function readBackfill(b, {
               ...agent,
               tool_name: use.name,
               tool_input: use.input,
-              tool_use_id: id,
+              tool_use_id: id2,
               tool_response: e.toolUseResult ?? block.content
             }
           );
@@ -23336,18 +23505,18 @@ async function main() {
   const creds = readCredentials();
   const flushAt = process.argv.indexOf("--flush");
   if (flushAt >= 0) {
-    const id = process.argv[flushAt + 1];
-    if (id) catchUpText(id);
+    const id2 = process.argv[flushAt + 1];
+    if (id2) catchUpText(id2);
     if (creds) await flush(creds);
-    if (id && REFRESH && (await runRefresh(id)).ok) {
+    if (id2 && REFRESH && (await runRefresh(id2)).ok) {
       const now = readCredentials();
       if (now) await flush(now, { budgetMs: 3e4 });
     }
     return;
   }
   if (BACKFILL >= 0) {
-    const id = process.argv[BACKFILL + 1];
-    if (id) await runBackfill(id);
+    const id2 = process.argv[BACKFILL + 1];
+    if (id2) await runBackfill(id2);
     return;
   }
   let input3 = "";

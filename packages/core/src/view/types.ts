@@ -7,10 +7,11 @@ export interface SessionView {
   cwd: string;
   /**
    * The session's name: Claude's, from the titles run (see `titledBy`), else the first
-   * prompt, spaces collapsed, cut at a word within 48 characters.
+   * prompt that is not a reply ("yes", see `RequestView.goal`), without pasted text or
+   * images, spaces collapsed, cut at a word within 48 characters.
    */
   title: string;
-  /** "claude" when Claude named the session in a titles run; unset when `title` is the first prompt. */
+  /** "claude" when Claude named the session in a titles run; unset when `title` is a prompt. */
   titledBy?: "claude";
   startedAt: string;
   lastEventAt: string;
@@ -26,9 +27,11 @@ export interface SessionView {
   /**
    * The session's storylines, for the session flow: requests about the same work, in
    * order of their first request. Threads can interleave in time. From Claude's titles run
-   * when it has covered the requests (`inferred` false), else one thread per journey
-   * chapter (`inferred` true). Core always sets it; optional only so views built before
-   * it still type-check.
+   * when it has covered the requests (`inferred` false): a request it has not covered yet
+   * (one newer than the run) joins the thread of the request before it. Else one thread
+   * per journey chapter (`inferred` true, ids "chapter-1", "chapter-2", ...); so are the
+   * requests older than every one a run covered (past its 80-request cap). Core always
+   * sets it; optional only so views built before it still type-check.
    */
   threads?: Thread[];
 }
@@ -42,7 +45,9 @@ export interface Thread {
   requests: string[];
   /** Its last request's state. */
   state: RequestState;
+  /** Its first request's start. */
   startedAt: string;
+  /** Its last request's last event. */
   lastAt: string;
   /** Murmur grouped these requests itself; Claude never named this storyline. */
   inferred: boolean;
@@ -52,8 +57,16 @@ export interface RequestView {
   id: string;
   prompt: string;
   startedAt: string;
+  /** From the map, else a titles run, else guessed from the prompt (`kindInferred`). */
   kind: MapInput["kind"];
   kindInferred: boolean;
+  /**
+   * The request in a line: the map's goal, else a titles run's, else Murmur's own. Murmur's
+   * own, for a reply (at most 4 words, or starting with a yes, ok, sure, go ahead, done,
+   * thanks or waiting kind of word, or only pasted text or an image), is the first clause
+   * of `outcome` when it has two words or more; else the prompt without pasted text or
+   * images, cut at a word within 80 characters.
+   */
   goal: string;
   phases: PhaseView[];
   planInferred: boolean;
@@ -105,12 +118,19 @@ export interface RequestView {
    */
   recap?: boolean;
   /**
-   * The request in 2 to 4 words, for the rail and the journey: the map's `short` when
-   * Claude (or the recap) gave one, else cut from `goal` at the first comma, colon,
-   * " - " or " and then ", without a filler verb ("Start", "Resume") when what is left
-   * still reads, at a word boundary within 32 characters. Core always sets it.
+   * The request in 2 to 5 words, for the rail and the journey: the map's `short` when
+   * Claude (or the recap) gave one, else a titles run's, else cut from `goal` at the first
+   * comma, colon, semicolon, " - " or " and then ", without a filler verb ("Start",
+   * "Resume") when what is left still reads, at a word boundary within 32 characters. A
+   * cut never ends mid-phrase: it backs off to before a clause it cut into or its last
+   * small word when two words or more are left, else ends with "…". Core always sets it.
    */
   short?: string;
+  /**
+   * "claude" when Claude wrote `short` (in a live or recap `map`, or a titles run); unset
+   * when it is Murmur's own, cut from the goal.
+   */
+  titledBy?: "claude";
   /**
    * Where the request stands, read from its last events (first match wins):
    * - "waiting": the session's `needsYou` came during this request.
@@ -388,7 +408,9 @@ export interface Journey {
    * both name phases ("Phase 2", in goals and plan titles) and share one; else when they
    * share a task or item number from their plan's titles; else when neither names any
    * and the request's kind is the previous one's. Titled from the shared phase ("Phase 2:
-   * the agent page", "Phases 0 and 1"), else the first request's `short`.
+   * the agent page", "Phases 0 and 1"), else the first request's `short`. When the threads
+   * come from Claude (see `SessionView.threads`), a chapter is instead a run of consecutive
+   * requests in one thread, titled with the thread's title.
    */
   chapters: Chapter[];
   /** Gaps over one hour, between requests and inside one, in time order. */

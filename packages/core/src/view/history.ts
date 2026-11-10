@@ -241,8 +241,42 @@ export function inferHistory(
       files: paths.size,
       commands: count("Bash"),
     };
+    const activity = {
+      reads: 0,
+      searches: 0,
+      edits: 0,
+      commands: 0,
+      web: 0,
+      tools: 0,
+    };
+    for (const e of list) {
+      if (e.hook !== "PreToolUse") continue;
+      const kind = ACTIVITY[str(e.payload.tool_name) ?? ""];
+      if (kind) activity[kind]++;
+      else if (
+        /^mcp__(?!plugin_murmur_murmur__)/.test(str(e.payload.tool_name) ?? "")
+      )
+        activity.tools++;
+    }
+    req.activity = activity;
   });
 }
+
+// Each tool call by kind, for `RequestView.activity`; MCP tools other than Murmur's count as tools.
+const ACTIVITY: Record<
+  string,
+  "reads" | "searches" | "edits" | "commands" | "web"
+> = {
+  Read: "reads",
+  Grep: "searches",
+  Glob: "searches",
+  Edit: "edits",
+  Write: "edits",
+  NotebookEdit: "edits",
+  Bash: "commands",
+  WebFetch: "web",
+  WebSearch: "web",
+};
 
 function newPart(id: string, description: string): PartView {
   return {

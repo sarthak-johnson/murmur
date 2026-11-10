@@ -48,7 +48,7 @@ test("splits requests on each prompt", () => {
     kind: "feature",
     kindInferred: true,
     planInferred: true,
-    goal: "a".repeat(80),
+    goal: `${"a".repeat(79)}…`,
     phases: [],
     parts: [],
     looseFiles: [],
