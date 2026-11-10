@@ -114,10 +114,10 @@ describe("Murmur's own titles", () => {
     ],
     ["Go ahead", true],
     ["Waiting", true],
-    ["Sent to Ankur", true],
+    ["Sent to Priya", true],
     ["[Image #1]", true],
     [
-      'Umang replied\n\n<pasted_content id="484d">\nThe agent screen is on staging.\n</pasted_content id="484d">\n',
+      'Ravi replied\n\n<pasted_content id="484d">\nThe agent screen is on staging.\n</pasted_content id="484d">\n',
       true,
     ],
     ["Thanks, that works", true],
@@ -128,15 +128,15 @@ describe("Murmur's own titles", () => {
   });
 
   test("a reply with nothing said keeps its prompt", () => {
-    const [req] = reduce([prompt(0, "Sent to Ankur")]).requests;
-    expect(req?.short).toBe("Sent to Ankur");
+    const [req] = reduce([prompt(0, "Sent to Priya")]).requests;
+    expect(req?.short).toBe("Sent to Priya");
   });
 
   test("pasted text and images never show in a title, goal or the session's name", () => {
     const view = reduce([
       prompt(
         0,
-        'Umang sent me this and wants a reply today \n\n<pasted_content id="484d">\nMessage for Sarthak\n</pasted_content id="484d">\n',
+        'Ravi sent me this and wants a reply today \n\n<pasted_content id="484d">\nMessage for you\n</pasted_content id="484d">\n',
       ),
       prompt(5, "Look at this screen and fix the header [Image #1]"),
     ]);
@@ -144,7 +144,7 @@ describe("Murmur's own titles", () => {
     for (const s of [a?.short, a?.goal, b?.short, b?.goal, view.title]) {
       expect(s).not.toMatch(/pasted_content|\[Image/);
     }
-    expect(a?.goal).toBe("Umang sent me this and wants a reply today");
+    expect(a?.goal).toBe("Ravi sent me this and wants a reply today");
     expect(b?.goal).toBe("Look at this screen and fix the header");
   });
 
@@ -160,25 +160,104 @@ describe("Murmur's own titles", () => {
       ),
     ).toBe("Find what can be pruned");
     expect(
-      shortOf(
-        "Ok make sure if there are any old tradara app simulators, let's delete that",
-      ),
-    ).toBe("Ok make sure");
+      shortOf("Ok check the login flow if anything changed since Monday"),
+    ).toBe("Check the login flow");
     // Backing off to before "whether" would leave two words.
     expect(
       shortOf(
         "Find out whether agent edits have hung again on production since the fix",
       ),
     ).toBe("Find out whether agent edits…");
-    // A helping verb is no place to back off to.
+    // A clause that is talk gives way to one that says what to do.
     expect(
       shortOf("Finally you have done something good, let's build it"),
-    ).toBe("Finally you have done something");
+    ).toBe("Build it");
     expect(
       shortOf("Here's a shorter version you can paste straight into chat"),
-    ).toBe("Here's a shorter version…");
+    ).toBe("Shorter version you can paste");
     // A whole clause is never trimmed.
     expect(shortOf("Fix it")).toBe("Fix it");
+  });
+
+  // Real outcomes from a long session (names changed): each once gave a title that read
+  // as talk ("I renamed", "Here's the page", "Your wait is running").
+  test.each([
+    [
+      "Ok",
+      'I renamed the first agent tab from "Track record" to "Track", and all five tabs now fit.',
+      "Renamed the first agent tab",
+    ],
+    [
+      "Ok and delete the old simulators too",
+      "Here's the page with 12 screens of build 9 as it looks now: https://claude.ai/artifact/x",
+      "Page with 12 screens of build 9",
+    ],
+    [
+      "[Image #1]",
+      "Here's the build 8 summary for the group, written from the 53 changes.",
+      "Build 8 summary for the group",
+    ],
+    [
+      "Okay",
+      "Here's what's still open on the app:\n\n- The draft.",
+      "What's still open on the app",
+    ],
+    [
+      "Sure okay, looking forward to it",
+      "I'll message you when the artifact is ready.",
+      "Looking forward to it",
+    ],
+    [
+      "Waiting",
+      "Your wait is running a bit longer than I said: the audit has passed my estimate.",
+      "Follow-up",
+    ],
+    [
+      "Ok coming back to our original work, how much more time will it take",
+      "Nothing is ready to see yet. The audit is only just starting.",
+      "Coming back to our original work",
+    ],
+    [
+      "What's Ravi's draft?",
+      "It's a message I drafted for Ravi asking for server changes.",
+      "What's Ravi's draft?",
+    ],
+    [
+      "Draft a message",
+      "Here's a shorter version you can paste straight into chat.",
+      "Draft a message",
+    ],
+    ["Yes", "Understood. I'm dropping both prototypes.", "Follow-up"],
+    ["All good?", "Yes, all good on my side.", "All good?"],
+  ])("reply %j ending %j is titled %j", (p, last, short) => {
+    const [req] = reduce([prompt(0, p), said(1, last), stop(2)]).requests;
+    expect(req?.short).toBe(short);
+  });
+
+  test.each([
+    [
+      "Can you check if Ravi has built these already? Maybe we need to update it",
+      "Check if Ravi has built…",
+    ],
+    [
+      "No I meant, use them to make our app better",
+      "Use them to make our app better",
+    ],
+    [
+      "I feel fonts are all over the place, let's fix our fonts please",
+      "Fix our fonts",
+    ],
+    ["Meanwhile can you draft a message for Ravi", "Draft a message for Ravi"],
+    [
+      "See how the other active session has made it, can we do it as well",
+      "See how the other active session",
+    ],
+    // Nothing better in it: the prompt's first clause, as before.
+    ["My login page is broken", "My login page is broken"],
+    ["Fix my login bug", "Fix my login bug"],
+  ])("prompt %j is titled %j", (p, short) => {
+    const [req] = reduce([prompt(0, p)]).requests;
+    expect(req?.short).toBe(short);
   });
 
   test("a reply follows the request before it", () => {

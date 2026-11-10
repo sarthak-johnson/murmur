@@ -16,7 +16,12 @@ import {
 } from "./moments.js";
 import type { Narrated, Trace } from "./requests.js";
 import { helpersOf, itemOf, subjectOfWork } from "./rounds.js";
-import { fallbackGoal, type TitleEntry } from "./titles.js";
+import {
+  fallbackGoal,
+  type TitleEntry,
+  talkOnly,
+  titleClause,
+} from "./titles.js";
 import type {
   AgentView,
   Beyond,
@@ -103,10 +108,17 @@ const BREAK = new Set(
 // Words a cut title never ends on: those, and ones that leave it hanging ("was", "any").
 const HANG = new Set([
   ...BREAK,
-  ..."be been being has have had will would can could should do does did not no any there my our your its their this that these those every all some each then whether if which because while so more most also just you we they it he she i me us them".split(
+  ..."be been being has have had will would can could should do does did not no any there my our your its their this that these those every all some each then whether if which because while so more most also just you we they it he she i me us them how what why when where who".split(
     " ",
   ),
 ]);
+// A cut just before one of these ends at a whole phrase ("Page with 12 screens of build
+// 9 | as it looks now"): nothing to back off from.
+const ENDS = new Set(
+  [...BREAK].filter((w) => !/^(?:a|an|the|is|are|was|were)$/.test(w)),
+);
+// A reply with nothing to say of the work ("Yes", "Waiting"): it picks up the one before.
+const FOLLOW_UP = "Follow-up";
 // Words that open a clause ("whether build 9 was ..."): a cut inside one backs off to
 // before it, when that keeps three words.
 const OPENS = new Set("whether if that which because while".split(" "));
@@ -118,7 +130,14 @@ const SHORT_MAX = 32;
 export function shortOf(goal: string): string {
   // An aside in brackets is the first thing a few words can do without.
   const plain = goal.replace(/\s*\([^)]*\)/g, "");
-  let s = (plain.split(/,|:|;|\s[-–]\s|\sand then\s/i)[0] ?? "").trim();
+  // The first clause that reads as a title (`titleClause`), else the first, as typed.
+  const clauses = plain
+    .split(/,|:|;|\s[-–]\s|\sand then\s|[.?!]\s/i)
+    .map((c) => c.trim())
+    .filter(Boolean);
+  let s =
+    clauses.map((c) => titleClause(c)).find((c) => c !== undefined) ??
+    (talkOnly(plain) ? FOLLOW_UP : (clauses[0] ?? ""));
   const is = (set: Set<string>, w: string | undefined) =>
     set.has((w ?? "").toLowerCase());
   const filler = FILLER.exec(s);
@@ -137,11 +156,15 @@ export function shortOf(goal: string): string {
     return t;
   };
   let hanging = false;
-  // A cut backs off to a whole phrase: to before a clause it cut into ("Ok make sure |
-  // if there are any"), else before its last small word ("Track every phase | of the
+  // A cut just before a small word that starts a phrase keeps what it has. Else it backs
+  // off to a whole phrase: to before a clause it cut into ("Check the login flow | if
+  // anything changed"), else before its last small word ("Track every phase | of the
   // Lit") when two words or more are left. Else it ends with "…" rather than on a word
   // that leaves it hanging ("Confirm whether build 9 | was").
-  if (out && words.length < s.split(/\s+/).length) {
+  const all = s.split(/\s+/);
+  if (out && words.length < all.length && is(ENDS, all[words.length]))
+    words = trim(words);
+  else if (out && words.length < all.length) {
     const opens = words.findIndex((w, k) => k > 0 && is(OPENS, w));
     const breaks = words.findLastIndex((w, k) => k > 0 && is(BREAK, w));
     const head = trim(words.slice(0, opens > 0 ? opens : Math.max(breaks, 0)));
