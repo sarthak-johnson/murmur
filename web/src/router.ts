@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 
 /** The views of a request page, each its own URL: Story is the bare request path. */
-export const TABS = ["story", "flow", "files", "helpers"] as const;
+export const TABS = ["story", "tasks", "flow", "files", "helpers"] as const;
 export type Tab = (typeof TABS)[number];
 /** The views of a session's page: Journey is the bare session path. */
 export type SessionTab = "journey" | "flow";
@@ -101,7 +101,10 @@ let latest: object | null = null;
 
 /** Marks the morph as a dot's (or not) until the newest transition has run. */
 function dot(el: Element | null) {
-  document.documentElement.classList.toggle(DOT, !!el?.closest(".trk-st"));
+  document.documentElement.classList.toggle(
+    DOT,
+    !!el?.closest(".trk-st") && !el.closest(".trk.stack"),
+  );
 }
 
 /** Runs `update` as a transition, the dot mark kept until the newest one has run. */
@@ -119,8 +122,9 @@ let moving = false;
 
 /**
  * Moves to a path. Where the browser has View Transitions the change runs inside one: a
- * clicked card marked `data-morph` (a station, a rail row, a track station) grows into the
- * next page's title, and the page rises (theme.css); elsewhere it is instant.
+ * clicked card marked `data-morph` (a station, a rail row, a track station, or the title in
+ * a clicked link, as a task row's) grows into the next page's title, and the page rises
+ * (theme.css); elsewhere it is instant.
  */
 export function navigate(path: string, from?: Element | null): void {
   // Another page starts at its top, as a real link would; a hash within the page scrolls itself.
@@ -142,7 +146,10 @@ export function navigate(path: string, from?: Element | null): void {
     go();
     return;
   }
-  const src = from?.closest("[data-morph]") ?? null;
+  const src =
+    from?.closest("[data-morph]") ??
+    from?.querySelector("[data-morph]") ??
+    null;
   mark(src);
   dot(src);
   // The DOM must be the new page when the callback returns, so React renders at once.

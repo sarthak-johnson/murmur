@@ -392,11 +392,18 @@ export function TopBar(props: {
           <span className={`state-pill ${mark}`}>
             <StateMark mark={mark} />
             <span className="num">
-              <span>{PILL[mark]}</span>
-              {" · "}
-              {helping
-                ? `${nOf(helping, "helper")} still working`
-                : took(since, state === "done" ? end : now)}
+              <span className={helping ? "pill-more" : undefined}>
+                <span>{PILL[mark]}</span>
+                {" · "}
+              </span>
+              {helping ? (
+                <>
+                  {nOf(helping, "helper")}
+                  <span className="pill-more"> still</span> working
+                </>
+              ) : (
+                took(since, state === "done" ? end : now)
+              )}
             </span>
           </span>
         )}

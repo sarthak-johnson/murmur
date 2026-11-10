@@ -214,14 +214,16 @@ export function Journey(props: {
           <span className="jr-now">{last.outcome || askOf(last)}</span>
           <span className="jr-end-meta">
             Request {num(last)}, {STANDS[lastMark?.mark ?? "done"]}{" "}
-            {took(last.startedAt, endOf(last))}.
-            {asked && (
+            {took(
+              (asked && lastMark?.waiting?.since) || last.startedAt,
+              endOf(last),
+            )}
+            .
+            {askedN > 0 && (
               <>
                 {" "}
                 <span className="jr-need">
-                  {askedN
-                    ? `${askedN} ${askedN === 1 ? "thing waits" : "things wait"} on you`
-                    : "Waiting on you"}
+                  {`${askedN} ${askedN === 1 ? "thing waits" : "things wait"} on you`}
                 </span>
               </>
             )}

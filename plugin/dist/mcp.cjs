@@ -36748,7 +36748,7 @@ var NarrateInput = external_exports.object({
   why: external_exports.string().max(200),
   part: text.optional(),
   task: text.optional(),
-  // Claude says "blocked" on its own when it waits on the user; read it as failed.
+  // Claude says "blocked" on its own when it waits on the user: the task waits on you.
   taskStatus: external_exports.preprocess(
     (v) => v === "waiting" || v === "on_hold" ? "blocked" : said(v),
     external_exports.enum(["running", "done", "failed", "blocked"])
@@ -36859,6 +36859,13 @@ var RULES = [
   ],
   ["plan", /\badded an? (?:\w+ )?task\b/i]
 ];
+
+// ../packages/core/src/view/agents.ts
+var PLAIN = new Set(
+  "build implement write add draft create make port fix review rereview recheck check research investigate explore find audit plan update run test the and for with from into that this its all new more".split(
+    " "
+  )
+);
 
 // ../packages/core/src/view/shape.ts
 var BREAK = new Set(

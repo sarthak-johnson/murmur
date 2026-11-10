@@ -513,7 +513,8 @@ export async function runBackfill(
 }
 
 /**
- * Runs in the detached child a hook spawns, never in the hook: queues the main-thread
+ * Runs in the detached child a hook Claude waits on spawns, and in the hooks Claude
+ * never waits on (a tool's, a helper's), never in a hook Claude waits on: queues the main-thread
  * text Claude wrote since the last read (`textOffset`) as `AssistantText`, with the
  * backfill's ids, and stores where it stopped. A last line still being written waits for
  * the next read. With no `textOffset` on record (a session imported before Murmur read

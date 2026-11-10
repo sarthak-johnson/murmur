@@ -22,33 +22,40 @@ const MINUS = "−";
 
 const LABEL: Record<Tab, string> = {
   story: "Story",
+  tasks: "Tasks",
   flow: "Flow",
   files: "Files",
   helpers: "Helpers",
 };
 
-/** Story · Flow · Files · Helpers: each a link with its own URL, so back and forward work. */
+/**
+ * Story · Tasks · Flow · Files · Helpers: each a link with its own URL, so back and forward
+ * work. Tasks only for a request with a plan or a map.
+ */
 export function RequestTabs(props: {
   sessionId: string;
   requestId: string;
   tab: Tab;
+  tasks: boolean;
 }) {
-  const { sessionId, requestId, tab } = props;
+  const { sessionId, requestId, tab, tasks } = props;
   return (
     <nav className="tabs" aria-label="Views of this request">
-      {(Object.keys(LABEL) as Tab[]).map((t) => {
-        const path = requestPath(sessionId, requestId, t);
-        return (
-          <a
-            key={t}
-            href={path}
-            aria-current={t === tab ? "page" : undefined}
-            onClick={follow(path)}
-          >
-            {LABEL[t]}
-          </a>
-        );
-      })}
+      {(Object.keys(LABEL) as Tab[])
+        .filter((t) => tasks || t !== "tasks")
+        .map((t) => {
+          const path = requestPath(sessionId, requestId, t);
+          return (
+            <a
+              key={t}
+              href={path}
+              aria-current={t === tab ? "page" : undefined}
+              onClick={follow(path)}
+            >
+              {LABEL[t]}
+            </a>
+          );
+        })}
     </nav>
   );
 }

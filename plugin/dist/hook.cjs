@@ -19842,7 +19842,7 @@ var NarrateInput = external_exports.object({
   why: external_exports.string().max(200),
   part: text.optional(),
   task: text.optional(),
-  // Claude says "blocked" on its own when it waits on the user; read it as failed.
+  // Claude says "blocked" on its own when it waits on the user: the task waits on you.
   taskStatus: external_exports.preprocess(
     (v) => v === "waiting" || v === "on_hold" ? "blocked" : said(v),
     external_exports.enum(["running", "done", "failed", "blocked"])
@@ -20040,9 +20040,19 @@ var TASK_STATUS = {
   running: "now",
   done: "done",
   failed: "failed",
-  blocked: "failed"
+  blocked: "blocked"
 };
-var relPath = (path4, cwd) => path4.startsWith(`${cwd}/`) ? path4.slice(cwd.length + 1) : path4.replace(/^\.\//, "");
+var isNotRequest = (prompt) => typeof prompt === "string" && /^\s*(\/murmur:\w+(\s|$)|<task-notification>)/.test(prompt);
+function phaseStatus(tasks) {
+  if (tasks.some((t) => t.status === "blocked")) return "blocked";
+  if (tasks.length && tasks.every((t) => t.status === "done")) return "done";
+  return tasks.some((t) => t.status !== "todo") ? "now" : "todo";
+}
+function relPath(path4, cwd) {
+  const home = /^\/(?:Users|home)\/[^/]+/.exec(cwd)?.[0];
+  const full = home && path4.startsWith("~/") ? home + path4.slice(1) : path4;
+  return full.startsWith(`${cwd}/`) ? full.slice(cwd.length + 1) : full.replace(/^\.\//, "");
+}
 var str = (v) => typeof v === "string" ? v : void 0;
 function newRequest(start) {
   const p = start.payload.prompt;
@@ -20151,7 +20161,6 @@ function applyNarrate(req, e, n, setsNow = true) {
     if (part) req.now.part = part.id;
   }
   if (task && n.taskStatus) task.status = TASK_STATUS[n.taskStatus];
-  if (task && n.taskStatus === "blocked") task.problem = n.now;
   if (task && agentId) addOnce(task.agents, agentId);
   if (part) {
     if (n.step)
@@ -20204,15 +20213,11 @@ function setStatuses(req, last) {
     const stepDone = done >= 0 && !p.steps.slice(done).some((s) => s.status === "running");
     p.status = own2.some((t) => t.status === "now") ? "now" : allDone(own2) || stepDone ? "done" : p.id === last.part ? "now" : "todo";
   }
-  for (const ph of req.phases) {
-    ph.status = ph.tasks.some(
-      (t) => t.status === "now" || t.status === "failed"
-    ) ? "now" : allDone(ph.tasks) ? "done" : "todo";
-  }
+  for (const ph of req.phases) ph.status = phaseStatus(ph.tasks);
 }
 
 // ../packages/core/src/view/files.ts
-function applyFiles(req, events, { before, narrated }) {
+function applyFiles(req, events, { before, narrated }, agents = /* @__PURE__ */ new Map()) {
   const naming = /* @__PURE__ */ new Map();
   for (const x of narrated)
     for (const f of x.n.files ?? []) {
@@ -20230,8 +20235,13 @@ function applyFiles(req, events, { before, narrated }) {
     for (const t of touchesOf(e)) addAt(t, i, String(e.payload.agent_id ?? ""));
   });
   function addAt(t, i, agentId) {
-    const by = near(helpers.get(agentId) ?? [], i) ?? near(naming.get(t.path) ?? [], i);
-    const partId = by?.part ?? before[i]?.part;
+    const agent = agentId ? agents.get(agentId) : void 0;
+    if (agent) {
+      agent.files ??= [];
+      addOnce(agent.files, t.path);
+    }
+    const said2 = () => near(naming.get(t.path) ?? [], i)?.part;
+    const partId = agentId ? near(helpers.get(agentId) ?? [], i)?.part ?? agent?.part ?? said2() : said2() ?? before[i]?.part;
     const part = req.parts.find((p) => p.id === partId);
     addTouch(part ? part.files : req.looseFiles, t);
   }
@@ -20314,6 +20324,113 @@ function displayPath(path4, cwd) {
   return home ? `~/${tail ?? rest.join("/")}` : tail ?? rel;
 }
 
+// ../packages/core/src/view/moments.ts
+var SUBJECT = String.raw`\b(?:tasks?|phase)\b[^.;:!?]*?`;
+var RULES = [
+  // A review or test that found a problem, or something that failed.
+  [
+    "problem",
+    // Not a guess ("means one failed", "might have failed", "if it failed") or a
+    // negation ("none of the tests failed", "the review found no problems").
+    /\breview(?:er)? found\b(?!\s+(?:no|nothing|none|zero)\b)|\bfound (?:a|an|one|two|three|\d+|some|real)\b[^.;:]*\bproblems?\b|(?<!\b(?:none|nothing|no|zero|0|never|not|means|meaning|might|may|maybe|could|would|if|or|whether)\b(?:\s[\w'-]+){0,3}\s)\bfailed\b/i
+  ],
+  // Something sent back.
+  [
+    "fixing",
+    /\bsen(?:d|ding|t) (?:it |them |this |that )?back\b|\bback to the (?:same )?builder\b/i
+  ],
+  // A task or phase that is done or passed.
+  [
+    "done",
+    new RegExp(
+      `${SUBJECT}\\b(?:is|are|was|were)\\s+(?:now\\s+)?(?:done|finished|complete)\\b|\\b(?:tasks?|phase)\\s+[\\w-]+(?:\\s+and\\s+[\\w-]+)?\\s+passed\\b`,
+      "i"
+    )
+  ],
+  // An explicit change of plan, or a choice: between options ("going with X", "we chose
+  // X", "switching to X") or with its reason ("X, not Y: because").
+  [
+    "decision",
+    /\b(?:I|I'm|I'll|I've|we|we'll|we're)\b[^.;]*\b(?:instead of|rather than|chose|switch(?:ed|ing)? to|decided to)\b|^(?:going with|switching to)\b|\bI(?:'ve| have)? decided\b|\bchanged? (?:the |my |our )?plan\b|,\s*not\s+\w+(?:\s+\w+)?\s*[:;]/i
+  ],
+  ["plan", /\badded an? (?:\w+ )?task\b/i]
+];
+function plainText(text3) {
+  return text3.replace(/```[\s\S]*?```/g, " ").replace(/`([^`]*)`/g, "$1").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/(\*\*|__)(.+?)\1/g, "$2").replace(/(^|\W)[*_]([^*_\n]+)[*_](?=\W|$)/g, "$1$2").replace(/^\s*(#{1,6}|>|[-*+]|\d+[.)])\s+/gm, "").replace(/\s+/g, " ").trim();
+}
+function sentences(plain2) {
+  const out = [];
+  let from = 0;
+  for (const m of plain2.matchAll(/[.!?](?=\s|$)/g)) {
+    if (/\b(?:e\.g|i\.e|vs|cf|approx|incl|etc)$/i.test(plain2.slice(0, m.index)))
+      continue;
+    out.push(plain2.slice(from, m.index + 1).trim());
+    from = m.index + 1;
+  }
+  const rest = plain2.slice(from).trim();
+  if (rest) out.push(rest);
+  return out;
+}
+var ASKS = /^(?:(?:and|but|so|also|then|or)\s+)?(?:(?:should|shall|may|can|could|would|will|do|does|did|is|are|want)\s+(?:i|we|me|you)\b|want me\b)|\byou(?:rs?)?\b/i;
+function questionsIn(text3) {
+  const src = text3.replace(/```[\s\S]*?(?:```|$)/g, "\n\n").replace(/`[^`\n]*`/g, "code").replace(/\]\([^)\s]*\)/g, "]").replace(/\b(?:https?:\/\/|www\.)\S+/g, "link");
+  const block = src.split(/\n\s*\n/).filter((b) => b.trim()).at(-1) ?? "";
+  const units = [];
+  for (const line of block.split("\n")) {
+    const l = line.trim();
+    const item = /^(?:[-*+]|\d+[.)])\s+(.*)$/.exec(l)?.[1];
+    const last = units.at(-1);
+    if (/^#{1,6}\s/.test(l)) units.push({ text: l, kind: "heading" });
+    else if (item !== void 0) units.push({ text: item, kind: "item" });
+    else if (last?.kind === "para") last.text += ` ${l}`;
+    else units.push({ text: l, kind: "para" });
+  }
+  const tail = units.at(-1)?.kind === "item" ? units.slice(units.findLastIndex((u) => u.kind !== "item") + 1) : units.slice(-1);
+  return tail.flatMap((u) => {
+    if (u.kind === "heading") return [];
+    const said2 = plainText(u.text).replace(/\s+/g, " ").trim();
+    const sentences2 = said2.split(/(?<=[.!?])\s+/);
+    const asked = [];
+    for (const q of sentences2.reverse()) {
+      if (!q.endsWith("?")) break;
+      asked.unshift(q);
+    }
+    const merged = [];
+    for (const q of asked)
+      if (/^or\b/i.test(q) && merged.length)
+        merged[merged.length - 1] += ` ${q}`;
+      else merged.push(q);
+    return merged.filter((q) => ASKS.test(q) && q.length > 3);
+  });
+}
+var ASK_TO = /^(?:please|kindly)\s+(.+)$|\b(?:waiting (?:on|for) you to|(?:I )?needs? you to)\s+(.+)$/i;
+function askIn(text3) {
+  const q = questionsIn(text3)[0];
+  if (q) return q;
+  for (const s of sentences(plainText(text3))) {
+    const m = ASK_TO.exec(s);
+    const what = (m?.[1] ?? m?.[2])?.replace(/[.!]+$/, "").trim();
+    if (what) return what.charAt(0).toUpperCase() + what.slice(1);
+  }
+  return void 0;
+}
+function firstSentence(text3) {
+  return sentences(plainText(text3))[0] ?? "";
+}
+var REMARK = /\b(?:intentional(?:ly)?|on purpose|by design|not a (?:bug|mistake)|works? as (?:designed|intended)|as intended|expected behaviou?r)\b/i;
+function moment(text3) {
+  const first = firstSentence(text3);
+  return RULES.find(
+    ([mark, re]) => re.test(first) && !(mark === "decision" && REMARK.test(first))
+  )?.[0];
+}
+function cutWords(s, max) {
+  if (s.length <= max) return s;
+  const head = s.slice(0, max - 1);
+  const space = head.lastIndexOf(" ");
+  return `${(space > 0 ? head.slice(0, space) : head).trimEnd()}\u2026`;
+}
+
 // ../packages/core/src/view/flags.ts
 var NOTIFY = {
   permission_prompt: "permission",
@@ -20332,17 +20449,38 @@ var str2 = (v) => typeof v === "string" ? v : void 0;
 var obj2 = (v) => v && typeof v === "object" ? v : {};
 function needsYou(events) {
   let out = null;
+  let ask2 = null;
+  const blocked = /* @__PURE__ */ new Map();
+  let said2 = "";
   for (const e of events) {
     const p = e.payload;
+    const main2 = !p.agent_id;
+    if (e.hook === "UserPromptSubmit" && !isNotRequest(p.prompt))
+      blocked.clear();
+    const n = e.hook === "PostToolUse" && p.tool_name === NARRATE_TOOL ? NarrateInput.safeParse(p.tool_input).data : void 0;
+    if (n?.task && n.taskStatus === "blocked")
+      blocked.set(n.task, firstSentence(n.now));
+    else if (n?.task && n.taskStatus) blocked.delete(n.task);
+    if (e.hook === "AssistantText" && main2) said2 = str2(p.text) ?? "";
     const reason = e.hook === "PermissionRequest" ? "permission" : e.hook === "Notification" ? NOTIFY[str2(p.notification_type) ?? ""] : void 0;
-    if (CLEARS.has(e.hook)) out = null;
-    else if (reason && out?.reason !== reason) {
+    if (e.hook === "Stop" && main2) {
+      const text3 = askIn(str2(p.last_assistant_message) || said2) ?? [...blocked.values()].at(-1);
+      if (text3) ask2 = { reason: "input", text: text3, since: ask2?.since ?? e.ts };
+      if (ask2 && out?.reason === "idle") out = null;
+      said2 = "";
+    } else if (CLEARS.has(e.hook)) {
+      out = null;
+      if (main2) {
+        ask2 = null;
+        said2 = "";
+      }
+    } else if (reason && out?.reason !== reason && !(ask2 && reason === "idle")) {
       const tool = str2(p.tool_name);
       const text3 = e.hook === "PermissionRequest" ? `Claude needs your permission${tool ? ` to use ${tool}` : ""}` : str2(p.message) ?? "";
       out = { reason, text: text3, since: e.ts };
     }
   }
-  return out;
+  return out ?? ask2;
 }
 function fnv1a(s) {
   let h = 2166136261;
@@ -20473,68 +20611,139 @@ function applyFlags(req, events, { before, narrated }, followed = false) {
   }
 }
 
-// ../packages/core/src/view/moments.ts
-var SUBJECT = String.raw`\b(?:tasks?|phase)\b[^.;:!?]*?`;
-var RULES = [
-  // A review or test that found a problem, or something that failed.
-  [
-    "problem",
-    // Not a guess ("means one failed", "might have failed", "if it failed") or a
-    // negation ("none of the tests failed", "the review found no problems").
-    /\breview(?:er)? found\b(?!\s+(?:no|nothing|none|zero)\b)|\bfound (?:a|an|one|two|three|\d+|some|real)\b[^.;:]*\bproblems?\b|(?<!\b(?:none|nothing|no|zero|0|never|not|means|meaning|might|may|maybe|could|would|if|or|whether)\b(?:\s[\w'-]+){0,3}\s)\bfailed\b/i
-  ],
-  // Something sent back.
-  [
-    "fixing",
-    /\bsen(?:d|ding|t) (?:it |them |this |that )?back\b|\bback to the (?:same )?builder\b/i
-  ],
-  // A task or phase that is done or passed.
-  [
-    "done",
-    new RegExp(
-      `${SUBJECT}\\b(?:is|are|was|were)\\s+(?:now\\s+)?(?:done|finished|complete)\\b|\\b(?:tasks?|phase)\\s+[\\w-]+(?:\\s+and\\s+[\\w-]+)?\\s+passed\\b`,
-      "i"
-    )
-  ],
-  // An explicit change of plan, or a choice: between options ("going with X", "we chose
-  // X", "switching to X") or with its reason ("X, not Y: because").
-  [
-    "decision",
-    /\b(?:I|I'm|I'll|I've|we|we'll|we're)\b[^.;]*\b(?:instead of|rather than|chose|switch(?:ed|ing)? to|decided to)\b|^(?:going with|switching to)\b|\bI(?:'ve| have)? decided\b|\bchanged? (?:the |my |our )?plan\b|,\s*not\s+\w+(?:\s+\w+)?\s*[:;]/i
-  ],
-  ["plan", /\badded an? (?:\w+ )?task\b/i]
-];
-function plainText(text3) {
-  return text3.replace(/```[\s\S]*?```/g, " ").replace(/`([^`]*)`/g, "$1").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/(\*\*|__)(.+?)\1/g, "$2").replace(/(^|\W)[*_]([^*_\n]+)[*_](?=\W|$)/g, "$1$2").replace(/^\s*(#{1,6}|>|[-*+]|\d+[.)])\s+/gm, "").replace(/\s+/g, " ").trim();
+// ../packages/core/src/view/infer.ts
+var BUG = /\b(bug|fix|error|broken|crash|fails?|failing|issue)\b/i;
+var REFACTOR = /\b(refactor|rename|clean ?up|restructure|extract)\b/i;
+var QUESTION = /^\s*(how|what|why|where|which|can|does|is)\b/i;
+function inferKind(prompt) {
+  if (BUG.test(prompt)) return "bug";
+  if (REFACTOR.test(prompt)) return "refactor";
+  if (prompt.trimEnd().endsWith("?") || QUESTION.test(prompt))
+    return "question";
+  return "feature";
 }
-function sentences(plain2) {
-  const out = [];
-  let from = 0;
-  for (const m of plain2.matchAll(/[.!?](?=\s|$)/g)) {
-    if (/\b(?:e\.g|i\.e|vs|cf|approx|incl|etc)$/i.test(plain2.slice(0, m.index)))
-      continue;
-    out.push(plain2.slice(from, m.index + 1).trim());
-    from = m.index + 1;
+var obj3 = (v) => typeof v === "object" && v !== null ? v : {};
+var text2 = (...vs) => vs.find((v) => typeof v === "string" && v !== "") ?? vs.find((v) => typeof v === "number")?.toString();
+function applyInference(req, events) {
+  if (req.kindInferred) req.kind = inferKind(req.prompt);
+  if (!req.planInferred) return;
+  const tasks = [];
+  for (const e of events) {
+    if (e.hook !== "TaskCreated" && e.hook !== "TaskCompleted") continue;
+    const p = e.payload;
+    const t = obj3(p.task);
+    const id2 = text2(p.task_id, t.id, p.id);
+    if (!id2) continue;
+    let task = tasks.find((x) => x.id === id2);
+    if (!task) {
+      task = {
+        id: id2,
+        title: text2(
+          p.task_subject,
+          p.subject,
+          t.subject,
+          p.title,
+          p.task_description,
+          p.description
+        ) ?? id2,
+        status: "todo",
+        agents: []
+      };
+      tasks.push(task);
+    }
+    if (e.hook === "TaskCompleted") task.status = "done";
   }
-  const rest = plain2.slice(from).trim();
-  if (rest) out.push(rest);
-  return out;
+  if (!tasks.length) return;
+  req.phases = [
+    {
+      id: "tasks",
+      title: "Tasks",
+      status: tasks.every((t) => t.status === "done") ? "done" : tasks.some((t) => t.status === "done") ? "now" : "todo",
+      tasks
+    }
+  ];
 }
-function firstSentence(text3) {
-  return sentences(plainText(text3))[0] ?? "";
+var TOOL_HOOKS = /* @__PURE__ */ new Set([
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure"
+]);
+var QUIET = /* @__PURE__ */ new Set([
+  MAP_TOOL,
+  NARRATE_TOOL,
+  "ToolSearch",
+  "TaskList",
+  "TaskGet"
+]);
+var basename = (v) => typeof v === "string" && v ? v.split("/").filter(Boolean).at(-1) : void 0;
+var PHRASE = {
+  Grep: "Searching the code",
+  Glob: "Searching the code",
+  Monitor: "Watching a background job",
+  TaskOutput: "Watching a background job",
+  BashOutput: "Watching a background job",
+  TaskStop: "Stopping a background job",
+  KillShell: "Stopping a background job",
+  SendMessage: "Messaging a helper",
+  WebSearch: "Searching the web",
+  WebFetch: "Reading a web page",
+  Skill: "Using a skill",
+  AskUserQuestion: "Asking you a question",
+  TodoWrite: "Updating the task list",
+  TaskCreate: "Updating the task list",
+  TaskUpdate: "Updating the task list",
+  Artifact: "Publishing a page",
+  ArtifactData: "Updating a page",
+  NotebookEdit: "Editing a notebook"
+};
+var BROWSER = /chrome|playwright|browser|puppeteer/i;
+function toolText(p) {
+  const name = String(p.tool_name);
+  const input3 = obj3(p.tool_input);
+  const file2 = basename(input3.file_path);
+  const description = text2(input3.description);
+  if ((name === "Edit" || name === "Write") && file2)
+    return { text: `Editing ${file2}` };
+  if (name === "Read" && file2) return { text: `Reading ${file2}` };
+  if (name === "Agent" && description)
+    return { text: `Starting a helper: ${description}` };
+  if (name.toLowerCase() === "bash") {
+    const command = typeof input3.command === "string" ? input3.command.trim() : "";
+    return {
+      text: description ?? "Running a command",
+      ...command ? { detail: command } : {}
+    };
+  }
+  const phrase = PHRASE[name];
+  if (phrase) return { text: phrase, detail: name };
+  const server = /^mcp__(.+?)__/.exec(name)?.[1];
+  if (server) {
+    if (BROWSER.test(server))
+      return { text: "Looking at the browser", detail: name };
+    const plain2 = server.replace(/^plugin_([^_]+)_.*$/, "$1").replace(/^claude_ai_/, "").replace(/_/g, " ");
+    return { text: `Using ${plain2}`, detail: name };
+  }
+  return { text: `Using ${name}`, detail: name };
 }
-var REMARK = /\b(?:intentional(?:ly)?|on purpose|by design|not a (?:bug|mistake)|works? as (?:designed|intended)|as intended|expected behaviou?r)\b/i;
-function moment(text3) {
-  const first = firstSentence(text3);
-  return RULES.find(
-    ([mark, re]) => re.test(first) && !(mark === "decision" && REMARK.test(first))
-  )?.[0];
-}
-function cutWords(s, max) {
-  if (s.length <= max) return s;
-  const head = s.slice(0, max - 1);
-  const space = head.lastIndexOf(" ");
-  return `${(space > 0 ? head.slice(0, space) : head).trimEnd()}\u2026`;
+function inferNow(req, events, trace) {
+  let tool = -1;
+  let stop = -1;
+  events.forEach((e2, i) => {
+    const name = e2.payload.tool_name;
+    if (TOOL_HOOKS.has(e2.hook) && !QUIET.has(String(name))) tool = i;
+    if (e2.hook === "Stop") stop = i;
+  });
+  const last = Math.max(tool, stop);
+  if (last < 0 || (trace.narrated.at(-1)?.i ?? -1) > tool) return;
+  const e = events[last];
+  const agent = stop > tool ? "" : String(e.payload.agent_id ?? "");
+  req.now = {
+    ...stop > tool ? { text: "Finished this request" } : toolText(e.payload),
+    why: "",
+    ts: e.ts,
+    inferred: true,
+    ...agent ? { agent } : {}
+  };
 }
 
 // ../packages/core/src/view/rounds.ts
@@ -20692,7 +20901,7 @@ function helpersOf(req, task, part, every = false) {
 
 // ../packages/core/src/view/agents.ts
 var str3 = (v) => typeof v === "string" ? v : "";
-var obj3 = (v) => v && typeof v === "object" ? v : {};
+var obj4 = (v) => v && typeof v === "object" ? v : {};
 function applyAgents(req, events, { before, narrated }, known) {
   const isAgent = (e) => e.payload.tool_name === "Agent";
   const calls = events.filter((e) => e.hook === "PreToolUse" && isAgent(e));
@@ -20700,7 +20909,7 @@ function applyAgents(req, events, { before, narrated }, known) {
   const linked = /* @__PURE__ */ new Map();
   for (const e of events)
     if (e.hook === "PostToolUse" && isAgent(e)) {
-      const id2 = str3(obj3(e.payload.tool_response).agentId);
+      const id2 = str3(obj4(e.payload.tool_response).agentId);
       const use = str3(e.payload.tool_use_id);
       if (id2 && use) linked.set(id2, use);
     }
@@ -20712,14 +20921,16 @@ function applyAgents(req, events, { before, narrated }, known) {
       const type = str3(e.payload.agent_type);
       const free = calls.filter((c) => !claimed.has(key(c)));
       const call = calls.find((c) => key(c) === linked.get(id2)) ?? free.find(
-        (c) => str3(obj3(c.payload.tool_input).subagent_type) === type
+        (c) => str3(obj4(c.payload.tool_input).subagent_type) === type
       ) ?? free[0];
       if (call) {
         claimed.add(key(call));
         started.set(key(call), id2);
       }
-      const input3 = obj3(call?.payload.tool_input);
-      const { task, at } = tiesOf(req, str3(input3.description), before[i]);
+      const input3 = obj4(call?.payload.tool_input);
+      const said2 = narrated.findLast((x) => x.i < i)?.n.taskStatus;
+      const on = said2 === "done" || said2 === "blocked" ? void 0 : before[i];
+      const { task, at } = tiesOf(req, str3(input3.description), on);
       const part = narrated.findLast((x) => x.part && x.e.payload.agent_id === id2)?.part ?? at?.id;
       const agent2 = {
         id: id2,
@@ -20736,6 +20947,8 @@ function applyAgents(req, events, { before, narrated }, known) {
       if (at) addOnce(at.agents, id2);
     }
     const agent = known.get(id2);
+    if (agent && TOOL_HOOKS.has(e.hook) && !QUIET.has(str3(e.payload.tool_name)))
+      agent.doing = { text: toolText(e.payload).text, ts: e.ts };
     if (e.hook === "SubagentStop" && agent) {
       agent.status = "done";
       agent.endedAt = e.ts;
@@ -20745,9 +20958,48 @@ function applyAgents(req, events, { before, narrated }, known) {
   });
   return started;
 }
+var PLAIN = new Set(
+  "build implement write add draft create make port fix review rereview recheck check research investigate explore find audit plan update run test the and for with from into that this its all new more".split(
+    " "
+  )
+);
+var wordsOf = (s) => new Set(
+  (s.toLowerCase().match(/[a-z]{3,}/g) ?? []).map((w) => w.replace(/s$/, "")).filter((w) => !PLAIN.has(w))
+);
+function numbersOf(s) {
+  const out = /* @__PURE__ */ new Set();
+  for (const m of s.matchAll(/(\d+)\s*[-–]\s*(\d+)|\d+/g)) {
+    const [a, b] = [Number(m[1] ?? m[0]), Number(m[2] ?? m[0])];
+    for (let k = a; k <= b && k - a < 50; k++) out.add(k);
+    out.add(a);
+  }
+  return out;
+}
+function byWords(description, items) {
+  const words = wordsOf(description);
+  const nums = numbersOf(description);
+  const score = (title2) => {
+    const own2 = wordsOf(title2);
+    const shared = [...words].filter((w) => own2.has(w)).length;
+    const n = numbersOf(title2);
+    return shared ? shared + [...nums].filter((x) => n.has(x)).length : 0;
+  };
+  const scores = items.map((it) => score(it.title));
+  const top = Math.max(0, ...scores);
+  const tied = top ? items.filter((_, i) => scores[i] === top) : [];
+  return tied.length === 1 ? { best: tied[0], tied } : { tied };
+}
 function tiesOf(req, description, on) {
   const tasks = req.phases.flatMap((ph) => ph.tasks);
   const named = itemOf(description);
+  if (!named) {
+    const { best, tied } = byWords(description, tasks);
+    const parts = new Set(tied.map((t) => t.part));
+    const shared = parts.size === 1 ? [...parts][0] : void 0;
+    const part = req.parts.find((p) => p.id === (best?.part ?? shared)) ?? (tied.length ? void 0 : byWords(description, req.parts).best);
+    if (best || part) return { task: best, at: part };
+    if (tied.length) return {};
+  }
   const lone = (s) => !!s && /^(?:Task \d+[a-z]?|B\d+)$/.test(s);
   const other = (s) => lone(named) && lone(s) && s !== named;
   const mine = named ? tasks.find((t) => subjectOfWork(req, t) === named) : void 0;
@@ -20773,9 +21025,9 @@ var LABEL = {
   draft: "Drafted"
 };
 var str4 = (v) => typeof v === "string" ? v : "";
-var obj4 = (v) => v && typeof v === "object" ? v : {};
+var obj5 = (v) => v && typeof v === "object" ? v : {};
 var isTool = (e, hook, name) => e.hook === hook && e.payload.tool_name === name;
-var describe3 = (e) => str4(obj4(e.payload.tool_input).description).trim();
+var describe3 = (e) => str4(obj5(e.payload.tool_input).description).trim();
 function subject(description) {
   const id2 = itemOf(description);
   if (!id2) return void 0;
@@ -20805,7 +21057,7 @@ function inferHistory(reqs, events, agents, started) {
     const use = str4(e.payload.tool_use_id);
     if (!use) continue;
     if (isTool(e, "PostToolUseFailure", "Agent")) failed.add(use);
-    const res = obj4(e.payload.tool_response);
+    const res = obj5(e.payload.tool_response);
     if (isTool(e, "PostToolUse", "Agent") && res.isAsync !== true && res.status !== "async_launched")
       returned.add(use);
   }
@@ -21001,139 +21253,6 @@ function folderParts(touches, cwd, loose) {
     lastFailed: false,
     titled: true
   }));
-}
-
-// ../packages/core/src/view/infer.ts
-var BUG = /\b(bug|fix|error|broken|crash|fails?|failing|issue)\b/i;
-var REFACTOR = /\b(refactor|rename|clean ?up|restructure|extract)\b/i;
-var QUESTION = /^\s*(how|what|why|where|which|can|does|is)\b/i;
-function inferKind(prompt) {
-  if (BUG.test(prompt)) return "bug";
-  if (REFACTOR.test(prompt)) return "refactor";
-  if (prompt.trimEnd().endsWith("?") || QUESTION.test(prompt))
-    return "question";
-  return "feature";
-}
-var obj5 = (v) => typeof v === "object" && v !== null ? v : {};
-var text2 = (...vs) => vs.find((v) => typeof v === "string" && v !== "") ?? vs.find((v) => typeof v === "number")?.toString();
-function applyInference(req, events) {
-  if (req.kindInferred) req.kind = inferKind(req.prompt);
-  if (!req.planInferred) return;
-  const tasks = [];
-  for (const e of events) {
-    if (e.hook !== "TaskCreated" && e.hook !== "TaskCompleted") continue;
-    const p = e.payload;
-    const t = obj5(p.task);
-    const id2 = text2(p.task_id, t.id, p.id);
-    if (!id2) continue;
-    let task = tasks.find((x) => x.id === id2);
-    if (!task) {
-      task = {
-        id: id2,
-        title: text2(
-          p.task_subject,
-          p.subject,
-          t.subject,
-          p.title,
-          p.task_description,
-          p.description
-        ) ?? id2,
-        status: "todo",
-        agents: []
-      };
-      tasks.push(task);
-    }
-    if (e.hook === "TaskCompleted") task.status = "done";
-  }
-  if (!tasks.length) return;
-  req.phases = [
-    {
-      id: "tasks",
-      title: "Tasks",
-      status: tasks.every((t) => t.status === "done") ? "done" : tasks.some((t) => t.status === "done") ? "now" : "todo",
-      tasks
-    }
-  ];
-}
-var TOOL_HOOKS = /* @__PURE__ */ new Set([
-  "PreToolUse",
-  "PostToolUse",
-  "PostToolUseFailure"
-]);
-var QUIET = /* @__PURE__ */ new Set([
-  MAP_TOOL,
-  NARRATE_TOOL,
-  "ToolSearch",
-  "TaskList",
-  "TaskGet"
-]);
-var basename = (v) => typeof v === "string" && v ? v.split("/").filter(Boolean).at(-1) : void 0;
-var PHRASE = {
-  Grep: "Searching the code",
-  Glob: "Searching the code",
-  Monitor: "Watching a background job",
-  TaskOutput: "Watching a background job",
-  BashOutput: "Watching a background job",
-  TaskStop: "Stopping a background job",
-  KillShell: "Stopping a background job",
-  SendMessage: "Messaging a helper",
-  WebSearch: "Searching the web",
-  WebFetch: "Reading a web page",
-  Skill: "Using a skill",
-  AskUserQuestion: "Asking you a question",
-  TodoWrite: "Updating the task list",
-  TaskCreate: "Updating the task list",
-  TaskUpdate: "Updating the task list",
-  Artifact: "Publishing a page",
-  ArtifactData: "Updating a page",
-  NotebookEdit: "Editing a notebook"
-};
-var BROWSER = /chrome|playwright|browser|puppeteer/i;
-function toolText(p) {
-  const name = String(p.tool_name);
-  const input3 = obj5(p.tool_input);
-  const file2 = basename(input3.file_path);
-  const description = text2(input3.description);
-  if ((name === "Edit" || name === "Write") && file2)
-    return { text: `Editing ${file2}` };
-  if (name === "Read" && file2) return { text: `Reading ${file2}` };
-  if (name === "Agent" && description)
-    return { text: `Starting a helper: ${description}` };
-  if (name.toLowerCase() === "bash") {
-    const command = typeof input3.command === "string" ? input3.command.trim() : "";
-    return {
-      text: description ?? "Running a command",
-      ...command ? { detail: command } : {}
-    };
-  }
-  const phrase = PHRASE[name];
-  if (phrase) return { text: phrase, detail: name };
-  const server = /^mcp__(.+?)__/.exec(name)?.[1];
-  if (server) {
-    if (BROWSER.test(server))
-      return { text: "Looking at the browser", detail: name };
-    const plain2 = server.replace(/^plugin_([^_]+)_.*$/, "$1").replace(/^claude_ai_/, "").replace(/_/g, " ");
-    return { text: `Using ${plain2}`, detail: name };
-  }
-  return { text: `Using ${name}`, detail: name };
-}
-function inferNow(req, events, trace) {
-  let tool = -1;
-  let stop = -1;
-  events.forEach((e2, i) => {
-    const name = e2.payload.tool_name;
-    if (TOOL_HOOKS.has(e2.hook) && !QUIET.has(String(name))) tool = i;
-    if (e2.hook === "Stop") stop = i;
-  });
-  const last = Math.max(tool, stop);
-  if (last < 0 || (trace.narrated.at(-1)?.i ?? -1) > tool) return;
-  const e = events[last];
-  req.now = {
-    ...stop > tool ? { text: "Finished this request" } : toolText(e.payload),
-    why: "",
-    ts: e.ts,
-    inferred: true
-  };
 }
 
 // ../packages/core/src/view/words.ts
@@ -21562,6 +21681,8 @@ var real = (e) => e.payload.recap !== true;
 var byTs = (a, b) => a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0;
 function applyShape(req, events, trace, ctx) {
   const live2 = trace.narrated.filter((x) => real(x.e));
+  runTied(req, ctx);
+  askTasks(req, live2);
   const outcome = outcomeOf(req.messages ?? []);
   if (outcome) req.outcome = outcome;
   if (req.short) req.titledBy = "claude";
@@ -21597,6 +21718,32 @@ function applyShape(req, events, trace, ctx) {
       f.role = groupOf(f.path);
       f.roleInferred = true;
     }
+}
+function runTied(req, ctx) {
+  const running = new Set(req.agents.filter(ctx.live).map((a) => a.id));
+  for (const ph of req.phases) {
+    for (const t of ph.tasks)
+      if (t.status === "todo" && t.agents.some((id2) => running.has(id2))) {
+        t.status = "now";
+        const part = req.parts.find((p) => p.id === t.part);
+        if (part?.status === "todo") part.status = "now";
+      }
+    ph.status = phaseStatus(ph.tasks);
+  }
+}
+function askTasks(req, live2) {
+  for (const t of req.phases.flatMap((ph) => ph.tasks)) {
+    delete t.ask;
+    if (t.status !== "blocked") continue;
+    const x = live2.findLast(
+      (n) => n.task === t.id && n.n.taskStatus === "blocked"
+    );
+    if (!x) continue;
+    const m = (req.messages ?? []).find(
+      (m2) => m2.ts >= x.e.ts && askIn(m2.text) !== void 0
+    );
+    t.ask = m ? { text: askIn(m.text), since: m.ts, message: m.id } : { text: firstSentence(x.n.now), since: x.e.ts };
+  }
 }
 var BREAK = new Set(
   "a an the to of and or for with in on at by from into as than but without about after before over under through between across via per is are was were".split(
@@ -21721,15 +21868,24 @@ function placeMessages(req, live2, events, beyond) {
   const phaseOf = new Map(
     req.phases.flatMap((ph) => ph.tasks.map((t) => [t.id, ph.id]))
   );
+  const tasks = req.phases.flatMap((ph) => ph.tasks);
+  const helperPhase = (id2) => {
+    const part = req.agents.find((a) => a.id === id2)?.part;
+    const t = tasks.find((t2) => t2.agents.includes(id2)) ?? (part ? tasks.find((t2) => t2.part === part) : void 0);
+    return t && phaseOf.get(t.id);
+  };
+  const asks = new Map(
+    tasks.flatMap((t) => t.ask?.message ? [[t.ask.message, t.id]] : [])
+  );
   for (const m of msgs) {
     delete m.phase;
     if (beyond && m.ts > beyond.since) continue;
     const holding = windows.filter((w) => w.start <= m.ts && m.ts <= w.end).sort((a, b) => span(a) - span(b))[0];
-    const phase = m.task && phaseOf.get(m.task) || holding?.id || begun.findLast((w) => w.start <= m.ts)?.id || req.phases[0]?.id;
+    const phase = phaseOf.get(m.task ?? asks.get(m.id) ?? "") || m.agent && helperPhase(m.agent) || holding?.id || begun.findLast((w) => w.start <= m.ts)?.id || req.phases[0]?.id;
     if (phase) m.phase = phase;
   }
 }
-var isFailed = (s) => s === "failed" || s === "blocked";
+var isFailed = (s) => s === "failed";
 function stateOf(req, events, live2, ctx) {
   if (ctx.waiting) return "waiting";
   const last = events.findLast(
@@ -21954,9 +22110,9 @@ function reduce(events) {
     traces.push(trace);
     applyInference(req, rest);
     inferNow(req, rest, trace);
-    applyFiles(req, rest, trace);
     for (const [use, id2] of applyAgents(req, rest, trace, agents))
       started.set(use, id2);
+    applyFiles(req, rest, trace, agents);
     applyFlags(req, rest, trace, i < all.length - 1);
     req.finished = i < all.length - 1 || rest.at(-1)?.hook === "SessionEnd";
     return req;
@@ -22015,7 +22171,6 @@ function sortEvents(events) {
   const seen = /* @__PURE__ */ new Set();
   return [...events].sort((a, b) => cmp(a.ts, b.ts) || cmp(a.id, b.id)).filter((e) => !seen.has(e.id) && seen.add(e.id));
 }
-var isNotRequest = (prompt) => typeof prompt === "string" && /^\s*(\/murmur:\w+(\s|$)|<task-notification>)/.test(prompt);
 function splitRequests(events) {
   const out = [];
   for (const e of events) {
@@ -23837,6 +23992,7 @@ async function main() {
       windowsHide: true
     }).unref();
   } else {
+    catchUpText(event.sessionId);
     await flush(creds);
   }
 }

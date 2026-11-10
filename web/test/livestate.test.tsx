@@ -226,7 +226,7 @@ describe("waiting on you while helpers work", () => {
     );
     const ask = screen.getByRole("region", { name: "Waiting on you" });
     expect(ask.textContent).toContain("Sign in to it");
-    expect(ask.textContent).toContain("asked");
+    expect(ask.textContent).toContain("Asked at");
     expect(
       within(ask).getByRole("link", { name: "Read Claude's message" }),
     ).toHaveProperty("href", expect.stringContaining("#m-e7"));

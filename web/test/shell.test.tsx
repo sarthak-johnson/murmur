@@ -635,11 +635,13 @@ describe("the request's tabs", () => {
     const links = within(tabs()).getAllByRole("link");
     expect(links.map((l) => [l.textContent, l.getAttribute("href")])).toEqual([
       ["Story", "/s/s1/r/r3"],
+      ["Tasks", "/s/s1/r/r3/tasks"],
       ["Flow", "/s/s1/r/r3/flow"],
       ["Files", "/s/s1/r/r3/files"],
       ["Helpers", "/s/s1/r/r3/helpers"],
     ]);
     expect(links.map((l) => l.getAttribute("aria-current"))).toEqual([
+      null,
       null,
       null,
       "page",

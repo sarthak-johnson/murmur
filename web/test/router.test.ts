@@ -32,7 +32,7 @@ describe("matchRoute", () => {
     expect(matchRoute("/s/%E0%A4/r/q")).toEqual({ name: "notFound" });
   });
   it("parses a request's tabs, and nothing else after it", () => {
-    for (const tab of ["flow", "files", "helpers"] as const)
+    for (const tab of ["tasks", "flow", "files", "helpers"] as const)
       expect(matchRoute(`/s/abc/r/q/${tab}`)).toEqual({
         name: "request",
         sessionId: "abc",
@@ -59,6 +59,7 @@ describe("matchRoute", () => {
     expect(requestPath("a b", "q")).toBe("/s/a%20b/r/q");
     expect(requestPath("a", "q", "story")).toBe("/s/a/r/q");
     expect(requestPath("a", "q", "flow")).toBe("/s/a/r/q/flow");
+    expect(requestPath("a", "q", "tasks")).toBe("/s/a/r/q/tasks");
   });
 });
 

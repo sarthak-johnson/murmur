@@ -172,6 +172,8 @@ export function Rail(props: {
   onRequestPage: boolean;
   /** The session's own page (the journey): its running station is the loop, not the rail's. */
   onJourney?: boolean;
+  /** The page has its own loop (a running task in the Tasks tab): the rail does not pulse. */
+  ownLoop?: boolean;
   status: SessionStatus;
   me?: Me | undefined;
   /** Open as the drawer (under 900 px). */
@@ -179,7 +181,7 @@ export function Rail(props: {
   onClose(): void;
 }) {
   const { sessionId, view, events, currentId, onRequestPage } = props;
-  const { status, me, open, onClose, onJourney } = props;
+  const { status, me, open, onClose, onJourney, ownLoop } = props;
   const box = useRef<HTMLElement>(null);
   const marks = useMemo(
     () => new Map(view.requests.map((r) => [r, requestMark(view, r, events)])),
@@ -187,9 +189,10 @@ export function Rail(props: {
   );
   const now = new Date().toISOString();
   // One loop on screen: the newest running request's mark.
-  const pulsing = onJourney
-    ? undefined
-    : view.requests.findLast((r) => marks.get(r)?.mark === "running");
+  const pulsing =
+    onJourney || ownLoop
+      ? undefined
+      : view.requests.findLast((r) => marks.get(r)?.mark === "running");
 
   // The shown request scrolls into the rail's view when it changes, only if it is out of
   // view, so a click never jumps. New requests arriving live (appended below) never move
