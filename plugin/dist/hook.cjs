@@ -23186,6 +23186,24 @@ async function askTitles(input3, keys, env, timeoutMs = TITLES_TIMEOUT_MS) {
   };
   return { ok: true, answer, ask: r };
 }
+async function heldPrompts(sessionId, fetchImpl) {
+  const c = readCredentials();
+  if (!c) return void 0;
+  try {
+    const res = await fetchImpl(
+      `${c.server}/api/ingest/sessions/${encodeURIComponent(sessionId)}/prompts`,
+      {
+        headers: { Authorization: `Bearer ${c.token}` },
+        signal: AbortSignal.timeout(5e3)
+      }
+    );
+    if (!res.ok) return void 0;
+    const b = await res.json();
+    return Array.isArray(b.prompts) ? new Set(b.prompts.filter((x) => typeof x === "string")) : void 0;
+  } catch {
+    return void 0;
+  }
+}
 var off = (env) => env.MURMUR_RECAP === "0" || env.MURMUR_RECAP_RUN === "1" || isHeadless(env);
 async function runTitles(sessionId, events, {
   env = process.env,
@@ -23193,7 +23211,8 @@ async function runTitles(sessionId, events, {
   timeoutMs = TITLES_TIMEOUT_MS,
   lastOpen = false,
   log = (l) => process.stderr.write(`${l}
-`)
+`),
+  fetch: fetchImpl = fetch
 } = {}) {
   const none = { ran: 0, ok: 0 };
   if (off(env)) return none;
@@ -23201,18 +23220,22 @@ async function runTitles(sessionId, events, {
   const byId = new Map(events.map((e) => [e.id, e]));
   const starts = view.requests.map((r2) => byId.get(r2.id));
   const allKeys = requestKeys(starts);
+  const st = readTitles(sessionId);
+  if (st.at && now.getTime() - Date.parse(st.at) < EVERY_MS || !sending(sessionId, view.cwd))
+    return none;
   const s = readSession(sessionId);
+  const held = await heldPrompts(sessionId, fetchImpl);
+  const sent = (start) => {
+    const id2 = start.payload.prompt_id;
+    return held ? typeof id2 === "string" && (held.has(id2) || (s.sent ?? []).includes(id2)) : wasSent(s, start);
+  };
   const upTo = view.requests.length - (lastOpen ? 1 : 0);
-  const pick2 = view.requests.flatMap(
-    (_, i) => i < upTo && wasSent(s, starts[i]) ? [i] : []
-  ).slice(-MAX_REQUESTS2);
+  const pick2 = view.requests.flatMap((_, i) => i < upTo && sent(starts[i]) ? [i] : []).slice(-MAX_REQUESTS2);
   const reqs = pick2.map((i) => view.requests[i]);
   const keys = pick2.map((i) => allKeys[i]);
-  const st = readTitles(sessionId);
   const uncovered = keys.filter((k) => !st.covered?.[k]);
   const tried = new Set(st.tried ?? []);
-  if (!uncovered.some((k) => !tried.has(k)) || st.at && now.getTime() - Date.parse(st.at) < EVERY_MS || !sending(sessionId, view.cwd))
-    return none;
+  if (!uncovered.some((k) => !tried.has(k))) return none;
   const token = readCredentials()?.token;
   writeTitles(sessionId, {
     ...readTitles(sessionId),

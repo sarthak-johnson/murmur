@@ -3,7 +3,7 @@ import {
   type MurmurEvent,
   MurmurEventSchema,
 } from "@murmur/core";
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { Deps } from "./app.js";
@@ -80,6 +80,28 @@ function sessionRow(
  */
 export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
   const { db } = deps;
+  // The prompt ids of a session the server holds, for the plugin's titles run: it names
+  // only requests stored here, so it never says anything of one Murmur did not send.
+  app.get(
+    "/api/ingest/sessions/:id/prompts",
+    requireIngest(deps),
+    async (c) => {
+      const { userId } = c.get("ingest");
+      const rows = await db
+        .selectDistinct({
+          id: sql<string | null>`${events.payload}->>'prompt_id'`,
+        })
+        .from(events)
+        .where(
+          and(
+            eq(events.userId, userId),
+            eq(events.sessionId, c.req.param("id")),
+            eq(events.hook, "UserPromptSubmit"),
+          ),
+        );
+      return c.json({ prompts: rows.flatMap((r) => (r.id ? [r.id] : [])) });
+    },
+  );
   app.post(
     "/api/ingest",
     requireIngest(deps),

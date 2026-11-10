@@ -179,6 +179,36 @@ export interface TitlesOptions {
   /** The import started inside the last request: leave it to live narration. */
   lastOpen?: boolean;
   log?: (line: string) => void;
+  /** For asking the server which prompts it holds. */
+  fetch?: typeof fetch;
+}
+
+/**
+ * The prompt ids of the session the server holds, or undefined when it cannot say
+ * (offline, logged out, an older server): then the local record decides.
+ */
+async function heldPrompts(
+  sessionId: string,
+  fetchImpl: typeof fetch,
+): Promise<Set<string> | undefined> {
+  const c = readCredentials();
+  if (!c) return undefined;
+  try {
+    const res = await fetchImpl(
+      `${c.server}/api/ingest/sessions/${encodeURIComponent(sessionId)}/prompts`,
+      {
+        headers: { Authorization: `Bearer ${c.token}` },
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+    if (!res.ok) return undefined;
+    const b = (await res.json()) as { prompts?: unknown };
+    return Array.isArray(b.prompts)
+      ? new Set(b.prompts.filter((x): x is string => typeof x === "string"))
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 const off = (env: NodeJS.ProcessEnv) =>
@@ -194,6 +224,7 @@ export async function runTitles(
     timeoutMs = TITLES_TIMEOUT_MS,
     lastOpen = false,
     log = (l) => process.stderr.write(`${l}\n`),
+    fetch: fetchImpl = fetch,
   }: TitlesOptions = {},
 ): Promise<{ ran: number; ok: number }> {
   const none = { ran: 0, ok: 0 };
@@ -202,26 +233,33 @@ export async function runTitles(
   const byId = new Map(events.map((e) => [e.id, e]));
   const starts = view.requests.map((r) => byId.get(r.id) as MurmurEvent);
   const allKeys = requestKeys(starts);
-  // The transcript has every request, also those asked while Murmur was off or paused:
-  // only the ones Murmur sent are named, so nothing is said of the others.
-  const s = readSession(sessionId);
-  const upTo = view.requests.length - (lastOpen ? 1 : 0);
-  const pick = view.requests
-    .flatMap((_, i) =>
-      i < upTo && wasSent(s, starts[i] as MurmurEvent) ? [i] : [],
-    )
-    .slice(-MAX_REQUESTS);
-  const reqs = pick.map((i) => view.requests[i] as RequestView);
-  const keys = pick.map((i) => allKeys[i] as string);
   const st = readTitles(sessionId);
-  const uncovered = keys.filter((k) => !st.covered?.[k]);
-  const tried = new Set(st.tried ?? []);
   if (
-    !uncovered.some((k) => !tried.has(k)) ||
     (st.at && now.getTime() - Date.parse(st.at) < EVERY_MS) ||
     !sending(sessionId, view.cwd)
   )
     return none;
+  // The transcript has every request, also those asked while Murmur was off or paused:
+  // only the ones Murmur sent are named, so nothing is said of the others. The server
+  // knows best (it holds what was sent, also before the hook kept a record); the local
+  // record covers what is still queued, and decides alone when the server cannot say.
+  const s = readSession(sessionId);
+  const held = await heldPrompts(sessionId, fetchImpl);
+  const sent = (start: MurmurEvent) => {
+    const id = start.payload.prompt_id;
+    return held
+      ? typeof id === "string" && (held.has(id) || (s.sent ?? []).includes(id))
+      : wasSent(s, start);
+  };
+  const upTo = view.requests.length - (lastOpen ? 1 : 0);
+  const pick = view.requests
+    .flatMap((_, i) => (i < upTo && sent(starts[i] as MurmurEvent) ? [i] : []))
+    .slice(-MAX_REQUESTS);
+  const reqs = pick.map((i) => view.requests[i] as RequestView);
+  const keys = pick.map((i) => allKeys[i] as string);
+  const uncovered = keys.filter((k) => !st.covered?.[k]);
+  const tried = new Set(st.tried ?? []);
+  if (!uncovered.some((k) => !tried.has(k))) return none;
   const token = readCredentials()?.token;
   // Marked before it is asked: whatever comes back, not again until something new.
   writeTitles(sessionId, {

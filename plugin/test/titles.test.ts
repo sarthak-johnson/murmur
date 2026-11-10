@@ -139,8 +139,14 @@ const calls = () =>
     ? fs.readFileSync(`${dir}/args.log`, "utf8").trim().split("\n")
     : [];
 const stdin = () => fs.readFileSync(`${dir}/stdin.txt`, "utf8");
-const run = (events = EVENTS, extra: Record<string, string> = {}, now = NOW) =>
-  runTitles(SID, events, { env: env(extra), now, log: () => {} });
+// The server is unreachable unless a test says otherwise: the local record decides.
+const offline = (() => Promise.reject(new Error("offline"))) as typeof fetch;
+const run = (
+  events = EVENTS,
+  extra: Record<string, string> = {},
+  now = NOW,
+  fetch = offline,
+) => runTitles(SID, events, { env: env(extra), now, log: () => {}, fetch });
 
 describe("the narration instruction", () => {
   it("asks map for a short title, never the user's words, even on a reply", () => {
@@ -309,6 +315,23 @@ describe("titles run", () => {
     const { cutoff: _, ...rest } = readSession(SID);
     writeSession(SID, rest);
     expect(await run(EVENTS, {}, new Date(t(9000)))).toEqual({ ran: 0, ok: 0 });
+  });
+
+  it("names the requests the server holds, even ones sent before Murmur kept a record", async () => {
+    fake("exit 3");
+    // Sent live before this version: no local record, after the import's cutoff.
+    updateSession(SID, { sent: [], cutoff: t(0) });
+    let asked = "";
+    const held = (async (url: string | URL | Request, init?: RequestInit) => {
+      asked = `${url} ${new Headers(init?.headers).get("authorization")}`;
+      return new Response(JSON.stringify({ prompts: ["p1"] }));
+    }) as typeof fetch;
+    await run(EVENTS, {}, NOW, held);
+    expect(asked).toBe(`http://x/api/ingest/sessions/${SID}/prompts Bearer t`);
+    expect(stdin()).toContain("Asked: Ship build 9 to TestFlight please");
+    // p10 is not on the server (asked while paused, or lost): never named.
+    expect(stdin()).not.toContain("Asked: yes");
+    expect(readTitles(SID).tried).toEqual(["p1"]);
   });
 
   it("never asks in its own run, headless, or with MURMUR_RECAP=0", async () => {

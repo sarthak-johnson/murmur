@@ -208,3 +208,30 @@ test("long titles cut at a word boundary with an ellipsis, short ones stay", asy
   expect(t.slice(0, -1).endsWith(" ")).toBe(false);
   expect(`${words} and more words`[t.length - 1]).toBe(" ");
 });
+
+test("the plugin reads which prompts of a session the server holds, its own only", async () => {
+  const app = await testApp();
+  t = app;
+  const ada = await linkMachine(app, "ada");
+  const bob = await linkMachine(app, "bob");
+  const p = (id: string, sid = "s1") =>
+    ev(sid, "UserPromptSubmit", { payload: { prompt: "x", prompt_id: id } });
+  await ingest(app, ada.token, [
+    p("a"),
+    p("a"),
+    p("b"),
+    ev("s1"),
+    p("c", "s2"),
+  ]);
+  await ingest(app, bob.token, [p("z")]);
+  const get = (token: string, sid = "s1") =>
+    app.app.request(`/api/ingest/sessions/${sid}/prompts`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  const res = await get(ada.token);
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { prompts: string[] };
+  expect(body.prompts.sort()).toEqual(["a", "b"]);
+  expect(await (await get(bob.token)).json()).toEqual({ prompts: ["z"] });
+  expect((await get("mur_nope")).status).toBe(401);
+});
