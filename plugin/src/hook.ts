@@ -23,6 +23,7 @@ import {
   isNewSession,
   isPaused,
   isRevoked,
+  markSent,
   NARRATION_INSTRUCTION,
   NO_NARRATION,
   projectKey,
@@ -37,6 +38,7 @@ import {
   writeSession,
 } from "./local.js";
 import { runRefresh } from "./recap.js";
+import { runTitlesLive } from "./titles.js";
 import { enqueue, flush } from "./upload.js";
 
 const askLine = (cwd: string) =>
@@ -193,6 +195,8 @@ export function handleHook(
   // A prompt that is not a request (a task notification, /murmur:*) stays part of the
   // request before, as core reads it: no narration reset, no instruction.
   const prompt = hook === "UserPromptSubmit" && !isNotRequest(payload.prompt);
+  // Only a request sent here (or imported) may be named by a titles run later.
+  if (prompt) markSent(sessionId, payload.prompt_id);
   let stdout = trackNarration(sessionId, hook, payload, prompt);
   // SessionStart injects for every source, so the instruction survives compaction. A
   // session that started before Murmur was on gets it once, with its next prompt, and
@@ -272,6 +276,11 @@ async function main(): Promise<void> {
     // After a Stop: the latest request's plan, when Claude stopped keeping it true. Sent
     // with the login there is now, not the one this child started with.
     if (id && REFRESH && (await runRefresh(id)).ok) {
+      const now = readCredentials();
+      if (now) await flush(now, { budgetMs: 30_000 });
+    }
+    // Then names what no titles run covered yet, at most once every 10 minutes.
+    if (id && REFRESH && (await runTitlesLive(id)).ok) {
       const now = readCredentials();
       if (now) await flush(now, { budgetMs: 30_000 });
     }

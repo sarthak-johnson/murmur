@@ -13,7 +13,7 @@ export function createServer(): McpServer {
     "map",
     {
       description:
-        "Show the user the shape of this request: its kind, a one-line goal, the plan as phases with tasks, and the parts and how they connect. Call once at the start of each request and again when the plan or parts change.",
+        "Show the user the shape of this request: its kind, a one-line goal, a 2 to 5 word title of what it does, the plan as phases with tasks, and the parts and how they connect. Call once at the start of each request and again when the plan or parts change.",
       inputSchema: MapInput,
     },
     noted,

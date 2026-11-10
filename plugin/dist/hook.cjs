@@ -19807,7 +19807,8 @@ var status = external_exports.preprocess(said, external_exports.enum(["running",
 var MapInput = external_exports.object({
   kind: external_exports.enum(["feature", "bug", "refactor", "question"]),
   goal: text,
-  // The request in 2 to 4 words, for a list of requests ("Restyle the app").
+  // What the request does in 2 to 5 words, for a list of requests ("Restyle the app"),
+  // never the user's own words ("Yes").
   short: external_exports.string().max(60).optional(),
   phases: list(
     external_exports.object({
@@ -21361,8 +21362,8 @@ function chapter(title2, rs) {
     state: states.includes("waiting") ? "waiting" : states.includes("running") ? "running" : states.at(-1) ?? "done"
   };
 }
-function storylines(reqs, lists, titles) {
-  const first = reqs.findIndex((r) => titles.requests.has(r.id));
+function storylines(reqs, lists, said2, names) {
+  const first = said2.findIndex((t) => t !== void 0);
   const chapters = chaptersOf(first < 0 ? reqs : reqs.slice(0, first));
   const lastAt = new Map(
     reqs.map((r, i) => [r.id, lists[i]?.at(-1)?.ts ?? r.startedAt])
@@ -21393,14 +21394,15 @@ function storylines(reqs, lists, titles) {
   const own2 = /* @__PURE__ */ new Map();
   const runs = [];
   let current = "";
-  for (const r of reqs.slice(first)) {
-    current = titles.requests.get(r.id)?.thread ?? current;
+  reqs.forEach((r, i) => {
+    if (i < first) return;
+    current = said2[i]?.thread ?? current;
     own2.set(current, [...own2.get(current) ?? [], r]);
     const run = runs.at(-1);
     if (run?.id === current) run.rs.push(r);
     else runs.push({ id: current, rs: [r] });
-  }
-  const name = (id2) => titles.threads.get(id2) ?? id2;
+  });
+  const name = (id2) => names.get(id2) ?? id2;
   for (const run of runs) chapters.push(chapter(name(run.id), run.rs));
   for (const [id2, rs] of own2) threads.push(thread(id2, name(id2), rs, false));
   return { chapters, threads };
@@ -21486,6 +21488,16 @@ function journeyOf(reqs, lists, chapters) {
 
 // ../packages/core/src/view/titles.ts
 var isTitles = (e) => e.hook === "PostToolUse" && e.payload.tool_name === TITLES_TOOL;
+function requestKeys(starts) {
+  const seen = /* @__PURE__ */ new Map();
+  return starts.map((e) => {
+    const p = e.payload.prompt_id;
+    if (typeof p !== "string" || !p) return e.id;
+    const n = seen.get(p) ?? 0;
+    seen.set(p, n + 1);
+    return n ? `${p}#${n}` : p;
+  });
+}
 function titlesOf(events) {
   const out = { threads: /* @__PURE__ */ new Map(), requests: /* @__PURE__ */ new Map() };
   for (const e of events) {
@@ -21507,12 +21519,33 @@ function isReply(prompt) {
   return own2.split(" ").filter(Boolean).length <= 4 || REPLY_WORD.test(own2);
 }
 var LEAD = /^(?:yes|yeah|ok|okay|sure|right|done|got it|understood)\s*[,:;.!-]\s*/i;
-var firstClause = (s) => (s.split(/[,:;]\s|\s[-–—]\s/)[0] ?? "").replace(/[.!?]+$/, "").trim();
+var firstClause = (s) => (s.split(/[,:;]\s|\s[-\u2013\u2014]\s/)[0] ?? "").replace(/[.!?]+$/, "").trim();
 var capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+var OPENER = /^(?:(?:yes|yeah|yep|yup|ok|okay|k|sure|right|no|nope|so|well|hey|hi|bro|man|meanwhile|finally|also|and|but|alright|all right|got it|understood|thanks|thank you|thx|great|perfect|cool|nice|done|waiting|still waiting|go ahead|go for it|do it|please do|sounds good|lgtm)(?:[\s,.!:;]+|$)|(?:(?:can|could|would|will) (?:you|we)|let's|let us|please)\s+)/i;
+var PLEASE = /[\s,]+please[.!?]*$/i;
+var strip = (clause) => {
+  let s = clause.replace(/\u2019/g, "'").trim();
+  for (let t = ""; t !== s; ) {
+    t = s;
+    s = s.replace(OPENER, "");
+  }
+  return s.replace(PLEASE, "").trim();
+};
+var HERE = /^here(?:'s| is| are)\s+(?:(?:a|an|the)\s+)?/i;
+var I_DID = /^i\s+(?=(?:(?!(?:need|feed|proceed|succeed|exceed)\b)\w+ed|made|wrote|rewrote|found|built|rebuilt|ran|sent|put|set|got|took|left|kept|did|gave|cut|split|began|chose|drew|broke|undid|redid)\s)/i;
+var TALK = /^(?:i|me|my|you|your|it|its|this|that|there|nothing|everything|something|here|we're|we'll|we've|we'd)\b/i;
+var TALK_INSIDE = /\b(?:i|me|my|you|your)\b/i;
+function titleClause(clause, claude = false) {
+  const s = strip(clause).replace(HERE, "").replace(I_DID, "");
+  if (TALK.test(s) || claude && TALK_INSIDE.test(s)) return void 0;
+  return s.split(/\s+/).filter(Boolean).length >= 2 ? s : void 0;
+}
+var talkOnly = (s) => s.trim() !== "" && strip(s).replace(/[.!?]+$/, "") === "";
 function fallbackGoal(prompt, outcome) {
   if (outcome && isReply(prompt)) {
     const clause = firstClause(firstSentence(outcome).replace(LEAD, ""));
-    if (clause.split(" ").length >= 2) return cutWords(capital(clause), 120);
+    const title2 = titleClause(clause, true);
+    if (title2) return cutWords(capital(title2), 120);
   }
   return cutWords(ownWords(prompt) || placeholder(prompt), 80);
 }
@@ -21572,16 +21605,21 @@ var BREAK = new Set(
 );
 var HANG = /* @__PURE__ */ new Set([
   ...BREAK,
-  ..."be been being has have had will would can could should do does did not no any there my our your its their this that these those every all some each then whether if which because while so more most also just you we they it he she i me us them".split(
+  ..."be been being has have had will would can could should do does did not no any there my our your its their this that these those every all some each then whether if which because while so more most also just you we they it he she i me us them how what why when where who".split(
     " "
   )
 ]);
+var ENDS = new Set(
+  [...BREAK].filter((w) => !/^(?:a|an|the|is|are|was|were)$/.test(w))
+);
+var FOLLOW_UP = "Follow-up";
 var OPENS = new Set("whether if that which because while".split(" "));
 var FILLER = /^(?:start|begin|continue|resume|keep|finish|carry on|proceed with|go on with)\s+/i;
 var SHORT_MAX = 32;
 function shortOf(goal) {
   const plain2 = goal.replace(/\s*\([^)]*\)/g, "");
-  let s = (plain2.split(/,|:|;|\s[-–]\s|\sand then\s/i)[0] ?? "").trim();
+  const clauses = plain2.split(/,|:|;|\s[-–]\s|\sand then\s|[.?!]\s/i).map((c) => c.trim()).filter(Boolean);
+  let s = clauses.map((c) => titleClause(c)).find((c) => c !== void 0) ?? (talkOnly(plain2) ? FOLLOW_UP : clauses[0] ?? "");
   const is = (set2, w) => set2.has((w ?? "").toLowerCase());
   const filler = FILLER.exec(s);
   const rest = filler ? s.slice(filler[0].length).split(/\s+/) : [];
@@ -21599,7 +21637,10 @@ function shortOf(goal) {
     return t2;
   };
   let hanging = false;
-  if (out && words.length < s.split(/\s+/).length) {
+  const all = s.split(/\s+/);
+  if (out && words.length < all.length && is(ENDS, all[words.length]))
+    words = trim(words);
+  else if (out && words.length < all.length) {
     const opens = words.findIndex((w, k) => k > 0 && is(OPENS, w));
     const breaks = words.findLastIndex((w, k) => k > 0 && is(BREAK, w));
     const head = trim(words.slice(0, opens > 0 ? opens : Math.max(breaks, 0)));
@@ -21927,24 +21968,32 @@ function reduce(events) {
   const needs = needsYou(sorted);
   const { lastAt, over } = quiet(sorted);
   const live2 = (a) => a.status === "running" && !over(lastAt.get(a.id) ?? a.startedAt);
+  const keys = requestKeys(split.map((s) => s.start));
+  const said2 = keys.map((k) => titles.requests.get(k));
+  const idOf = new Map(keys.map((k, i) => [k, requests[i]?.id]));
   const asking = needs ? requests.findLastIndex((r) => r.startedAt <= needs.since) : -1;
   requests.forEach((req, i) => {
     applyShape(req, lists[i] ?? [], traces[i], {
       later: i < requests.length - 1,
       waiting: i === asking,
       live: live2,
-      title: titles.requests.get(req.id)
+      title: said2[i]
     });
   });
   requests.forEach((req, i) => {
-    const t = titles.requests.get(req.id);
+    const t = said2[i];
+    const follows = t?.follows === void 0 ? void 0 : idOf.get(t.follows);
     const before = requests.slice(0, i);
-    if (t?.follows && before.some((r) => r.id === t.follows))
-      req.follows = t.follows;
+    if (follows && before.some((r) => r.id === follows)) req.follows = follows;
     else if (!t && i > 0 && isReply(req.prompt))
       req.follows = before[i - 1].id;
   });
-  const { chapters, threads } = storylines(requests, lists, titles);
+  const { chapters, threads } = storylines(
+    requests,
+    lists,
+    said2,
+    titles.threads
+  );
   const first = sorted[0];
   return {
     sessionId: first?.sessionId ?? "",
@@ -21991,14 +22040,16 @@ var import_node_path = __toESM(require("node:path"), 1);
 var NARRATION_INSTRUCTION = `Murmur is showing this session live to the user on a second screen, in plain words.
 Keep it accurate with two tools. They only report; they never change what you build.
 
-1. At the start of every new request, before working, call \`map\` once:
-   kind (feature, bug, refactor or question), a one-line goal, the plan as phases with tasks,
-   and the parts of what you are building and how they connect.
+1. At the start of every new request, before working, call \`map\` once, even when the prompt
+   is a short reply ("yes", "ok", "go ahead"): map what the reply sets in motion.
+   Give kind (feature, bug, refactor or question), a one-line goal, a short title of 2 to 5 words
+   saying what the request does ("Ship build 9 to TestFlight", never the user's own words),
+   the plan as phases with tasks, and the parts of what you are building and how they connect.
    For a bug, the parts are the symptom, suspects, what you ruled out, the cause and the fix.
    For a refactor, before and after. For a question, the question, sources and answer.
    Call \`map\` again whenever the plan or the parts change.
    Example:
-   {"kind": "feature", "goal": "Add an add() function with a test", "phases": [{"id": "p1", "title": "Build it", "tasks": [{"id": "t1", "title": "Write add() in math.js", "part": "math"}, {"id": "t2", "title": "Test add()", "part": "test"}]}], "parts": [{"id": "math", "title": "add() in math.js", "phase": "p1"}, {"id": "test", "title": "Test for add()", "phase": "p1", "links": [{"to": "math", "label": "checks"}]}]}
+   {"kind": "feature", "goal": "Add an add() function with a test", "short": "Add add() with a test", "phases": [{"id": "p1", "title": "Build it", "tasks": [{"id": "t1", "title": "Write add() in math.js", "part": "math"}, {"id": "t2", "title": "Test add()", "part": "test"}]}], "parts": [{"id": "math", "title": "add() in math.js", "phase": "p1"}, {"id": "test", "title": "Test for add()", "phase": "p1", "links": [{"to": "math", "label": "checks"}]}]}
 2. Call \`narrate\` right after \`map\`, after each batch of edits, after each test or command result,
    and when a task finishes, with taskStatus "done". A task is not done until you narrate it done.
    Say what you are doing now and why, in plain words a junior developer understands,
@@ -22147,6 +22198,16 @@ function setPaused(cwd, paused, sessionId) {
 function clearProjectPause(cwd) {
   setPaused(cwd, false);
 }
+function markSent(sessionId, promptId) {
+  if (typeof promptId !== "string" || !promptId) return;
+  const sent = readSession(sessionId).sent ?? [];
+  if (!sent.includes(promptId))
+    updateSession(sessionId, { sent: [...sent, promptId] });
+}
+function wasSent(s, start) {
+  const id2 = start.payload.prompt_id;
+  return s.cutoff !== void 0 && Date.parse(start.ts) < Date.parse(s.cutoff) || typeof id2 === "string" && (s.sent ?? []).includes(id2);
+}
 var sessionFile = (sessionId) => import_node_path.default.join("sessions", `${sessionId.replace(/[^\w-]/g, "_")}.json`);
 var refreshFile = (sessionId) => sessionFile(sessionId).replace(/\.json$/, ".refresh.json");
 function readRefresh(sessionId) {
@@ -22164,6 +22225,16 @@ function clearRefresh(sessionId) {
   import_node_fs.default.rmSync(import_node_path.default.join(murmurDir(), refreshFile(sessionId)), { force: true });
   const { refresh: _, ...rest } = readSession(sessionId);
   if (_) writeSession(sessionId, rest);
+}
+var titlesFile = (sessionId) => sessionFile(sessionId).replace(/\.json$/, ".titles.json");
+function readTitles(sessionId) {
+  return readJson(titlesFile(sessionId), {});
+}
+function writeTitles(sessionId, t) {
+  writeJson(titlesFile(sessionId), t);
+}
+function clearTitles(sessionId) {
+  import_node_fs.default.rmSync(import_node_path.default.join(murmurDir(), titlesFile(sessionId)), { force: true });
 }
 var NO_NARRATION = {
   mapped: false,
@@ -22404,7 +22475,7 @@ Answer with one JSON object and nothing else, in exactly this shape:
   "map": {
     "kind": "feature" | "bug" | "refactor" | "question",
     "goal": "the request in a few plain words",
-    "short": "the request in 2 to 4 words, like a title",
+    "short": "what the request did in 2 to 5 words, like a title, never the person's own words",
     "phases": [{ "id": "p1", "title": "...", "tasks": [{ "id": "t1", "title": "...", "part": "<part id>" }] }],
     "parts": [{ "id": "<short id>", "title": "...", "phase": "p1", "links": [{ "to": "<part id>", "label": "uses" }] }]
   },
@@ -22832,12 +22903,13 @@ function requestsOf(r) {
     }
   };
 }
-function pickRequest(requests, events, per, t) {
+function pickRequest(requests, events, per, t, sent) {
   for (let i = requests.length - 1; i >= 0; i--) {
     const req = requests[i];
     const next = requests[i + 1];
     const mine = per[req.id];
-    if (req.planInferred || req.recap || next && mine?.final) continue;
+    if (req.planInferred || req.recap || next && mine?.final || !sent(req))
+      continue;
     const own2 = events.filter(
       (e) => e.ts >= req.startedAt && (!next || e.ts < next.startedAt)
     );
@@ -22885,7 +22957,14 @@ async function runRefresh(sessionId, {
     cutoff: iso
   });
   const view = reduce(events);
-  const pick2 = pickRequest(view.requests, events, per, t);
+  const byId = new Map(events.map((e) => [e.id, e]));
+  const pick2 = pickRequest(
+    view.requests,
+    events,
+    per,
+    t,
+    (r2) => wasSent(s, byId.get(r2.id))
+  );
   if (!pick2) return none;
   const { req, own: own2, st, finished } = pick2;
   const mine = per[req.id];
@@ -23016,6 +23095,185 @@ function refreshEvents(req, r, base, paths, at) {
       ...tasks.find((y) => y.id === x.id)?.part ? { step: { text: x.ended, status: x.status } } : {}
     });
   return out;
+}
+
+// src/titles.ts
+var MAX_REQUESTS2 = 80;
+var EVERY_MS = 10 * 6e4;
+var LOOK_MS = 5 * 6e4;
+var TITLES_TIMEOUT_MS = 9e4;
+var INSTRUCTIONS2 = `You name the requests of one Claude Code session for Murmur, a page that tells the person who ran the session what happened in it, and you group the requests into storylines.
+Below are the session's requests, oldest first, each with a label (r1, r2, ...) and its time. For most you see what the person typed (pasted text and images show as "(pasted text)" and "(image)"), what Claude first said and what it ended with, the files it changed and the helpers it started. A request marked "titled" already has a title; it is there so you see the whole session.
+Answer with one JSON object and nothing else, in exactly this shape:
+{
+  "session": { "title": "what the whole session was about" },
+  "threads": [{ "id": "t1", "title": "a storyline" }],
+  "requests": [{ "id": "r1", "short": "a title", "goal": "one sentence", "kind": "feature" | "bug" | "refactor" | "question", "thread": "t1", "follows": "r3" }]
+}
+Rules:
+- One entry in "requests" for every request below, with its label as "id". For a titled request, copy its title and goal.
+- "short": what was done or decided in that request, as a title of 2 to 5 words, at most 40 characters ("Ship build 9 to TestFlight", "Free up disk space", "Pick a chat style"). Read what Claude did and said to know. Never the person's own words: a reply like "yes", "ok", "go ahead" or "waiting" is titled by what it set in motion or what Claude reported.
+- "goal": one plain sentence on what the request did or found, at most 120 characters.
+- "kind": feature (build or change something), bug (find or fix a fault), refactor (clean up without changing behaviour) or question (an answer, a check or a plan, nothing built).
+- "threads": the few storylines a person would name when telling the story of this session. A storyline is one piece of work with its own aim, from its start to where it ended: a feature, a release, a bug hunt, an ask to a colleague. It is never a kind of activity: "Ship build 9" and "Umang's server changes" are storylines, "Builds and PRs" and "Messages" are not. Expect 3 to 10 for a long session and 1 for a short one. A storyline can stop and come back later: put the requests about the same work in it even when other work came between. A request that only checks on or talks about a piece of work belongs to that work's storyline. Thread titles are 2 to 5 words, at most 40 characters.
+- "follows": only when a request picks up a different, earlier request than the one before it in its storyline; else leave it out.
+- "session.title": what the session was about, at most 48 characters.
+- Plain English words a junior developer understands. Only say what the material shows.`;
+var time4 = (ts) => `${ts.slice(0, 10)} ${ts.slice(11, 16)}`;
+var clean = (s, max) => cutWords(plainText(scrubString(markPasted(s))), max);
+function titlesInput(reqs, keys, state) {
+  const threads = Object.entries(state.threads ?? {});
+  const lines = reqs.map((r, i) => {
+    const head = `r${i + 1} (${time4(r.startedAt)})`;
+    const was = state.covered?.[keys[i]];
+    if (was)
+      return `${head}, titled "${was.short}": ${was.goal.replace(/\.$/, "")}. Storyline so far: ${was.thread}`;
+    if (r.titledBy === "claude" && r.short)
+      return `${head}, titled "${r.short}": ${clean(r.goal, 120)}`;
+    const msgs = r.messages ?? [];
+    const files = [
+      ...new Set(
+        [...r.parts.flatMap((p) => p.files), ...r.looseFiles].map(
+          (f) => f.path
+        )
+      )
+    ].slice(0, 5);
+    const helpers = r.agents.slice(0, 3).map((a) => a.description);
+    return [
+      head,
+      `  Asked: ${clean(r.prompt, 300) || "(nothing)"}`,
+      msgs.length > 1 ? `  Claude first said: ${clean(msgs[0]?.text ?? "", 200)}` : "",
+      msgs.length ? `  Claude ended with: ${clean(msgs.at(-1)?.text ?? "", 400)}` : "  Claude wrote nothing.",
+      files.length ? `  Changed: ${files.join(", ")}` : "",
+      helpers.length ? `  Helpers: ${helpers.join("; ")}` : ""
+    ].filter(Boolean).join("\n");
+  });
+  return [
+    INSTRUCTIONS2,
+    threads.length ? `
+## Storylines so far
+Keep these ids for the same work; you may rename one or add others.
+${threads.map(([id2, t]) => `${id2}: ${t}`).join("\n")}` : "",
+    `
+## Requests
+${lines.join("\n\n")}`
+  ].join("\n");
+}
+async function askTitles(input3, keys, env, timeoutMs = TITLES_TIMEOUT_MS) {
+  const r = await ask(input3, env, timeoutMs);
+  if (!r.ok) return { ok: false, why: r.why, ask: r };
+  const parsed = TitlesInput.safeParse(r.json);
+  if (!parsed.success)
+    return { ok: false, why: refused("titles", parsed), ask: r };
+  const key = (label) => keys[Number(/^r(\d+)$/.exec(label)?.[1]) - 1];
+  const ids = parsed.data.requests.flatMap((x) => [
+    x.id,
+    ...x.follows ? [x.follows] : []
+  ]);
+  if (ids.some((id2) => key(id2) === void 0))
+    return {
+      ok: false,
+      why: "it names a request it was not asked about",
+      ask: r
+    };
+  const answer = {
+    ...parsed.data,
+    requests: parsed.data.requests.map(({ follows, ...x }) => ({
+      ...x,
+      id: key(x.id),
+      ...follows ? { follows: key(follows) } : {}
+    }))
+  };
+  return { ok: true, answer, ask: r };
+}
+var off = (env) => env.MURMUR_RECAP === "0" || env.MURMUR_RECAP_RUN === "1" || isHeadless(env);
+async function runTitles(sessionId, events, {
+  env = process.env,
+  now = /* @__PURE__ */ new Date(),
+  timeoutMs = TITLES_TIMEOUT_MS,
+  lastOpen = false,
+  log = (l) => process.stderr.write(`${l}
+`)
+} = {}) {
+  const none = { ran: 0, ok: 0 };
+  if (off(env)) return none;
+  const view = reduce(events);
+  const byId = new Map(events.map((e) => [e.id, e]));
+  const starts = view.requests.map((r2) => byId.get(r2.id));
+  const allKeys = requestKeys(starts);
+  const s = readSession(sessionId);
+  const upTo = view.requests.length - (lastOpen ? 1 : 0);
+  const pick2 = view.requests.flatMap(
+    (_, i) => i < upTo && wasSent(s, starts[i]) ? [i] : []
+  ).slice(-MAX_REQUESTS2);
+  const reqs = pick2.map((i) => view.requests[i]);
+  const keys = pick2.map((i) => allKeys[i]);
+  const st = readTitles(sessionId);
+  const uncovered = keys.filter((k) => !st.covered?.[k]);
+  const tried = new Set(st.tried ?? []);
+  if (!uncovered.some((k) => !tried.has(k)) || st.at && now.getTime() - Date.parse(st.at) < EVERY_MS || !sending(sessionId, view.cwd))
+    return none;
+  const token = readCredentials()?.token;
+  writeTitles(sessionId, {
+    ...readTitles(sessionId),
+    at: now.toISOString(),
+    tried: uncovered
+  });
+  const r = await askTitles(titlesInput(reqs, keys, st), keys, env, timeoutMs);
+  const secs = (r.ask.ms / 1e3).toFixed(1);
+  const why = !r.ok ? r.why : !stillSending(sessionId, view.cwd, token) ? "Murmur stopped sending" : void 0;
+  if (why || !r.ok) {
+    log(`murmur titles: ${sessionId} kept its titles: ${why} (${secs} s)`);
+    return { ran: 1, ok: 0 };
+  }
+  const last = events.reduce((a, e) => Math.max(a, Date.parse(e.ts)), 0);
+  const { out, add } = emitter(
+    starts[0],
+    `murmur-titles:${new Date(last).toISOString()}`,
+    last,
+    { titles: true }
+  );
+  add(TITLES_TOOL, r.answer);
+  for (const e of out) enqueue(e);
+  const after = readTitles(sessionId);
+  writeTitles(sessionId, {
+    ...after,
+    covered: {
+      ...after.covered,
+      ...Object.fromEntries(
+        r.answer.requests.map((x) => [
+          x.id,
+          { short: x.short, goal: x.goal, thread: x.thread }
+        ])
+      )
+    },
+    threads: {
+      ...after.threads,
+      ...Object.fromEntries(r.answer.threads.map((t) => [t.id, t.title]))
+    }
+  });
+  log(`murmur titles: ${sessionId} ok (${secs} s${costOf(r.ask)})`);
+  return { ran: 1, ok: 1 };
+}
+async function runTitlesLive(sessionId, opts = {}) {
+  const none = { ran: 0, ok: 0 };
+  const { env = process.env, now = /* @__PURE__ */ new Date() } = opts;
+  if (off(env)) return none;
+  const s = readSession(sessionId);
+  const creds = readCredentials();
+  const st = readTitles(sessionId);
+  const since = (iso) => iso ? now.getTime() - Date.parse(iso) : Number.POSITIVE_INFINITY;
+  if (s.backfill !== "done" || !s.transcriptPath || !s.cwd || !creds || since(st.at) < EVERY_MS || since(st.looked) < LOOK_MS || !sending(sessionId, s.cwd))
+    return none;
+  writeTitles(sessionId, { ...st, looked: now.toISOString() });
+  const events = readBackfill({
+    sessionId,
+    machineId: creds.machineId,
+    cwd: s.cwd,
+    transcriptPath: s.transcriptPath,
+    cutoff: now.toISOString()
+  });
+  return runTitles(sessionId, events, { ...opts, env, now });
 }
 
 // src/backfill.ts
@@ -23285,6 +23543,7 @@ async function runBackfill(sessionId, {
     runningSince: (/* @__PURE__ */ new Date()).toISOString()
   });
   clearRefresh(sessionId);
+  clearTitles(sessionId);
   let events = [];
   let upTo;
   try {
@@ -23319,6 +23578,11 @@ async function runBackfill(sessionId, {
     budgetMs: Math.min(15e4, left() - 7e4)
   });
   if (recap.ok && same())
+    await flush(creds, { budgetMs: Math.max(1e3, left()), ...opts });
+  if (left() > TITLES_TIMEOUT_MS + 15e3 && (await runTitles(sessionId, events, {
+    env,
+    lastOpen: lastRequestOpen(s.triggerHook)
+  })).ok && same())
     await flush(creds, { budgetMs: Math.max(1e3, left()), ...opts });
   if (left() > 75e3 && (await runRefresh(sessionId, { env })).ok && same())
     await flush(creds, { budgetMs: Math.max(1e3, left()), ...opts });
@@ -23451,6 +23715,7 @@ function handleHook(payload, env, now) {
     backfill = sessionId;
   }
   const prompt = hook === "UserPromptSubmit" && !isNotRequest(payload.prompt);
+  if (prompt) markSent(sessionId, payload.prompt_id);
   let stdout = trackNarration(sessionId, hook, payload, prompt);
   if (start || prompt && !readSession(sessionId).instructed) {
     updateSession(sessionId, { instructed: true });
@@ -23509,6 +23774,10 @@ async function main() {
     if (id2) catchUpText(id2);
     if (creds) await flush(creds);
     if (id2 && REFRESH && (await runRefresh(id2)).ok) {
+      const now = readCredentials();
+      if (now) await flush(now, { budgetMs: 3e4 });
+    }
+    if (id2 && REFRESH && (await runTitlesLive(id2)).ok) {
       const now = readCredentials();
       if (now) await flush(now, { budgetMs: 3e4 });
     }

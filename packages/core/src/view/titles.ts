@@ -12,7 +12,27 @@ export const isTitles = (e: MurmurEvent): boolean =>
 
 export type TitleEntry = TitlesInput["requests"][number];
 
-/** Every titles run of a session merged, in time order: a later run wins for what it names. */
+/**
+ * Each request's key, from its prompt events in time order: what a titles run names it by.
+ * The live hook and the transcript give a prompt different event ids but the same
+ * `prompt_id`; a prompt typed while Claude works shares its turn's, so the nth request
+ * of one `prompt_id` is "<prompt_id>#n" from the second on. No `prompt_id`: the event id.
+ */
+export function requestKeys(starts: MurmurEvent[]): string[] {
+  const seen = new Map<string, number>();
+  return starts.map((e) => {
+    const p = e.payload.prompt_id;
+    if (typeof p !== "string" || !p) return e.id;
+    const n = seen.get(p) ?? 0;
+    seen.set(p, n + 1);
+    return n ? `${p}#${n}` : p;
+  });
+}
+
+/**
+ * Every titles run of a session merged, in time order: a later run wins for what it
+ * names. Requests by key (`requestKeys`).
+ */
 export interface Titles {
   session?: string;
   threads: Map<string, string>;
@@ -67,17 +87,65 @@ const LEAD =
   /^(?:yes|yeah|ok|okay|sure|right|done|got it|understood)\s*[,:;.!-]\s*/i;
 /** A sentence's first clause: up to its first comma, colon, semicolon or " - ". */
 const firstClause = (s: string) =>
-  (s.split(/[,:;]\s|\s[-–—]\s/)[0] ?? "").replace(/[.!?]+$/, "").trim();
+  (s.split(/[,:;]\s|\s[-\u2013\u2014]\s/)[0] ?? "")
+    .replace(/[.!?]+$/, "")
+    .trim();
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+// Words that open a clause without saying anything of the work ("Ok", "Meanwhile",
+// "Can you", "Let's"), taken off the front of a title, and "please" off its end.
+const OPENER =
+  /^(?:(?:yes|yeah|yep|yup|ok|okay|k|sure|right|no|nope|so|well|hey|hi|bro|man|meanwhile|finally|also|and|but|alright|all right|got it|understood|thanks|thank you|thx|great|perfect|cool|nice|done|waiting|still waiting|go ahead|go for it|do it|please do|sounds good|lgtm)(?:[\s,.!:;]+|$)|(?:(?:can|could|would|will) (?:you|we)|let's|let us|please)\s+)/i;
+const PLEASE = /[\s,]+please[.!?]*$/i;
+const strip = (clause: string) => {
+  let s = clause.replace(/\u2019/g, "'").trim();
+  for (let t = ""; t !== s; ) {
+    t = s;
+    s = s.replace(OPENER, "");
+  }
+  return s.replace(PLEASE, "").trim();
+};
+// "Here's the page ..." names a thing: the thing is the title.
+const HERE = /^here(?:'s| is| are)\s+(?:(?:a|an|the)\s+)?/i;
+// "I renamed the tab" says what was done: "Renamed the tab".
+const I_DID =
+  /^i\s+(?=(?:(?!(?:need|feed|proceed|succeed|exceed)\b)\w+ed|made|wrote|rewrote|found|built|rebuilt|ran|sent|put|set|got|took|left|kept|did|gave|cut|split|began|chose|drew|broke|undid|redid)\s)/i;
+// A clause that starts like this is talk between Claude and the person, not a title.
+const TALK =
+  /^(?:i|me|my|you|your|it|its|this|that|there|nothing|everything|something|here|we're|we'll|we've|we'd)\b/i;
+// Claude speaking of itself or to the person anywhere in the clause: talk too.
+const TALK_INSIDE = /\b(?:i|me|my|you|your)\b/i;
+
+/**
+ * A clause as a title, or undefined when it says nothing of the work: what is left
+ * without its openers ("Ok", "Can you", "Let's") and a "Here's" or "I" before what was
+ * done, when that is two words or more and does not start as talk ("I'll", "Your",
+ * "Nothing", "It's"). `claude`: the clause is Claude's, so any "I", "my" or "you" in it
+ * is talk too.
+ */
+export function titleClause(
+  clause: string,
+  claude = false,
+): string | undefined {
+  const s = strip(clause).replace(HERE, "").replace(I_DID, "");
+  if (TALK.test(s) || (claude && TALK_INSIDE.test(s))) return undefined;
+  return s.split(/\s+/).filter(Boolean).length >= 2 ? s : undefined;
+}
+
+/** The text is only openers: "Yes", "Ok, go ahead", "Waiting". */
+export const talkOnly = (s: string): boolean =>
+  s.trim() !== "" && strip(s).replace(/[.!?]+$/, "") === "";
 
 /**
  * The goal Murmur gives a request no map or titles run described: for a reply, the first
- * clause of how it ended (when that has two words or more), else the prompt's own words.
+ * clause of how it ended when that reads as a title (`titleClause`), else the prompt's
+ * own words.
  */
 export function fallbackGoal(prompt: string, outcome?: string): string {
   if (outcome && isReply(prompt)) {
     const clause = firstClause(firstSentence(outcome).replace(LEAD, ""));
-    if (clause.split(" ").length >= 2) return cutWords(capital(clause), 120);
+    const title = titleClause(clause, true);
+    if (title) return cutWords(capital(title), 120);
   }
   return cutWords(ownWords(prompt) || placeholder(prompt), 80);
 }

@@ -64,8 +64,10 @@ export interface RequestView {
    * The request in a line: the map's goal, else a titles run's, else Murmur's own. Murmur's
    * own, for a reply (at most 4 words, or starting with a yes, ok, sure, go ahead, done,
    * thanks or waiting kind of word, or only pasted text or an image), is the first clause
-   * of `outcome` when it has two words or more; else the prompt without pasted text or
-   * images, cut at a word within 80 characters.
+   * of `outcome` when it reads as a title: two words or more once a leading "Here's" or
+   * an "I" before what was done is dropped ("I renamed the tab" gives "Renamed the tab"),
+   * and not talk ("I'll", "Your", "Nothing", "It's", or any "I", "my" or "you" in it).
+   * Else the prompt without pasted text or images, cut at a word within 80 characters.
    */
   goal: string;
   phases: PhaseView[];
@@ -119,11 +121,16 @@ export interface RequestView {
   recap?: boolean;
   /**
    * The request in 2 to 5 words, for the rail and the journey: the map's `short` when
-   * Claude (or the recap) gave one, else a titles run's, else cut from `goal` at the first
-   * comma, colon, semicolon, " - " or " and then ", without a filler verb ("Start",
-   * "Resume") when what is left still reads, at a word boundary within 32 characters. A
-   * cut never ends mid-phrase: it backs off to before a clause it cut into or its last
-   * small word when two words or more are left, else ends with "…". Core always sets it.
+   * Claude (or the recap) gave one, else a titles run's, else cut from `goal`: its first
+   * clause (split at a comma, colon, semicolon, " - ", " and then " or a sentence end)
+   * that reads as a title once its openers ("Ok", "Meanwhile", "Can you", "Let's") and a
+   * trailing "please" are dropped (as in `goal`), else its first clause as typed; a goal
+   * of openers alone ("Yes", "Waiting") is "Follow-up". Then without a filler verb
+   * ("Start", "Resume") when what is left still reads, at a word boundary within 32
+   * characters. A cut never ends mid-phrase: it keeps what it has when the next word
+   * starts a phrase ("as", "for"), else backs off to before a clause it cut into or its
+   * last small word when two words or more are left, else ends with "…". Core always
+   * sets it, except for a prompt of only pasted text or an image with nothing better.
    */
   short?: string;
   /**

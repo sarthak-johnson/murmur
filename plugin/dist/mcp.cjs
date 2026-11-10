@@ -36713,7 +36713,8 @@ var status = external_exports.preprocess(said, external_exports.enum(["running",
 var MapInput = external_exports.object({
   kind: external_exports.enum(["feature", "bug", "refactor", "question"]),
   goal: text,
-  // The request in 2 to 4 words, for a list of requests ("Restyle the app").
+  // What the request does in 2 to 5 words, for a list of requests ("Restyle the app"),
+  // never the user's own words ("Yes").
   short: external_exports.string().max(60).optional(),
   phases: list(
     external_exports.object({
@@ -36867,10 +36868,13 @@ var BREAK = new Set(
 );
 var HANG = /* @__PURE__ */ new Set([
   ...BREAK,
-  ..."be been being has have had will would can could should do does did not no any there my our your its their this that these those every all some each then whether if which because while so more most also just you we they it he she i me us them".split(
+  ..."be been being has have had will would can could should do does did not no any there my our your its their this that these those every all some each then whether if which because while so more most also just you we they it he she i me us them how what why when where who".split(
     " "
   )
 ]);
+var ENDS = new Set(
+  [...BREAK].filter((w) => !/^(?:a|an|the|is|are|was|were)$/.test(w))
+);
 var OPENS = new Set("whether if that which because while".split(" "));
 
 // src/mcp.ts
@@ -36882,7 +36886,7 @@ function createServer() {
   server.registerTool(
     "map",
     {
-      description: "Show the user the shape of this request: its kind, a one-line goal, the plan as phases with tasks, and the parts and how they connect. Call once at the start of each request and again when the plan or parts change.",
+      description: "Show the user the shape of this request: its kind, a one-line goal, a 2 to 5 word title of what it does, the plan as phases with tasks, and the parts and how they connect. Call once at the start of each request and again when the plan or parts change.",
       inputSchema: MapInput
     },
     noted
