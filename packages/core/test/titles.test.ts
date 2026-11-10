@@ -409,6 +409,38 @@ describe("titles from Claude", () => {
   });
 });
 
+describe("requests are named by key", () => {
+  test("a prompt_id names a request whatever its event id, the nth of a shared one with #n", () => {
+    const ask = (n: number, text: string, promptId: string) =>
+      at(n, "UserPromptSubmit", { prompt: text, prompt_id: promptId });
+    const events = [
+      ask(0, "Ship build 9 to TestFlight", "p-a"),
+      ask(10, "Show the screens of build 9 in a page", "p-b"),
+      // Typed while Claude worked: the same turn's prompt_id.
+      ask(20, "Then delete the old simulators", "p-b"),
+    ];
+    const run = {
+      session: { title: "Build 9" },
+      threads: [{ id: "t1", title: "Build 9" }],
+      requests: [
+        entry("p-a", "t1", { short: "Ship build 9" }),
+        entry("p-b", "t1", { short: "Show build 9" }),
+        entry("p-b#1", "t1", {
+          short: "Delete old simulators",
+          follows: "p-a",
+        }),
+      ],
+    };
+    const view = reduce([...events, titles(30, run)]);
+    expect(view.requests.map((r) => r.short)).toEqual([
+      "Ship build 9",
+      "Show build 9",
+      "Delete old simulators",
+    ]);
+    expect(view.requests[2]?.follows).toBe(view.requests[0]?.id);
+  });
+});
+
 describe("threads with no titles run", () => {
   test("one inferred thread per journey chapter", () => {
     const view = reduce([

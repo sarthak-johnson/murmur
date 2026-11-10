@@ -9,12 +9,14 @@ import {
   queueDir,
   readRefresh,
   readSession,
+  readTitles,
   setPaused,
   setProjectState,
   updateSession,
   writeCredentials,
   writeRefresh,
   writeSession,
+  writeTitles,
 } from "../src/local.js";
 import { runRecap, runRefresh } from "../src/recap.js";
 
@@ -812,6 +814,10 @@ describe("finished requests", () => {
         },
       },
     });
+    writeTitles(SID, {
+      at: t(-3600),
+      covered: { old: { short: "Old", goal: "Old.", thread: "t1" } },
+    });
     updateSession(SID, { backfill: "pending", cutoff: t(30) });
     fake(ANSWER);
     await runBackfill(SID, {
@@ -819,7 +825,12 @@ describe("finished requests", () => {
       fetch: (async () =>
         new Response("{}", { status: 200 })) as unknown as typeof fetch,
     });
-    expect(calls()).toHaveLength(1);
+    // The titles run, then the refresh (its stdin is the last one). The import forgot
+    // what titles runs covered before, so the run asked about the first request again
+    // (the last one, which the import started inside, is left to live narration).
+    expect(calls()).toHaveLength(2);
+    expect(readTitles(SID).tried).toHaveLength(1);
+    expect(readTitles(SID).covered).toBeUndefined();
     expect(stdin()).toContain("Build the agent page");
     expect(readRefresh(SID)?.requests?.[first?.id as string]?.final).toBe(true);
   });

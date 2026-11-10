@@ -28,7 +28,8 @@ const status = z.preprocess(said, z.enum(["running", "done", "failed"]));
 export const MapInput = z.object({
   kind: z.enum(["feature", "bug", "refactor", "question"]),
   goal: text,
-  // The request in 2 to 4 words, for a list of requests ("Restyle the app").
+  // What the request does in 2 to 5 words, for a list of requests ("Restyle the app"),
+  // never the user's own words ("Yes").
   short: z.string().max(60).optional(),
   phases: list(
     z.object({
@@ -171,8 +172,10 @@ const title = (max: number) => z.string().trim().min(1).max(max);
  * session: a name for the session, the session's storylines, and per request a title
  * (`short`), a one-line goal, the kind, its storyline and, when it picks up a different,
  * earlier request than the one before it in its storyline, that request (`follows`).
- * Every storyline a request names is listed, ids are unique, and `follows` names another
- * request of the answer. The plugin checks the request ids are the ones it asked about.
+ * A request's `id` (and `follows`) is its key (`requestKeys`): its `prompt_id`, which the
+ * live hook and the transcript share. Every storyline a request names is listed, ids are
+ * unique, and `follows` names another request of the answer. The plugin asks with short
+ * labels ("r1") and checks they are the ones it asked about before turning them into keys.
  */
 export const TitlesInput = z
   .object({

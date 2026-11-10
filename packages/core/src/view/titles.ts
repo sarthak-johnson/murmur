@@ -12,7 +12,27 @@ export const isTitles = (e: MurmurEvent): boolean =>
 
 export type TitleEntry = TitlesInput["requests"][number];
 
-/** Every titles run of a session merged, in time order: a later run wins for what it names. */
+/**
+ * Each request's key, from its prompt events in time order: what a titles run names it by.
+ * The live hook and the transcript give a prompt different event ids but the same
+ * `prompt_id`; a prompt typed while Claude works shares its turn's, so the nth request
+ * of one `prompt_id` is "<prompt_id>#n" from the second on. No `prompt_id`: the event id.
+ */
+export function requestKeys(starts: MurmurEvent[]): string[] {
+  const seen = new Map<string, number>();
+  return starts.map((e) => {
+    const p = e.payload.prompt_id;
+    if (typeof p !== "string" || !p) return e.id;
+    const n = seen.get(p) ?? 0;
+    seen.set(p, n + 1);
+    return n ? `${p}#${n}` : p;
+  });
+}
+
+/**
+ * Every titles run of a session merged, in time order: a later run wins for what it
+ * names. Requests by key (`requestKeys`).
+ */
 export interface Titles {
   session?: string;
   threads: Map<string, string>;
@@ -67,7 +87,9 @@ const LEAD =
   /^(?:yes|yeah|ok|okay|sure|right|done|got it|understood)\s*[,:;.!-]\s*/i;
 /** A sentence's first clause: up to its first comma, colon, semicolon or " - ". */
 const firstClause = (s: string) =>
-  (s.split(/[,:;]\s|\s[-–—]\s/)[0] ?? "").replace(/[.!?]+$/, "").trim();
+  (s.split(/[,:;]\s|\s[-\u2013\u2014]\s/)[0] ?? "")
+    .replace(/[.!?]+$/, "")
+    .trim();
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**

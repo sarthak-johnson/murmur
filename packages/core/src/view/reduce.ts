@@ -8,7 +8,13 @@ import { journeyOf, storylines } from "./journey.js";
 import { applyPlan, newRequest, type Trace } from "./requests.js";
 import { applyRounds } from "./rounds.js";
 import { applyShape } from "./shape.js";
-import { fallbackTitle, isReply, isTitles, titlesOf } from "./titles.js";
+import {
+  fallbackTitle,
+  isReply,
+  isTitles,
+  requestKeys,
+  titlesOf,
+} from "./titles.js";
 import type { AgentView, RequestView, SessionView } from "./types.js";
 import { applyWords } from "./words.js";
 
@@ -45,6 +51,10 @@ export function reduce(events: MurmurEvent[]): SessionView {
   const { lastAt, over } = quiet(sorted);
   const live = (a: AgentView) =>
     a.status === "running" && !over(lastAt.get(a.id) ?? a.startedAt);
+  // What the titles runs said of each request, found by its key.
+  const keys = requestKeys(split.map((s) => s.start));
+  const said = keys.map((k) => titles.requests.get(k));
+  const idOf = new Map(keys.map((k, i) => [k, requests[i]?.id]));
   // needsYou is cleared by every prompt, so it belongs to the last request begun before it.
   const asking = needs
     ? requests.findLastIndex((r) => r.startedAt <= needs.since)
@@ -54,20 +64,25 @@ export function reduce(events: MurmurEvent[]): SessionView {
       later: i < requests.length - 1,
       waiting: i === asking,
       live,
-      title: titles.requests.get(req.id),
+      title: said[i],
     });
   });
   // The request this one picks up from: the titles run's word, else a reply follows the
   // request before it.
   requests.forEach((req, i) => {
-    const t = titles.requests.get(req.id);
+    const t = said[i];
+    const follows = t?.follows === undefined ? undefined : idOf.get(t.follows);
     const before = requests.slice(0, i);
-    if (t?.follows && before.some((r) => r.id === t.follows))
-      req.follows = t.follows;
+    if (follows && before.some((r) => r.id === follows)) req.follows = follows;
     else if (!t && i > 0 && isReply(req.prompt))
       req.follows = (before[i - 1] as RequestView).id;
   });
-  const { chapters, threads } = storylines(requests, lists, titles);
+  const { chapters, threads } = storylines(
+    requests,
+    lists,
+    said,
+    titles.threads,
+  );
   const first = sorted[0];
   return {
     sessionId: first?.sessionId ?? "",

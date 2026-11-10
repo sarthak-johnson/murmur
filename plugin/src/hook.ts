@@ -37,6 +37,7 @@ import {
   writeSession,
 } from "./local.js";
 import { runRefresh } from "./recap.js";
+import { runTitlesLive } from "./titles.js";
 import { enqueue, flush } from "./upload.js";
 
 const askLine = (cwd: string) =>
@@ -272,6 +273,11 @@ async function main(): Promise<void> {
     // After a Stop: the latest request's plan, when Claude stopped keeping it true. Sent
     // with the login there is now, not the one this child started with.
     if (id && REFRESH && (await runRefresh(id)).ok) {
+      const now = readCredentials();
+      if (now) await flush(now, { budgetMs: 30_000 });
+    }
+    // Then names what no titles run covered yet, at most once every 10 minutes.
+    if (id && REFRESH && (await runTitlesLive(id)).ok) {
       const now = readCredentials();
       if (now) await flush(now, { budgetMs: 30_000 });
     }

@@ -5,7 +5,7 @@
 import type { MurmurEvent } from "../events.js";
 import { cutWords, firstSentence, moment } from "./moments.js";
 import { itemOf } from "./rounds.js";
-import type { Titles } from "./titles.js";
+import type { TitleEntry } from "./titles.js";
 import type {
   Chapter,
   Decision,
@@ -109,9 +109,11 @@ function chapter(title: string, rs: RequestView[]): Chapter {
 export function storylines(
   reqs: RequestView[],
   lists: MurmurEvent[][],
-  titles: Titles,
+  /** What the titles runs said of each request, by index; undefined where none did. */
+  said: (TitleEntry | undefined)[],
+  names: Map<string, string>,
 ): { chapters: Chapter[]; threads: Thread[] } {
-  const first = reqs.findIndex((r) => titles.requests.has(r.id));
+  const first = said.findIndex((t) => t !== undefined);
   const chapters = chaptersOf(first < 0 ? reqs : reqs.slice(0, first));
   const lastAt = new Map(
     reqs.map((r, i) => [r.id, lists[i]?.at(-1)?.ts ?? r.startedAt]),
@@ -147,14 +149,15 @@ export function storylines(
   const own = new Map<string, RequestView[]>();
   const runs: { id: string; rs: RequestView[] }[] = [];
   let current = "";
-  for (const r of reqs.slice(first)) {
-    current = titles.requests.get(r.id)?.thread ?? current;
+  reqs.forEach((r, i) => {
+    if (i < first) return;
+    current = said[i]?.thread ?? current;
     own.set(current, [...(own.get(current) ?? []), r]);
     const run = runs.at(-1);
     if (run?.id === current) run.rs.push(r);
     else runs.push({ id: current, rs: [r] });
-  }
-  const name = (id: string) => titles.threads.get(id) ?? id;
+  });
+  const name = (id: string) => names.get(id) ?? id;
   for (const run of runs) chapters.push(chapter(name(run.id), run.rs));
   for (const [id, rs] of own) threads.push(thread(id, name(id), rs, false));
   return { chapters, threads };

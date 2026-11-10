@@ -132,7 +132,7 @@ Answer with one JSON object and nothing else, in exactly this shape:
   "map": {
     "kind": "feature" | "bug" | "refactor" | "question",
     "goal": "the request in a few plain words",
-    "short": "the request in 2 to 4 words, like a title",
+    "short": "what the request did in 2 to 5 words, like a title, never the person's own words",
     "phases": [{ "id": "p1", "title": "...", "tasks": [{ "id": "t1", "title": "...", "part": "<part id>" }] }],
     "parts": [{ "id": "<short id>", "title": "...", "phase": "p1", "links": [{ "to": "<part id>", "label": "uses" }] }]
   },
@@ -217,10 +217,10 @@ export function recapInput(
 type Answer =
   | { ok: true; json: unknown; cost?: number }
   | { ok: false; why: string };
-type Ask = Answer & { ms: number };
+export type Ask = Answer & { ms: number };
 
 /** Runs the user's `claude -p` once with `input` on stdin. Never throws. */
-function ask(
+export function ask(
   input: string,
   env: NodeJS.ProcessEnv,
   timeoutMs: number,
@@ -308,11 +308,11 @@ function parse(stdout: string): Answer {
 }
 
 /** What the ask cost, as `claude -p` reported it, for the log line. */
-const costOf = (r: Ask) =>
+export const costOf = (r: Ask) =>
   r.ok && r.cost !== undefined ? `, $${r.cost.toFixed(4)}` : "";
 
 /** Why a zod check refused the answer, for the one log line. */
-const refused = (
+export const refused = (
   what: string,
   r: { error?: { issues: { path: PropertyKey[] }[] } } | undefined,
 ) => `the answer is not ${what} (${r?.error?.issues[0]?.path.join(".")})`;
@@ -375,7 +375,7 @@ const cut = (s: string) => s.slice(0, 200);
  * Queues nothing itself: builds hook events for Murmur's own tool calls, marked
  * `recap: true`, a millisecond apart from `at`, ids from `key` and their order.
  */
-function emitter(
+export function emitter(
   base: MurmurEvent,
   key: string,
   at: number,
@@ -443,13 +443,13 @@ function detailNarrate(
 }
 
 /** `sending`, and still the login it started with. */
-const stillSending = (sessionId: string, cwd: string, token?: string) =>
+export const stillSending = (sessionId: string, cwd: string, token?: string) =>
   token !== undefined &&
   readCredentials()?.token === token &&
   sending(sessionId, cwd);
 
 /** Whether Murmur would send for this session now: logged in, on, not paused. */
-function sending(sessionId: string, cwd: string): boolean {
+export function sending(sessionId: string, cwd: string): boolean {
   const s = readSession(sessionId);
   const at = s.cwd ?? cwd;
   return (
