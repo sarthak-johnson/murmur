@@ -20,6 +20,26 @@ export const MARK_WORD: Record<Mark, string> = {
  * `pulse` is set, the one loop on screen), an amber question mark for waiting on you,
  * a hollow ring for left open, a red cross for failed.
  */
+// A run of letters up to and including a slash or hyphen, or up to a space: where a line may break.
+export const PIECES = /[^\s/-]*[/-]|[^\s/-]+|\s+/g;
+
+/**
+ * Text whose lines and ellipsis break only between words: each word (and each part of a
+ * path or a hyphenated word) is a box the browser keeps whole or leaves out whole.
+ */
+export function Words({ text }: { text: string }) {
+  return (text.match(PIECES) ?? []).map((p, i) =>
+    /^\s/.test(p) ? (
+      p
+    ) : (
+      // biome-ignore lint/suspicious/noArrayIndexKey: the pieces of one fixed string
+      <span key={i} className="w">
+        {p}
+      </span>
+    ),
+  );
+}
+
 export function StateMark(props: { mark: Mark; pulse?: boolean }) {
   const { mark, pulse } = props;
   return (
@@ -172,6 +192,8 @@ export function Rail(props: {
   onRequestPage: boolean;
   /** The session's own page (the journey): its running station is the loop, not the rail's. */
   onJourney?: boolean;
+  /** The page has its own loop (a running task in the Tasks tab): the rail does not pulse. */
+  ownLoop?: boolean;
   status: SessionStatus;
   me?: Me | undefined;
   /** Open as the drawer (under 900 px). */
@@ -179,7 +201,7 @@ export function Rail(props: {
   onClose(): void;
 }) {
   const { sessionId, view, events, currentId, onRequestPage } = props;
-  const { status, me, open, onClose, onJourney } = props;
+  const { status, me, open, onClose, onJourney, ownLoop } = props;
   const box = useRef<HTMLElement>(null);
   const marks = useMemo(
     () => new Map(view.requests.map((r) => [r, requestMark(view, r, events)])),
@@ -187,9 +209,10 @@ export function Rail(props: {
   );
   const now = new Date().toISOString();
   // One loop on screen: the newest running request's mark.
-  const pulsing = onJourney
-    ? undefined
-    : view.requests.findLast((r) => marks.get(r)?.mark === "running");
+  const pulsing =
+    onJourney || ownLoop
+      ? undefined
+      : view.requests.findLast((r) => marks.get(r)?.mark === "running");
 
   // The shown request scrolls into the rail's view when it changes, only if it is out of
   // view, so a click never jumps. New requests arriving live (appended below) never move
@@ -312,7 +335,7 @@ export function Rail(props: {
                         <span className="stop-txt">
                           <span className="stop-ttl">
                             <b className="num stop-n">{n}</b>
-                            {short}
+                            <Words text={short} />
                           </span>
                           {showSub && (
                             <span className="stop-sub">

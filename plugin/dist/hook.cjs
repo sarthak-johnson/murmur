@@ -23612,7 +23612,7 @@ async function runBackfill(sessionId, {
     await flush(creds, { budgetMs: Math.max(1e3, left()), ...opts });
   return events.length;
 }
-function catchUpText(sessionId, env = process.env) {
+function catchUpText(sessionId, env = process.env, budgetMs = Number.POSITIVE_INFINITY) {
   const s = readSession(sessionId);
   if (s.backfill !== "done" || !s.transcriptPath || !s.cwd) return 0;
   const creds = readCredentials();
@@ -23622,15 +23622,21 @@ function catchUpText(sessionId, env = process.env) {
   }
   const at = { from: s.textOffset, end: s.textOffset };
   const b = { sessionId, machineId: creds.machineId, cwd: s.cwd };
+  const deadline = Date.now() + budgetMs;
   let n = 0;
-  for (const e of readLines(s.transcriptPath, 0, at)) {
-    if (!str7(e.uuid)) continue;
-    for (const { i, text: text3 } of textBlocks(e)) {
-      enqueue(entryEvent(b, e, i, "AssistantText", { text: text3 }));
-      n++;
+  try {
+    for (const e of readLines(s.transcriptPath, 0, at)) {
+      if (str7(e.uuid) && !Number.isNaN(Date.parse(e.timestamp)))
+        for (const { i, text: text3 } of textBlocks(e)) {
+          enqueue(entryEvent(b, e, i, "AssistantText", { text: text3 }));
+          n++;
+        }
+      if (Date.now() > deadline) break;
     }
+    if (at.end !== s.textOffset)
+      updateSession(sessionId, { textOffset: at.end });
+  } catch {
   }
-  updateSession(sessionId, { textOffset: at.end });
   return n;
 }
 
@@ -23837,6 +23843,7 @@ async function main() {
       windowsHide: true
     }).unref();
   } else {
+    catchUpText(event.sessionId, process.env, 1e3);
     await flush(creds);
   }
 }

@@ -1040,6 +1040,11 @@ describe("round 3", () => {
       [...track.querySelectorAll(".trk-seg")].map((s) => s.className),
     ).toEqual(["trk-seg done", "trk-seg open"]);
     expect(track.querySelector(".st.now")).toBeNull();
-    expect(within(track).getByText("Lit plate tokens")).toBeTruthy();
+    expect(
+      within(track).getByText(
+        (_, e) =>
+          e?.className === "cap" && e.textContent === "Lit plate tokens",
+      ),
+    ).toBeTruthy();
   });
 });

@@ -483,7 +483,7 @@ describe("the phase track", () => {
     );
   });
 
-  it("captions the first, the live and the last station; every station keeps its name", () => {
+  it("names every station under its dot", () => {
     const req = running({
       beyond: undefined,
       phases: [
@@ -508,9 +508,7 @@ describe("the phase track", () => {
       "F",
       "G",
     ]);
-    expect(
-      [...track().querySelectorAll(".st .cap.on")].map((c) => c.textContent),
-    ).toEqual(["A", "D", "G"]);
+    expect(track().querySelectorAll(".st .cap.on")).toHaveLength(0);
   });
 
   it("adds a dashed Beyond the plan segment with its helpers, only when there is one", () => {
@@ -569,10 +567,17 @@ describe("the phase track", () => {
   });
 
   it("turns into a vertical list under 900 px, and draws once on first paint", () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({
+      matches: q === "(max-width: 899px)",
+      addEventListener() {},
+      removeEventListener() {},
+    }));
+    show(session(running()));
+    expect(track().className).toBe("trk stack");
     const css = readFileSync("src/theme.css", "utf8");
     const block = css.slice(css.indexOf("/* Request page (reshape) */"));
     expect(block).toMatch(
-      /@media \(max-width: 899px\)\s*{[^}]*\.trk-segs\s*{[^}]*flex-direction: column/,
+      /:where\(\.trk\.stack\) \.trk-segs\s*\{[^}]*flex-direction: column/,
     );
     expect(block).toMatch(/animation: trk-draw 900ms/);
     expect(block).toMatch(/prefers-reduced-motion/);

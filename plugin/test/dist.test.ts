@@ -1,5 +1,5 @@
 // Runs the committed bundles the way Claude Code does. CI rebuilds them first.
-import { execFile, spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -338,6 +338,188 @@ for (const name of ["openSync", "readFileSync", "createReadStream", "open", "rea
       "hook",
     );
     expect(fs.readFileSync(log, "utf8")).toContain("child");
+  });
+
+  it("a tool's hook, which Claude never waits on, sends Claude's new text with its own event", async () => {
+    // While Claude works through tools no Stop comes; its words must not wait for one.
+    const posted: { hook: string; payload: { text?: string } }[] = [];
+    const server = await listen((req, res) => {
+      let body = "";
+      req.on("data", (c) => {
+        body += c;
+      });
+      req.on("end", () => {
+        posted.push(...JSON.parse(body).events);
+        res.setHeader("Content-Type", "application/json");
+        res.end("{}");
+      });
+    });
+    const dir = env.MURMUR_HOME as string;
+    fs.mkdirSync(path.join(dir, "sessions"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "credentials.json"),
+      JSON.stringify({ server, token: "t", machineId: "m1" }),
+    );
+    expect((await murmur("on", repo)).code).toBe(0);
+    const transcript = path.join(home, "s1.jsonl");
+    fs.writeFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: "assistant",
+        uuid: "u1",
+        timestamp: "2026-11-07T09:00:00.000Z",
+        cwd: repo,
+        message: {
+          content: [
+            {
+              type: "text",
+              text: `Reading the config. Key sk-ant-${"a".repeat(30)}.`,
+            },
+          ],
+        },
+      })}\n`,
+    );
+    fs.writeFileSync(
+      path.join(dir, "sessions", "s1.json"),
+      JSON.stringify({
+        backfill: "done",
+        project: repo,
+        transcriptPath: transcript,
+        cwd: repo,
+        textOffset: 0,
+      }),
+    );
+    // Async, so the fake server in this process answers the hook's own upload.
+    const code = await new Promise<number | null>((ok) => {
+      const child = spawn(
+        "/bin/sh",
+        ["-c", hooks.PostToolUse?.[0]?.hooks[0]?.command ?? ""],
+        { env: { ...env, CLAUDE_PLUGIN_ROOT: root } },
+      );
+      child.on("close", ok);
+      child.stdin.end(
+        JSON.stringify({
+          hook_event_name: "PostToolUse",
+          session_id: "s1",
+          cwd: repo,
+          transcript_path: transcript,
+          tool_name: "Bash",
+          tool_input: { command: "ls" },
+          tool_response: { stdout: "" },
+        }),
+      );
+    });
+    expect(code).toBe(0);
+    expect(posted.map((e) => e.hook)).toContain("PostToolUse");
+    expect(
+      posted
+        .filter((e) => e.hook === "AssistantText")
+        .map((e) => e.payload.text),
+    ).toEqual(["Reading the config. Key [redacted]."]);
+  });
+
+  // A tool's hook, run for real against a fake server that records what reaches it.
+  async function toolHook(transcript: string, setUp: () => unknown = () => {}) {
+    const posted: { hook: string; payload: { text?: string } }[] = [];
+    const server = await listen((req, res) => {
+      let body = "";
+      req.on("data", (c) => {
+        body += c;
+      });
+      req.on("end", () => {
+        posted.push(...JSON.parse(body).events);
+        res.setHeader("Content-Type", "application/json");
+        res.end("{}");
+      });
+    });
+    const dir = env.MURMUR_HOME as string;
+    fs.mkdirSync(path.join(dir, "sessions"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "credentials.json"),
+      JSON.stringify({ server, token: "t", machineId: "m1" }),
+    );
+    expect((await murmur("on", repo)).code).toBe(0);
+    const file = path.join(home, "s1.jsonl");
+    fs.writeFileSync(file, transcript);
+    fs.writeFileSync(
+      path.join(dir, "sessions", "s1.json"),
+      JSON.stringify({
+        backfill: "done",
+        project: repo,
+        transcriptPath: file,
+        cwd: repo,
+        textOffset: 0,
+      }),
+    );
+    await setUp();
+    const code = await new Promise<number | null>((ok) => {
+      const child = spawn(
+        "/bin/sh",
+        ["-c", hooks.PostToolUse?.[0]?.hooks[0]?.command ?? ""],
+        { env: { ...env, CLAUDE_PLUGIN_ROOT: root } },
+      );
+      child.on("close", ok);
+      child.stdin.end(
+        JSON.stringify({
+          hook_event_name: "PostToolUse",
+          session_id: "s1",
+          cwd: repo,
+          transcript_path: file,
+          tool_name: "Bash",
+          tool_input: { command: "ls" },
+          tool_response: { stdout: "" },
+        }),
+      );
+    });
+    expect(code).toBe(0);
+    return {
+      posted,
+      offset: JSON.parse(
+        fs.readFileSync(path.join(dir, "sessions", "s1.json"), "utf8"),
+      ).textOffset as number,
+      size: fs.statSync(file).size,
+    };
+  }
+  const words = (uuid: string, text: string, timestamp?: string) =>
+    `${JSON.stringify({
+      type: "assistant",
+      uuid,
+      ...(timestamp ? { timestamp } : {}),
+      cwd: repo,
+      message: { content: [{ type: "text", text }] },
+    })}\n`;
+
+  it("a bad transcript line never costs a tool's hook its own upload", async () => {
+    const { posted, offset, size } = await toolHook(
+      words("u1", "No time.") +
+        words("u2", "Fine.", "2026-11-07T09:00:00.000Z"),
+    );
+    expect(posted.map((e) => e.hook)).toContain("PostToolUse");
+    expect(
+      posted
+        .filter((e) => e.hook === "AssistantText")
+        .map((e) => e.payload.text),
+    ).toEqual(["Fine."]);
+    expect(offset).toBe(size);
+  });
+
+  it("a tool's hook while the session is paused sends nothing and moves past the text", async () => {
+    const { posted, offset, size } = await toolHook(
+      words("u1", "Secret.", "2026-11-07T09:00:00.000Z"),
+      () => murmur("pause", repo),
+    );
+    expect(posted).toEqual([]);
+    expect(offset).toBe(size);
+  });
+
+  it("a tool's hook in a headless run sends nothing and moves past the text", async () => {
+    delete env.CLAUDE_CODE_SESSION_ATTENDED;
+    env.CLAUDE_CODE_ENTRYPOINT = "sdk-cli";
+    const { posted, offset, size } = await toolHook(
+      words("u1", "Secret.", "2026-11-07T09:00:00.000Z"),
+    );
+    expect(posted).toEqual([]);
+    expect(offset).toBe(size);
   });
 
   it("hook.cjs --backfill recaps with the user's claude, and that run itself sends nothing", async () => {
