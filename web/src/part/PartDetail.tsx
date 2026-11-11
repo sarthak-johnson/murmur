@@ -1,12 +1,13 @@
-import type {
-  AgentView,
-  FileTouch,
-  MurmurEvent,
-  PartView,
-  PhaseView,
-  RequestView,
-  StepView,
-  TaskView,
+import {
+  type AgentView,
+  type FileTouch,
+  type MurmurEvent,
+  NARRATE_TOOL,
+  type PartView,
+  type PhaseView,
+  type RequestView,
+  type StepView,
+  type TaskView,
 } from "@murmur/core";
 import { type ReactNode, useState } from "react";
 import { FileList, PathText, sharedFolder } from "../files";
@@ -131,8 +132,22 @@ function StepCard(props: {
   const message = helper
     ? undefined
     : request.messages?.find((m) => m.id === step.eventIds[0]);
+  // Claude's own notes: their Details would only repeat the step, so their why shows here.
+  const steps = step.eventIds.map((id) => byId.get(id));
+  const notes =
+    steps.length > 0 &&
+    steps.every((e) => e?.payload.tool_name === NARRATE_TOOL);
+  const why = notes
+    ? steps
+        .map((e) =>
+          str(
+            (e?.payload.tool_input as { why?: unknown } | undefined)?.why,
+          ).trim(),
+        )
+        .find(Boolean)
+    : undefined;
   // A message's own event is the message: its Details would only repeat it.
-  const details = props.details !== false && !message;
+  const details = props.details !== false && !message && !notes;
   const said = agent
     ? request.messages?.find((m) => m.agent === agent.id)?.text
     : (message?.text ?? words);
@@ -195,6 +210,9 @@ function StepCard(props: {
         {verdict && <Pill tone={verdict.tone}>{verdict.label}</Pill>}
       </div>
       {lead && <p className="step-lead">{lead}</p>}
+      {why && why !== lead && (
+        <p className="step-why">{why.charAt(0).toUpperCase() + why.slice(1)}</p>
+      )}
       {text && <Fold text={text} className="step-text" />}
       <div className="step-acts">
         {report && toggle("report", "Helper's report")}

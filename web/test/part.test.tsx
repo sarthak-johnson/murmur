@@ -311,6 +311,37 @@ describe("PartDetail", () => {
     expect(screen.getByText(/"command": "pnpm test"/)).toBeTruthy();
   });
 
+  it("a step from Claude's own note shows its why and no Details that would repeat it", () => {
+    const note = ev("n1", {
+      tool_name: "mcp__plugin_murmur_murmur__narrate",
+      tool_input: {
+        now: "Data recording built and in review; styles started",
+        why: "keeps it moving while its first piece is checked",
+      },
+    });
+    const p = part({
+      id: "endpoint",
+      title: "Server endpoint",
+      steps: [
+        {
+          ts: "t",
+          text: "Data recording built and in review; styles started",
+          status: "done",
+          eventIds: ["n1"],
+        },
+      ],
+    });
+    render(<PartDetail request={request([p])} part={p} events={[note]} />);
+    const card = screen.getByRole("listitem", { name: /step/ });
+    expect(card.querySelector(".step-lead")?.textContent).toBe(
+      "Data recording built and in review; styles started",
+    );
+    expect(card.querySelector(".step-why")?.textContent).toBe(
+      "Keeps it moving while its first piece is checked",
+    );
+    expect(within(card).queryByRole("button", { name: "Details" })).toBeNull();
+  });
+
   it("a file sits under what it does, shows its counts and opens a diff view", async () => {
     show(full);
     const row = screen.getByRole("button", { name: /alerts\.ts/ });
