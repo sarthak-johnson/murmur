@@ -428,6 +428,7 @@ describe("titles run", () => {
         env: env(),
         now: NOW,
         log: (l) => logged.push(l),
+        fetch: offline,
       }),
     ).toEqual({ ran: 1, ok: 0 });
     expect(queued()).toHaveLength(0);
@@ -442,6 +443,7 @@ describe("titles run", () => {
       now: NOW,
       lastOpen: true,
       log: () => {},
+      fetch: offline,
     });
     expect(stdin()).not.toContain("Asked: yes");
     expect(readTitles(SID).tried).toEqual(["p1"]);

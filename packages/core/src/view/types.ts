@@ -147,6 +147,7 @@ export interface RequestView {
    * - "left-open": a later request exists and plan tasks remain not done.
    * - "failed": its last event is a StopFailure, or its last helper (or narrated step)
    *   failed and nothing passed after.
+   * - "left-open": its turn ended and plan tasks remain not done.
    * - "done": otherwise.
    * Core always sets it.
    */

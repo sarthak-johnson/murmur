@@ -398,7 +398,9 @@ function stateOf(
   );
   if ((!ctx.later && !ended) || req.agents.some(ctx.live)) return "running";
   const tasks = req.phases.flatMap((ph) => ph.tasks);
-  if (ctx.later && tasks.some((t) => t.status !== "done")) return "left-open";
+  // Over with plan tasks not done is never "done"; on the newest request a failure says more.
+  const open = tasks.some((t) => t.status !== "done");
+  if (ctx.later && open) return "left-open";
   if (last?.hook === "StopFailure") return "failed";
   // The last helper (or narrated step) failed and nothing passed after.
   const call = events.findLast(
@@ -421,7 +423,8 @@ function stateOf(
     .filter((t): t is string => !!t)
     .sort()
     .at(-1);
-  if (!failedAt) return "done";
+  const over = open ? "left-open" : "done";
+  if (!failedAt) return over;
   const passed =
     live.some(
       (x) =>
@@ -432,7 +435,7 @@ function stateOf(
       (a) =>
         a.report && a.report.ts > failedAt && a.report.status === "completed",
     );
-  return passed ? "done" : "failed";
+  return passed ? over : "failed";
 }
 
 const OUTCOME_MAX = 240;
