@@ -7,6 +7,7 @@ import {
   reduce,
 } from "@murmur/core";
 import { describe, expect, it } from "vitest";
+import { firstAfter } from "../src/office/feed";
 import {
   BOARD_INNER,
   blocked,
@@ -15,7 +16,9 @@ import {
   JOB_BOARD,
   jobCards,
 } from "../src/office/map";
+import { nextEventAfter } from "../src/office/Office";
 import {
+  activeRequest,
   actOf,
   asDoing,
   cutWords,
@@ -413,5 +416,49 @@ describe("deriveScene", () => {
     expect(
       deriveScene({ requests: [], needsYou: null }, "r1", ts(0), logs()),
     ).toBeNull();
+  });
+});
+
+describe("the floor Claude is on", () => {
+  it("is the newest request at work or waiting, else the newest", () => {
+    const r = (id: string, state: string) => ({ id, state });
+    expect(
+      activeRequest([r("1", "done"), r("2", "running"), r("3", "done")])?.id,
+    ).toBe("2");
+    expect(activeRequest([r("1", "waiting"), r("2", "done")])?.id).toBe("1");
+    expect(activeRequest([r("1", "done"), r("2", "done")])?.id).toBe("2");
+    expect(activeRequest([])).toBeUndefined();
+  });
+
+  it("carries an earlier request's helper while it is at work, not once it has gone quiet", () => {
+    const view = reduce([...EVENTS, prompt(9, "and a list page")]);
+    const next = view.requests.at(-1);
+    if (!next) throw new Error("no request");
+    const carried = (t: string) =>
+      deriveScene(view, next.id, t, logs())?.desks.find(
+        (d) => d.agent === "a1",
+      );
+    expect(carried(ts(10))).toMatchObject({
+      fromRequest: 1,
+      status: "running",
+    });
+    // Two hours with no word from it: its stop was never recorded, it is not at work.
+    expect(carried(ts(2 * 3600))).toBeUndefined();
+  });
+});
+
+describe("replay times", () => {
+  it("finds the next event and the first file hit after a moment", () => {
+    expect(nextEventAfter([10, 20, 20, 30], 20)).toBe(30);
+    expect(nextEventAfter([10, 20], 5)).toBe(10);
+    expect(nextEventAfter([10, 20], 20)).toBe(Number.POSITIVE_INFINITY);
+    const hit = (ms: number) => ({
+      t: "",
+      ms,
+      path: "a",
+      kind: "read" as const,
+    });
+    expect(firstAfter([hit(1), hit(5), hit(5), hit(9)], 5)).toBe(3);
+    expect(firstAfter([], 5)).toBe(0);
   });
 });

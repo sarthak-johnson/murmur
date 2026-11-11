@@ -23,7 +23,7 @@ import {
 import { H, T, W } from "./map";
 import { createOverlay, type Overlay } from "./overlay";
 import { createRenderer, deskTile, type Renderer } from "./render";
-import { deriveScene, type Scene } from "./scene";
+import { activeRequest, deriveScene, type Scene } from "./scene";
 import { clockOf, dur } from "./util";
 import "./office.css";
 
@@ -110,7 +110,7 @@ const IDLE_MS = 3 * 60_000;
 const LEAD_MS = 5_000;
 
 /** The time of the first event after `t`, or Infinity (times sorted). */
-function nextEventAfter(ms: readonly number[], t: number): number {
+export function nextEventAfter(ms: readonly number[], t: number): number {
   let lo = 0;
   let hi = ms.length;
   while (lo < hi) {
@@ -203,11 +203,7 @@ export function Office(props: {
 
   // The request on the floor: the one pinned by the address, else the newest at that moment.
   const reqs = viewT.requests;
-  // The floor Claude is on: the newest request still at work or waiting on you, so a quick
-  // notice answered while a long request runs on never hides that one; else the newest.
-  const active =
-    reqs.findLast((r) => r.state === "running" || r.state === "waiting") ??
-    reqs.at(-1);
+  const active = activeRequest(reqs);
   const pinned = reqs.find((r) => r.id === props.pinnedId);
   const req = pinned ?? active ?? first;
   const reqId = req?.id ?? "";

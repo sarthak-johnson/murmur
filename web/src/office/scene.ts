@@ -105,6 +105,19 @@ const STAGE: Partial<Record<AgentRole, string>> = {
 
 const STALE_MS = 60 * 60_000;
 
+/**
+ * The request Claude is on: the newest still at work or waiting on you, so a quick notice
+ * answered while a long request runs on never hides that one; else the newest.
+ */
+export function activeRequest<R extends { state?: string | undefined }>(
+  reqs: readonly R[],
+): R | undefined {
+  return (
+    reqs.findLast((r) => r.state === "running" || r.state === "waiting") ??
+    reqs.at(-1)
+  );
+}
+
 /** Cut at a word boundary within n characters. */
 export function cutWords(s: string, n: number): string;
 export function cutWords(s: string | undefined, n: number): string | undefined;
