@@ -546,6 +546,85 @@ describe("helpers tied to the tasks they do", () => {
     ]).requests[0];
     expect(req?.agents[0]?.part).toBeUndefined();
   });
+
+  test("a word shared with a long title loses to a title it covers whole", () => {
+    // From a real session: "list" also hit "Collect the four task lists", which tied it
+    // with the Library task, so the Library builder stood on its own.
+    const plan: MapInput = {
+      ...PLAN,
+      phases: [
+        {
+          id: "p1",
+          title: "Prepare",
+          tasks: [
+            { id: "a", title: "Collect the four task lists", part: "engine" },
+          ],
+        },
+        {
+          id: "p2",
+          title: "Phase 7 Library",
+          tasks: [
+            { id: "b", title: "Build and review Library", part: "voice" },
+          ],
+        },
+      ],
+    };
+    const req = reduce([
+      prompt(1, "go"),
+      mapCall(2, plan),
+      agentCall(3, "Build Task 173 Library list"),
+      start(4, "h1"),
+    ]).requests[0];
+    expect(req?.phases[1]?.tasks[0]?.agents).toEqual(["h1"]);
+    expect(req?.agents[0]?.part).toBe("voice");
+  });
+
+  test("the word phase ties nothing: a phase planner joins the part its subject names", () => {
+    // From a real session: "Plan Phase 4 Portfolio" tied five tasks on "phase" alone.
+    const plan: MapInput = {
+      ...PLAN,
+      phases: [
+        {
+          id: "p0",
+          title: "Get ready",
+          tasks: [
+            {
+              id: "a",
+              title: "Re-read the rules and Phase 3 plan",
+              part: "audit",
+            },
+          ],
+        },
+        {
+          id: "p4",
+          title: "Phase 4: Portfolio",
+          tasks: [
+            { id: "b", title: "Write Portfolio task list", part: "engine" },
+            { id: "c", title: "Build and review Portfolio", part: "engine" },
+          ],
+        },
+        {
+          id: "p6",
+          title: "Phases 6-7",
+          tasks: [
+            { id: "d", title: "Build Phase 6", part: "scenes" },
+            { id: "e", title: "Build Phase 7", part: "voice" },
+          ],
+        },
+      ],
+    };
+    const req = reduce([
+      prompt(1, "go"),
+      mapCall(2, plan),
+      agentCall(3, "Plan Phase 4 Portfolio"),
+      start(4, "h1"),
+    ]).requests[0];
+    // Both Portfolio tasks match, on one part: that part alone, as before.
+    expect(req?.agents[0]?.part).toBe("engine");
+    expect(
+      req?.phases.flatMap((p) => p.tasks.flatMap((t) => t.agents)),
+    ).toEqual([]);
+  });
 });
 
 describe("what helpers did", () => {

@@ -139,6 +139,8 @@ test("feature.jsonl links its subagent; interactive prompt suggestions are ignor
       description: "Read greet file",
       prompt:
         "Read greet.txt in the current directory and reply with its exact contents.",
+      // No plan, so it owns the part its run makes in "What Claude did".
+      part: "run:toolu_0134KG7QxFZqNEYNezdvoDbn",
       // The prompt only says what to read, so it has no brief.
       // A foreground helper: its result is its report.
       report: {

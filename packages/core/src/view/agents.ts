@@ -99,7 +99,7 @@ export function applyAgents(
 
 // Words that say what kind of work, or nothing: they never tie a helper to a task.
 const PLAIN = new Set(
-  "build implement write add draft create make port fix review rereview recheck check research investigate explore find audit plan update run test the and for with from into that this its all new more page screen file code app task".split(
+  "build implement write add draft create make port fix review rereview recheck check research investigate explore find audit plan update run test the and for with from into that this its all new more page screen file code app task phase".split(
     " ",
   ),
 );
@@ -134,17 +134,35 @@ export function matchScore(description: string, title: string): number {
   return shared + [...numbersOf(description)].filter((x) => n.has(x)).length;
 }
 
+/** How much of a title's own words a helper's words cover: 1 when every one is shared. */
+function coverage(description: string, title: string): number {
+  const words = wordsOf(description);
+  const own = wordsOf(title);
+  return own.size ? [...own].filter((w) => words.has(w)).length / own.size : 0;
+}
+
 /**
  * The one item whose title best matches the words Claude gave a helper (`matchScore`).
- * Unset when none matches, or two match equally.
+ * Items tied on different parts go to the title the helper's words cover most: "Build
+ * Task 173 Library list" shares a word with both "Build and review Library" and "Collect
+ * the four task lists", but covers only the first whole. (Tasks tied on one part stay
+ * tied, so the caller gives that part alone.) Unset when none matches, or two still tie.
  */
-function byWords<T extends { title: string }>(
+function byWords<T extends { title: string; part?: string | undefined }>(
   description: string,
   items: T[],
 ): { best?: T | undefined; tied: T[] } {
   const scores = items.map((it) => matchScore(description, it.title));
   const top = Math.max(0, ...scores);
-  const tied = top ? items.filter((_, i) => scores[i] === top) : [];
+  let tied = top ? items.filter((_, i) => scores[i] === top) : [];
+  const onePart = tied.every(
+    (it) => it.part !== undefined && it.part === tied[0]?.part,
+  );
+  if (tied.length > 1 && !onePart) {
+    const cover = tied.map((it) => coverage(description, it.title));
+    const most = Math.max(...cover);
+    tied = tied.filter((_, i) => cover[i] === most);
+  }
   return tied.length === 1 ? { best: tied[0], tied } : { tied };
 }
 

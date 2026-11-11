@@ -17,7 +17,8 @@
  *   joins its nearest folder with a part; the 6 biggest folders become parts. Root files,
  *   the rest, and touches of subagents with no run stay in `looseFiles`.
  * - Parts are in start order; a part changing a file an earlier one changed links to it
- *   with "same files". With no TaskCreated plan, one "What Claude did" phase lists them.
+ *   with "same files". With no TaskCreated plan, one "What Claude did" phase lists them,
+ *   each task holding its part's helpers; every helper's `part` is the part that owns it.
  */
 import type { MurmurEvent } from "../events.js";
 import { addTouch, displayPath, touchesOf } from "./files.js";
@@ -165,6 +166,7 @@ export function inferHistory(
       if (agentId) {
         addOnce(b.part.agents, agentId);
         owner.set(agentId, b.part);
+        if (agent && !agent.part) agent.part = b.part.id; // as on a planned request
       }
     }
     return out;
@@ -211,7 +213,7 @@ export function inferHistory(
       title: part.title,
       part: part.id,
       status: lastFailed ? "failed" : part.status,
-      agents: [],
+      agents: [...part.agents], // its helpers, as `TaskView.agents` says
     }));
     req.phases = [
       {

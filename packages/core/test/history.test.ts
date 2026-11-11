@@ -356,7 +356,7 @@ describe("plan and map", () => {
             title: "Task 1: tokens",
             part: "task:1",
             status: "done",
-            agents: [],
+            agents: ["a1"],
             rounds: 0,
           },
           {
@@ -364,11 +364,16 @@ describe("plan and map", () => {
             title: "Task 2: money",
             part: "task:2",
             status: "now",
-            agents: [],
+            agents: ["a2"],
             rounds: 0,
           },
         ],
       },
+    ]);
+    // Each helper knows its part too, as on a planned request.
+    expect(r?.agents.map((a) => [a.id, a.part])).toEqual([
+      ["a1", "task:1"],
+      ["a2", "task:2"],
     ]);
   });
 
