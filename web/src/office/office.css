@@ -403,7 +403,7 @@
 }
 .of-overlay .sheet span {
   display: -webkit-box;
-  -webkit-line-clamp: 4;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -990,7 +990,7 @@
   height: 10px;
   background: #6a5f55;
 }
-.of-track .of-ticks button:hover::after,
+.of-track .of-ticks button:focus-visible::after,
 .of-track .of-ticks button.cur::after {
   background: var(--o-t1);
 }
@@ -1263,4 +1263,8 @@
   pointer-events: none;
   display: grid;
   place-items: center;
+}
+/* At 4x the request sheet has room for a fourth line. */
+.s4 .of-overlay .sheet span {
+  -webkit-line-clamp: 4;
 }

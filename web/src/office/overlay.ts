@@ -557,7 +557,7 @@ export function createOverlay(
         cls: "banner",
         x: 13 * T,
         y: 14 * T,
-        html: `Claude has moved on to request ${scene.activeN}. This floor is how request ${scene.request.n} stands.<button type="button">Go to request ${scene.activeN}</button>`,
+        html: `${scene.activeN > scene.request.n ? `Claude has moved on to request ${scene.activeN}.` : `Claude is still at work on request ${scene.activeN}.`} This floor is how request ${scene.request.n} stands.<button type="button">Go to request ${scene.activeN}</button>`,
         // The whole banner takes the click, its button included: back to the floor Claude is on.
         open: `req:${scene.jobs[scene.activeN - 1]?.id ?? ""}`,
       });
@@ -572,6 +572,7 @@ export function createOverlay(
       if (!m) return;
       m.classList.toggle("s1", v < 2);
       m.classList.toggle("s2", v < 3);
+      m.classList.toggle("s4", v >= 4);
       m.style.setProperty("--s", String(v));
     },
     render(scene, claude, walkers, selected, hovered, t) {

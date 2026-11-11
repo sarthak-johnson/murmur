@@ -7,6 +7,7 @@ import {
   reduce,
 } from "@murmur/core";
 import { describe, expect, it } from "vitest";
+import { drawerFor } from "../src/office/Drawer";
 import { firstAfter } from "../src/office/feed";
 import {
   BOARD_INNER,
@@ -460,5 +461,19 @@ describe("replay times", () => {
     });
     expect(firstAfter([hit(1), hit(5), hit(5), hit(9)], 5)).toBe(3);
     expect(firstAfter([], 5)).toBe(0);
+  });
+});
+
+describe("what a click in the room opens", () => {
+  it("is the tab that tells its story, or a close-up", () => {
+    expect(drawerFor("phase:2")).toEqual({ tab: "tasks", phase: "2" });
+    expect(drawerFor("archive")).toEqual({ tab: "files" });
+    expect(drawerFor("jobs")).toEqual({ tab: "requests" });
+    expect(drawerFor("claude")).toEqual({ tab: "story" });
+    expect(drawerFor("agent:a1")).toEqual({ tab: "story", item: "agent:a1" });
+    expect(drawerFor("task:1.1")).toEqual({ tab: "story", item: "task:1.1" });
+  });
+  it("names a helper with nothing but a model note", () => {
+    expect(helperName({ description: "(Opus)" })).toBe("A helper");
   });
 });

@@ -146,7 +146,7 @@ export function helperName(a: { description?: string | undefined }): string {
   // A bare leftover ("round 2", "fix round 4") says nothing alone, so it keeps its subject.
   if (subject && /^((fix(es)?|round \d+|review|recheck)[\s:]*)*$/i.test(d))
     d = `${subject} ${rest}`.trim();
-  d = d || desc;
+  d = d || desc || "A helper";
   return cutWords(d.charAt(0).toUpperCase() + d.slice(1), 24);
 }
 
@@ -426,15 +426,18 @@ export function deriveScene(
   const carried: Helper[] = current
     ? reqs
         .slice(0, idx)
+        // Only a request still under way (as core says) has helpers at work.
         .flatMap((r, i) =>
-          r.agents
-            .filter(
-              (a) =>
-                a.status === "running" &&
-                Date.parse(t) - Date.parse(a.doing?.ts ?? a.startedAt) <
-                  STALE_MS,
-            )
-            .map((a) => ({ ...a, fromRequest: i + 1 })),
+          r.state !== "running" && r.state !== "waiting"
+            ? []
+            : r.agents
+                .filter(
+                  (a) =>
+                    a.status === "running" &&
+                    Date.parse(t) - Date.parse(a.doing?.ts ?? a.startedAt) <
+                      STALE_MS,
+                )
+                .map((a) => ({ ...a, fromRequest: i + 1 })),
         )
     : [];
   const helpers: Helper[] = [...carried, ...req.agents].sort((a, b) =>

@@ -8,7 +8,7 @@ import {
   relPath,
   type SessionView,
 } from "@murmur/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { modelOf } from "../session";
 import { latestAt, type MainEntry, type OfficeLogs } from "./scene";
 
@@ -285,6 +285,8 @@ interface WorkerState {
   sent: MurmurEvent[];
   target: MurmurEvent[];
   pumping: boolean;
+  /** Unmounted or failed: the pump stops. */
+  dead: boolean;
   busy: boolean;
   want: number;
   cache: Map<number, SessionView>;
@@ -295,9 +297,10 @@ const CHUNK = 400;
 
 /** Brings the worker's events up to `target`, a chunk per task, then asks for the moment. */
 function pump(st: WorkerState, show: Show) {
-  if (st.pumping) return;
+  if (st.pumping || st.dead) return;
   st.pumping = true;
   const step = () => {
+    if (st.dead) return;
     const tgt = st.target;
     const from = sameUntil(st.sent, tgt);
     // Events already sent changed (one slotted in mid-list): the worker drops them from there.
@@ -308,7 +311,7 @@ function pump(st: WorkerState, show: Show) {
       for (const k of [...st.cache.keys()]) if (k > from) st.cache.delete(k);
     }
     const end = Math.min(tgt.length, from + CHUNK);
-    if (end > from || from < st.sent.length) {
+    if (end > from) {
       st.worker.postMessage({
         gen: st.gen,
         from,
@@ -349,6 +352,11 @@ export function useViewAt(
     null,
   );
   const [failed, setFailed] = useState(typeof Worker === "undefined");
+  // The same moment twice is no change: no redraw per chunk while it stays wanted.
+  const show = useCallback<Show>(
+    (v) => setShown((s) => (s && s.n === v.n && s.view === v.view ? s : v)),
+    [],
+  );
   const w = useRef<WorkerState | null>(null);
 
   useEffect(() => {
@@ -368,31 +376,36 @@ export function useViewAt(
       sent: [],
       target: [],
       pumping: false,
+      dead: false,
       busy: false,
       want: -1,
       cache: new Map(),
     };
     w.current = st;
     worker.onmessage = (m: MessageEvent<FromWorker>) => {
-      st.busy = false;
       const d = m.data;
-      if ("error" in d) return setFailed(true);
-      // A reply to events since replaced is dropped: the next ask goes out below.
-      if (d.gen === st.gen) {
-        st.cache.set(d.n, d.view);
-        if (st.cache.size > KEEP)
-          st.cache.delete(st.cache.keys().next().value as number);
-        if (d.n === st.want) setShown({ n: d.n, view: d.view });
-      }
-      ask(st, setShown);
+      // A reply to events since replaced is dropped; the ask sent after the change answers.
+      if (d.gen !== st.gen) return;
+      st.busy = false;
+      if ("error" in d) return fail();
+      st.cache.set(d.n, d.view);
+      if (st.cache.size > KEEP)
+        st.cache.delete(st.cache.keys().next().value as number);
+      if (d.n === st.want) show({ n: d.n, view: d.view });
+      ask(st, show);
     };
-    worker.onerror = () => setFailed(true);
-    worker.onmessageerror = () => setFailed(true);
+    const fail = () => {
+      st.dead = true;
+      setFailed(true);
+    };
+    worker.onerror = fail;
+    worker.onmessageerror = fail;
     return () => {
+      st.dead = true;
       worker.terminate();
       w.current = null;
     };
-  }, [failed]);
+  }, [failed, show]);
 
   // The worker keeps up with the events from the start, live too, so the first scrub or play
   // finds them there; only what changed goes over.
@@ -401,8 +414,8 @@ export function useViewAt(
     if (!st) return;
     st.target = events;
     st.want = atEnd ? -1 : n;
-    pump(st, setShown);
-  }, [events, n, atEnd]);
+    pump(st, show);
+  }, [events, n, atEnd, show]);
 
   const inline = useMemo(
     () => (failed && !atEnd ? reduce(events.slice(0, n)) : null),

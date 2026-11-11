@@ -121,6 +121,8 @@ export function nextEventAfter(ms: readonly number[], t: number): number {
   return ms[lo] ?? Number.POSITIVE_INFINITY;
 }
 const PHONE = 760;
+/** A phone's drawer when none was picked: the story, one object so its memo holds. */
+const PHONE_DRAWER: DrawerState = { tab: "story" };
 /** The drawer's width beside the room: a third of a wide screen, within reading limits. */
 const drawerWidth = (w: number) =>
   Math.round(Math.min(640, Math.max(480, w * 0.3)));
@@ -262,7 +264,7 @@ export function Office(props: {
     return () => ro.disconnect();
   }, []);
   const phone = box.vw > 0 && box.vw <= PHONE;
-  const shown = phone ? (drawer ?? { tab: "story" as const }) : drawer;
+  const shown = phone ? (drawer ?? PHONE_DRAWER) : drawer;
   const dw = drawerWidth(box.vw);
   // Docked only when the room still gets 2x beside it; otherwise the drawer floats over it.
   const docked = !!drawer && !phone && box.w - dw - 16 >= W * 2;
@@ -568,15 +570,17 @@ export function Office(props: {
         <span className="of-meta">{helperMeta}</span>
         <span className="of-spacer" />
         <span className="of-session">{view.title}</span>
-        {!drawer && (
-          <button
-            type="button"
-            className="of-details"
-            onClick={() => openDrawer({ tab: "story" })}
-          >
-            Details
-          </button>
-        )}
+        {/* Stays in place while the drawer is open, so focus has somewhere to come back to. */}
+        <button
+          type="button"
+          className="of-details"
+          aria-expanded={!!drawer}
+          onClick={() =>
+            drawer ? setDrawer(null) : openDrawer({ tab: "story" })
+          }
+        >
+          {drawer ? "Hide details" : "Details"}
+        </button>
       </header>
 
       <main
@@ -671,6 +675,9 @@ export function Office(props: {
                   left: `${((Date.parse(r.startedAt) - START) / (END - START || 1)) * 100}%`,
                 }}
                 aria-label={`Go to request ${i + 1}`}
+                aria-current={r.id === reqId ? "true" : undefined}
+                // One tab stop for the strip, not one per request: the Requests tab lists them all.
+                tabIndex={r.id === reqId ? 0 : -1}
                 onClick={(e) => {
                   e.stopPropagation();
                   goTo(r.startedAt);

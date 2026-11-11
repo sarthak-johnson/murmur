@@ -48,8 +48,7 @@ export interface DrawerState {
 /** A thing in the room as the tab that tells its story; the rest open a close-up. */
 export function drawerFor(key: string): DrawerState {
   const [kind] = key.split(":");
-  if (kind === "phase")
-    return { tab: "tasks", item: undefined, phase: key.slice(6) };
+  if (kind === "phase") return { tab: "tasks", phase: key.slice(6) };
   if (kind === "archive") return { tab: "files" };
   if (kind === "jobs") return { tab: "requests" };
   if (kind === "claude") return { tab: "story" };
@@ -107,19 +106,24 @@ function DrawerBody(props: {
   useEffect(() => {
     body.current?.scrollTo?.({ top: 0 });
   }, [drawer.tab, drawer.item]);
-  // A phase header opens Tasks at that phase, marked for a moment.
+  // A phase header opens Tasks at that phase, marked for a moment: once per click, not on
+  // every update of the request while it stays open.
+  const phaseTitle = req.phases.find((p) => p.id === drawer.phase)?.title;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new click (focusKey) on the same phase scrolls again
   useEffect(() => {
-    const title = req.phases.find((p) => p.id === drawer.phase)?.title;
-    if (!title || drawer.tab !== "tasks" || drawer.item) return;
+    if (!phaseTitle || drawer.tab !== "tasks" || drawer.item) return;
     const head = [...(body.current?.querySelectorAll("h2") ?? [])].find(
-      (h) => h.textContent?.trim() === title,
+      (h) => h.textContent?.trim() === phaseTitle,
     );
     const group = head?.closest("section") ?? head;
     group?.scrollIntoView?.({ block: "start" });
     group?.classList.add("of-flash");
     const t = setTimeout(() => group?.classList.remove("of-flash"), 1600);
-    return () => clearTimeout(t);
-  }, [drawer.phase, drawer.tab, drawer.item, req]);
+    return () => {
+      clearTimeout(t);
+      group?.classList.remove("of-flash");
+    };
+  }, [phaseTitle, drawer.tab, drawer.item, props.focusKey]);
   const openPart = (p: string) =>
     onChange({ tab: drawer.tab, item: `part:${p}` });
 
@@ -415,7 +419,8 @@ function Terminal(props: Parameters<typeof DrawerBody>[0]) {
         e.k === "tool" &&
         (e.tool === "Bash" || e.tool === "Monitor") &&
         e.t >= req.startedAt &&
-        e.t <= t &&
+        // Live, the newest command shows at once; a replay stops at its moment.
+        (props.following || e.t <= t) &&
         (!next || e.t < next),
     )
     .reverse();
