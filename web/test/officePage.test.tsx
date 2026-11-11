@@ -71,7 +71,10 @@ beforeAll(() => {
     },
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const BASE = Date.parse("2026-11-06T00:00:00.000Z");
 const at = (
@@ -143,6 +146,9 @@ async function frames() {
 
 describe("the office page", () => {
   it("says which request is on the floor, how it stands, and that it is live", async () => {
+    // Moments after its last event: a live session, not a quiet one.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(BASE + 10_000);
     show();
     await frames();
     const top = screen.getByRole("banner");
@@ -153,6 +159,19 @@ describe("the office page", () => {
     expect(within(top).getByText("Live")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Follow the session live" }),
+    ).toBeTruthy();
+  });
+
+  it("is quiet when nothing has happened for a while", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(BASE + 3 * 3600_000);
+    show();
+    await frames();
+    expect(
+      within(screen.getByRole("banner")).getByText("Quiet 3h"),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Jump to the latest moment" }),
     ).toBeTruthy();
   });
 

@@ -221,15 +221,23 @@ export function shortOf(text: string): string {
  * spaces collapse. A block left open, or cut short, runs to the end.
  */
 export function cleanPrompt(text: string): string {
-  return text
-    .replace(
-      /<pasted_content\b[^>]*(?:>[\s\S]*?(?:<\/pasted_content\b[^>]*>|$)|$)/g,
-      " (pasted text) ",
-    )
-    .replace(/\[Image #\d+\]/g, " (image) ")
-    .replace(/\s+/g, " ")
-    .replace(/\) ([.,;:!?])/g, ")$1")
-    .trim();
+  return (
+    text
+      .replace(
+        /<pasted_content\b[^>]*(?:>[\s\S]*?(?:<\/pasted_content\b[^>]*>|$)|$)/g,
+        " (pasted text) ",
+      )
+      .replace(/\[Image #\d+\]/g, " (image) ")
+      // A message another Claude session sent this one, as its words.
+      .replace(
+        /<cross-session-message\b[^>]*>/g,
+        " (message from another session) ",
+      )
+      .replace(/<\/cross-session-message>/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/\) ([.,;:!?])/g, ")$1")
+      .trim()
+  );
 }
 
 /** What a request asked, as one line of text: its goal, else its prompt, cleaned. */

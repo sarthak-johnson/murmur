@@ -1,6 +1,7 @@
 // Murmur office: SessionView (+ a time) -> scene. Pure, no DOM, no layout pixels.
 // Everything here reads fields core already builds, except `mainLog` (Claude's own
 // main-thread calls), which core would need to expose for Claude's spot.
+
 import type {
   AgentRole,
   AgentView,
@@ -9,6 +10,7 @@ import type {
   SessionView,
   TaskView,
 } from "@murmur/core";
+import { requestShort } from "../session";
 
 /** One of Claude's own main-thread events: a prompt, a helper's report coming in, a Stop or a tool call. */
 export interface MainEntry {
@@ -104,6 +106,8 @@ const STAGE: Partial<Record<AgentRole, string>> = {
 };
 
 const STALE_MS = 60 * 60_000;
+/** Claude's own last call older than this is no longer what it is doing. */
+export const QUIET_MS = 15 * 60_000;
 
 /**
  * The request Claude is on: the newest still at work or waiting on you, so a quick notice
@@ -409,7 +413,7 @@ export function deriveScene(
    * The floor Claude is on, when not the newest request (one still at work under a done
    * notice): whether this is it, and its number.
    */
-  opts: { onFloor?: boolean; activeN?: number } = {},
+  opts: { onFloor?: boolean; activeN?: number; quiet?: boolean } = {},
 ): Scene | null {
   const reqs = view.requests;
   const idx = Math.max(
@@ -605,7 +609,11 @@ export function deriveScene(
     };
   } else {
     const last = logs.mainLog[latestAt(logs.mainLog, t)];
-    const e = last && last.t >= req.startedAt ? last : null;
+    // A call that long ago is not what Claude is doing now: it sits at its desk.
+    // So is any call in a session gone quiet (shown as it was left).
+    const quiet =
+      opts.quiet || (last && Date.parse(t) - Date.parse(last.t) > QUIET_MS);
+    const e = last && last.t >= req.startedAt && !quiet ? last : null;
     claude = claudeFromLog(e, busy, helpers, desks, columns, focus);
   }
 
@@ -613,7 +621,7 @@ export function deriveScene(
     request: {
       id: req.id,
       n: idx + 1,
-      short: req.short ?? req.goal,
+      short: requestShort(req),
       goal: req.goal,
       state: req.state,
       startedAt: req.startedAt,
@@ -633,7 +641,7 @@ export function deriveScene(
     jobs: reqs.map((r, i) => ({
       id: r.id,
       n: i + 1,
-      short: r.short ?? r.goal,
+      short: requestShort(r),
       state: r.state,
     })),
     activeN: opts.activeN ?? reqs.length,

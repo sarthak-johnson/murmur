@@ -7,8 +7,8 @@ import {
   reduce,
 } from "@murmur/core";
 import { describe, expect, it } from "vitest";
-import { drawerFor } from "../src/office/Drawer";
-import { firstAfter } from "../src/office/feed";
+import { drawerFor } from "../src/office/drawerState";
+import { firstAfter, nextEventAfter } from "../src/office/feed";
 import {
   BOARD_INNER,
   blocked,
@@ -17,7 +17,6 @@ import {
   JOB_BOARD,
   jobCards,
 } from "../src/office/map";
-import { nextEventAfter } from "../src/office/Office";
 import {
   activeRequest,
   actOf,
@@ -469,7 +468,7 @@ describe("what a click in the room opens", () => {
     expect(drawerFor("phase:2")).toEqual({ tab: "tasks", phase: "2" });
     expect(drawerFor("archive")).toEqual({ tab: "files" });
     expect(drawerFor("jobs")).toEqual({ tab: "requests" });
-    expect(drawerFor("claude")).toEqual({ tab: "story" });
+    expect(drawerFor("claude")).toEqual({ tab: "story", item: "claude" });
     expect(drawerFor("agent:a1")).toEqual({ tab: "story", item: "agent:a1" });
     expect(drawerFor("task:1.1")).toEqual({ tab: "story", item: "task:1.1" });
   });

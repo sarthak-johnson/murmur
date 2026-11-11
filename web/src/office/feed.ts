@@ -105,6 +105,18 @@ export function fileLogOf(view: SessionView, events: MurmurEvent[]): FileHit[] {
   return out.sort((a, b) => a.ms - b.ms);
 }
 
+/** The time of the first event after `t`, or Infinity (times sorted). */
+export function nextEventAfter(ms: readonly number[], t: number): number {
+  let lo = 0;
+  let hi = ms.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((ms[mid] as number) <= t) lo = mid + 1;
+    else hi = mid;
+  }
+  return ms[lo] ?? Number.POSITIVE_INFINITY;
+}
+
 /** The index of the first hit after `ms` (hits are sorted by time). */
 export function firstAfter(hits: readonly FileHit[], ms: number): number {
   let lo = 0;

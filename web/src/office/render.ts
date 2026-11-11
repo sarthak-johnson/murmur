@@ -127,21 +127,20 @@ function layOut(scene: Pick<Scene, "columns">, s: number): PlacedColumn[] {
   return scene.columns.flatMap((c, i) => {
     const col = cols[i];
     if (!col) return [];
-    const subs = Math.max(1, Math.floor(col.w / SUB_W));
-    const subW = Math.floor(col.w / subs);
-    const height = (n: Note) => {
+    const height = (n: Note, subW: number) => {
       const lines = s >= 3 ? lineCount(n.title, (subW - 20) * s) : 0;
       return Math.max(
         12,
         Math.ceil((lines * 19 + (s >= 3 && n.stage ? 18 : 0)) / s),
       );
     };
-    const place = (list: Note[], bottom = full) => {
+    const place = (list: Note[], subs: number, bottom = full) => {
+      const subW = Math.floor(col.w / subs);
       const out: PlacedNote[] = [];
       let k = 0;
       let y = BOARD_INNER.notesY;
       for (const n of list) {
-        const h = height(n);
+        const h = height(n, subW);
         if (
           out.length &&
           (y + Math.min(h, 12) > bottom || y + h > bottom + 4)
@@ -164,18 +163,23 @@ function layOut(scene: Pick<Scene, "columns">, s: number): PlacedColumn[] {
       }
       return out;
     };
+    // The fewest sub-columns that hold every sticky: few stickies get the column's whole width.
+    const most = Math.max(1, Math.floor(col.w / SUB_W));
+    let subs = 1;
+    while (subs < most && place(c.notes, subs).length < c.notes.length) subs++;
+    const subW = Math.floor(col.w / subs);
     let list = c.notes;
-    let notes = place(list);
+    let notes = place(list, subs);
     while (
       notes.length < list.length &&
       list.some((n) => n.status === "done")
     ) {
       const firstDone = list.find((k) => k.status === "done");
       list = list.filter((n) => n !== firstDone);
-      notes = place(list);
+      notes = place(list, subs);
     }
     // Anything still hidden gets a "+N more" line at the foot of the column: keep it clear of the notes.
-    if (notes.length < c.notes.length) notes = place(list, full - 9);
+    if (notes.length < c.notes.length) notes = place(list, subs, full - 9);
     return [
       {
         ...col,

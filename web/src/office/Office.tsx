@@ -5,9 +5,10 @@
 import type { MurmurEvent, SessionView } from "@murmur/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { navigate, officePath, sessionPath } from "../router";
-import { requestMark } from "../session";
+import { type RequestState, requestMark } from "../session";
 import { type SessionStatus, useSession } from "../useSession";
-import { Drawer, type DrawerState, drawerFor } from "./Drawer";
+import { Drawer } from "./Drawer";
+import { type DrawerState, drawerFor } from "./drawerState";
 import {
   countAt,
   doingLogOf,
@@ -17,19 +18,21 @@ import {
   logsOf,
   mainLogOf,
   modelsOf,
+  nextEventAfter,
   touchersOf,
   useViewAt,
 } from "./feed";
 import { H, T, W } from "./map";
 import { createOverlay, type Overlay } from "./overlay";
 import { createRenderer, deskTile, type Renderer } from "./render";
-import { activeRequest, deriveScene, type Scene } from "./scene";
+import { activeRequest, deriveScene, QUIET_MS, type Scene } from "./scene";
 import { clockOf, dur } from "./util";
 import "./office.css";
 
 export function OfficePage(props: { sessionId: string; requestId?: string }) {
   const { view, status, events } = useSession(props.sessionId);
-  if (!view || (status === "loading" && !view.requests.length))
+  // Not drawn from the first pages: they would show an old floor as the live one for a moment.
+  if (!view || status === "loading")
     return <OfficeShell sessionId={props.sessionId} status={status} />;
   if (!view.requests.length)
     return (
@@ -109,17 +112,6 @@ const DRAG_STEP_MS = 10 * 60_000;
 const IDLE_MS = 3 * 60_000;
 const LEAD_MS = 5_000;
 
-/** The time of the first event after `t`, or Infinity (times sorted). */
-export function nextEventAfter(ms: readonly number[], t: number): number {
-  let lo = 0;
-  let hi = ms.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if ((ms[mid] as number) <= t) lo = mid + 1;
-    else hi = mid;
-  }
-  return ms[lo] ?? Number.POSITIVE_INFINITY;
-}
 const PHONE = 760;
 /** A phone's drawer when none was picked: the story, one object so its memo holds. */
 const PHONE_DRAWER: DrawerState = { tab: "story" };
@@ -167,17 +159,22 @@ export function Office(props: {
   status: SessionStatus;
 }) {
   const { sessionId, view, events, status } = props;
-  // Live: the stream is up and the session has not ended; the clock then runs with real time.
-  const live = status === "live" && !view.ended;
+  // Live: the stream is up, the session has not ended and something happened lately; the
+  // clock then runs with real time. Up but silent for a while, it is quiet: its clock stops
+  // at its last event, so nothing reads as running for a day.
+  const open = status === "live" && !view.ended;
   const [wall, setWall] = useState(() => Date.now());
   useEffect(() => {
-    if (!live) return;
+    if (!open) return;
     const t = setInterval(() => setWall(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [live]);
+  }, [open]);
   const first = view.requests[0];
   const START = Date.parse(first?.startedAt ?? view.startedAt);
   const lastAt = Date.parse(view.lastEventAt);
+  const quietFor = open ? Math.max(0, wall - lastAt) : 0;
+  // Waiting on you is live however long the wait: that clock runs on.
+  const live = open && (quietFor < QUIET_MS || !!view.needsYou);
   const END = live ? Math.max(lastAt, wall) : lastAt;
 
   // Time: null follows the newest moment; a number is a moment of the replay.
@@ -185,6 +182,8 @@ export function Office(props: {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(30);
   const tNow = at === null ? END : Math.min(END, Math.max(START, at));
+  // Showing the newest moment of a session gone quiet: as it was left, Claude at rest.
+  const quietNow = at === null && open && !live;
   const iso = new Date(tNow).toISOString();
   const n = at === null ? events.length : countAt(events, iso);
   const viewT = useViewAt(events, view, n) ?? view;
@@ -216,8 +215,9 @@ export function Office(props: {
       deriveScene(viewT, reqId, iso, logs, {
         onFloor: reqId === activeId,
         activeN,
+        quiet: quietNow,
       }),
-    [viewT, reqId, iso, logs, activeId, activeN],
+    [viewT, reqId, iso, logs, activeId, activeN, quietNow],
   );
   // Before the first prompt of a replay there is no floor yet: the last one stays up.
   const lastScene = useRef<Scene | null>(null);
@@ -489,6 +489,12 @@ export function Office(props: {
   const total = Math.max(1, Math.round((END - START) / 1000));
   const working = scene.desks.filter((d) => d.status === "running");
   const carried = working.filter((d) => d.fromRequest);
+  // The request's own mark wins (core's state), so the bar, the room and the drawer agree.
+  const state: RequestState = !mark
+    ? "running"
+    : mark.mark === "running" || mark.mark === "waiting"
+      ? mark.mark
+      : "done";
   const pill =
     !req || !mark
       ? null
@@ -497,16 +503,22 @@ export function Office(props: {
             "blocked",
             `Waiting on you · ${dur(tNow - Date.parse(scene.waiting.since))}`,
           ] as const)
-        : mark.state === "running"
-          ? ([
-              "now",
-              `Running · ${dur(tNow - Date.parse(req.startedAt))}`,
+        : state === "running" && following && open && !live
+          ? // Left mid-work: it ran this long, then nothing more came.
+            ([
+              "todo",
+              `Paused · ran ${dur(tNow - Date.parse(req.startedAt))}`,
             ] as const)
-          : mark.mark === "failed"
-            ? (["failed", "Failed"] as const)
-            : mark.mark === "open"
-              ? (["todo", "Left open"] as const)
-              : (["done", "Done"] as const);
+          : state === "running"
+            ? ([
+                "now",
+                `Running · ${dur(tNow - Date.parse(req.startedAt))}`,
+              ] as const)
+            : mark.mark === "failed"
+              ? (["failed", "Failed"] as const)
+              : mark.mark === "open"
+                ? (["todo", "Left open"] as const)
+                : (["done", "Done"] as const);
   const helperMeta = !working.length
     ? "No helpers at work"
     : !carried.length
@@ -530,6 +542,13 @@ export function Office(props: {
             title="Following the session as it happens"
           >
             Live
+          </span>
+        ) : following && open ? (
+          <span
+            className="of-tag quiet"
+            title={`Nothing has happened in this session for ${span(quietFor)}. It shows as it was left, and wakes up when Claude does.`}
+          >
+            Quiet {span(quietFor)}
           </span>
         ) : (
           <span
@@ -561,7 +580,7 @@ export function Office(props: {
               </b>{" "}
               done
             </>
-          ) : mark?.state === "running" ? (
+          ) : state === "running" ? (
             "No plan yet"
           ) : (
             "No plan"
@@ -586,13 +605,17 @@ export function Office(props: {
       <main
         className={docked ? "of-stage docked" : "of-stage"}
         ref={stage}
-        style={
-          docked ? ({ "--of-dw": `${dw}px` } as React.CSSProperties) : undefined
-        }
+        style={{ "--of-dw": `${dw}px` } as React.CSSProperties}
       >
         {scene.waiting && (
           <div className="of-ask" role="status">
-            <b>Claude is waiting on you:</b> {scene.waiting.text}
+            {/^claude is waiting/i.test(scene.waiting.text) ? (
+              <b>{scene.waiting.text}</b>
+            ) : (
+              <>
+                <b>Claude is waiting on you:</b> {scene.waiting.text}
+              </>
+            )}
           </div>
         )}
         <div className="of-mapwrap" ref={mapWrap}>
@@ -615,7 +638,7 @@ export function Office(props: {
               view={drawerView}
               events={drawerEvents}
               request={req}
-              state={mark.state}
+              state={state}
               end={mark.end}
               waiting={mark.waiting}
               mainLog={mainLog}
@@ -704,14 +727,16 @@ export function Office(props: {
             onKeyUp={() => engine.current?.r.rush(false)}
           />
         </div>
-        <span className="of-clock">
+        <span className={spansDays ? "of-clock days" : "of-clock"}>
           {spansDays && `${dayOf(iso)} `}
           {clockOf(iso)}
           {following
             ? live
               ? " · now"
-              : " · end"
-            : ` · ${span(END - tNow)} before ${live ? "now" : "end"}`}
+              : open
+                ? " · latest"
+                : " · end"
+            : ` · ${span(END - tNow)} earlier`}
         </span>
         <label className="of-speed">
           <span className="sr-only">Replay speed</span>
@@ -735,9 +760,15 @@ export function Office(props: {
             setPlaying(false);
             seek(END);
           }}
-          aria-label={live ? "Follow the session live" : "Jump to the end"}
+          aria-label={
+            live
+              ? "Follow the session live"
+              : open
+                ? "Jump to the latest moment"
+                : "Jump to the end"
+          }
         >
-          {live ? "Live" : "End"}
+          {live ? "Live" : open ? "Latest" : "End"}
         </button>
         <div className="of-legend">
           <span className="of-lg">

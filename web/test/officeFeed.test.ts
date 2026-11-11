@@ -7,6 +7,7 @@ import {
   fileLogOf,
   mainLogOf,
 } from "../src/office/feed";
+import { cleanPrompt } from "../src/session";
 
 let n = 0;
 const ev = (
@@ -148,5 +149,15 @@ describe("actionText", () => {
       "Searching the code",
     ]);
     expect(log.size).toBe(1);
+  });
+});
+
+describe("a message from another session", () => {
+  it("reads as words, not its tag", () => {
+    expect(
+      cleanPrompt(
+        '<cross-session-message from="uds:abc">Status please</cross-session-message>',
+      ),
+    ).toBe("(message from another session) Status please");
   });
 });

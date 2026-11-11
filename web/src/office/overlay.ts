@@ -555,8 +555,9 @@ export function createOverlay(
       out.push({
         key: "away",
         cls: "banner",
+        // On the floor under the last row of desks, so no plate is covered.
         x: 13 * T,
-        y: 14 * T,
+        y: 18.4 * T,
         html: `${scene.activeN > scene.request.n ? `Claude has moved on to request ${scene.activeN}.` : `Claude is still at work on request ${scene.activeN}.`} This floor is how request ${scene.request.n} stands.<button type="button">Go to request ${scene.activeN}</button>`,
         // The whole banner takes the click, its button included: back to the floor Claude is on.
         open: `req:${scene.jobs[scene.activeN - 1]?.id ?? ""}`,

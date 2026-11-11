@@ -25,35 +25,8 @@ import {
   type Waiting,
 } from "../session";
 import { clock, duration, helperLine, verdictOf } from "../story";
+import { DRAWER_TABS, type DrawerState } from "./drawerState";
 import type { MainEntry } from "./scene";
-
-export const DRAWER_TABS = [
-  ["story", "Story"],
-  ["tasks", "Tasks"],
-  ["flow", "Flow"],
-  ["files", "Files"],
-  ["helpers", "Helpers"],
-  ["requests", "Requests"],
-] as const;
-export type DrawerTab = (typeof DRAWER_TABS)[number][0];
-
-/** What the drawer shows: a tab, or a close-up of a thing in the room (`agent:id`, `task:id`, ...). */
-export interface DrawerState {
-  tab: DrawerTab;
-  item?: string | undefined;
-  /** On the Tasks tab: the phase to bring into view. */
-  phase?: string | undefined;
-}
-
-/** A thing in the room as the tab that tells its story; the rest open a close-up. */
-export function drawerFor(key: string): DrawerState {
-  const [kind] = key.split(":");
-  if (kind === "phase") return { tab: "tasks", phase: key.slice(6) };
-  if (kind === "archive") return { tab: "files" };
-  if (kind === "jobs") return { tab: "requests" };
-  if (kind === "claude") return { tab: "story" };
-  return { tab: "story", item: key };
-}
 
 /** Redrawn only when what it shows changes: the room repaints far more often. */
 export const Drawer = memo(DrawerBody);
@@ -325,6 +298,7 @@ function CloseUp(
     );
   }
   if (kind === "terminal") return <Terminal {...props} />;
+  if (kind === "claude") return <ClaudeSteps {...props} />;
   return <p className="muted">Nothing to show for this yet.</p>;
 }
 
@@ -364,10 +338,10 @@ function HelperCloseUp(props: {
         <p>
           <button
             type="button"
-            className="link"
+            className="of-link"
             onClick={() => props.onOpenPart(part)}
           >
-            Open its task
+            Open its task ›
           </button>
         </p>
       )}
@@ -502,3 +476,53 @@ const STATE_WORD: Partial<Record<string, [string, string]>> = {
   "left-open": ["plain", "Left open"],
   failed: ["bad", "Failed"],
 };
+
+/** What a main-log entry did, in words. */
+function stepWords(e: MainEntry): string {
+  if (e.k === "prompt") return "Read your message";
+  if (e.k === "report") return "Read a helper's report";
+  if (e.k === "stop") return "Ended its turn";
+  if (e.tool === "Agent")
+    return `Briefed a helper: ${e.desc ?? e.label ?? ""}`.trim();
+  if (e.tool === "SendMessage")
+    return `Wrote to a helper: ${e.label ?? ""}`.trim();
+  if (e.tool === "murmur:narrate")
+    return `Noted on the board: ${e.label ?? ""}`.trim();
+  if (e.tool === "murmur:map") return "Drew up the plan";
+  return e.label ?? e.tool ?? "A step";
+}
+
+/** Claude itself: each of its own steps on this request, newest first. */
+function ClaudeSteps(props: Parameters<typeof DrawerBody>[0]) {
+  const { request: req, view, mainLog, t, following } = props;
+  const next = view.requests[view.requests.indexOf(req) + 1]?.startedAt;
+  const steps = mainLog
+    .filter(
+      (e) =>
+        e.t >= req.startedAt &&
+        (following || e.t <= t) &&
+        (!next || e.t < next),
+    )
+    .reverse();
+  return (
+    <section className="of-card">
+      <p className="of-kicker">Claude</p>
+      <h2>What Claude did on this request</h2>
+      {steps.length ? (
+        <ol className="of-runs">
+          {steps.slice(0, 80).map((e) => (
+            <li key={`${e.t}|${e.k}|${e.tool ?? ""}|${e.label ?? ""}`}>
+              <span className="of-when">{clock(e.t)}</span>
+              <span>{stepWords(e)}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="muted">Nothing yet on this request.</p>
+      )}
+      {steps.length > 80 && (
+        <p className="muted">And {steps.length - 80} earlier steps.</p>
+      )}
+    </section>
+  );
+}
