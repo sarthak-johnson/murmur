@@ -2372,6 +2372,12 @@ a.helper:focus-visible {
   color: var(--t1);
   font: 400 16px / 26px var(--font-ui);
 }
+.step-why {
+  max-width: 640px;
+  margin: 2px 0 0;
+  color: var(--t3);
+  font: 400 15px / 24px var(--font-ui);
+}
 .step-lead + .step-text {
   margin-top: 6px;
   color: var(--t2);
