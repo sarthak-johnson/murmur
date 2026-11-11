@@ -58,6 +58,8 @@ export function mainLogOf(events: MurmurEvent[]): MainEntry[] {
 
 export interface FileHit {
   t: string;
+  /** `t` in milliseconds. */
+  ms: number;
   path: string;
   /** The request whose files list it, for an edit. */
   req?: string;
@@ -75,7 +77,14 @@ export function fileLogOf(view: SessionView, events: MurmurEvent[]): FileHit[] {
     for (const f of touches)
       for (const id of f.eventIds) {
         const t = tsById.get(id);
-        if (t) out.push({ t, path: f.path, req: r.id, kind: "edit" });
+        if (t)
+          out.push({
+            t,
+            ms: Date.parse(t),
+            path: f.path,
+            req: r.id,
+            kind: "edit",
+          });
       }
   }
   for (const e of events) {
@@ -83,12 +92,29 @@ export function fileLogOf(view: SessionView, events: MurmurEvent[]): FileHit[] {
     const path = str(obj(p.tool_input).file_path);
     if (e.hook !== "PreToolUse" || p.tool_name !== "Read" || !path) continue;
     // Core keeps edited paths relative to the project; a read names the same binder.
-    const hit: FileHit = { t: e.ts, path: relPath(path, e.cwd), kind: "read" };
+    const hit: FileHit = {
+      t: e.ts,
+      ms: Date.parse(e.ts),
+      path: relPath(path, e.cwd),
+      kind: "read",
+    };
     const agent = str(p.agent_id);
     if (agent) hit.agent = agent;
     out.push(hit);
   }
-  return out.sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
+  return out.sort((a, b) => a.ms - b.ms);
+}
+
+/** The index of the first hit after `ms` (hits are sorted by time). */
+export function firstAfter(hits: readonly FileHit[], ms: number): number {
+  let lo = 0;
+  let hi = hits.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((hits[mid] as FileHit).ms <= ms) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 /** The helpers whose own file list has a file, per request: who lights a binder. */
@@ -135,7 +161,9 @@ export function actionText(
   const arg = w
     .slice(1)
     .reverse()
-    .find((x) => FILE_ARG.test(x.replace(/["']/g, "")) && !/dev\/null|\*/.test(x));
+    .find(
+      (x) => FILE_ARG.test(x.replace(/["']/g, "")) && !/dev\/null|\*/.test(x),
+    );
   const named = base(arg);
   const into = /(?:^|\s)>>?\s*([^\s>]+\.[a-z]{1,5})/i.exec(c);
   if (cmd === "cat" && into) return `Writing ${base(into[1])}`;
@@ -197,7 +225,9 @@ export function logsOf(
     doing: (id, t) => {
       const list = doingLog.get(id);
       const i = list ? latestAt(list, t) : -1;
-      return (i >= 0 ? list?.[i]?.text : undefined) ?? agents.get(id)?.doing?.text;
+      return (
+        (i >= 0 ? list?.[i]?.text : undefined) ?? agents.get(id)?.doing?.text
+      );
     },
     info: (id) => ({ model: models.get(id) }),
   };
@@ -229,12 +259,49 @@ export function countAt(events: MurmurEvent[], iso: string): number {
   return lo;
 }
 
-type Reply = { n: number; view: SessionView };
+/** The worker's protocol: events in (whole, or spliced in `from` an index), views out. */
+export type ToWorker =
+  | { gen: number; from: number; events: MurmurEvent[] }
+  | { gen: number; n: number };
+export type FromWorker =
+  | { gen: number; n: number; view: SessionView }
+  | { gen: number; n: number; error: string };
+
+/** The first index where two sorted event lists differ (the length of their common start). */
+function sameUntil(a: readonly MurmurEvent[], b: readonly MurmurEvent[]) {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a[i]?.id === b[i]?.id) i++;
+  return i;
+}
+
+const KEEP = 8;
+
+interface WorkerState {
+  worker: Worker;
+  /** Bumped on every change of events; replies of an older one are dropped. */
+  gen: number;
+  sent: MurmurEvent[];
+  busy: boolean;
+  want: number;
+  cache: Map<number, SessionView>;
+}
+type Show = (v: { n: number; view: SessionView }) => void;
+
+/** Asks for the wanted moment unless the worker is busy (its reply asks again) or has it. */
+function ask(st: WorkerState, show: Show) {
+  if (st.busy || st.want < 0 || st.want > st.sent.length) return;
+  const hit = st.cache.get(st.want);
+  if (hit) return show({ n: st.want, view: hit });
+  st.busy = true;
+  st.worker.postMessage({ gen: st.gen, n: st.want } satisfies ToWorker);
+}
 
 /**
  * The session as it stood after its first `n` events. `n` at the end is the live view, free;
  * any earlier moment is reduced in a worker (a long session takes a few hundred ms), the
- * last answer shown meanwhile, so scrubbing never blocks the room's animation.
+ * last answer shown meanwhile, so scrubbing never blocks the room's animation. Without a
+ * worker (tests, a browser that refuses one, a worker that failed) it reduces here.
  */
 export function useViewAt(
   events: MurmurEvent[],
@@ -242,74 +309,79 @@ export function useViewAt(
   n: number,
 ): SessionView | null {
   const atEnd = n >= events.length;
-  const [reply, setReply] = useState<Reply | null>(null);
-  const worker = useRef<Worker | null>(null);
-  const sent = useRef<{ len: number; lastId: string | undefined }>({
-    len: 0,
-    lastId: undefined,
-  });
-  const busy = useRef(false);
-  const want = useRef(n);
-  want.current = n;
-  const cache = useRef(new Map<number, SessionView>());
-  const askRef = useRef<((k: number) => void) | null>(null);
-
-  // No workers (tests, old browsers): reduce here.
-  const noWorker = typeof Worker === "undefined";
-  const inline = useMemo(
-    () => (noWorker && !atEnd ? reduce(events.slice(0, n)) : null),
-    [noWorker, atEnd, events, n],
+  const [shown, setShown] = useState<{ n: number; view: SessionView } | null>(
+    null,
   );
+  const [failed, setFailed] = useState(typeof Worker === "undefined");
+  const w = useRef<WorkerState | null>(null);
 
   useEffect(() => {
-    if (noWorker) return;
-    const w = new Worker(new URL("./view.worker.ts", import.meta.url), {
-      type: "module",
-    });
-    worker.current = w;
-    sent.current = { len: 0, lastId: undefined };
-    w.onmessage = (m: MessageEvent<Reply>) => {
-      busy.current = false;
-      const c = cache.current;
-      c.set(m.data.n, m.data.view);
-      // ponytail: a small FIFO of views; an LRU if replays jump around a lot.
-      if (c.size > 24) c.delete(c.keys().next().value as number);
-      setReply(m.data);
-      if (want.current !== m.data.n) ask(want.current);
-    };
-    function ask(k: number) {
-      const hit = cache.current.get(k);
-      if (hit) return setReply({ n: k, view: hit });
-      if (busy.current) return;
-      busy.current = true;
-      w.postMessage({ n: k });
+    if (failed) return;
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL("./view.worker.ts", import.meta.url), {
+        type: "module",
+      });
+    } catch {
+      setFailed(true);
+      return;
     }
-    askRef.current = ask;
-    return () => {
-      w.terminate();
-      worker.current = null;
-      askRef.current = null;
-      busy.current = false;
-      cache.current.clear();
+    const st = {
+      worker,
+      gen: 0,
+      sent: [],
+      busy: false,
+      want: -1,
+      cache: new Map(),
     };
-  }, [noWorker]);
+    w.current = st;
+    worker.onmessage = (m: MessageEvent<FromWorker>) => {
+      st.busy = false;
+      const d = m.data;
+      if ("error" in d) return setFailed(true);
+      // A reply to events since replaced is dropped: the next ask goes out below.
+      if (d.gen === st.gen) {
+        st.cache.set(d.n, d.view);
+        if (st.cache.size > KEEP)
+          st.cache.delete(st.cache.keys().next().value as number);
+        if (d.n === st.want) setShown({ n: d.n, view: d.view });
+      }
+      ask(st, setShown);
+    };
+    worker.onerror = () => setFailed(true);
+    worker.onmessageerror = () => setFailed(true);
+    return () => {
+      worker.terminate();
+      w.current = null;
+    };
+  }, [failed]);
 
   useEffect(() => {
-    const w = worker.current;
-    if (!w || atEnd) return;
-    // Send only the events the worker lacks; a reordered stream resends them all.
-    const s = sent.current;
-    const same = s.len > 0 && events[s.len - 1]?.id === s.lastId;
-    if (!same || s.len > events.length) {
-      w.postMessage({ events, reset: true });
-      cache.current.clear();
-    } else if (s.len < events.length)
-      w.postMessage({ events: events.slice(s.len) });
-    sent.current = { len: events.length, lastId: events.at(-1)?.id };
-    askRef.current?.(n);
+    const st = w.current;
+    if (!st || atEnd) return;
+    // Only what changed goes over: a stream that slots an event in mid-list resends from it.
+    const from = sameUntil(st.sent, events);
+    if (from < events.length || from < st.sent.length) {
+      st.gen++;
+      st.worker.postMessage({
+        gen: st.gen,
+        from,
+        events: events.slice(from),
+      } satisfies ToWorker);
+      for (const k of [...st.cache.keys()]) if (k > from) st.cache.delete(k);
+      st.sent = events;
+    }
+    st.want = n;
+    ask(st, setShown);
   }, [events, n, atEnd]);
+
+  const inline = useMemo(
+    () => (failed && !atEnd ? reduce(events.slice(0, n)) : null),
+    [failed, atEnd, events, n],
+  );
 
   if (atEnd) return live;
   if (inline) return inline;
-  return reply?.view ?? live;
+  const hit = w.current?.cache.get(n);
+  return hit ?? shown?.view ?? live;
 }

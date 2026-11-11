@@ -11,7 +11,9 @@ import { Drawer, type DrawerState, drawerFor } from "./Drawer";
 import {
   countAt,
   doingLogOf,
+  type FileHit,
   fileLogOf,
+  firstAfter,
   logsOf,
   mainLogOf,
   modelsOf,
@@ -193,12 +195,26 @@ export function Office(props: {
     derived ??
     lastScene.current ??
     (deriveScene(view, view.requests.at(-1)?.id ?? "", iso, logs) as Scene);
-  const mark = req ? requestMark(viewT, req, eventsT) : null;
+  // The drawer reads one view: the moment's, or the live one when a stale moment lacks the request.
+  const drawerView = req && viewT.requests.includes(req) ? viewT : view;
+  const drawerEvents = drawerView === viewT ? eventsT : events;
+  const mark = useMemo(
+    () => (req ? requestMark(drawerView, req, drawerEvents) : null),
+    [drawerView, req, drawerEvents],
+  );
+  // Its clocks tick in 10 s steps, so a playing replay does not redraw it ten times a second.
+  const drawerT = new Date(Math.floor(tNow / 10_000) * 10_000).toISOString();
 
   // The drawer: open beside the room on a wide screen, over it on a narrow one.
   const [drawer, setDrawer] = useState<DrawerState | null>(() =>
     window.innerWidth >= 1800 ? { tab: "story" } : null,
   );
+  // Opened by a click (not on load): focus goes into it, and back when it closes.
+  const [focusKey, setFocusKey] = useState(0);
+  const openDrawer = useCallback((d: DrawerState) => {
+    setDrawer(d);
+    setFocusKey((k) => k + 1);
+  }, []);
   const [hover, setHover] = useState<string | null>(null);
   // A phone has no room beside the strip: the detail reads under it, the story first.
   const stage = useRef<HTMLElement>(null);
@@ -253,9 +269,9 @@ export function Office(props: {
         navigate(officePath(sessionId, newest ? undefined : id));
         return;
       }
-      setDrawer(drawerFor(key));
+      openDrawer(drawerFor(key));
     },
-    [sessionId, view],
+    [sessionId, view, openDrawer],
   );
   const open$ = useRef(openKey);
   open$.current = openKey;
@@ -310,18 +326,26 @@ export function Office(props: {
   // A new scene walks people to their new places; a jump (or a drag's big step) snaps.
   const prev = useRef<{ t: number; req: string } | null>(null);
   const animate$ = useRef(true);
+  const litFiles = useRef(new Set<string>());
   useEffect(() => {
     const e = engine.current;
     if (!e) return;
     const before = prev.current;
     const animate = !!before && before.req === reqId && animate$.current;
     e.r.update(scene, { animate });
-    // Binders light for files touched since the last scene, or the last 20 s after a jump.
-    const from = animate && before ? before.t : tNow - 20_000;
+    // Binders light once for each touch that has come in since the last scene: by touch, not
+    // by a time window, since a live touch reaches the browser after its own time has passed.
+    // A jump relights the last 20 s, older ones already fading.
+    if (!animate) litFiles.current.clear();
+    const lo =
+      animate && before ? Math.min(before.t, tNow - 20_000) : tNow - 20_000;
     const nowMs = performance.now();
-    for (const f of fileLog) {
-      const ft = Date.parse(f.t);
-      if (ft <= from || ft > tNow) continue;
+    for (let i = firstAfter(fileLog, lo); i < fileLog.length; i++) {
+      const f = fileLog[i] as FileHit;
+      if (f.ms > tNow) break;
+      const key = `${f.t}|${f.kind}|${f.path}|${f.agent ?? ""}`;
+      if (litFiles.current.has(key)) continue;
+      litFiles.current.add(key);
       const who = f.req
         ? (touchers.get(`${f.req}|${f.path}`) ?? [])
         : f.agent
@@ -331,7 +355,7 @@ export function Office(props: {
         who.find((id) =>
           scene.desks.some((d) => d.agent === id && d.status === "running"),
         ) ?? who[0];
-      const ago = animate ? 0 : ((tNow - ft) / 20_000) * 2600;
+      const ago = animate ? 0 : ((tNow - f.ms) / 20_000) * 2600;
       e.r.lightFile(f.path, nowMs - ago, agent);
     }
     prev.current = { t: tNow, req: reqId };
@@ -378,6 +402,12 @@ export function Office(props: {
     animate$.current = smooth;
     play$.current.t = ms;
     setAt(ms >= END ? null : ms);
+  };
+  /** To a request's start: the floor shows it, newest-following again if it was pinned. */
+  const goTo = (startedAt: string) => {
+    setPlaying(false);
+    seek(Date.parse(startedAt) + 1000);
+    if (props.pinnedId) navigate(officePath(sessionId));
   };
   const togglePlay = () => {
     if (playing) return setPlaying(false);
@@ -450,8 +480,7 @@ export function Office(props: {
         <button
           type="button"
           className="of-req"
-          onClick={() => setDrawer({ tab: "journey" })}
-          aria-haspopup="dialog"
+          onClick={() => openDrawer({ tab: "journey" })}
           title="Every request in this session"
         >
           <span className="of-req-n">
@@ -481,7 +510,7 @@ export function Office(props: {
           <button
             type="button"
             className="of-details"
-            onClick={() => setDrawer({ tab: "story" })}
+            onClick={() => openDrawer({ tab: "story" })}
           >
             Details
           </button>
@@ -517,18 +546,19 @@ export function Office(props: {
           <div className={dockLeft ? "of-dock left" : "of-dock"}>
             <Drawer
               sessionId={sessionId}
-              view={viewT}
-              events={eventsT}
+              view={drawerView}
+              events={drawerEvents}
               request={req}
               state={mark.state}
               end={mark.end}
               waiting={mark.waiting}
               mainLog={mainLog}
-              t={iso}
+              t={drawerT}
               following={following}
               models={models}
               drawer={shown}
               docked={docked}
+              focusKey={focusKey}
               onChange={setDrawer}
             />
           </div>
@@ -545,7 +575,27 @@ export function Office(props: {
           <span className="of-play-icon" aria-hidden="true" />
         </button>
         <div className="of-track">
-          <div className="of-ticks">
+          {/* Requests close in time overlap, so a click on the strip takes the nearest one;
+              each tick is still its own button for the keyboard. */}
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: the ticks inside are the keyboard's way */}
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: as above */}
+          <div
+            className="of-ticks"
+            title="Requests: click to go to one"
+            onClick={(e) => {
+              const box = e.currentTarget.getBoundingClientRect();
+              const at =
+                START +
+                ((e.clientX - box.left) / (box.width || 1)) * (END - START);
+              const near = view.requests.reduce((a, b) =>
+                Math.abs(Date.parse(b.startedAt) - at) <
+                Math.abs(Date.parse(a.startedAt) - at)
+                  ? b
+                  : a,
+              );
+              goTo(near.startedAt);
+            }}
+          >
             {view.requests.map((r, i) => (
               <button
                 key={r.id}
@@ -557,12 +607,10 @@ export function Office(props: {
                 style={{
                   left: `${((Date.parse(r.startedAt) - START) / (END - START || 1)) * 100}%`,
                 }}
-                title={`Request ${i + 1}`}
                 aria-label={`Go to request ${i + 1}`}
-                onClick={() => {
-                  setPlaying(false);
-                  seek(Date.parse(r.startedAt) + 1000);
-                  if (props.pinnedId) navigate(officePath(sessionId));
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goTo(r.startedAt);
                 }}
               />
             ))}

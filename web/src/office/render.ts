@@ -109,6 +109,19 @@ export function boardLayout(
   scene: Pick<Scene, "columns">,
   s: number,
 ): PlacedColumn[] {
+  // Asked for several times a frame, and it measures text: kept per scene and scale.
+  const kept = layouts.get(scene.columns)?.get(s);
+  if (kept) return kept;
+  const made = layOut(scene, s);
+  const byScale =
+    layouts.get(scene.columns) ?? new Map<number, PlacedColumn[]>();
+  byScale.set(s, made);
+  layouts.set(scene.columns, byScale);
+  return made;
+}
+const layouts = new WeakMap<Scene["columns"], Map<number, PlacedColumn[]>>();
+
+function layOut(scene: Pick<Scene, "columns">, s: number): PlacedColumn[] {
   const cols = boardColumns(scene.columns.length || 1);
   const full = BOARD.px.y + BOARD.px.h - 2;
   return scene.columns.flatMap((c, i) => {

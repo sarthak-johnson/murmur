@@ -954,6 +954,7 @@
   margin: 0;
 }
 .of-ticks {
+  cursor: pointer;
   position: absolute;
   top: 0;
   left: 8px;
@@ -961,6 +962,7 @@
   height: 14px;
 }
 .of-track .of-ticks button {
+  pointer-events: none;
   position: absolute;
   transform: translateX(-50%);
   width: 12px;
@@ -1152,4 +1154,7 @@
 /* The phone pins the question above the strip instead. */
 .office.phone .of-overlay .bubble.wait {
   display: none;
+}
+.of-drawer:focus {
+  outline: none;
 }

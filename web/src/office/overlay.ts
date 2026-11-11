@@ -111,14 +111,27 @@ export function createOverlay(
   const els = new Map<string, Placed>();
   const born = new Map<string, number>();
   let s = 4;
+  // The element pointed at: if it goes (a helper finishes), the pointing ends with it.
+  let pointed: Placed | null = null;
 
   function make(it: Item): Placed {
     const el = document.createElement(it.button ? "button" : "div");
     const p: Placed = { el };
     if (el instanceof HTMLButtonElement) {
       el.type = "button";
-      el.addEventListener("mouseenter", () => onHover(p.ring ?? null));
-      el.addEventListener("mouseleave", () => onHover(null));
+      const enter = () => {
+        pointed = p;
+        onHover(p.ring ?? null);
+      };
+      const leave = () => {
+        if (pointed === p) pointed = null;
+        onHover(null);
+      };
+      el.addEventListener("mouseenter", enter);
+      el.addEventListener("mouseleave", leave);
+      // The keyboard points too: a focused desk lights its cables as a hovered one does.
+      el.addEventListener("focus", enter);
+      el.addEventListener("blur", leave);
     }
     el.addEventListener("click", (e) => {
       if (!p.open) return;
@@ -166,6 +179,10 @@ export function createOverlay(
     }
     for (const [k, p] of els) {
       if (seen.has(k)) continue;
+      if (pointed === p) {
+        pointed = null;
+        onHover(null);
+      }
       p.el.remove();
       els.delete(k);
       born.delete(k);
@@ -527,7 +544,9 @@ export function createOverlay(
         cls: "banner",
         x: 13 * T,
         y: 14 * T,
-        html: `Claude has moved on to request ${scene.jobs.length}. This floor is how request ${scene.request.n} stands.<button type="button" data-go="latest">Go to request ${scene.jobs.length}</button>`,
+        html: `Claude has moved on to request ${scene.jobs.length}. This floor is how request ${scene.request.n} stands.<button type="button">Go to request ${scene.jobs.length}</button>`,
+        // The whole banner takes the click, its button included: back to the newest floor.
+        open: `req:${scene.jobs.at(-1)?.id ?? ""}`,
       });
     }
     return out;
@@ -547,6 +566,7 @@ export function createOverlay(
       root.classList.toggle("waitdim", !!scene.waiting);
     },
     destroy() {
+      pointed = null;
       for (const p of els.values()) p.el.remove();
       els.clear();
       born.clear();

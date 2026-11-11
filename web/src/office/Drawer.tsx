@@ -7,7 +7,7 @@ import type {
   RequestView,
   SessionView,
 } from "@murmur/core";
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { PathText } from "../files";
 import { FlowBoard } from "../flow/FlowBoard";
 import { Assumptions } from "../live/Assumptions";
@@ -49,7 +49,10 @@ export function drawerFor(key: string): DrawerState {
   return { tab: "story", item: key };
 }
 
-export function Drawer(props: {
+/** Redrawn only when what it shows changes: the room repaints far more often. */
+export const Drawer = memo(DrawerBody);
+
+function DrawerBody(props: {
   sessionId: string;
   view: SessionView;
   events: MurmurEvent[];
@@ -65,6 +68,8 @@ export function Drawer(props: {
   models: Map<string, string>;
   drawer: DrawerState;
   docked: boolean;
+  /** Bumped each time a click opens it: focus then moves into it. */
+  focusKey: number;
   onChange(d: DrawerState | null): void;
 }) {
   const { sessionId, view, events, request: req, drawer, onChange } = props;
@@ -72,6 +77,22 @@ export function Drawer(props: {
   const done = state === "done";
   const n = view.requests.indexOf(req) + 1;
   const body = useRef<HTMLDivElement>(null);
+  const aside = useRef<HTMLElement>(null);
+  const opener = useRef<Element | null>(null);
+  useEffect(() => {
+    if (!props.focusKey) return;
+    if (!aside.current?.contains(document.activeElement))
+      opener.current = document.activeElement;
+    aside.current?.focus({ preventScroll: true });
+  }, [props.focusKey]);
+  // Closed: focus goes back to what opened it, if it is still there.
+  useEffect(
+    () => () => {
+      const el = opener.current;
+      if (el instanceof HTMLElement && el.isConnected) el.focus();
+    },
+    [],
+  );
   // A new thing or tab starts at its top.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on what is shown changing
   useEffect(() => {
@@ -82,6 +103,8 @@ export function Drawer(props: {
 
   return (
     <aside
+      ref={aside}
+      tabIndex={-1}
       className={props.docked ? "of-drawer docked" : "of-drawer"}
       aria-label="Details"
     >
@@ -167,7 +190,7 @@ export function Drawer(props: {
 
 /** A close-up of one thing in the room. */
 function CloseUp(
-  props: Parameters<typeof Drawer>[0] & {
+  props: Parameters<typeof DrawerBody>[0] & {
     item: string;
     onOpenPart(partId: string): void;
   },
@@ -314,7 +337,7 @@ const ROLE: Record<NonNullable<AgentView["role"]>, string> = {
 };
 
 /** The terminal: the commands Claude itself ran for this request, newest first. */
-function Terminal(props: Parameters<typeof Drawer>[0]) {
+function Terminal(props: Parameters<typeof DrawerBody>[0]) {
   const { request: req, view, mainLog, t } = props;
   const next = view.requests[view.requests.indexOf(req) + 1]?.startedAt;
   const runs = mainLog
