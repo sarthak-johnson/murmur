@@ -20966,7 +20966,7 @@ function applyAgents(req, events, { before, narrated }, known) {
   return started;
 }
 var PLAIN = new Set(
-  "build implement write add draft create make port fix review rereview recheck check research investigate explore find audit plan update run test the and for with from into that this its all new more page screen file code app task".split(
+  "build implement write add draft create make port fix review rereview recheck check research investigate explore find audit plan update run test the and for with from into that this its all new more page screen file code app task phase".split(
     " "
   )
 );
@@ -20990,10 +20990,23 @@ function matchScore(description, title2) {
   const n = numbersOf(title2);
   return shared + [...numbersOf(description)].filter((x) => n.has(x)).length;
 }
+function coverage(description, title2) {
+  const words = wordsOf(description);
+  const own2 = wordsOf(title2);
+  return own2.size ? [...own2].filter((w) => words.has(w)).length / own2.size : 0;
+}
 function byWords(description, items) {
   const scores = items.map((it) => matchScore(description, it.title));
   const top = Math.max(0, ...scores);
-  const tied = top ? items.filter((_, i) => scores[i] === top) : [];
+  let tied = top ? items.filter((_, i) => scores[i] === top) : [];
+  const onePart = tied.every(
+    (it) => it.part !== void 0 && it.part === tied[0]?.part
+  );
+  if (tied.length > 1 && !onePart) {
+    const cover = tied.map((it) => coverage(description, it.title));
+    const most = Math.max(...cover);
+    tied = tied.filter((_, i) => cover[i] === most);
+  }
   return tied.length === 1 ? { best: tied[0], tied } : { tied };
 }
 function tiesOf(req, description, on) {
@@ -21112,6 +21125,7 @@ function inferHistory(reqs, events, agents, started) {
       if (agentId) {
         addOnce(b.part.agents, agentId);
         owner.set(agentId, b.part);
+        if (agent && !agent.part) agent.part = b.part.id;
       }
     }
     return out;
@@ -21152,7 +21166,8 @@ function inferHistory(reqs, events, agents, started) {
       title: part.title,
       part: part.id,
       status: lastFailed ? "failed" : part.status,
-      agents: []
+      agents: [...part.agents]
+      // its helpers, as `TaskView.agents` says
     }));
     req.phases = [
       {
