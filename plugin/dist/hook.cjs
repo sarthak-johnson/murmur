@@ -21928,7 +21928,8 @@ function stateOf(req, events, live2, ctx) {
   );
   if (!ctx.later && !ended || req.agents.some(ctx.live)) return "running";
   const tasks = req.phases.flatMap((ph) => ph.tasks);
-  if (ctx.later && tasks.some((t) => t.status !== "done")) return "left-open";
+  const open2 = tasks.some((t) => t.status !== "done");
+  if (ctx.later && open2) return "left-open";
   if (last?.hook === "StopFailure") return "failed";
   const call = events.findLast(
     (e) => e.hook === "PreToolUse" && e.payload.tool_name === "Agent"
@@ -21944,13 +21945,14 @@ function stateOf(req, events, live2, ctx) {
     report && /failed|killed/.test(report.status) ? report.ts : void 0,
     step && (step.n.step?.status === "failed" || isFailed(step.n.taskStatus)) ? step.e.ts : void 0
   ].filter((t) => !!t).sort().at(-1);
-  if (!failedAt) return "done";
+  const over = open2 ? "left-open" : "done";
+  if (!failedAt) return over;
   const passed = live2.some(
     (x) => x.e.ts > failedAt && (x.n.step?.status === "done" || x.n.taskStatus === "done")
   ) || req.agents.some(
     (a) => a.report && a.report.ts > failedAt && a.report.status === "completed"
   );
-  return passed ? "done" : "failed";
+  return passed ? over : "failed";
 }
 var OUTCOME_MAX = 240;
 function outcomeOf(msgs) {

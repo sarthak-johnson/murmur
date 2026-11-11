@@ -330,6 +330,17 @@ describe("request state", () => {
     expect(b?.state).toBe("running");
   });
 
+  test("left-open: the newest request ended with plan tasks not done", () => {
+    const [req] = reduce([
+      prompt(0, "a"),
+      mapCall(1, MAP),
+      done(2, "1.1"),
+      said(3, "Still waiting on the four planners."),
+      at(4, "Stop"),
+    ]).requests;
+    expect(req?.state).toBe("left-open");
+  });
+
   test("done: a refresh queued after the Stop does not reopen it", () => {
     const refresh = (n: number, input: unknown): MurmurEvent => {
       const e = narrateCall(n, input);
@@ -341,6 +352,8 @@ describe("request state", () => {
       said(2, "Done."),
       at(3, "Stop"),
       refresh(9, note({ task: "1.1", taskStatus: "done" })),
+      refresh(10, note({ task: "2.1", taskStatus: "done" })),
+      refresh(11, note({ task: "2.2", taskStatus: "done" })),
     ]).requests;
     expect(req?.state).toBe("done");
   });
