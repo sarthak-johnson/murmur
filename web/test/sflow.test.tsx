@@ -185,16 +185,21 @@ afterEach(() => {
 });
 
 describe("session tabs", () => {
-  it("Journey and Flow sit under the title, each a link, the shown one current", () => {
+  it("Journey, Flow and Office sit under the title, each a link, the shown one current", () => {
     show();
     const tabs = screen.getByRole("navigation", {
       name: "Views of this session",
     });
     const links = [...tabs.querySelectorAll("a")];
-    expect(links.map((a) => a.textContent)).toEqual(["Journey", "Flow"]);
+    expect(links.map((a) => a.textContent)).toEqual([
+      "Journey",
+      "Flow",
+      "Office",
+    ]);
     expect(links.map((a) => a.getAttribute("href"))).toEqual([
       "/s/s1",
       "/s/s1/flow",
+      "/s/s1/office",
     ]);
     expect(links[1]?.getAttribute("aria-current")).toBe("page");
     expect(links[0]?.getAttribute("aria-current")).toBeNull();

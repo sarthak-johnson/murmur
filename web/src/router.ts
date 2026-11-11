@@ -14,6 +14,8 @@ export type Route =
   | { name: "session"; sessionId: string; tab: SessionTab }
   | { name: "request"; sessionId: string; requestId: string; tab: Tab }
   | { name: "part"; sessionId: string; requestId: string; partId: string }
+  /** The office: the session drawn as a pixel room, following its newest request or one pinned. */
+  | { name: "office"; sessionId: string; requestId?: string }
   | { name: "notFound" };
 
 const isTab = (s: string | undefined): s is Tab =>
@@ -37,6 +39,10 @@ export function matchRoute(path: string): Route {
       return { name: "session", sessionId: b, tab: "journey" };
     if (c === "flow" && seg.length === 3)
       return { name: "session", sessionId: b, tab: "flow" };
+    if (c === "office" && seg.length === 3)
+      return { name: "office", sessionId: b };
+    if (c === "r" && d && e === "office" && seg.length === 5)
+      return { name: "office", sessionId: b, requestId: d };
     if (c === "r" && d && seg.length === 4)
       return { name: "request", sessionId: b, requestId: d, tab: "story" };
     if (c === "r" && d && seg.length === 5 && isTab(e))
@@ -59,6 +65,12 @@ export function requestPath(sessionId: string, requestId: string, tab?: Tab) {
   const base = `/s/${enc(sessionId)}/r/${enc(requestId)}`;
   return tab && tab !== "story" ? `${base}/${tab}` : base;
 }
+
+/** The office, following the newest request (`/s/:sid/office`) or pinned to one. */
+export const officePath = (sessionId: string, requestId?: string) =>
+  requestId
+    ? `/s/${enc(sessionId)}/r/${enc(requestId)}/office`
+    : `/s/${enc(sessionId)}/office`;
 
 /** A task's page. */
 export const partPath = (

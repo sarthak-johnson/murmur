@@ -653,12 +653,15 @@ describe("the request's tabs", () => {
       ["Flow", "/s/s1/r/r3/flow"],
       ["Files", "/s/s1/r/r3/files"],
       ["Helpers", "/s/s1/r/r3/helpers"],
+      // The office is a page of its own, never the current tab here.
+      ["Office", "/s/s1/r/r3/office"],
     ]);
     expect(links.map((l) => l.getAttribute("aria-current"))).toEqual([
       null,
       null,
       null,
       "page",
+      null,
       null,
     ]);
   });

@@ -203,7 +203,14 @@ const rows = () => [...list().querySelectorAll("a.tk-row")] as HTMLElement[];
 describe("the Tasks tab", () => {
   it("sits second, with its own URL, current when shown", () => {
     show(guide(), "tasks");
-    expect(tabs()).toEqual(["Story", "Tasks", "Flow", "Files", "Helpers"]);
+    expect(tabs()).toEqual([
+      "Story",
+      "Tasks",
+      "Flow",
+      "Files",
+      "Helpers",
+      "Office",
+    ]);
     const link = screen.getByRole("link", { name: "Tasks" });
     expect(link.getAttribute("href")).toBe("/s/s1/r/r1/tasks");
     expect(link.getAttribute("aria-current")).toBe("page");
@@ -211,7 +218,7 @@ describe("the Tasks tab", () => {
 
   it("is not there for a request with no plan and no parts", () => {
     show(guide({ phases: [], parts: [] }));
-    expect(tabs()).toEqual(["Story", "Flow", "Files", "Helpers"]);
+    expect(tabs()).toEqual(["Story", "Flow", "Files", "Helpers", "Office"]);
   });
 
   it("lists the tasks by phase, in the plan's order, each numbered in the plan", () => {
