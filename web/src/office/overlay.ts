@@ -294,6 +294,19 @@ export function createOverlay(
     }
 
     const cols = boardLayout(scene, s);
+    if (!scene.columns.length)
+      out.push({
+        key: "board-empty",
+        cls: "board-empty",
+        x: BOARD.px.x + 4,
+        y: BOARD.px.y + 4,
+        w: BOARD.px.w - 8,
+        h: BOARD.px.h - 8,
+        html:
+          scene.request.state === "running" || scene.request.state === "waiting"
+            ? "No plan yet. Claude is working without one."
+            : "No plan on this request: Claude did it in one go.",
+      });
     // One style for every column head: the longest form that fits them all.
     const size = s >= 3 ? 15 : 13;
     const pad = s >= 3 ? 12 : 8;
@@ -544,9 +557,9 @@ export function createOverlay(
         cls: "banner",
         x: 13 * T,
         y: 14 * T,
-        html: `Claude has moved on to request ${scene.jobs.length}. This floor is how request ${scene.request.n} stands.<button type="button">Go to request ${scene.jobs.length}</button>`,
-        // The whole banner takes the click, its button included: back to the newest floor.
-        open: `req:${scene.jobs.at(-1)?.id ?? ""}`,
+        html: `Claude has moved on to request ${scene.activeN}. This floor is how request ${scene.request.n} stands.<button type="button">Go to request ${scene.activeN}</button>`,
+        // The whole banner takes the click, its button included: back to the floor Claude is on.
+        open: `req:${scene.jobs[scene.activeN - 1]?.id ?? ""}`,
       });
     }
     return out;

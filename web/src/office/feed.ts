@@ -279,12 +279,48 @@ const KEEP = 8;
 
 interface WorkerState {
   worker: Worker;
-  /** Bumped on every change of events; replies of an older one are dropped. */
+  /** Bumped when events already sent change; replies of an older one are dropped. */
   gen: number;
+  /** The events the worker has: a start of `target`, sent a chunk at a time. */
   sent: MurmurEvent[];
+  target: MurmurEvent[];
+  pumping: boolean;
   busy: boolean;
   want: number;
   cache: Map<number, SessionView>;
+}
+
+/** Events go over in chunks between frames: a long session's 27 MB at once froze the page. */
+const CHUNK = 400;
+
+/** Brings the worker's events up to `target`, a chunk per task, then asks for the moment. */
+function pump(st: WorkerState, show: Show) {
+  if (st.pumping) return;
+  st.pumping = true;
+  const step = () => {
+    const tgt = st.target;
+    const from = sameUntil(st.sent, tgt);
+    // Events already sent changed (one slotted in mid-list): the worker drops them from there.
+    if (from < st.sent.length) {
+      st.gen++;
+      st.busy = false;
+      st.sent = st.sent.slice(0, from);
+      for (const k of [...st.cache.keys()]) if (k > from) st.cache.delete(k);
+    }
+    const end = Math.min(tgt.length, from + CHUNK);
+    if (end > from || from < st.sent.length) {
+      st.worker.postMessage({
+        gen: st.gen,
+        from,
+        events: tgt.slice(from, end),
+      } satisfies ToWorker);
+      st.sent = tgt.slice(0, end);
+    }
+    ask(st, show);
+    if (st.sent.length < st.target.length) setTimeout(step, 0);
+    else st.pumping = false;
+  };
+  step();
 }
 type Show = (v: { n: number; view: SessionView }) => void;
 
@@ -326,10 +362,12 @@ export function useViewAt(
       setFailed(true);
       return;
     }
-    const st = {
+    const st: WorkerState = {
       worker,
       gen: 0,
       sent: [],
+      target: [],
+      pumping: false,
       busy: false,
       want: -1,
       cache: new Map(),
@@ -356,23 +394,14 @@ export function useViewAt(
     };
   }, [failed]);
 
+  // The worker keeps up with the events from the start, live too, so the first scrub or play
+  // finds them there; only what changed goes over.
   useEffect(() => {
     const st = w.current;
-    if (!st || atEnd) return;
-    // Only what changed goes over: a stream that slots an event in mid-list resends from it.
-    const from = sameUntil(st.sent, events);
-    if (from < events.length || from < st.sent.length) {
-      st.gen++;
-      st.worker.postMessage({
-        gen: st.gen,
-        from,
-        events: events.slice(from),
-      } satisfies ToWorker);
-      for (const k of [...st.cache.keys()]) if (k > from) st.cache.delete(k);
-      st.sent = events;
-    }
-    st.want = n;
-    ask(st, setShown);
+    if (!st) return;
+    st.target = events;
+    st.want = atEnd ? -1 : n;
+    pump(st, setShown);
   }, [events, n, atEnd]);
 
   const inline = useMemo(

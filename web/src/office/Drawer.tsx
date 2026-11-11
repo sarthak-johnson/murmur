@@ -12,14 +12,18 @@ import { PathText } from "../files";
 import { FlowBoard } from "../flow/FlowBoard";
 import { Assumptions } from "../live/Assumptions";
 import { RequestBrief } from "../live/Brief";
-import { Journey } from "../live/Journey";
 import { Story } from "../live/Story";
 import { FilesTab, HelpersTab, helperPart } from "../live/Tabs";
 import { TasksTab } from "../live/Tasks";
 import { Markdown } from "../markdown";
 import { PartDetail } from "../part/PartDetail";
-import { follow, partPath, requestPath } from "../router";
-import { askOf, type RequestState, type Waiting } from "../session";
+import { follow, requestPath, sessionPath } from "../router";
+import {
+  askOf,
+  type RequestState,
+  requestShort,
+  type Waiting,
+} from "../session";
 import { clock, duration, helperLine, verdictOf } from "../story";
 import type { MainEntry } from "./scene";
 
@@ -29,7 +33,7 @@ export const DRAWER_TABS = [
   ["flow", "Flow"],
   ["files", "Files"],
   ["helpers", "Helpers"],
-  ["journey", "Journey"],
+  ["requests", "Requests"],
 ] as const;
 export type DrawerTab = (typeof DRAWER_TABS)[number][0];
 
@@ -37,14 +41,17 @@ export type DrawerTab = (typeof DRAWER_TABS)[number][0];
 export interface DrawerState {
   tab: DrawerTab;
   item?: string | undefined;
+  /** On the Tasks tab: the phase to bring into view. */
+  phase?: string | undefined;
 }
 
 /** A thing in the room as the tab that tells its story; the rest open a close-up. */
 export function drawerFor(key: string): DrawerState {
   const [kind] = key.split(":");
-  if (kind === "phase") return { tab: "tasks" };
+  if (kind === "phase")
+    return { tab: "tasks", item: undefined, phase: key.slice(6) };
   if (kind === "archive") return { tab: "files" };
-  if (kind === "jobs") return { tab: "journey" };
+  if (kind === "jobs") return { tab: "requests" };
   if (kind === "claude") return { tab: "story" };
   return { tab: "story", item: key };
 }
@@ -68,6 +75,8 @@ function DrawerBody(props: {
   models: Map<string, string>;
   drawer: DrawerState;
   docked: boolean;
+  /** Shows a request's floor in the office. */
+  onPickRequest(requestId: string): void;
   /** Bumped each time a click opens it: focus then moves into it. */
   focusKey: number;
   onChange(d: DrawerState | null): void;
@@ -98,6 +107,19 @@ function DrawerBody(props: {
   useEffect(() => {
     body.current?.scrollTo?.({ top: 0 });
   }, [drawer.tab, drawer.item]);
+  // A phase header opens Tasks at that phase, marked for a moment.
+  useEffect(() => {
+    const title = req.phases.find((p) => p.id === drawer.phase)?.title;
+    if (!title || drawer.tab !== "tasks" || drawer.item) return;
+    const head = [...(body.current?.querySelectorAll("h2") ?? [])].find(
+      (h) => h.textContent?.trim() === title,
+    );
+    const group = head?.closest("section") ?? head;
+    group?.scrollIntoView?.({ block: "start" });
+    group?.classList.add("of-flash");
+    const t = setTimeout(() => group?.classList.remove("of-flash"), 1600);
+    return () => clearTimeout(t);
+  }, [drawer.phase, drawer.tab, drawer.item, req]);
   const openPart = (p: string) =>
     onChange({ tab: drawer.tab, item: `part:${p}` });
 
@@ -167,8 +189,13 @@ function DrawerBody(props: {
             events={events}
             now={props.t}
           />
-        ) : drawer.tab === "journey" ? (
-          <Journey sessionId={sessionId} view={view} events={events} />
+        ) : drawer.tab === "requests" ? (
+          <Requests
+            sessionId={sessionId}
+            view={view}
+            current={req.id}
+            onPick={props.onPickRequest}
+          />
         ) : (
           <>
             <RequestBrief
@@ -204,11 +231,11 @@ function CloseUp(
     if (a)
       return (
         <HelperCloseUp
-          sessionId={sessionId}
           view={view}
           agent={a}
           t={props.t}
           model={props.models.get(a.id)}
+          onOpenPart={props.onOpenPart}
         />
       );
   }
@@ -244,15 +271,53 @@ function CloseUp(
       );
   }
   if (kind === "door") {
+    const w = props.waiting;
     return (
-      <RequestBrief
-        request={req}
-        done={props.state === "done"}
-        stopped={props.state !== "running" || !props.following}
-        end={props.following ? props.end : props.t}
-        waiting={props.waiting}
-        lastLooked={null}
-      />
+      <>
+        <section className="of-card">
+          <p className="of-kicker">Your door</p>
+          {w ? (
+            <>
+              <h2>
+                {w.permission
+                  ? "Claude needs your permission"
+                  : "Claude is waiting on you"}
+              </h2>
+              {w.questions.length ? (
+                <ol className="of-asks">
+                  {w.questions.map((q) => (
+                    <li key={q.question}>
+                      <b>{q.question}</b>
+                      {q.detail && <span className="muted"> {q.detail}</span>}
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                w.text && <p>{w.text}</p>
+              )}
+              <p className="muted">
+                Since {clock(w.since)}. Reply in Claude Code.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2>Nothing waiting on you</h2>
+              <p className="muted">
+                Claude has not asked you anything on this request yet. When it
+                does, Claude walks to this door and the question shows here.
+              </p>
+            </>
+          )}
+        </section>
+        <RequestBrief
+          request={req}
+          done={props.state === "done"}
+          stopped={props.state !== "running" || !props.following}
+          end={props.following ? props.end : props.t}
+          waiting={props.waiting}
+          lastLooked={null}
+        />
+      </>
     );
   }
   if (kind === "terminal") return <Terminal {...props} />;
@@ -261,19 +326,19 @@ function CloseUp(
 
 /** A helper at its desk: who briefed it for what, what it is on, and what it said back. */
 function HelperCloseUp(props: {
-  sessionId: string;
   view: SessionView;
   agent: AgentView;
   t: string;
   model: string | undefined;
+  onOpenPart(partId: string): void;
 }) {
-  const { sessionId, view, agent: a, t, model } = props;
+  const { view, agent: a, t, model } = props;
   const req = view.requests.find((r) => r.agents.includes(a)) as RequestView;
   const part = helperPart(req, a);
   const runningNow = a.status === "running";
   const took = duration(a.startedAt, a.endedAt ?? a.report?.ts ?? t);
   const verdict = verdictOf(a.report);
-  const path = part ? partPath(sessionId, req.id, part) : undefined;
+
   return (
     <section className="of-card">
       <p className="of-kicker">
@@ -285,17 +350,21 @@ function HelperCloseUp(props: {
         <span className={runningNow ? "of-chip now" : "of-chip done"}>
           {runningNow ? `Running · ${took}` : `Done · took ${took}`}
         </span>
-        {verdict && (
+        {verdict && !/^done$/i.test(verdict.label) && (
           <span className={`of-chip ${verdict.tone}`}>{verdict.label}</span>
         )}
         <span className="muted">started {clock(a.startedAt)}</span>
       </p>
       <p>{helperLine(a, runningNow)}</p>
-      {path && (
+      {part && (
         <p>
-          <a className="link" href={path} onClick={follow(path)}>
+          <button
+            type="button"
+            className="link"
+            onClick={() => props.onOpenPart(part)}
+          >
             Open its task
-          </a>
+          </button>
         </p>
       )}
       {a.brief && (
@@ -369,3 +438,62 @@ function Terminal(props: Parameters<typeof DrawerBody>[0]) {
     </section>
   );
 }
+
+/** Every request of the session at the moment shown: pick one to see its floor. */
+function Requests(props: {
+  sessionId: string;
+  view: SessionView;
+  current: string;
+  onPick(requestId: string): void;
+}) {
+  const { sessionId, view, current, onPick } = props;
+  const path = sessionPath(sessionId);
+  return (
+    <section className="of-card">
+      <p className="of-kicker">
+        {view.requests.length} request{view.requests.length === 1 ? "" : "s"} in
+        this session
+      </p>
+      <ol className="of-reqs">
+        {view.requests.map((r, i) => {
+          const word = STATE_WORD[r.state ?? "done"] ?? "Done";
+          return (
+            <li key={r.id}>
+              <button
+                type="button"
+                className={r.id === current ? "of-req-row cur" : "of-req-row"}
+                aria-current={r.id === current ? "true" : undefined}
+                onClick={() => onPick(r.id)}
+              >
+                <span className="of-req-num">{i + 1}</span>
+                <span className="of-req-main">
+                  <span className="of-req-t">{requestShort(r)}</span>
+                  <span className="muted">
+                    {clock(r.startedAt)}
+                    {r.agents.length
+                      ? ` · ${r.agents.length} helper${r.agents.length === 1 ? "" : "s"}`
+                      : ""}
+                  </span>
+                </span>
+                <span className={`of-chip ${word[0]}`}>{word[1]}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <p>
+        <a className="link" href={path} onClick={follow(path)}>
+          The session's journey, on its own page
+        </a>
+      </p>
+    </section>
+  );
+}
+
+const STATE_WORD: Partial<Record<string, [string, string]>> = {
+  running: ["now", "Running"],
+  waiting: ["warn", "Waiting on you"],
+  done: ["done", "Done"],
+  "left-open": ["plain", "Left open"],
+  failed: ["bad", "Failed"],
+};

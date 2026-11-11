@@ -103,6 +103,8 @@ const STAGE: Partial<Record<AgentRole, string>> = {
   research: "researching",
 };
 
+const STALE_MS = 60 * 60_000;
+
 /** Cut at a word boundary within n characters. */
 export function cutWords(s: string, n: number): string;
 export function cutWords(s: string | undefined, n: number): string | undefined;
@@ -114,18 +116,23 @@ export function cutWords(s: string | undefined, n: number): string | undefined {
 
 /** "Build Task 67 Portfolio reads/styles" -> "Portfolio reads/styles". */
 export function helperName(a: { description?: string | undefined }): string {
-  const desc = a.description ?? "";
+  // A model note ("(Opus)") is on the plate already; it never names the work.
+  const desc = (a.description ?? "")
+    .replace(/\s*\((opus|sonnet|haiku)[^)]*\)\s*$/i, "")
+    .trim();
   const verbless = desc.replace(
     /^(Build|Review|Re-?review|Recheck|Plan|Fix|Write|Implement|Research|Draft|Add|Create)\s+/i,
     "",
   );
   const subject = /^(Tasks?\s+[\w-]+|Phases?\s+\d+|B\d+)/i.exec(verbless)?.[0];
-  let d = verbless
+  // What is left after the subject; "Task 38: capture chat reads" leaves a colon behind.
+  const rest = verbless
     .replace(/^(Tasks?\s+[\w-]+|Phases?\s+\d+|B\d+)\s*/i, "")
-    .replace(/^(fix round \d+:?)\s*/i, "");
-  // A bare leftover ("round 2", "fix") says nothing alone, so it keeps its subject: "Task 102 round 2".
-  if (subject && /^((fix(es)?|round \d+|review|recheck)\s*)*$/i.test(d))
-    d = `${subject} ${d}`.trim();
+    .replace(/^[\s:;,.\-–]+/, "");
+  let d = rest.replace(/^(fix round \d+:?)\s*/i, "");
+  // A bare leftover ("round 2", "fix round 4") says nothing alone, so it keeps its subject.
+  if (subject && /^((fix(es)?|round \d+|review|recheck)[\s:]*)*$/i.test(d))
+    d = `${subject} ${rest}`.trim();
   d = d || desc;
   return cutWords(d.charAt(0).toUpperCase() + d.slice(1), 24);
 }
@@ -316,6 +323,8 @@ export interface Scene {
   /** Helpers at work. */
   running: number;
   jobs: Job[];
+  /** The number of the request Claude is on: the newest, or one still at work under it. */
+  activeN: number;
 }
 
 /** Claude at its desk, at a helper's desk or the board, by its latest own call; null for no call in this request. */
@@ -383,6 +392,11 @@ export function deriveScene(
   reqId: string,
   t: string,
   logs: OfficeLogs,
+  /**
+   * The floor Claude is on, when not the newest request (one still at work under a done
+   * notice): whether this is it, and its number.
+   */
+  opts: { onFloor?: boolean; activeN?: number } = {},
 ): Scene | null {
   const reqs = view.requests;
   const idx = Math.max(
@@ -391,15 +405,22 @@ export function deriveScene(
   );
   const req = reqs[idx];
   if (!req) return null;
-  const current = idx === reqs.length - 1;
+  const current = opts.onFloor ?? idx === reqs.length - 1;
 
   // Helpers: this request's, plus (on the current floor) any earlier request's still at work.
+  // One with no sign of life for an hour is not at work, whatever its last word: a helper
+  // whose stop was never recorded would otherwise sit at a desk for days.
   const carried: Helper[] = current
     ? reqs
         .slice(0, idx)
         .flatMap((r, i) =>
           r.agents
-            .filter((a) => a.status === "running")
+            .filter(
+              (a) =>
+                a.status === "running" &&
+                Date.parse(t) - Date.parse(a.doing?.ts ?? a.startedAt) <
+                  STALE_MS,
+            )
             .map((a) => ({ ...a, fromRequest: i + 1 })),
         )
     : [];
@@ -599,5 +620,6 @@ export function deriveScene(
       short: r.short ?? r.goal,
       state: r.state,
     })),
+    activeN: opts.activeN ?? reqs.length,
   };
 }

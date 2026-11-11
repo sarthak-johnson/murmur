@@ -105,14 +105,37 @@ function BackLink({ sessionId }: { sessionId: string }) {
 }
 
 const DRAG_STEP_MS = 10 * 60_000;
+/** Playing skips quiet stretches longer than this, landing a few seconds before the next event. */
+const IDLE_MS = 3 * 60_000;
+const LEAD_MS = 5_000;
+
+/** The time of the first event after `t`, or Infinity (times sorted). */
+function nextEventAfter(ms: readonly number[], t: number): number {
+  let lo = 0;
+  let hi = ms.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((ms[mid] as number) <= t) lo = mid + 1;
+    else hi = mid;
+  }
+  return ms[lo] ?? Number.POSITIVE_INFINITY;
+}
 const PHONE = 760;
 /** The drawer's width beside the room: a third of a wide screen, within reading limits. */
 const drawerWidth = (w: number) =>
-  Math.round(Math.min(640, Math.max(420, w * 0.3)));
+  Math.round(Math.min(640, Math.max(480, w * 0.3)));
+
+const dayOf = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
 
 /** "3h", "35m", "40s": short, so the replay bar keeps one width. */
 function span(ms: number) {
   const m = Math.round(ms / 60000);
+  if (m >= 48 * 60) return `${Math.round(m / 1440)}d`;
   if (m >= 60) return `${Math.round(m / 6) / 10}h`.replace(".0h", "h");
   return m >= 1 ? `${m}m` : `${Math.max(1, Math.round(ms / 1000))}s`;
 }
@@ -180,13 +203,23 @@ export function Office(props: {
 
   // The request on the floor: the one pinned by the address, else the newest at that moment.
   const reqs = viewT.requests;
-  const latest = reqs.at(-1);
+  // The floor Claude is on: the newest request still at work or waiting on you, so a quick
+  // notice answered while a long request runs on never hides that one; else the newest.
+  const active =
+    reqs.findLast((r) => r.state === "running" || r.state === "waiting") ??
+    reqs.at(-1);
   const pinned = reqs.find((r) => r.id === props.pinnedId);
-  const req = pinned ?? latest ?? first;
+  const req = pinned ?? active ?? first;
   const reqId = req?.id ?? "";
+  const activeId = active?.id;
+  const activeN = active ? reqs.indexOf(active) + 1 : reqs.length;
   const derived = useMemo(
-    () => deriveScene(viewT, reqId, iso, logs),
-    [viewT, reqId, iso, logs],
+    () =>
+      deriveScene(viewT, reqId, iso, logs, {
+        onFloor: reqId === activeId,
+        activeN,
+      }),
+    [viewT, reqId, iso, logs, activeId, activeN],
   );
   // Before the first prompt of a replay there is no floor yet: the last one stays up.
   const lastScene = useRef<Scene | null>(null);
@@ -236,11 +269,12 @@ export function Office(props: {
   const shown = phone ? (drawer ?? { tab: "story" as const }) : drawer;
   const dw = drawerWidth(box.vw);
   // Docked only when the room still gets 2x beside it; otherwise the drawer floats over it.
-  const docked = !!drawer && !phone && box.w - dw - 48 >= W * 2;
+  const docked = !!drawer && !phone && box.w - dw - 16 >= W * 2;
   const room = docked ? box.w - dw : box.w;
   const scale = phone
     ? 2
-    : Math.max(1, Math.floor(Math.min((room - 48) / W, (box.h - 16) / H)));
+    : // Never under 2x, where words stay readable: a smaller window pans the room instead.
+      Math.max(2, Math.floor(Math.min((room - 16) / W, (box.h - 16) / H)));
 
   // The engine: one renderer and overlay per mount, painted every frame from refs.
   const engine = useRef<{ r: Renderer; o: Overlay } | null>(null);
@@ -252,26 +286,36 @@ export function Office(props: {
     item: drawer?.item ?? null,
   });
   live$.current = { scene, iso, scale, hover, item: drawer?.item ?? null };
-  const play$ = useRef({ playing, speed, t: tNow, START, END });
+  const eventMs = useMemo(() => events.map((e) => Date.parse(e.ts)), [events]);
+  const play$ = useRef({ playing, speed, t: tNow, START, END, ms: eventMs });
   play$.current = {
     playing,
     speed,
     t: playing ? play$.current.t : tNow,
     START,
     END,
+    ms: eventMs,
   };
 
+  const activeId$ = useRef(activeId);
+  activeId$.current = activeId;
   const openKey = useCallback(
     (key: string) => {
       if (key.startsWith("req:")) {
         const id = key.slice(4);
-        const newest = view.requests.at(-1)?.id === id;
-        navigate(officePath(sessionId, newest ? undefined : id));
+        // The floor Claude is on is the office's own address; any other is pinned.
+        navigate(
+          officePath(sessionId, id === activeId$.current ? undefined : id),
+        );
         return;
       }
       openDrawer(drawerFor(key));
     },
-    [sessionId, view, openDrawer],
+    [sessionId, openDrawer],
+  );
+  const pickRequest = useCallback(
+    (id: string) => open$.current(`req:${id}`),
+    [],
   );
   const open$ = useRef(openKey);
   open$.current = openKey;
@@ -297,6 +341,9 @@ export function Office(props: {
       const p = play$.current;
       if (p.playing) {
         p.t = Math.min(p.END, p.t + dt * 1000 * p.speed);
+        // A long quiet stretch (a night's pause) is skipped to just before the next event.
+        const next = nextEventAfter(p.ms, p.t);
+        if (next - p.t > IDLE_MS) p.t = Math.min(p.END, next - LEAD_MS);
         // React hears of the new time ten times a second; the room moves every frame.
         if (now - pushed > 100 || p.t >= p.END) {
           pushed = now;
@@ -331,7 +378,12 @@ export function Office(props: {
     const e = engine.current;
     if (!e) return;
     const before = prev.current;
-    const animate = !!before && before.req === reqId && animate$.current;
+    // While the first pages load, the room catches up without celebrating old news.
+    const animate =
+      !!before &&
+      before.req === reqId &&
+      animate$.current &&
+      status !== "loading";
     e.r.update(scene, { animate });
     // Binders light once for each touch that has come in since the last scene: by touch, not
     // by a time window, since a live touch reaches the browser after its own time has passed.
@@ -360,25 +412,34 @@ export function Office(props: {
     }
     prev.current = { t: tNow, req: reqId };
     animate$.current = true;
-  }, [scene, reqId, tNow, fileLog, touchers]);
+  }, [scene, reqId, tNow, fileLog, touchers, status]);
 
-  // On a phone the room is a strip: bring Claude into view when the request changes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: centre once per request
+  // On a phone the room is a strip: bring Claude into view when the request changes, once it
+  // has walked to its place (its first frames are still at the door), and again when it
+  // starts waiting on you, at the door.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: centre per request and on waiting
   useEffect(() => {
     if (!phone) return;
-    const id = requestAnimationFrame(() => {
+    const centre = (smooth: boolean) => {
       const w = mapWrap.current;
+      const sc = live$.current.scene;
       const c = engine.current?.r.claudePos();
       if (!w) return;
-      const x = scene.waiting ? 32 * T : (c?.x ?? 32 * T);
-      const y = scene.waiting ? 3 * T : (c?.y ?? 3 * T) - T;
+      const x = sc.waiting ? 32 * T : (c?.x ?? 32 * T);
+      const y = sc.waiting ? 3 * T : (c?.y ?? 3 * T) - T;
       w.scrollTo({
         left: x * scale - w.clientWidth / 2,
         top: y * scale - w.clientHeight / 2,
+        behavior: smooth ? "smooth" : "auto",
       });
-    });
-    return () => cancelAnimationFrame(id);
-  }, [reqId, phone]);
+    };
+    const first = requestAnimationFrame(() => centre(false));
+    const settled = setTimeout(() => centre(true), 1400);
+    return () => {
+      cancelAnimationFrame(first);
+      clearTimeout(settled);
+    };
+  }, [reqId, phone, !!scene.waiting]);
 
   // The drawer docks away from what was clicked, so it never covers it.
   const dockLeft = (() => {
@@ -424,6 +485,9 @@ export function Office(props: {
   }, [drawer]);
 
   const following = at === null;
+  // A session over more than a day says the day with the time.
+  const spansDays =
+    dayOf(new Date(START).toISOString()) !== dayOf(new Date(END).toISOString());
   const total = Math.max(1, Math.round((END - START) / 1000));
   const working = scene.desks.filter((d) => d.status === "running");
   const carried = working.filter((d) => d.fromRequest);
@@ -480,7 +544,7 @@ export function Office(props: {
         <button
           type="button"
           className="of-req"
-          onClick={() => openDrawer({ tab: "journey" })}
+          onClick={() => openDrawer({ tab: "requests" })}
           title="Every request in this session"
         >
           <span className="of-req-n">
@@ -499,8 +563,10 @@ export function Office(props: {
               </b>{" "}
               done
             </>
-          ) : (
+          ) : mark?.state === "running" ? (
             "No plan yet"
+          ) : (
+            "No plan"
           )}
         </span>
         <span className="of-meta">{helperMeta}</span>
@@ -559,6 +625,7 @@ export function Office(props: {
               drawer={shown}
               docked={docked}
               focusKey={focusKey}
+              onPickRequest={pickRequest}
               onChange={setDrawer}
             />
           </div>
@@ -635,6 +702,7 @@ export function Office(props: {
           />
         </div>
         <span className="of-clock">
+          {spansDays && `${dayOf(iso)} `}
           {clockOf(iso)}
           {following
             ? live
@@ -657,7 +725,9 @@ export function Office(props: {
         </label>
         <button
           type="button"
-          className={following ? "of-live on" : "of-live"}
+          className={
+            following ? (live ? "of-live on live" : "of-live on") : "of-live"
+          }
           onClick={() => {
             setPlaying(false);
             seek(END);

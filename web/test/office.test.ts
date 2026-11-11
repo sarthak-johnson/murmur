@@ -148,6 +148,12 @@ describe("words", () => {
     expect(helperName({ description: "Fix Task 102 round 2" })).toBe(
       "Task 102 round 2",
     );
+    expect(helperName({ description: "Task 105 fix round 4 (Opus)" })).toBe(
+      "Task 105 fix round 4",
+    );
+    expect(
+      helperName({ description: "Build Task 38: capture chat reads" }),
+    ).toBe("Capture chat reads");
     expect(helperName({ description: "look around" })).toBe("Look around");
   });
 
