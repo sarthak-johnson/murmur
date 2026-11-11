@@ -476,3 +476,20 @@ describe("what a click in the room opens", () => {
     expect(helperName({ description: "(Opus)" })).toBe("A helper");
   });
 });
+
+describe("round 4", () => {
+  it("chips numbered batches apart", () => {
+    expect(shortOf("Batch 2 Library")).toBe("B2");
+    expect(shortOf("Batch 3: Settings")).toBe("B3");
+  });
+  it("stops this request's own helper once it has gone quiet for an hour", () => {
+    const view = reduce(EVENTS);
+    const req = view.requests.at(-1);
+    if (!req) throw new Error("no request");
+    const at = (t: string) =>
+      deriveScene(view, req.id, t, logs())?.desks.find((d) => d.agent === "a1")
+        ?.status;
+    expect(at(ts(20))).toBe("running");
+    expect(at(ts(2 * 3600))).toBe("done");
+  });
+});

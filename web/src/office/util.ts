@@ -3,6 +3,12 @@
 /** "Phase 4: Portfolio reads" -> "P4 Portfolio", "Phases 6-7 News" -> "P6-7 News"; else unchanged. */
 export const phaseShort = (title: string): string => {
   const m = title.match(/^Phases?\s+(\d+(?:\s*[-–]\s*\d+)?)\s*:?\s*(.*)$/i);
+  // "Batch 2: Library" reads "B2 Library", like a phase.
+  const numbered = /^([A-Za-z]+)\s+(\d+[a-z]?)\s*:?\s*(.*)$/.exec(title);
+  if (!m && numbered) {
+    const rest = (numbered[3]?.split(/[\s/,]+/)[0] ?? "").replace(/:$/, "");
+    return `${(numbered[1] ?? "").charAt(0).toUpperCase()}${numbered[2]}${rest ? ` ${rest}` : ""}`;
+  }
   if (!m) return title;
   const rest = (m[2]?.split(/[\s/,]+/)[0] ?? "").replace(/:$/, "");
   return `P${(m[1] ?? "").replace(/\s/g, "")}${rest ? ` ${rest}` : ""}`;

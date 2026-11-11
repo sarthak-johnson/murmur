@@ -168,7 +168,7 @@ describe("the office page", () => {
     show();
     await frames();
     expect(
-      within(screen.getByRole("banner")).getByText("Quiet 3h"),
+      within(screen.getByRole("banner")).getByText("Quiet · 3 h 0 m"),
     ).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Jump to the latest moment" }),

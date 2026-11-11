@@ -106,6 +106,14 @@ const STAGE: Partial<Record<AgentRole, string>> = {
 };
 
 const STALE_MS = 60 * 60_000;
+
+/** "bg needs your input" (a session's own label in a notification) reads as Claude's. */
+function waitWords(text: string): string {
+  return /^\S+ needs your (input|attention|permission)/i.test(text) &&
+    !/^claude\b/i.test(text)
+    ? text.replace(/^\S+/, "Claude")
+    : text;
+}
 /** Claude's own last call older than this is no longer what it is doing. */
 export const QUIET_MS = 15 * 60_000;
 
@@ -207,6 +215,11 @@ export function shortOf(title: string): string {
   const t = /\bTasks?\s+(\d+[a-z]?)/i.exec(title);
   if (t) return `T${t[1]}`;
   if (p) return `P${(p[1] ?? "").replace(/\s/g, "")}`;
+  // "Batch 2 Library", "Round 3": a numbered word reads as its letter and number, so two
+  // batches never share a chip.
+  const numbered = /^([A-Za-z]+)\s+(\d+[a-z]?)\b/.exec(title);
+  if (numbered)
+    return `${(numbered[1] ?? "").charAt(0).toUpperCase()}${numbered[2]}`;
   return (title.split(/[\s:]+/)[0] ?? "").slice(0, 8);
 }
 
@@ -444,7 +457,15 @@ export function deriveScene(
                 .map((a) => ({ ...a, fromRequest: i + 1 })),
         )
     : [];
-  const helpers: Helper[] = [...carried, ...req.agents].sort((a, b) =>
+  // This request's own helper gone quiet for an hour reads as stopped at its last sign.
+  const own: Helper[] = req.agents.map((a) => {
+    const lastSign = a.doing?.ts ?? a.startedAt;
+    return a.status === "running" &&
+      Date.parse(t) - Date.parse(lastSign) >= STALE_MS
+      ? { ...a, status: "done", endedAt: lastSign }
+      : a;
+  });
+  const helpers: Helper[] = [...carried, ...own].sort((a, b) =>
     a.startedAt.localeCompare(b.startedAt),
   );
   const look = new Map(helpers.map((a, i) => [a.id, i]));
@@ -508,6 +529,7 @@ export function deriveScene(
     }
   }
 
+  const reqOver = req.state !== "running" && req.state !== "waiting";
   // Board: one column per phase, one sticky note per task, with who is on it and at what stage.
   const running = new Map(
     desks.filter((d) => d.status === "running").map((d) => [d.agent, d]),
@@ -532,7 +554,12 @@ export function deriveScene(
       return {
         id: task.id,
         phase: p.id,
-        status: task.status,
+        // A request that is over (left open) has nothing under way: its unfinished tasks
+        // read as not started, not as running in blue.
+        status:
+          task.status === "now" && on.length === 0 && reqOver
+            ? "todo"
+            : task.status,
         title: task.title,
         agents,
         heads: on.map((d) => d.agent),
@@ -592,7 +619,7 @@ export function deriveScene(
   const waiting: Waiting | null =
     current && view.needsYou && req.state === "waiting"
       ? {
-          text: view.needsYou.text,
+          text: waitWords(view.needsYou.text),
           since: view.needsYou.since,
           asks: req.waiting ?? [view.needsYou.text],
         }

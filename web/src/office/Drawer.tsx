@@ -311,8 +311,8 @@ function HelperCloseUp(props: {
   onOpenPart(partId: string): void;
 }) {
   const { view, agent: a, t, model } = props;
-  const req = view.requests.find((r) => r.agents.includes(a)) as RequestView;
-  const part = helperPart(req, a);
+  const req = view.requests.find((r) => r.agents.includes(a));
+  const part = req ? helperPart(req, a) : undefined;
   const runningNow = a.status === "running";
   const took = duration(a.startedAt, a.endedAt ?? a.report?.ts ?? t);
   const verdict = verdictOf(a.report);
@@ -320,7 +320,7 @@ function HelperCloseUp(props: {
   return (
     <section className="of-card">
       <p className="of-kicker">
-        Helper · {a.role ? ROLE[a.role] : "Helper"}
+        {a.role && a.role !== "other" ? `Helper · ${ROLE[a.role]}` : "Helper"}
         {model && ` · ${model}`}
       </p>
       <h2>{a.description || "A helper"}</h2>
@@ -353,7 +353,11 @@ function HelperCloseUp(props: {
       )}
       {a.report?.text && (
         <>
-          <h3>{a.report.interim ? "Its latest word" : "Its report"}</h3>
+          <h3>
+            {a.report.interim
+              ? "Its last word (no final report)"
+              : "Its report"}
+          </h3>
           <Markdown text={a.report.text} className="of-md" />
         </>
       )}
@@ -407,7 +411,7 @@ function Terminal(props: Parameters<typeof DrawerBody>[0]) {
           {runs.slice(0, 60).map((e) => (
             <li key={e.t + (e.label ?? "")}>
               <span className="of-when">{clock(e.t)}</span>
-              <span>{e.label ?? e.tool}</span>
+              <span>{e.label ?? `Ran ${e.tool ?? "a command"}`}</span>
             </li>
           ))}
         </ol>
@@ -489,7 +493,7 @@ function stepWords(e: MainEntry): string {
   if (e.tool === "murmur:narrate")
     return `Noted on the board: ${e.label ?? ""}`.trim();
   if (e.tool === "murmur:map") return "Drew up the plan";
-  return e.label ?? e.tool ?? "A step";
+  return e.label ?? (e.tool ? `Used ${e.tool}` : "A step");
 }
 
 /** Claude itself: each of its own steps on this request, newest first. */

@@ -23,6 +23,7 @@ export function drawerFor(key: string): DrawerState {
   const [kind] = key.split(":");
   if (kind === "phase") return { tab: "tasks", phase: key.slice(6) };
   if (kind === "archive") return { tab: "files" };
+  if (kind === "helpers") return { tab: "helpers" };
   if (kind === "jobs") return { tab: "requests" };
   if (kind === "claude") return { tab: "story", item: "claude" };
   return { tab: "story", item: key };

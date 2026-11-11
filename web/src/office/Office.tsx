@@ -162,7 +162,8 @@ export function Office(props: {
   // Live: the stream is up, the session has not ended and something happened lately; the
   // clock then runs with real time. Up but silent for a while, it is quiet: its clock stops
   // at its last event, so nothing reads as running for a day.
-  const open = status === "live" && !view.ended;
+  // A reconnect is a blip, not the session stopping: it stays live meanwhile.
+  const open = (status === "live" || status === "reconnecting") && !view.ended;
   const [wall, setWall] = useState(() => Date.now());
   useEffect(() => {
     if (!open) return;
@@ -548,7 +549,7 @@ export function Office(props: {
             className="of-tag quiet"
             title={`Nothing has happened in this session for ${span(quietFor)}. It shows as it was left, and wakes up when Claude does.`}
           >
-            Quiet {span(quietFor)}
+            Quiet · {dur(quietFor)}
           </span>
         ) : (
           <span
@@ -607,6 +608,23 @@ export function Office(props: {
         ref={stage}
         style={{ "--of-dw": `${dw}px` } as React.CSSProperties}
       >
+        {!scene.request.current && (
+          <div className="of-away" role="status">
+            {scene.activeN > scene.request.n
+              ? `Claude has moved on to request ${scene.activeN}.`
+              : `Claude is still at work on request ${scene.activeN}.`}{" "}
+            This floor is how request {scene.request.n} stands.
+            <button
+              type="button"
+              onClick={() => {
+                const id = scene.jobs[scene.activeN - 1]?.id;
+                if (id) openKey(`req:${id}`);
+              }}
+            >
+              Go to request {scene.activeN}
+            </button>
+          </div>
+        )}
         {scene.waiting && (
           <div className="of-ask" role="status">
             {/^claude is waiting/i.test(scene.waiting.text) ? (
@@ -643,7 +661,7 @@ export function Office(props: {
               waiting={mark.waiting}
               mainLog={mainLog}
               t={drawerT}
-              following={following}
+              following={following && !quietNow}
               models={models}
               drawer={shown}
               docked={docked}
@@ -728,7 +746,7 @@ export function Office(props: {
           />
         </div>
         <span className={spansDays ? "of-clock days" : "of-clock"}>
-          {spansDays && `${dayOf(iso)} `}
+          {spansDays && <span className="of-day">{dayOf(iso)} </span>}
           {clockOf(iso)}
           {following
             ? live

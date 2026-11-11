@@ -651,9 +651,11 @@
   margin-top: 2px;
 }
 .s2 .of-overlay .hit.note:not(.wide) .t,
-.s2 .of-overlay .hit.note .stage,
-.s2 .of-overlay .more {
+.s2 .of-overlay .hit.note .stage {
   display: none;
+}
+.s2 .of-overlay .more {
+  font-size: 11px;
 }
 .s2 .of-overlay .plate b,
 .s2 .of-overlay .plate span,
@@ -702,24 +704,6 @@
 }
 .s1 .of-overlay .plate {
   display: none;
-}
-.of-overlay .banner {
-  transform: translate(-50%, -50%);
-  background: #1a1512;
-  border: 1px solid var(--o-line2);
-  border-radius: 8px;
-  padding: 10px 16px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  white-space: nowrap;
-}
-.of-overlay .banner button {
-  background: var(--o-now-bg);
-  color: var(--o-now);
-  border: 1px solid var(--o-now);
-  border-radius: 6px;
-  padding: 4px 10px;
 }
 
 /* The detail drawer: beside the room when it fits, else over it on the side away from what
@@ -1093,7 +1077,7 @@
 .of-legend .k.todo {
   background: #8d939c;
 }
-@media (max-width: 1380px) {
+@media (max-width: 1600px) {
   .of-legend {
     display: none;
   }
@@ -1299,4 +1283,62 @@
 }
 .of-link:hover {
   text-decoration-color: var(--t2, #d4d0cc);
+}
+/* Over a pinned floor: whose floor this is, and the way back to the one Claude is on. */
+.of-away {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100% - 32px);
+  background: #1a1512;
+  border: 1px solid var(--o-line2);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  color: var(--o-t2);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+.of-stage.docked .of-away {
+  left: calc((100% - var(--of-dw)) / 2);
+}
+.of-stage .of-away button {
+  flex: none;
+  background: var(--o-now-bg);
+  color: var(--o-now);
+  border: 1px solid var(--o-now);
+  border-radius: 6px;
+  padding: 4px 10px;
+}
+.office.phone .of-away {
+  position: static;
+  transform: none;
+  margin: 12px 16px 0;
+  max-width: none;
+  flex-wrap: wrap;
+}
+/* More helpers than desks: the sign that says so. */
+.of-overlay .off-sign {
+  transform: translate(-50%, -50%);
+  font: 600 max(12px, calc(4px * var(--s))) / 1 var(--o-ui);
+  color: var(--o-t1);
+  background: #2a211c;
+  border: 1px solid var(--o-line2);
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.of-overlay .off-sign:hover {
+  border-color: var(--o-t2);
+}
+/* The phone clock drops the date to keep its words whole. */
+.phone .of-day {
+  display: none;
+}
+.phone .of-clock {
+  overflow: visible;
 }
