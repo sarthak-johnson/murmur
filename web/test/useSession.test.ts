@@ -42,6 +42,8 @@ const ev = (
 const A = ev("a", "2026-01-01T00:00:01.000Z");
 const B = ev("b", "2026-01-01T00:00:02.000Z");
 const C = ev("c", "2026-01-01T00:00:03.000Z");
+/** An hour before B, where a fetch after a drop or a return starts. */
+const BACK = "2025-12-31T23:00:02.000Z";
 
 let events: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
@@ -94,7 +96,7 @@ describe("useSession", () => {
     expect(FakeES.all).toHaveLength(1);
   });
 
-  it("reconnect fetches only after the cursor, with backoff", async () => {
+  it("reconnect fetches from a margin before the cursor, with backoff", async () => {
     events.mockResolvedValueOnce({ events: [A, B], hasMore: false });
     const { result } = renderHook(() => useSession("s1"));
     await flush();
@@ -104,10 +106,13 @@ describe("useSession", () => {
     expect(result.current.status).toBe("reconnecting");
     expect(FakeES.all[0]?.closed).toBe(true);
     await act(async () => void (await vi.advanceTimersByTimeAsync(1000)));
-    expect(events).toHaveBeenLastCalledWith("s1", B.ts, "b");
+    // Events stored meanwhile can carry an older time: it goes back an hour, merging by id.
+    expect(events).toHaveBeenLastCalledWith("s1", BACK, undefined);
     expect(FakeES.all).toHaveLength(1); // fetch failed, still waiting
     await act(async () => void (await vi.advanceTimersByTimeAsync(2000)));
     expect(events).toHaveBeenCalledTimes(3);
+    expect(events).toHaveBeenLastCalledWith("s1", BACK, undefined);
+    expect(result.current.events.map((e) => e.id)).toEqual(["a", "b", "c"]);
     expect(FakeES.all).toHaveLength(2);
     expect(result.current.status).toBe("reconnecting");
     events.mockResolvedValueOnce({ events: [], hasMore: false });
@@ -155,6 +160,38 @@ describe("useSession", () => {
     const { result } = renderHook(() => useSession("s1"));
     await flush();
     expect(result.current.status).toBe("error");
+  });
+
+  it("back to a kept session: shown at once as it was (not reconnecting), caught up from a margin", async () => {
+    events.mockResolvedValueOnce({ events: [A, B], hasMore: false });
+    const first = renderHook(() => useSession("s1"));
+    await flush();
+    first.unmount();
+    // D was stored meanwhile with an older time than the newest kept event.
+    const D = ev("d", "2026-01-01T00:00:01.500Z");
+    events.mockResolvedValueOnce({ events: [A, D, B], hasMore: false });
+    const { result } = renderHook(() => useSession("s1"));
+    expect(result.current.status).toBe("resuming");
+    expect(result.current.events.map((e) => e.id)).toEqual(["a", "b"]);
+    await flush();
+    expect(events).toHaveBeenLastCalledWith("s1", BACK, undefined);
+    expect(result.current.events.map((e) => e.id)).toEqual(["a", "d", "b"]);
+  });
+
+  it("a session deleted meanwhile is dropped: nothing stale under the error", async () => {
+    events.mockResolvedValueOnce({ events: [A], hasMore: false });
+    const first = renderHook(() => useSession("s1"));
+    await flush();
+    first.unmount();
+    events.mockRejectedValueOnce(new ApiError(404, "not_found"));
+    const { result } = renderHook(() => useSession("s1"));
+    await flush();
+    expect(result.current.status).toBe("error");
+    expect(result.current.view).toBeNull();
+    cleanup();
+    events.mockReturnValueOnce(new Promise(() => {}));
+    const again = renderHook(() => useSession("s1"));
+    expect(again.result.current.status).toBe("loading");
   });
 
   it("closes the stream on unmount", async () => {

@@ -70,7 +70,7 @@ export function OfficePage(props: PageProps) {
   const { sessionId, me, onSignOut } = props;
   const menu = { sessionId, me, onSignOut };
   // Not drawn from the first pages: they would show an old floor as the live one for a moment.
-  if (!view || status === "loading")
+  if (!view || status === "loading" || status === "error")
     return (
       <OfficeShell status={status} {...(status === "error" ? menu : {})} />
     );
@@ -929,6 +929,10 @@ export function Office(props: {
     return best;
   };
   const tipReq = tip === null ? undefined : view.requests[tip];
+  // The strip's one tab stop: the floor's tick, else the newest, so it always has one.
+  const tickStop = view.requests.some((r) => r.id === reqId)
+    ? reqId
+    : view.requests.at(-1)?.id;
 
   // The rail and the requests list rewind with the replay: the requests asked by then,
   // each as it stood at that moment.
@@ -1253,7 +1257,7 @@ export function Office(props: {
                 aria-label={`Go to request ${i + 1}: ${requestShort(r)}`}
                 aria-current={r.id === reqId ? "true" : undefined}
                 // One tab stop for the strip, not one per request: the rail lists them all.
-                tabIndex={r.id === reqId ? 0 : -1}
+                tabIndex={r.id === tickStop ? 0 : -1}
                 onFocus={() => setTip(i)}
                 onBlur={() => setTip(null)}
                 onClick={(e) => {

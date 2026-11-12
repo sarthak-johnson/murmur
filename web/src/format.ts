@@ -66,3 +66,19 @@ export const folderOf = (cwd: string) =>
 
 /** A true minus sign, for a diff's removed lines and a "fewer" count. */
 export const MINUS = "−";
+
+const byIds = new WeakMap<readonly { id: string }[], Map<string, unknown>>();
+/**
+ * A session's events by id, made once per events array and kept while the array lives:
+ * every view that turns an event id into its event (or its time) reads this one map.
+ */
+export function eventsById<E extends { id: string }>(
+  events: readonly E[],
+): Map<string, E> {
+  let m = byIds.get(events) as Map<string, E> | undefined;
+  if (!m) {
+    m = new Map(events.map((e) => [e.id, e]));
+    byIds.set(events, m);
+  }
+  return m;
+}

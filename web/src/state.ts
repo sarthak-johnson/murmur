@@ -156,7 +156,9 @@ export function sessionNow(
 ): SessionNow {
   const last = Date.parse(view.lastEventAt);
   // A reconnect is a blip, not the session stopping: it stays open meanwhile.
-  const open = (stream === "live" || stream === "reconnecting") && !view.ended;
+  const open =
+    (stream === "live" || stream === "reconnecting" || stream === "resuming") &&
+    !view.ended;
   const quietFor = open ? Math.max(0, at - last) : 0;
   const recent = quietFor < QUIET_MS;
   const waits = !!view.needsYou || asking;
@@ -308,18 +310,9 @@ export function requestNow(
   // Every later event is the newest request's: its work runs to the session's end.
   const newest = req === view.requests.at(-1);
   // Claude's turn can end while a helper (or a background command) works on: it is woken
-  // when that reports. Until then the newest request is not over, though core's word at
-  // that moment is: it goes on in the replay, or a helper of it is at work right now.
-  const goesOn =
-    newest &&
-    !view.ended &&
-    (ses.goesOn === req.id ||
-      (ses.ticking &&
-        req.agents.some(
-          (a) =>
-            a.status === "running" &&
-            at - Date.parse(a.doing?.ts ?? a.startedAt) < STALE_MS,
-        )));
+  // when that reports. In a replay the session has more of it later, so at the moment it
+  // is not over, though core's word then was.
+  const goesOn = newest && !view.ended && ses.goesOn === req.id;
   let state: State;
   let to: string;
   if (m.mark === "running" || (goesOn && m.mark !== "waiting")) {
