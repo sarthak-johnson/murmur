@@ -7,12 +7,15 @@
  */
 import { Worker } from "node:worker_threads";
 import type { MurmurEvent } from "@murmur/core";
-import { and, asc, desc, eq, gt, isNull, lt, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { Db } from "./db/client.js";
 import { events, sessions } from "./db/schema.js";
-import type { SessionSummary } from "./summarize.js";
+import { READING, type SessionSummary } from "./summarize.js";
 
 export type { SessionSummary } from "./summarize.js";
+
+/** A stored summary read by an older `READING`: stale whatever its version. */
+const oldReading = sql`(${sessions.summary}->>'reading') is distinct from ${String(READING)}`;
 
 /** Events read per query. */
 const PAGE = 2000;
@@ -159,10 +162,11 @@ export async function refreshSummary(
       machineId: sessions.machineId,
       version: sessions.version,
       summaryOfVersion: sessions.summaryOfVersion,
+      oldReading: sql<boolean>`${oldReading}`,
     })
     .from(sessions)
     .where(own);
-  if (!s || s.summaryOfVersion === s.version) return;
+  if (!s || (s.summaryOfVersion === s.version && !s.oldReading)) return;
   const summary = await read(pagesOf(db, userId, sessionId, s));
   if (!summary) return;
   await db
@@ -174,6 +178,7 @@ export async function refreshSummary(
         or(
           isNull(sessions.summaryOfVersion),
           lt(sessions.summaryOfVersion, s.version),
+          and(eq(sessions.summaryOfVersion, s.version), oldReading),
         ),
       ),
     );
@@ -238,8 +243,8 @@ export async function stopSummaries(): Promise<void> {
 }
 
 /**
- * Every session whose summary is missing or older than its last ingest, read again one at
- * a time: at server start, in the background, so the first lobby after it reads them.
+ * Every session whose summary is missing, older than its last ingest or of an older
+ * `READING`, read again one at a time: at server start, in the background, so the first lobby after it reads them.
  */
 export async function backfillSummaries(db: Db): Promise<void> {
   const stale = await db
@@ -249,6 +254,7 @@ export async function backfillSummaries(db: Db): Promise<void> {
       or(
         isNull(sessions.summaryOfVersion),
         ne(sessions.summaryOfVersion, sessions.version),
+        oldReading,
       ),
     )
     .orderBy(desc(sessions.lastEventAt));

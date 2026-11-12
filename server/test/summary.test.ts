@@ -1,7 +1,9 @@
 import type { MurmurEvent } from "@murmur/core";
 import { afterEach, expect, test, vi } from "vitest";
 import { events, sessions } from "../src/db/schema.js";
+import { READING } from "../src/summarize.js";
 import {
+  backfillSummaries,
   refreshSummary,
   type SessionSummary,
   type Summarizer,
@@ -30,6 +32,8 @@ const said = (title: string, n = 0): SessionSummary => ({
   helpers: 0,
   from: "2026-11-06T10:00:00.000Z",
   waitingSince: null,
+  state: "done",
+  reading: READING,
 });
 /** A summarizer that reads every page and counts the events it was given. */
 const counting = (log: number[]): Summarizer => {
@@ -182,6 +186,8 @@ test("the worker reduces a session as core does", async () => {
     requests: 1,
     from: first.ts,
     waitingSince: ask.ts,
+    state: "waiting",
+    reading: READING,
   });
   // A session left with no events says nothing.
   await t.db.update(sessions).set({ summaryOfVersion: null });
@@ -221,4 +227,40 @@ test("a worker that dies while a read's pages load fails that read, and the next
   expect(await summarizeInWorker(onePage())).toMatchObject({
     title: "Add a dark theme",
   });
+});
+
+test("a summary of an older reading is read again at start, though nothing new came", async () => {
+  t = await testApp();
+  const { token } = await linkMachine(t, "ada");
+  const reads: number[] = [];
+  restore = useSummarizer(counting(reads));
+  await ingest(t, token, [ev("s")]);
+  await settleSummaries();
+  await backfillSummaries(t.db);
+  expect(reads).toEqual([1]);
+  // As a server from before this reading stored it: same version, no `reading`.
+  const { reading: _, ...old } = said("before");
+  await t.db.update(sessions).set({ summary: old as SessionSummary });
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  await backfillSummaries(t.db);
+  expect(reads).toEqual([1, 1]);
+  expect((await row())?.summary).toMatchObject({ reading: READING });
+  await backfillSummaries(t.db);
+  expect(reads).toEqual([1, 1]);
+});
+
+test("the lobby's state is that of the request the room follows", async () => {
+  t = await testApp();
+  const { token, userId } = await linkMachine(t, "ada");
+  // Claude works on, then stops mid-plan: its last request still reads running.
+  await ingest(t, token, [
+    ev("s", "UserPromptSubmit", {
+      payload: { prompt: "Build the release script" },
+    }),
+    ev("s", "PreToolUse", {
+      payload: { tool_name: "Bash", tool_input: { command: "npm run build" } },
+    }),
+  ]);
+  await refreshSummary(t.db, userId, "s");
+  expect((await row())?.summary).toMatchObject({ state: "running" });
 });
