@@ -19,7 +19,7 @@ import { Story } from "../live/Story";
 import { FilesTab, HelpersTab, helperPart } from "../live/Tabs";
 import { TasksTab } from "../live/Tasks";
 import { PhaseTrack } from "../live/Track";
-import { Markdown } from "../markdown";
+import { Fold, Markdown } from "../markdown";
 import { StateMark } from "../marks";
 import { PartDetail } from "../part/PartDetail";
 import { floorPath, follow, navigate } from "../router";
@@ -538,6 +538,17 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
   }
   if (kind === "door") {
     const w = props.waiting;
+    // Claude Code's notice often only says it waits ("Claude needs your input"): the
+    // heading says that already, so it is not said twice.
+    const notice =
+      w?.text &&
+      !/^claude (?:is waiting for|needs) your (?:input|attention)\.?$/i.test(
+        w.text.trim(),
+      )
+        ? w.text
+        : "";
+    // What it stopped on, whole: its last message, folded when long.
+    const last = w?.said ? req.messages?.at(-1)?.text : undefined;
     return (
       <>
         <section className="of-card">
@@ -546,7 +557,7 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
             <>
               <h2>
                 {w.permission
-                  ? "Claude needs your permission"
+                  ? notice || "Claude needs your permission"
                   : "Claude is waiting on you"}
               </h2>
               {w.questions.length ? (
@@ -559,13 +570,13 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
                   ))}
                 </ol>
               ) : (
-                w.text && <p>{w.text}</p>
+                !w.permission && notice && <p>{notice}</p>
               )}
-              {w.said && (
-                <p>
-                  <span className="muted">Claude's last words: </span>
-                  {w.said}
-                </p>
+              {last && (
+                <>
+                  <h3>What Claude said last</h3>
+                  <Fold text={last} lines={8} className="of-md" />
+                </>
               )}
               <p className="muted">
                 Since {clock(w.since)}. Reply in Claude Code.

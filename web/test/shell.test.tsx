@@ -635,6 +635,43 @@ describe("the top bar", () => {
     expect(pill?.textContent).toBe("Waiting on you · 4 m · 2 questions");
   });
 
+  it("the door says Claude waits once, and shows its last message whole", () => {
+    vi.useFakeTimers({ now: new Date(day(9, 39)), toFake: ["Date"] });
+    const view = session({
+      needsYou: {
+        reason: "input",
+        text: "Claude needs your input",
+        since: day(9, 35),
+      },
+    });
+    const long = `${"Staging is live with the new look. ".repeat(12)}\n\nAfter that move, it needs your eyes on the Live tab before main.`;
+    view.requests[3] = {
+      ...(view.requests[3] as RequestView),
+      state: "waiting",
+      agents: [],
+      messages: [{ id: "m1", ts: day(9, 34), text: long }],
+    };
+    render(
+      <Live
+        sessionId="s1"
+        view={view}
+        status="live"
+        lastLooked={null}
+        events={[]}
+        open="door"
+      />,
+    );
+    const door = screen.getByRole("heading", {
+      name: "Claude is waiting on you",
+    }).parentElement as HTMLElement;
+    // Claude Code's notice only restates the heading: it is not said twice.
+    expect(door.textContent).not.toContain("Claude needs your input");
+    // Its last paragraph whole, not cut at a word.
+    expect(door.textContent).toContain(
+      "After that move, it needs your eyes on the Live tab before main.",
+    );
+  });
+
   it("waiting with helpers at work: the bar says they are still working", () => {
     vi.useFakeTimers({ now: new Date(day(9, 39)), toFake: ["Date"] });
     const view = session({
