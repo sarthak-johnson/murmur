@@ -87,8 +87,24 @@ export interface Band {
  * One band per phase that has parts, in plan order, named as the Tasks list names it; a
  * part sits in its own phase, else its plan task's (`partPhase`); parts with no phase last.
  */
+/**
+ * The phase a part's card sits under: the one holding most of its plan tasks, as the board
+ * and the Tasks list place them ("Conversation page" carries task 4 of Pages and tasks 6
+ * and 7 of Finish Phase 3: it sits under Finish Phase 3), else core's phase for it.
+ */
+function cardPhase(req: RequestView, p: PartView): string | undefined {
+  const count = req.phases.map(
+    (ph) => ph.tasks.filter((t) => t.part === p.id).length,
+  );
+  const most = Math.max(0, ...count);
+  const own = partPhase(req, p)?.id;
+  const ix = req.phases.findIndex((ph) => ph.id === own);
+  if (!most || count[ix] === most) return own;
+  return req.phases[count.indexOf(most)]?.id;
+}
+
 export function bands(req: RequestView, running = !req.finished): Band[] {
-  const of = new Map(req.parts.map((p) => [p.id, partPhase(req, p)?.id]));
+  const of = new Map(req.parts.map((p) => [p.id, cardPhase(req, p)]));
   const out: Band[] = req.phases.flatMap((phase) => {
     const parts = req.parts.filter((p) => of.get(p.id) === phase.id);
     return parts.length

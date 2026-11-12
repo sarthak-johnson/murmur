@@ -342,6 +342,31 @@ describe("one task, one title, one number, one phase name", () => {
     ]);
   });
 
+  it("a part carrying tasks of two phases sits in Flow under the phase holding most", () => {
+    const r = request({
+      id: "r",
+      phases: [
+        {
+          id: "pages",
+          title: "Pages",
+          status: "done",
+          tasks: [task("t4", "Conversation page", "done", "conv")],
+        },
+        {
+          id: "fin",
+          title: "Finish Phase 3",
+          status: "done",
+          tasks: [
+            task("t6", "Delete the old chat", "done", "conv"),
+            task("t7", "Phase 3 review", "done", "conv"),
+          ],
+        },
+      ],
+      parts: [part({ id: "conv", phase: "pages" } as never)],
+    } as never);
+    expect(bands(r, false).map((b) => b.title)).toEqual(["Finish Phase 3"]);
+  });
+
   it("desk chips are whole words or cut with a stop; two alike are numbered", () => {
     expect(shortOf("Unhandled rejection in agent meta")).toBe("Unhandled");
     expect(shortOf("Screenshots of every page")).toBe("Screensh.");

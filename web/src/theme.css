@@ -2199,8 +2199,8 @@ a.helper:focus-visible {
 .fb-edge {
   position: absolute;
   z-index: 2;
-  /* Level with the band headers, where it covers no card. */
-  top: 24px;
+  /* Halfway down, in the edge's fade: over a band's header it would cut its words. */
+  top: calc(50% - 16px);
   display: grid;
   place-items: center;
   width: 32px;
