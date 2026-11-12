@@ -13,7 +13,6 @@ import {
   type SessionView,
   type TaskView,
 } from "@murmur/core";
-import { cutWords } from "./format";
 import { plainText } from "./markdown";
 
 export { questionsIn };
@@ -73,19 +72,16 @@ export interface Waiting {
   said?: string;
 }
 
-/** A message's last paragraph as plain text, cut at a word. */
+/** A message's last paragraph as plain text, whole: each view cuts it to its own room. */
 const lastParagraph = (text: string) =>
-  cutWords(
-    plainText(
-      text
-        .split(/\n\s*\n/)
-        .filter((p) => p.trim())
-        .at(-1) ?? "",
-    )
-      .replace(/\s+/g, " ")
-      .trim(),
-    280,
-  );
+  plainText(
+    text
+      .split(/\n\s*\n/)
+      .filter((p) => p.trim())
+      .at(-1) ?? "",
+  )
+    .replace(/\s+/g, " ")
+    .trim();
 
 /** An AskUserQuestion call on the main thread with no result yet. */
 function pendingAsk(evs: MurmurEvent[]): MurmurEvent | undefined {

@@ -1245,14 +1245,13 @@
   padding: 8px 4px;
   justify-content: center;
 }
+/* The session's facts, whole: on two lines when the rail is too narrow for one. */
 .of-rail-k {
   flex: 1;
   min-width: 0;
   font-size: 12px;
+  line-height: 16px;
   color: var(--o-t3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .of-rail-btn {
   width: 28px;

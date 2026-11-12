@@ -3906,6 +3906,9 @@ code.nw {
   padding: 0 0 8px;
   list-style: none;
   overflow-x: auto;
+  /* A strip longer than the panel shows its thin bar too: more chapters are to the right. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--s7) transparent;
 }
 /* When the strip scrolls, its right edge fades until the end is reached. */
 @property --jr-fade {
@@ -4246,7 +4249,6 @@ code.nw {
     overflow-x: auto;
     padding-bottom: 6px;
     scroll-snap-type: x proximity;
-    scrollbar-width: none;
   }
   .jr-segi {
     flex: var(--w) 0 auto;
