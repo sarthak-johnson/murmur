@@ -18,22 +18,6 @@ import {
 import type { AgentView, RequestView, SessionView } from "./types.js";
 import { applyWords } from "./words.js";
 
-/**
- * A folder of changes Murmur grouped (an inferred plan's "dir:" part) is no task Claude
- * finished: it is under way while its request runs, and done once the request is.
- */
-function underWay(req: RequestView) {
-  if (!req.planInferred || req.state !== "running") return;
-  const folder = (id: string | undefined) => !!id?.startsWith("dir:");
-  for (const p of req.parts)
-    if (folder(p.id) && p.status === "done") p.status = "now";
-  for (const ph of req.phases) {
-    for (const t of ph.tasks)
-      if (folder(t.part) && t.status === "done") t.status = "now";
-    if (ph.tasks.some((t) => t.status === "now")) ph.status = "now";
-  }
-}
-
 /** The one function every screen is drawn from: raw events in, view out. */
 export function reduce(events: MurmurEvent[]): SessionView {
   // A titles run's answer is Murmur's word on the session, never part of it.
@@ -83,7 +67,6 @@ export function reduce(events: MurmurEvent[]): SessionView {
       live,
       title: said[i],
     });
-    underWay(req);
   });
   // The request this one picks up from: the titles run's word, else a reply follows the
   // request before it.

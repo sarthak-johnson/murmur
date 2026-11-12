@@ -390,6 +390,15 @@ describe("plan and map", () => {
     };
     expect(folder(events)).toEqual(["now", "now"]);
     expect(folder([...events, at(3, "Stop", {})])).toEqual(["done", "done"]);
+    // Waiting on you is no end of the work: the folder is still under way, its span open.
+    const asked = [
+      ...events,
+      at(3, "Stop", { last_assistant_message: "Should I also do the docs?" }),
+    ];
+    const [r] = reduce(asked).requests;
+    expect(r?.state).toBe("waiting");
+    expect(folder(asked)).toEqual(["now", "now"]);
+    expect(r?.parts[0]?.span?.end).toBeUndefined();
   });
 
   test("TaskCreated inference still wins the plan, parts are still drawn", () => {

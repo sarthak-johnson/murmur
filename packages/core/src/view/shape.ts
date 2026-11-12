@@ -86,6 +86,7 @@ export function applyShape(
   if (beyond) req.beyond = beyond;
   placeMessages(req, live, events, beyond);
   req.state = stateOf(req, events, live, ctx);
+  underWay(req);
   if (req.state === "waiting") {
     const asked = waitingOf(req, events);
     if (asked.length) req.waiting = asked;
@@ -103,6 +104,24 @@ export function applyShape(
       f.role = groupOf(f.path);
       f.roleInferred = true;
     }
+}
+
+/**
+ * A folder of changes Murmur grouped (an inferred plan's "dir:" part) is no task Claude
+ * finished: it is under way while its request runs or waits on you, and done once the
+ * request is. Set with the state, before a part's span or a phase's count reads it.
+ */
+function underWay(req: RequestView): void {
+  if (!req.planInferred || (req.state !== "running" && req.state !== "waiting"))
+    return;
+  const folder = (id: string | undefined) => !!id?.startsWith("dir:");
+  for (const p of req.parts)
+    if (folder(p.id) && p.status === "done") p.status = "now";
+  for (const ph of req.phases) {
+    for (const t of ph.tasks)
+      if (folder(t.part) && t.status === "done") t.status = "now";
+    if (ph.tasks.some((t) => t.status === "now")) ph.status = "now";
+  }
 }
 
 /**
