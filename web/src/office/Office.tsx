@@ -635,7 +635,7 @@ export function Office(props: {
     if (wrap) ro.observe(wrap);
     // The scale as drawn: it follows the box frame by frame, so a panel opening or a rail
     // folding (their widths slide) grows or shrinks the room smoothly, never a jump.
-    let shown = { s: 0, d: 0, ml: -1, mt: -1 };
+    let shown = { s: 0, d: 0, ml: -1, mt: -1, w: 0, h: 0 };
     const fitFrame = () => {
       const s = live$.current;
       const z = wrapBox.current;
@@ -646,11 +646,17 @@ export function Office(props: {
       const most = z.w
         ? Math.max(to, Math.min((z.w - FIT_PAD) / W, (bh - FIT_PAD) / H))
         : to;
+      // While the box slides (a panel or the rail opening, Dock or Wide), the room is its
+      // fit frame by frame: one motion with the box, centred all the way, never lagging it.
+      // Once it rests, the room eases onto the crisp step under that fit.
+      const moving = !!shown.w && (z.w !== shown.w || z.h !== shown.h);
       const eased = shown.s + (to - shown.s) * 0.35;
       const sc =
         !shown.s || reduced?.matches || Math.abs(to - shown.s) < 0.004
           ? to
-          : Math.min(most, eased);
+          : moving
+            ? most
+            : Math.min(most, eased);
       // Centred, on whole device px: a room half a px off would smooth every pixel.
       const snap = (at: number, room: number, box: number) =>
         Math.max(0, Math.round((at + (box - room) / 2) * d) / d - at);
@@ -664,7 +670,7 @@ export function Office(props: {
         map.style.marginLeft = `${ml}px`;
         map.style.marginTop = map.style.marginBottom = `${mt}px`;
       }
-      shown = { s: sc, d, ml, mt };
+      shown = { s: sc, d, ml, mt, w: z.w, h: z.h };
       return { sc, k: backing(sc, d) };
     };
     let raf = 0;

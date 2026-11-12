@@ -277,6 +277,8 @@
   position: absolute;
   inset: 0 0 0 auto;
   width: var(--of-pw);
+  /* With the room's box: one motion on Dock and Wide. */
+  transition: width 180ms ease-out;
 }
 .of-stage.below .of-mapwrap {
   inset: 0 0 auto;
