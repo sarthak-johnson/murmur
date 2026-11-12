@@ -10,7 +10,10 @@ import type {
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Live as Page } from "../src/pages/Session";
+import { Live as Page, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import {
   clock,
   commitsIn,
@@ -546,7 +549,9 @@ describe("request page, story first", () => {
     expect(chip.title).toBe("Task 1: Lit plate tokens");
     expect(within(decision as HTMLElement).queryByRole("button")).toBeNull();
     await userEvent.click(chip);
-    expect(location.pathname).toBe("/s/s1/r/r1/p/task%3A1");
+    expect(location.pathname + location.search).toBe(
+      "/s/s1?open=task:task:1",
+    );
   });
 
   it("folds consecutive messages about one task into one row that opens in place", async () => {
@@ -690,7 +695,7 @@ describe("request page, story first", () => {
     });
     expect(link.closest(".st")?.className).toBe("st done");
     expect(link.querySelector(".mk.done")).toBeTruthy();
-    expect(link.getAttribute("href")).toBe("/s/s1/r/r1/p/task%3A1");
+    expect(link.getAttribute("href")).toBe("/s/s1/r/r1?open=task:task:1");
   });
 
   it("the map is a tab beside the story, one click away", async () => {

@@ -9,8 +9,11 @@ import type {
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { byDay } from "../src/live/Rail";
-import { Live } from "../src/pages/Session";
+import { byDay } from "../src/format";
+import { Live, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import type { Tab } from "../src/router";
 import { nowLine, requestMark, requestShort, shortOf } from "../src/session";
 

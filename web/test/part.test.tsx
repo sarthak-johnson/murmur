@@ -1105,7 +1105,7 @@ describe("task page (reshape)", () => {
       name: /Next/,
     });
     expect(prev.textContent).toContain("Task 1 · Lit plate tokens");
-    expect(prev.getAttribute("href")).toBe("/s/s1/r/r1/p/task%3A1");
+    expect(prev.getAttribute("href")).toBe("/s/s1/r/r1?open=task:task:1");
     expect(next.textContent).toContain("Task 3 · Dot field");
     expect(next.getAttribute("href")).toBe("/s/s1/r/r1/p/plate");
     cleanup();
@@ -1124,7 +1124,7 @@ describe("task page (reshape)", () => {
   it("the flow link says how many parts use this one and selects it on the flow board", () => {
     showIt();
     const flow = screen.getByRole("link", { name: "Flow: 2 parts use this" });
-    expect(flow.getAttribute("href")).toBe("/s/s1/r/r1/flow?part=task%3A1");
+    expect(flow.getAttribute("href")).toBe("/s/s1/r/r1?open=flow&part=task%3A1");
     cleanup();
     const t = reshaped();
     showIt(t, t.r.parts[1]);

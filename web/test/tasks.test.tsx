@@ -9,7 +9,10 @@ import type {
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stacks } from "../src/live/Track";
-import { Live } from "../src/pages/Session";
+import { Live, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import type { Tab } from "../src/router";
 import { clock } from "../src/story";
 

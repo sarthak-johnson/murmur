@@ -550,7 +550,7 @@ export function Office(props: {
       // Low enough that the first desks show under Claude's corner, the board's foot above.
       const x = away ? 6 * T : sc.waiting ? 32 * T : (c?.x ?? 32 * T);
       const y = away ? 7 * T : sc.waiting ? 4 * T : 8.5 * T;
-      w.scrollTo({
+      w.scrollTo?.({
         left: x * scale - w.clientWidth / 2,
         top: y * scale - w.clientHeight / 2,
         behavior: smooth ? "smooth" : "auto",
@@ -589,7 +589,7 @@ export function Office(props: {
         : away
           ? [x0, y0 + map.height / 2]
           : [x0 + (c?.x ?? W / 2) * scale, y0 + (c?.y ?? H / 2) * scale];
-      w.scrollTo({
+      w.scrollTo?.({
         left: away && !sel ? 0 : x - w.clientWidth / 2,
         top: y - w.clientHeight / 2,
       });
@@ -734,6 +734,9 @@ export function Office(props: {
         .filter(Boolean)
         .join(" ")}
     >
+      <a className="of-skip" href={panel ? "#panel" : "#main"}>
+        Skip to the content
+      </a>
       <header className="of-top">
         <div className="of-top-row">
           <Brand />
@@ -883,6 +886,8 @@ export function Office(props: {
         <main
           className={pw ? "of-stage with-panel" : "of-stage"}
           ref={stage}
+          id="main"
+          tabIndex={-1}
           style={{ "--of-pw": `${pw}px` } as React.CSSProperties}
         >
           {scene.waiting && (

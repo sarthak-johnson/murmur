@@ -11,7 +11,10 @@ import type {
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Live as Page } from "../src/pages/Session";
+import { Live as Page, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import { clock } from "../src/story";
 
 /** A request's own page: the newest request unless the test names one. */

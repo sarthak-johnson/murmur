@@ -2,7 +2,10 @@ import type { RequestView, SessionView, Thread } from "@murmur/core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Live } from "../src/pages/Session";
+import { Live, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import {
   chainOf,
   drawnFollows,

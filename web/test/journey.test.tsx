@@ -1,8 +1,11 @@
 import type { Journey, RequestView, SessionView } from "@murmur/core";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { dayLabel } from "../src/live/Rail";
-import { Live } from "../src/pages/Session";
+import { dayLabel } from "../src/format";
+import { Live, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import { clock } from "../src/story";
 
 /** Noon UTC on a November day, the same calendar day in any time zone a test runs in. */

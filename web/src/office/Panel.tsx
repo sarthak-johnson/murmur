@@ -190,8 +190,9 @@ function PanelBody(props: PanelProps) {
       tabIndex={-1}
       className={props.wide ? "of-panel wide" : "of-panel"}
       aria-label="Details"
+      id="panel"
     >
-      <header className="of-ph">
+      <div className="of-ph">
         <div className="of-ph-row">
           <nav className="of-crumbs" aria-label="Where you are">
             <ol>
@@ -271,7 +272,7 @@ function PanelBody(props: PanelProps) {
             {REQUEST_VIEWS.map(([t, label]) => tab(t, label))}
           </nav>
         </div>
-      </header>
+      </div>
       <div className="of-db" ref={body}>
         {closeUp ? (
           <CloseUp {...props} onOpenPart={openPart} />
@@ -364,7 +365,7 @@ function RequestHead(props: { view: SessionView; request: RequestView }) {
   ];
   const from = source(req);
   return (
-    <header className="of-rh">
+    <div className="of-rh">
       <div className="over">
         {/* A kind Murmur guessed is not worth a chip: "yes" is no feature. */}
         {!req.kindInferred && (
@@ -376,9 +377,9 @@ function RequestHead(props: { view: SessionView; request: RequestView }) {
           {from && ` · ${from}`}
         </span>
       </div>
-      <h2 className="ask" title={cleanPrompt(req.prompt)}>
+      <h1 className="ask live-title" title={cleanPrompt(req.prompt)}>
         {askOf(req)}
-      </h2>
+      </h1>
       {facts.length > 0 && (
         // biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the facts
         <div className="asked" role="group" aria-label="Summary">
@@ -392,7 +393,7 @@ function RequestHead(props: { view: SessionView; request: RequestView }) {
           })}
         </div>
       )}
-    </header>
+    </div>
   );
 }
 

@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 import type { RequestView, SessionView } from "@murmur/core";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Live } from "../src/pages/Session";
+import { Live, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import { navigate, useRoute } from "../src/router";
 
 const css = readFileSync("src/theme.css", "utf8");

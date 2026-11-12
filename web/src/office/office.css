@@ -1018,6 +1018,24 @@
   -webkit-line-clamp: 1;
 }
 
+/* The first stop for the keyboard: straight to the panel, or to the room. */
+.of-skip {
+  position: absolute;
+  left: -9999px;
+  top: 8px;
+  z-index: 30;
+}
+.of-skip:focus {
+  left: 8px;
+  padding: 6px 10px;
+  background: var(--o-panel);
+  border: 1px solid var(--o-line2);
+  color: var(--o-t1);
+}
+.of-stage:focus {
+  outline: none;
+}
+
 /* Popovers under a top-bar button: the session switcher, the request picker, the menu. */
 .of-pop-wrap {
   position: relative;
@@ -1557,7 +1575,7 @@
 .of-rh {
   margin-bottom: 16px;
 }
-.of-rh .ask {
+.of-rh .ask.live-title {
   font-size: 20px;
   line-height: 1.3;
   margin: 6px 0 8px;

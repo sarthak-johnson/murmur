@@ -16,7 +16,10 @@ import { FlowBoard } from "../src/flow/FlowBoard";
 import { partMark, stateWord } from "../src/flow/flow";
 import { HelpersTab } from "../src/live/Tabs";
 import { PhaseTrack } from "../src/live/Track";
-import { Live as Page } from "../src/pages/Session";
+import { Live as Page, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import { PartDetail } from "../src/part/PartDetail";
 import { nowLine, requestMark } from "../src/session";
 

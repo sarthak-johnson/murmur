@@ -467,7 +467,7 @@ describe("selection", () => {
       "Used by The rail, Shell screenshot sweep",
     );
     const open = within(strip).getByRole("link", { name: "Open Task 6 →" });
-    expect(open.getAttribute("href")).toBe("/s/s1/r/r7/p/frame");
+    expect(open.getAttribute("href")).toBe("/s/s1/r/r7?open=task:frame");
   });
 
   it("a second click or Escape clears it", async () => {
