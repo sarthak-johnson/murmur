@@ -1498,21 +1498,38 @@
   inherits: false;
   initial-value: 0px;
 }
+@property --of-fe {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
 .of-rail .of-rl,
 .of-db {
-  mask-image: linear-gradient(to bottom, transparent, #000 var(--of-ft));
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 var(--of-ft),
+    #000 calc(100% - var(--of-fe)),
+    transparent
+  );
   animation: of-top-fade linear both;
   animation-timeline: scroll(self block);
 }
+/* And its foot fades while more is below. */
 @keyframes of-top-fade {
   from {
     --of-ft: 0px;
+    --of-fe: 24px;
   }
   2% {
     --of-ft: 28px;
   }
+  98% {
+    --of-fe: 24px;
+  }
   to {
     --of-ft: 28px;
+    --of-fe: 0px;
   }
 }
 .of-rl ol {
