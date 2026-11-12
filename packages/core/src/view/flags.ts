@@ -5,8 +5,10 @@
  *   keeps the first. Cleared by UserPromptSubmit, PreToolUse, PostToolUse(Failure) or SessionEnd.
  *   Also "input" at a main-thread Stop that leaves the user something to do: an ask in
  *   Claude's last message (`askIn`), else a task this request narrated blocked on the user
- *   (`waitsOnYou`) and has not narrated since. A Stop that asks nothing drops the ask. It replaces an idle needs-you (and an idle one never replaces it); a
- *   new ask keeps its `since`. Only the main thread's tool calls clear it, never a helper's;
+ *   (`waitsOnYou`) and has not narrated since. A Stop that asks nothing drops the ask. It
+ *   replaces an idle needs-you (and an idle one never replaces it); a new ask keeps its
+ *   `since`. A main-thread AskUserQuestion call is a "question" ask until its result comes.
+ *   Only the main thread's tool calls clear it, never a helper's;
  *   a helper's permission prompt meanwhile shows first, and the ask returns once it clears.
  * - Stuck: a run of 3 or more failures, either failed narrate steps on one part (a done or
  *   running step ends the run) or PostToolUseFailure of one tool on one `file_path` or
@@ -89,6 +91,8 @@ export function needsYou(events: MurmurEvent[]): NeedsYou | null {
       if (main) {
         ask = null;
         said = "";
+        if (e.hook === "PreToolUse" && p.tool_name === "AskUserQuestion")
+          ask = { reason: "question", text: questionOf(p), since: e.ts };
       }
     } else if (
       reason &&
@@ -104,6 +108,13 @@ export function needsYou(events: MurmurEvent[]): NeedsYou | null {
     }
   }
   return out ?? ask;
+}
+
+/** An AskUserQuestion call's first question. */
+function questionOf(p: Record<string, unknown>): string {
+  const qs = obj(p.tool_input).questions;
+  const q = Array.isArray(qs) ? str(obj(qs[0]).question)?.trim() : undefined;
+  return q || "Claude asked you a question";
 }
 
 /**

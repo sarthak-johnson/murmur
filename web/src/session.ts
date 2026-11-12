@@ -134,46 +134,45 @@ export function lastActivity(
 }
 
 /**
- * What Claude waits on you for, or null: a question it asked (an AskUserQuestion call
- * still open), a needs-you from Claude Code, or the questions of its last message once
- * it stopped. Only the newest request of a session still going can wait.
+ * What Claude waits on you for, or null. Whether it waits is core's word alone (the
+ * request core reads as "waiting", from `needsYou`), so the room, the rail and the lobby
+ * agree; this only says it: an AskUserQuestion's questions with their options, the
+ * questions of Claude's last message, else core's reading of what it asked.
  */
 export function waitingOn(
   view: SessionView,
   req: RequestView,
   events: MurmurEvent[],
 ): Waiting | null {
-  if (req !== view.requests.at(-1) || view.ended || req.finished) return null;
-  const { evs, last, stopped } = lastActivity(view, req, events);
-  const ask = pendingAsk(evs);
-  if (ask) return { since: ask.ts, questions: askQuestions(ask), text: "" };
-  const lastMsg = req.messages?.at(-1);
-  const asked = lastMsg ? questionsIn(lastMsg.text) : [];
-  const fromMessage = asked.map((question) => ({ question }));
   const n = view.needsYou;
-  if (n) {
-    const permission = n.reason === "permission";
-    // No question in its words: core's reading of what it asked, else what it last said.
-    const core = (req.waiting ?? [])
-      .filter((q) => q && q !== n.text)
-      .map((question) => ({ question }));
-    const questions = permission ? [] : fromMessage.length ? fromMessage : core;
-    const said =
-      !permission && !questions.length && lastMsg
-        ? lastParagraph(lastMsg.text)
-        : "";
-    return {
-      since: n.since,
-      questions,
-      text: n.text,
-      ...(permission ? { permission: true } : {}),
-      ...(n.reason === "input" ? { asked: true } : {}),
-      ...(said ? { said } : {}),
-    };
-  }
-  if (stopped && last && asked.length)
-    return { since: last.ts, questions: fromMessage, text: "" };
-  return null;
+  if (!n || req.state !== "waiting") return null;
+  const ask =
+    n.reason === "question"
+      ? pendingAsk(requestEvents(view, req, events))
+      : undefined;
+  if (ask) return { since: n.since, questions: askQuestions(ask), text: "" };
+  const lastMsg = req.messages?.at(-1);
+  const fromMessage = (lastMsg ? questionsIn(lastMsg.text) : []).map(
+    (question) => ({ question }),
+  );
+  const permission = n.reason === "permission";
+  // No question in its words: core's reading of what it asked, else what it last said.
+  const core = (req.waiting ?? [])
+    .filter((q) => q && q !== n.text)
+    .map((question) => ({ question }));
+  const questions = permission ? [] : fromMessage.length ? fromMessage : core;
+  const said =
+    !permission && !questions.length && lastMsg
+      ? lastParagraph(lastMsg.text)
+      : "";
+  return {
+    since: n.since,
+    questions,
+    text: n.text,
+    ...(permission ? { permission: true } : {}),
+    ...(n.reason === "input" ? { asked: true } : {}),
+    ...(said ? { said } : {}),
+  };
 }
 
 export type RequestState = "running" | "waiting" | "done";

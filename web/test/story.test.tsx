@@ -10,6 +10,7 @@ import type {
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { asCoreSays } from "./coreSays";
 import { Live as Page, roomInJsdom } from "./officeShell";
 
 roomInJsdom();
@@ -208,7 +209,7 @@ function request(r: Partial<RequestView> = {}): RequestView {
 }
 
 function session(req: RequestView, s: Partial<SessionView> = {}): SessionView {
-  return {
+  return asCoreSays({
     sessionId: "s1",
     cwd: "/x/app",
     title: "app",
@@ -218,7 +219,7 @@ function session(req: RequestView, s: Partial<SessionView> = {}): SessionView {
     requests: [req],
     needsYou: null,
     ...s,
-  };
+  });
 }
 
 const ev = (min: number): MurmurEvent => ({

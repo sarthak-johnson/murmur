@@ -17,6 +17,7 @@ roomInJsdom();
 import type { Tab } from "../src/router";
 import { nowLine, requestMark, requestShort, shortOf } from "../src/session";
 import { clockAt } from "./clock";
+import { asCoreSays } from "./coreSays";
 
 /** Noon UTC on a November day, the same calendar day in any time zone a test runs in. */
 const day = (d: number, min = 0) =>
@@ -84,7 +85,7 @@ const done = (id: string) => task(id, `Task ${id}`, "done");
 
 /** Mon 2 Nov: two requests, one done and one left open. Fri 6 Nov: one failed, one running. */
 function session(s: Partial<SessionView> = {}): SessionView {
-  return {
+  return asCoreSays({
     sessionId: "s1",
     cwd: "/x/tradara",
     title: "Bro we recently made Alphatake, and now…",
@@ -189,7 +190,7 @@ function session(s: Partial<SessionView> = {}): SessionView {
       }),
     ],
     ...s,
-  };
+  });
 }
 
 function show(
