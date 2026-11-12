@@ -1477,6 +1477,11 @@ time {
   align-items: baseline;
   min-width: 0;
 }
+/* A row's +/- stays on one line beside its words. */
+.sfiles-by li > .num {
+  flex: none;
+  white-space: nowrap;
+}
 .sfiles-by a {
   color: var(--t2);
   text-decoration: none;
@@ -1488,11 +1493,12 @@ time {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-/* The request's files in all, each counted once. */
+/* The files in all, each counted once: a sentence, read in the reading face. */
 .files-total {
   margin: 16px 0 4px;
   color: var(--t2);
-  font: 400 14px / 20px var(--font-code);
+  font: 400 14px / 20px var(--font-ui);
+  font-variant-numeric: tabular-nums;
 }
 .helpers {
   max-width: 860px;
@@ -3543,10 +3549,11 @@ code.nw {
   font-size: 14px;
   line-height: 20px;
 }
+/* The pixel "i", one CSS px per grid cell so it stays crisp. */
 .pd .pd-read > svg {
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
 }
 .pd-nav {
   display: flex;

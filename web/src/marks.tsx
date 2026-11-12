@@ -18,6 +18,23 @@ export function StateMark(props: { mark: Mark; pulse?: boolean }) {
   );
 }
 
+/** A note's pixel "i": a remark about the page, not a state. */
+export function InfoIcon() {
+  return (
+    <svg
+      className="g info"
+      viewBox="0 0 10 10"
+      shapeRendering="crispEdges"
+      aria-hidden="true"
+    >
+      <path
+        d="M1 0h8v1H1zM0 1h1v8H0zM9 1h1v8H9zM1 9h8v1H1zM4 2h2v2H4zM4 5h2v3H4z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 /** The amber "needs you" mark: a ring with a dot. */
 export function NeedIcon() {
   return (

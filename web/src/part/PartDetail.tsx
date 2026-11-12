@@ -13,7 +13,7 @@ import { type ReactNode, useState } from "react";
 import { FileList, sharedFolder } from "../files";
 import { MINUS } from "../format";
 import { Fold, inline, Markdown } from "../markdown";
-import { Glyph, NeedIcon, PlanSource } from "../marks";
+import { Glyph, InfoIcon, NeedIcon, PlanSource } from "../marks";
 import { Pill } from "../Pill";
 import { floorPath, follow, partPath, requestPath } from "../router";
 import {
@@ -659,7 +659,7 @@ function PartBody(props: {
       )}
       {part.inferred && (
         <p className="pd-read">
-          <Glyph status="todo" />
+          <InfoIcon />
           Claude hasn't described this task itself. This page is read from its
           helpers, files and messages.
         </p>
