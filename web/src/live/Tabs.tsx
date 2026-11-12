@@ -40,10 +40,12 @@ export function fileRow(cwd: string) {
   return (f: FileTouch) => (
     <li key={f.path}>
       <PathText path={f.path} cwd={cwd} />
-      <span className={f.added ? "pd-add" : "pd-add zero"}>+{f.added}</span>
+      <span className={f.added ? "pd-add" : "pd-add zero"}>
+        +{thousands(f.added)}
+      </span>
       <span className={f.removed ? "pd-del" : "pd-del zero"}>
         {MINUS}
-        {f.removed}
+        {thousands(f.removed)}
       </span>
       {f.role && <span className="muted">{f.role}</span>}
     </li>
@@ -199,8 +201,8 @@ export function SessionFilesTab(props: {
                       {c.title ? ` · ${c.title}` : ""}
                     </a>{" "}
                     <span className="num muted">
-                      +{c.added} {MINUS}
-                      {c.removed}
+                      +{thousands(c.added)} {MINUS}
+                      {thousands(c.removed)}
                     </span>
                   </li>
                 );

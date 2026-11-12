@@ -2,7 +2,7 @@ import type { FileTouch, MurmurEvent } from "@murmur/core";
 import { type ReactNode, useState } from "react";
 import { PathText } from "../files";
 import { eventsById, MINUS } from "../format";
-import { clock } from "../story";
+import { clock, thousands } from "../story";
 
 export interface Hunk {
   oldStart: number;
@@ -211,11 +211,11 @@ export function DiffRow(props: {
         {/* Its counts and tags stay on one line together, beside the path. */}
         <span className="pd-facts">
           <span className={file.added ? "pd-add" : "pd-add zero"}>
-            +{file.added}
+            +{thousands(file.added)}
           </span>
           <span className={file.removed ? "pd-del" : "pd-del zero"}>
             {MINUS}
-            {file.removed}
+            {thousands(file.removed)}
           </span>
           {file.isNew && <span className="pd-tag">new</span>}
           {props.note}

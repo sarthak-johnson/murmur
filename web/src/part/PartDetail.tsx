@@ -44,6 +44,7 @@ import {
   recapRounds,
   reportLine,
   type Tone,
+  thousands,
   verdictOf,
 } from "../story";
 import { DiffRow, useById } from "./Diff";
@@ -379,10 +380,10 @@ function PartBody(props: {
       ? [
           <span key="files" className="fact num">
             <b>{part.files.length}</b> {plural(part.files.length, "file")},{" "}
-            <b className="pd-add">+{added}</b>{" "}
+            <b className="pd-add">+{thousands(added)}</b>{" "}
             <b className="pd-del">
               {MINUS}
-              {removed}
+              {thousands(removed)}
             </b>
           </span>,
         ]

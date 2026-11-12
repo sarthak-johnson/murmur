@@ -210,7 +210,7 @@ export function partState(req: RequestView, p: PartView, state?: State): State {
 export const partMark = (req: RequestView, p: PartView, state?: State): Mark =>
   MARK[partState(req, p, state)];
 
-/** The card's state word: "Done, 2 rounds", "Running", "Left open", "Not started". */
+/** The card's state word: "Done, 2 fix rounds", "Running", "Left open", "Not started". */
 export function stateWord(
   req: RequestView,
   p: PartView,
@@ -221,7 +221,7 @@ export function stateWord(
   if (s === "done") {
     const r = p.rounds ?? 0;
     if (!r) return WORD.done;
-    return long ? `Done after ${rounds(r)}` : `Done, ${n(r, "round")}`;
+    return long ? `Done after ${rounds(r)}` : `Done, ${n(r, "fix round")}`;
   }
   return WORD[s];
 }

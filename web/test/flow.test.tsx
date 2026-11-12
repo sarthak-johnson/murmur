@@ -360,7 +360,7 @@ describe("cards", () => {
       screen
         .getByRole("button", { name: new RegExp(name) })
         .querySelector(".fc-st")?.textContent;
-    expect(st("App frame")).toBe("Done, 1 round");
+    expect(st("App frame")).toBe("Done, 1 fix round");
     expect(st("Lit plate tokens")).toBe("Done");
     expect(st("Closed trades")).toBe("Running");
     cleanup();

@@ -12,7 +12,7 @@ import { MINUS } from "../format";
 import { StateMark } from "../marks";
 import { follow, partPath } from "../router";
 import type { State } from "../state";
-import { clock } from "../story";
+import { clock, thousands } from "../story";
 import {
   bandLine,
   bandMark,
@@ -504,10 +504,10 @@ function Detail(props: {
           </span>
           <span>
             <b>{p.files.length}</b> {p.files.length === 1 ? "file" : "files"}{" "}
-            <span className="fd-add">+{added}</span>{" "}
+            <span className="fd-add">+{thousands(added)}</span>{" "}
             <span className="fd-del">
               {MINUS}
-              {removed}
+              {thousands(removed)}
             </span>
           </span>
           {uses.length > 0 && (
