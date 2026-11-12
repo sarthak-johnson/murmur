@@ -329,11 +329,24 @@ export function NowLine(props: {
   const said = nowLine(request, events, done, props.waiting);
   const line =
     props.paused && said.label === "Now" ? { ...said, label: "Last" } : said;
-  const more = !!(line.src || line.why);
+  // One line in the bar: cut, the whole of it reads in the expander.
+  const textEl = useRef<HTMLSpanElement>(null);
+  const [cut, setCut] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: measured again when the words change
+  useEffect(() => {
+    const el = textEl.current;
+    if (!el) return;
+    const on = () => setCut(el.scrollWidth > el.clientWidth + 1);
+    on();
+    const ro = new ResizeObserver(on);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [line.text]);
+  const more = !!(line.src || line.why) || cut;
   return (
     <section className="of-now" aria-label={line.label} ref={box}>
       <span className="of-now-k">{line.label}</span>
-      <span className="of-now-t" title={line.text}>
+      <span className="of-now-t" title={line.text} ref={textEl}>
         {line.text}
       </span>
       {more && (
@@ -344,12 +357,13 @@ export function NowLine(props: {
           aria-expanded={open}
           onClick={() => setOpen(!open)}
         >
-          {line.why ? "Why now" : "Source"}
+          {line.why ? "Why now" : line.src ? "Source" : "More"}
           <span className="of-caret" aria-hidden="true" />
         </button>
       )}
       {open && more && (
         <div className="of-pop of-now-pop">
+          {cut && <p className="now-full">{line.text}</p>}
           {line.why && (
             <p className="now-why">
               <b>Why now:</b> {line.why}

@@ -109,10 +109,6 @@
 .of-tag.quiet::before {
   opacity: 0.6;
 }
-/* Waiting on you: nothing is happening, but the wait is yours, so it is amber. */
-.of-tag.quiet.waiting {
-  --tone: var(--o-need);
-}
 .of-tag.replay {
   --tone: #f2b8a0;
 }
@@ -1218,6 +1214,10 @@
   right: 0;
   max-width: min(560px, calc(100vw - 32px));
   font-size: 14px;
+}
+.of-now-pop .now-full {
+  margin: 4px 4px 8px;
+  color: var(--o-t1);
 }
 .of-now-pop .now-why {
   margin: 4px 4px 8px;

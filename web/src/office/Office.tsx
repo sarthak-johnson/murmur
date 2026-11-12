@@ -832,13 +832,13 @@ export function Office(props: {
               {ses.word}
             </span>
           ) : following && ses.tag === "waiting" ? (
-            // Waiting on you ticks on, but nothing has happened: it is not live. How long the
-            // wait has run is the pill's to say, so the bar never shows two clocks for it.
+            // Waiting on you is the pill's to say, with its clock: the tag says only that
+            // nothing is happening, so the bar has one word and one clock for each thing.
             <span
-              className="of-tag quiet waiting"
-              title={`Claude is waiting on you; nothing else has happened in this session for ${dur(quietFor)}.`}
+              className="of-tag quiet"
+              title={`Nothing has happened in this session for ${dur(quietFor)}: Claude is waiting on you.`}
             >
-              Waiting
+              Quiet
             </span>
           ) : following && open ? (
             <span
