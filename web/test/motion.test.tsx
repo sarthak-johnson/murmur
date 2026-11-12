@@ -119,7 +119,7 @@ describe("one loop on screen", () => {
   it("only the pulse class loops", () => {
     const loops = [...css.matchAll(/animation:[^;]*infinite/g)].length;
     const pulses = [
-      ...css.matchAll(/animation:\s*pulse 2\.4s ease-in-out infinite/g),
+      ...css.matchAll(/animation:\s*pulse 1\.6s steps\(1, end\) infinite/g),
     ].length;
     expect(loops).toBe(pulses);
   });

@@ -1,31 +1,33 @@
 /*
- * The office. Its own warm palette (--o-*), scoped to .office so the app's tokens stay as
- * they are for the views in its drawer. The room is a canvas at a whole-number scale (--s)
- * with a DOM overlay for words: labels, plates, bubbles, sticky-note text.
+ * The office: the app's one shell. Its --o-* names alias the app's tokens (theme.css), and
+ * its chrome is built from the same pixel kit as the views in its panel. The room is a
+ * canvas at a whole-number scale (--s) with a DOM overlay for words: labels, plates,
+ * bubbles, sticky-note text.
  */
 .office {
-  --o-bg: #0d0b0a;
-  --o-bar: #15110f;
-  --o-panel: #1a1512;
-  --o-line: #33291f;
-  --o-line2: #4a3830;
-  --o-t1: #f3ebe0;
-  --o-t2: #d5c8b8;
-  --o-t3: #a8a29a;
+  /* The office's names for the app's tokens (theme.css :root): one palette, one source. */
+  --o-bg: var(--s1);
+  --o-bar: var(--s2);
+  --o-panel: var(--s3);
+  --o-line: var(--s6);
+  --o-line2: var(--s7);
+  --o-t1: var(--t1);
+  --o-t2: var(--t2);
+  --o-t3: var(--t3);
   --o-ink: #1c2128;
-  --o-now: #6db4ff;
-  --o-now-bg: #16263a;
-  --o-done: #74d394;
-  --o-done-bg: #15281d;
-  --o-need: #ffbf4a;
-  --o-need-bg: #2e2310;
-  --o-bad: #ff6f61;
-  --o-bad-bg: #2e1512;
+  --o-now: var(--now);
+  --o-now-bg: var(--now-tint);
+  --o-done: var(--done);
+  --o-done-bg: var(--done-tint);
+  --o-need: var(--need);
+  --o-need-bg: var(--need-tint);
+  --o-bad: var(--bad);
+  --o-bad-bg: var(--bad-tint);
   --o-todo: #c0b6aa;
-  --o-todo-bg: #2a2420;
-  --o-ui: "Geist", system-ui, sans-serif;
-  --o-mono: "Geist Mono", ui-monospace, monospace;
-  --o-pix: "Silkscreen", "Geist Mono", monospace;
+  --o-todo-bg: var(--todo-tint);
+  --o-ui: var(--font-ui);
+  --o-mono: var(--font-code);
+  --o-pix: var(--pix);
   --o-top: 56px;
   --o-foot: 72px;
   position: fixed;
@@ -38,23 +40,6 @@
   font: 15px / 1.5 var(--o-ui);
   overflow: hidden;
 }
-.office button,
-.office select,
-.office input {
-  font: inherit;
-  color: inherit;
-}
-.office button {
-  cursor: pointer;
-}
-.office .sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
 
 /* Top bar */
 .of-top {
@@ -63,7 +48,7 @@
   gap: 16px;
   padding: 0 24px 0 12px;
   background: var(--o-bar);
-  border-bottom: 1px solid var(--o-line);
+  box-shadow: inset 0 -2px 0 var(--o-line);
   min-width: 0;
 }
 .of-back-link {
@@ -71,7 +56,6 @@
   place-items: center;
   width: 32px;
   height: 32px;
-  border-radius: 6px;
   color: var(--o-t2);
   font-size: 22px;
   line-height: 1;
@@ -80,7 +64,7 @@
 }
 .of-back-link:hover,
 .of-back-link:focus-visible {
-  background: #241d19;
+  background: var(--s5);
   color: var(--o-t1);
 }
 .of-brand {
@@ -104,44 +88,30 @@
 }
 /* Live or a replay, said once by the brand: a live session follows its newest moment. */
 .of-tag {
-  font: 700 11px var(--o-pix);
-  letter-spacing: 0.04em;
-  border-radius: 4px;
-  padding: 3px 7px;
-  white-space: nowrap;
+  height: 24px;
   cursor: help;
 }
 .of-tag::before {
   content: "";
-  display: inline-block;
+  flex: none;
   width: 6px;
   height: 6px;
-  margin-right: 6px;
-  vertical-align: 1px;
   background: currentColor;
 }
 .of-tag.live {
-  color: var(--o-now);
-  border: 1px solid #2c4f78;
-  background: var(--o-now-bg);
+  --tone: var(--o-now);
 }
 .of-tag.live::before {
-  border-radius: 50%;
-  animation: of-breathe 2s ease-in-out infinite;
+  animation: of-breathe 2s steps(1, end) infinite;
 }
 .of-tag.quiet {
-  color: var(--o-t2);
-  border: 1px solid var(--o-line2);
-  background: #1d1714;
+  --tone: var(--o-t2);
 }
 .of-tag.quiet::before {
-  border-radius: 50%;
   opacity: 0.6;
 }
 .of-tag.replay {
-  color: #f2b8a0;
-  border: 1px solid #6a3a2c;
-  background: #2a1712;
+  --tone: #f2b8a0;
 }
 .of-tag.replay::before {
   clip-path: polygon(0 0, 100% 50%, 0 100%);
@@ -151,22 +121,18 @@
     opacity: 0.35;
   }
 }
+/* The request picker: a pixel button; the request's title in Geist, its number a label. */
 .of-req {
-  display: flex;
-  align-items: center;
+  justify-content: flex-start;
   gap: 10px;
   min-width: 0;
   max-width: 620px;
-  padding: 6px 12px;
-  border: 1px solid var(--o-line2);
-  border-radius: 6px;
-  background: #1d1714;
-}
-.of-req:hover {
-  border-color: #6a5446;
+  min-height: 36px;
+  padding: 4px 12px;
+  font: 15px / 22px var(--o-ui);
 }
 .of-req-n {
-  font-size: 14px;
+  font: 400 12px / 16px var(--o-pix);
   color: var(--o-t3);
   white-space: nowrap;
 }
@@ -176,40 +142,55 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* A pixel caret: three rows of a stepped triangle. */
 .of-caret {
-  width: 0;
-  height: 0;
-  border: 5px solid transparent;
-  border-top-color: var(--o-t3);
-  margin-top: 5px;
+  flex: none;
+  width: 10px;
+  height: 6px;
+  background:
+    linear-gradient(var(--o-t3) 0 0) 0 0 / 10px 2px,
+    linear-gradient(var(--o-t3) 0 0) 2px 2px / 6px 2px,
+    linear-gradient(var(--o-t3) 0 0) 4px 4px / 2px 2px;
+  background-repeat: no-repeat;
 }
+/* The state: a tag at the bar's height, its state's pixel mark first. */
 .of-pill {
-  font-size: 14px;
-  font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 999px;
-  white-space: nowrap;
-  border: 1px solid currentColor;
+  height: 32px;
+  padding: 0 10px 0 8px;
 }
-.office .s-now {
-  color: var(--o-now);
-  background: var(--o-now-bg);
+.of-pill::before {
+  content: "";
+  flex: none;
+  width: 12px;
+  height: 12px;
+  background: var(--mark-todo) center / 12px 12px no-repeat;
 }
-.office .s-done {
-  color: var(--o-done);
-  background: var(--o-done-bg);
+.of-pill.s-now {
+  --tone: var(--o-now);
 }
-.office .s-blocked {
-  color: var(--o-need);
-  background: var(--o-need-bg);
+.of-pill.s-now::before {
+  background-image: var(--mark-now);
 }
-.office .s-failed {
-  color: var(--o-bad);
-  background: var(--o-bad-bg);
+.of-pill.s-done {
+  --tone: var(--o-done);
 }
-.office .s-todo {
-  color: var(--o-todo);
-  background: var(--o-todo-bg);
+.of-pill.s-done::before {
+  background-image: var(--mark-done);
+}
+.of-pill.s-blocked {
+  --tone: var(--o-need);
+}
+.of-pill.s-blocked::before {
+  background-image: var(--mark-blocked);
+}
+.of-pill.s-failed {
+  --tone: var(--o-bad);
+}
+.of-pill.s-failed::before {
+  background-image: var(--mark-failed);
+}
+.of-pill.s-todo {
+  --tone: var(--o-todo);
 }
 .of-meta {
   color: var(--o-t2);
@@ -231,16 +212,7 @@
   min-width: 0;
 }
 .of-details {
-  border: 1px solid var(--o-line2);
-  background: #1d1714;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 14px;
-  color: var(--o-t1);
   flex: none;
-}
-.of-details:hover {
-  border-color: #6a5446;
 }
 @media (max-width: 1500px) {
   .of-session {
@@ -307,7 +279,7 @@
 }
 
 .of-overlay .room-label {
-  font: calc(6px * var(--s)) var(--o-pix);
+  font: max(12px, calc(6px * var(--s))) var(--o-pix);
   color: #9a938a;
   white-space: nowrap;
   pointer-events: none;
@@ -315,7 +287,7 @@
 }
 /* The same pixel caps as the room names. */
 .of-overlay .spot-label {
-  font: calc(4px * var(--s)) / 1 var(--o-pix);
+  font: max(12px, calc(4px * var(--s))) / 1 var(--o-pix);
   color: #9a938a;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -323,7 +295,7 @@
   pointer-events: none;
 }
 .of-overlay .you-plate {
-  font: 700 calc(4px * var(--s)) / calc(8px * var(--s)) var(--o-pix);
+  font: 700 max(10px, calc(4px * var(--s))) / calc(8px * var(--s)) var(--o-pix);
   color: #2a211c;
   text-align: center;
   pointer-events: none;
@@ -343,7 +315,6 @@
 }
 .of-overlay .focus-col {
   border: 3px solid var(--o-now);
-  border-radius: 3px;
   pointer-events: none;
 }
 .of-overlay .more {
@@ -357,7 +328,6 @@
   font-style: normal;
   color: #1c1720;
   background: var(--ph);
-  border-radius: 3px;
   padding: 2px 4px 1px;
   margin-right: 6px;
   vertical-align: 1px;
@@ -425,7 +395,7 @@
   color: #8a7f70;
 }
 .of-overlay .card-n {
-  font: 700 calc(3px * var(--s)) / 1 var(--o-pix);
+  font: 700 max(9px, calc(3px * var(--s))) / 1 var(--o-pix);
   color: #6b6253;
   text-align: center;
   pointer-events: none;
@@ -442,21 +412,20 @@
   transform: translateX(-50%);
   text-shadow: 0 1px 0 #000;
 }
-/* Speech bubbles: pop in with a spring when the words change, a tail to the speaker, a border
-   in the speaker's shirt colour, and a gentle fade once they have been up a while. */
+/* Speech bubbles: pixel frames in the speaker's shirt colour with a stepped tail to the
+   speaker; they pop in when the words change and fade once they have been up a while. */
 .of-overlay .bubble {
   --bc: var(--who, #4d3e34);
+  --pf: var(--bc);
+  --pfb: #120e0c;
   font: 500 15px / 1.3 var(--o-ui);
   color: var(--o-t1);
-  background: #120e0c;
-  border: 2px solid var(--bc);
-  border-radius: 8px;
   padding: 4px 10px;
   width: max-content;
   translate: -50% calc(-100% - 6px);
   transform-origin: 50% calc(100% + 6px);
   pointer-events: none;
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.45);
   animation: of-pop 0.42s cubic-bezier(0.34, 1.7, 0.5, 1) backwards;
   transition:
     opacity 0.6s ease,
@@ -466,14 +435,15 @@
   content: "";
   position: absolute;
   left: 50%;
-  bottom: -6px;
-  width: 8px;
-  height: 8px;
-  margin-left: -4px;
-  background: #120e0c;
-  border: solid var(--bc);
-  border-width: 0 2px 2px 0;
-  rotate: 45deg;
+  bottom: -8px;
+  width: 10px;
+  height: 6px;
+  margin-left: -5px;
+  background:
+    linear-gradient(var(--bc) 0 0) 0 0 / 10px 2px,
+    linear-gradient(var(--bc) 0 0) 2px 2px / 6px 2px,
+    linear-gradient(var(--bc) 0 0) 4px 4px / 2px 2px;
+  background-repeat: no-repeat;
 }
 .of-overlay .bubble .bt {
   display: -webkit-box;
@@ -496,7 +466,6 @@
 .of-overlay .dots i {
   width: calc(1.5px * var(--s));
   height: calc(1.5px * var(--s));
-  border-radius: 50%;
   background: var(--who, #d5c8b8);
   opacity: 0.35;
   animation: of-think 1.4s ease-in-out infinite;
@@ -515,10 +484,7 @@
 }
 .of-overlay .bubble.claude {
   --bc: #b8a98f;
-  background: #1b1511;
-}
-.of-overlay .bubble.claude::after {
-  background: #1b1511;
+  --pfb: #1b1511;
 }
 .of-overlay .bubble.left {
   translate: 0 calc(-100% - 6px);
@@ -550,23 +516,27 @@
   max-width: 420px;
   padding: 10px 14px;
   --bc: var(--o-need);
-  background: #17120c;
+  --pf: var(--bc);
+  --pfb: #17120c;
   animation:
     of-pop 0.5s cubic-bezier(0.34, 1.7, 0.5, 1) backwards,
-    of-glow 2.4s ease-in-out 0.5s infinite;
+    of-glow 2.4s steps(2, end) 0.5s infinite;
 }
 .of-overlay .bubble.wait::after {
-  top: -6px;
+  top: -8px;
   bottom: auto;
   left: calc(50% + var(--tail, 0px));
-  rotate: 225deg;
-  background: #17120c;
+  background:
+    linear-gradient(var(--bc) 0 0) 4px 0 / 2px 2px,
+    linear-gradient(var(--bc) 0 0) 2px 2px / 6px 2px,
+    linear-gradient(var(--bc) 0 0) 0 4px / 10px 2px;
+  background-repeat: no-repeat;
 }
 @keyframes of-glow {
   50% {
     box-shadow:
-      0 3px 0 rgba(0, 0, 0, 0.45),
-      0 0 18px rgba(255, 191, 74, 0.35);
+      0 4px 0 rgba(0, 0, 0, 0.45),
+      0 0 0 4px rgba(255, 191, 74, 0.25);
   }
 }
 .of-overlay .bubble.wait small {
@@ -581,7 +551,6 @@
   color: #2e2310;
   font: 700 24px / 32px var(--o-ui);
   text-align: center;
-  border-radius: 4px;
   pointer-events: none;
   animation: of-pulse 2s ease-in-out infinite;
 }
@@ -593,7 +562,6 @@
 .of-overlay .hit {
   background: transparent;
   border: 0;
-  border-radius: 4px;
   padding: 0;
 }
 .of-overlay .hit:hover,
@@ -673,14 +641,13 @@
   font-size: 12px;
 }
 .s2 .of-overlay .spot-label {
-  font-size: 10px;
+  font-size: 12px;
 }
 /* One line at 2x, so a bubble never covers the plate of the desk above. */
 .s2 .of-overlay .bubble:not(.wait) {
   font-size: 13px;
   padding: 2px 7px;
-  border-width: 1px;
-  translate: -50% calc(-100% - 4px);
+  translate: -50% calc(-100% - 6px);
 }
 .s2 .of-overlay .bubble:not(.wait) .bt {
   display: block;
@@ -688,15 +655,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.s2 .of-overlay .bubble:not(.wait)::after {
-  width: 6px;
-  height: 6px;
-  margin-left: -3px;
-  bottom: -4px;
-  border-width: 0 1px 1px 0;
-}
 .s2 .of-overlay .bubble.left {
-  translate: 0 calc(-100% - 4px);
+  translate: 0 calc(-100% - 6px);
 }
 .s2 .of-overlay .bubble.wait {
   font-size: 15px;
@@ -710,8 +670,8 @@
   display: none;
 }
 
-/* The detail drawer: beside the room when it fits, else over it on the side away from what
-   was clicked. It holds the app's own views, so it keeps the app's look. */
+/* The detail panel: beside the room when it fits, else over it on the side away from what
+   was clicked. It holds the app's views, drawn in the same pixel kit as the room's chrome. */
 .of-dock {
   position: absolute;
   top: 0;
@@ -733,23 +693,41 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-columns: minmax(0, 1fr);
-  background: var(--s2, #161512);
-  border-left: 1px solid var(--o-line);
-  box-shadow: -12px 0 24px rgba(0, 0, 0, 0.35);
-  color: var(--t1, #eeecea);
-  font: 15px / 1.5 var(--font-ui, var(--o-ui));
+  background: var(--s2);
+  box-shadow:
+    inset 2px 0 0 var(--o-line2),
+    inset 3px 0 0 var(--px-hi),
+    -4px 0 0 var(--px-drop);
+  color: var(--t1);
+  font: 15px / 1.5 var(--font-ui);
+  animation: of-panel-in 160ms steps(4, end);
 }
 .of-dock.left .of-drawer {
-  border-left: 0;
-  border-right: 1px solid var(--o-line);
-  box-shadow: 12px 0 24px rgba(0, 0, 0, 0.35);
+  box-shadow:
+    inset -2px 0 0 var(--o-line2),
+    inset -3px 0 0 var(--px-lo),
+    4px 0 0 var(--px-drop);
+  animation-name: of-panel-in-l;
+}
+@keyframes of-panel-in {
+  from {
+    translate: 24px 0;
+    opacity: 0;
+  }
+}
+@keyframes of-panel-in-l {
+  from {
+    translate: -24px 0;
+    opacity: 0;
+  }
 }
 .of-drawer.docked {
-  box-shadow: none;
+  box-shadow: inset 2px 0 0 var(--o-line2);
+  animation: none;
 }
 .of-dh {
-  padding: 14px 20px 0;
-  border-bottom: 1px solid var(--line, #34322e);
+  padding: 14px 20px 0 22px;
+  background: var(--s2);
 }
 .of-dh-row {
   display: flex;
@@ -762,7 +740,7 @@
   font-weight: 600;
   font-size: 16px;
   line-height: 1.35;
-  color: var(--t1, #eeecea);
+  color: var(--t1);
   text-decoration: none;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -771,46 +749,29 @@
 }
 .of-dh-req:hover {
   text-decoration: underline;
-  text-decoration-color: var(--line-2, #423f3b);
+  text-decoration-color: var(--s8);
   text-underline-offset: 3px;
 }
 .of-close {
-  background: #241d19;
-  border: 1px solid var(--o-line2);
-  border-radius: 6px;
-  padding: 3px 12px;
-  font-size: 14px;
-  color: var(--o-t2);
   flex: none;
 }
+/* The panel's tabs: the kit's (theme.css), joined to the panel's body below them. */
 .of-tabs {
-  display: flex;
-  gap: 2px;
-  margin-top: 10px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.of-drawer .of-tabs button {
-  background: none;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  padding: 8px 10px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--t3, #a19e9a);
-  white-space: nowrap;
-}
-.of-drawer .of-tabs button:hover {
-  color: var(--t1, #eeecea);
-}
-.of-drawer .of-tabs button[aria-current="page"] {
-  color: var(--t1, #eeecea);
-  border-bottom-color: var(--t1, #eeecea);
+  margin: 12px -20px 0 -22px;
+  padding: 0 20px 0 22px;
 }
 .of-db {
   overflow-y: auto;
-  padding: 18px 20px 40px;
+  padding: 18px 20px 40px 22px;
   min-width: 0;
+  background: var(--s1);
+  animation: of-rise 160ms ease-out;
+}
+@keyframes of-rise {
+  from {
+    translate: 0 4px;
+    opacity: 0;
+  }
 }
 .of-back {
   display: inline-block;
@@ -824,22 +785,18 @@
   font-weight: 600;
 }
 .of-card h3 {
-  font: 600 13px var(--font-ui, var(--o-ui));
-  color: var(--t3, #a19e9a);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font: 400 12px / 16px var(--pix);
+  color: var(--t3);
   margin: 22px 0 8px;
 }
 .of-card p {
   margin: 0 0 10px;
-  color: var(--t2, #d4d0cc);
+  color: var(--t2);
 }
 .of-kicker {
-  font: 600 13px var(--font-ui, var(--o-ui));
-  color: var(--t3, #a19e9a);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin: 0 0 6px;
+  font: 400 12px / 16px var(--pix);
+  color: var(--t3);
+  margin: 0 0 8px;
 }
 .of-chips {
   display: flex;
@@ -848,27 +805,22 @@
   align-items: center;
 }
 .of-chip {
-  font-size: 13px;
-  font-weight: 600;
-  padding: 2px 9px;
-  border-radius: 999px;
-  border: 1px solid currentColor;
-  color: var(--t2, #d4d0cc);
+  --tone: var(--t2);
 }
 .of-chip.now {
-  color: var(--now, #60aaf3);
+  --tone: var(--now);
 }
 .of-chip.done {
-  color: var(--done, #55c483);
+  --tone: var(--done);
 }
 .of-chip.warn {
-  color: var(--need, #e9b452);
+  --tone: var(--need);
 }
 .of-chip.bad {
-  color: var(--bad, #ef6661);
+  --tone: var(--bad);
 }
 .of-md {
-  color: var(--t2, #d4d0cc);
+  color: var(--t2);
   overflow-wrap: anywhere;
 }
 .of-files,
@@ -883,11 +835,11 @@
   display: flex;
   gap: 12px;
   align-items: baseline;
-  color: var(--t2, #d4d0cc);
+  color: var(--t2);
 }
 .of-when {
-  font: 13px var(--font-code, var(--o-mono));
-  color: var(--t3, #a19e9a);
+  font: 13px var(--font-code);
+  color: var(--t3);
   flex: none;
   min-width: 44px;
 }
@@ -901,14 +853,8 @@
     flex-direction: column;
   }
   .of-db .rb-cell + .rb-cell {
-    box-shadow: inset 0 1px 0 var(--s6);
+    box-shadow: inset 0 2px 0 var(--s6);
   }
-}
-.of-db .req-split {
-  display: block;
-}
-.of-db .tabs {
-  flex-wrap: wrap;
 }
 
 /* Replay bar */
@@ -918,17 +864,13 @@
   gap: 16px;
   padding: 0 24px;
   background: var(--o-bar);
-  border-top: 1px solid var(--o-line);
+  box-shadow: inset 0 2px 0 var(--o-line);
   min-width: 0;
 }
 .of-play {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
-  border: 1px solid var(--o-line2);
-  background: #1d1714;
-  display: grid;
-  place-items: center;
+  padding: 0;
   flex: none;
 }
 .of-play-icon {
@@ -938,6 +880,7 @@
   border-top: 8px solid transparent;
   border-bottom: 8px solid transparent;
   margin-left: 3px;
+  image-rendering: pixelated;
 }
 .of-play.on .of-play-icon {
   width: 12px;
@@ -1012,46 +955,37 @@
   width: 36ch;
 }
 .of-speed select {
-  background: #1d1714;
-  border: 1px solid var(--o-line2);
-  border-radius: 6px;
-  padding: 6px 8px;
-  font-size: 14px;
+  min-height: 32px;
+  padding: 4px 8px;
+  font: 13px var(--font-code);
 }
 .of-live {
-  border: 1px solid var(--o-line2);
-  background: #1d1714;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 14px;
   color: var(--o-t2);
 }
 /* At the end of a session that is over: nothing further to go to. */
 .of-live.on {
+  --pf: var(--o-line2);
   color: var(--o-t3);
-  border-color: var(--o-line);
 }
-/* Following a live session: lit, with a breathing dot. */
+/* Following a live session: lit, with a blinking pixel. */
 .of-live.on.live {
+  --pf: var(--now-line);
+  --pfb: var(--o-now-bg);
   color: var(--o-now);
-  border-color: #2c4f78;
-  background: var(--o-now-bg);
 }
 .of-live.on.live::before {
   content: "";
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 7px;
-  border-radius: 50%;
+  flex: none;
+  width: 6px;
+  height: 6px;
   background: currentColor;
-  vertical-align: 1px;
-  animation: of-breathe 2s ease-in-out infinite;
+  animation: of-breathe 2s steps(1, end) infinite;
 }
+/* The key to the stickies: the same marks every view uses. */
 .of-legend {
   display: flex;
   gap: 14px;
-  font-size: 13px;
+  font: 400 12px / 16px var(--o-pix);
   color: var(--o-t2);
   white-space: nowrap;
 }
@@ -1061,27 +995,24 @@
   gap: 6px;
 }
 .of-legend .k {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
+  width: 12px;
+  height: 12px;
   display: inline-block;
+  background: var(--mark-todo) center / 12px 12px no-repeat;
 }
 .of-legend .k.now {
-  background: var(--o-now);
+  background-image: var(--mark-now);
 }
 .of-legend .k.done {
-  background: var(--o-done);
+  background-image: var(--mark-done);
 }
 .of-legend .k.blocked {
-  background: var(--o-need);
+  background-image: var(--mark-blocked);
 }
 .of-legend .k.failed {
-  background: var(--o-bad);
+  background-image: var(--mark-failed);
 }
-.of-legend .k.todo {
-  background: #8d939c;
-}
-@media (max-width: 1440px) {
+@media (max-width: 1500px) {
   .of-legend {
     display: none;
   }
@@ -1125,11 +1056,10 @@
   flex-direction: column;
 }
 .phone .of-ask {
+  --pf: var(--o-need);
+  --pfb: var(--o-need-bg);
   display: block;
   margin: 12px 16px 0;
-  border: 1px solid var(--o-need);
-  background: var(--o-need-bg);
-  border-radius: 8px;
   padding: 12px 14px;
   font-size: 16px;
 }
@@ -1148,10 +1078,9 @@
   width: auto;
 }
 .office.phone .of-drawer {
-  border: 0;
-  border-top: 1px solid var(--o-line);
-  box-shadow: none;
+  box-shadow: inset 0 2px 0 var(--o-line2);
   padding-bottom: 120px;
+  animation: none;
 }
 .phone .of-close {
   display: none;
@@ -1193,13 +1122,13 @@
 }
 /* A phase brought into view from its header on the board. */
 .of-db .of-flash {
-  animation: of-flash 1.6s ease-out;
-  border-radius: 10px;
+  animation: of-flash 1.6s steps(4, end);
 }
 @keyframes of-flash {
   0%,
   30% {
-    box-shadow: 0 0 0 2px var(--now, #60aaf3);
+    outline: 2px solid var(--now);
+    outline-offset: 2px;
   }
 }
 /* The request list. */
@@ -1211,26 +1140,25 @@
   gap: 6px;
 }
 .of-req-row {
+  --pf: var(--s6);
+  --pfb: var(--s2);
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
   text-align: left;
-  background: var(--s3, #1e1c19);
-  border: 1px solid var(--s6, #34322e);
-  border-radius: 8px;
   padding: 8px 12px;
-  color: var(--t1, #eeecea);
+  color: var(--t1);
 }
 .of-req-row:hover {
-  border-color: var(--s8, #585550);
+  --pf: var(--s8);
 }
 .of-req-row.cur {
-  border-color: var(--t2, #d4d0cc);
+  --pf: var(--t2);
 }
 .of-req-num {
-  font: 500 13px var(--font-code, var(--o-mono));
-  color: var(--t3, #a19e9a);
+  font: 500 13px var(--font-code);
+  color: var(--t3);
   min-width: 2ch;
   text-align: right;
   flex: none;
@@ -1255,7 +1183,7 @@
   padding-left: 20px;
   display: grid;
   gap: 8px;
-  color: var(--t1, #eeecea);
+  color: var(--t1);
 }
 /* The phone's tab row scrolls: its edge fades to say so. */
 .phone .of-tabs {
@@ -1279,38 +1207,35 @@
   background: none;
   border: 0;
   padding: 0;
-  color: var(--t1, #eeecea);
+  color: var(--t1);
   font-weight: 500;
   text-decoration: underline;
-  text-decoration-color: var(--s8, #585550);
+  text-decoration-color: var(--s8);
   text-underline-offset: 3px;
 }
 .of-link:hover {
-  text-decoration-color: var(--t2, #d4d0cc);
+  text-decoration-color: var(--t2);
 }
 /* On a pinned floor: the way back to the one Claude is on. */
 .of-away {
+  --pf: var(--now-line);
+  --pfb: var(--o-now-bg);
   flex: none;
-  background: var(--o-now-bg);
   color: var(--o-now);
-  border: 1px solid #2c4f78;
-  border-radius: 999px;
-  padding: 3px 12px;
-  font-size: 14px;
-  font-weight: 600;
   white-space: nowrap;
 }
 .of-away:hover {
-  border-color: var(--o-now);
+  --pf: var(--o-now);
+  --pfb: var(--o-now-bg);
+  color: var(--o-now);
 }
 /* More helpers than desks: the sign that says so. */
 .of-overlay .off-sign {
   transform: translate(-50%, -50%);
-  font: max(9px, calc(3.5px * var(--s))) / 1 var(--o-pix);
+  font: max(12px, calc(3.5px * var(--s))) / 1 var(--o-pix);
   color: #2a211c;
   background: #eadfc6;
   border: 0;
-  border-radius: 2px;
   box-shadow: 0 calc(1px * var(--s)) 0 #8a7a62;
   padding: calc(1.5px * var(--s)) calc(2.5px * var(--s));
   white-space: nowrap;

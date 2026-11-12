@@ -590,7 +590,7 @@ describe("the phase track", () => {
     expect(block).toMatch(
       /:where\(\.trk\.stack\) \.trk-segs\s*\{[^}]*flex-direction: column/,
     );
-    expect(block).toMatch(/animation: trk-draw 900ms/);
+    expect(block).toMatch(/animation: trk-draw 480ms steps\(8, end\)/);
     expect(block).toMatch(/prefers-reduced-motion/);
   });
 });
