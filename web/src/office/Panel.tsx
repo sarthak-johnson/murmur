@@ -107,6 +107,9 @@ export interface PanelProps {
   focusKey: number;
 }
 
+/** Where a wait's clock stops, as requestNow times it: the moment while it ticks, else its last event. */
+const waitEnd = (ses: SessionNow) => (ses.ticking ? ses.at : ses.last);
+
 /** Redrawn only when what it shows changes: the room repaints far more often. */
 export const Panel = memo(PanelBody);
 
@@ -334,6 +337,7 @@ function PanelBody(props: PanelProps) {
             request={req}
             done={done}
             state={props.stands.state}
+            at={props.t}
           />
         ) : open === "flow" ? (
           <FlowBoard
@@ -357,8 +361,8 @@ function PanelBody(props: PanelProps) {
             <RequestBrief
               request={req}
               done={done}
-              stopped
               end={props.stands.to}
+              waitEnd={waitEnd(props.ses)}
               waiting={waiting}
               lastLooked={props.lastLooked}
             />
@@ -366,7 +370,6 @@ function PanelBody(props: PanelProps) {
               sessionId={sessionId}
               request={req}
               done={done}
-              stopped
               end={props.stands.to}
             />
             <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
@@ -585,8 +588,8 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
         <RequestBrief
           request={req}
           done={props.state === "done"}
-          stopped
           end={props.stands.to}
+          waitEnd={waitEnd(props.ses)}
           waiting={props.waiting}
           lastLooked={props.lastLooked}
         />

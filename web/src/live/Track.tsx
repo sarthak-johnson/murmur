@@ -259,11 +259,10 @@ export function PhaseTrack(props: {
   sessionId: string;
   request: RequestView;
   done: boolean;
-  /** The clock stops at `end`: done, or waiting on you with no helper at work. */
-  stopped: boolean;
+  /** Where its clock stops (state.ts `RequestNow.to`): never the wall clock in a replay. */
   end: string;
 }) {
-  const { sessionId, request: req, done, stopped, end } = props;
+  const { sessionId, request: req, done, end } = props;
   const beyond = req.beyond;
   const beyondAgents = beyond
     ? req.agents
@@ -281,8 +280,6 @@ export function PhaseTrack(props: {
   const tasks = req.phases.flatMap((p) => p.tasks);
   const doneN = tasks.filter((t) => t.status === "done").length;
   const running = req.agents.filter((a) => a.status === "running").length;
-  const now = new Date().toISOString();
-
   const still = [
     ...(running ? [`${nOf(running, "helper")} running`] : []),
     ...(beyond?.rounds
@@ -300,7 +297,7 @@ export function PhaseTrack(props: {
       : []),
     over
       ? ["Took", duration(req.startedAt, end)]
-      : ["Elapsed", duration(req.startedAt, stopped ? end : now)],
+      : ["Elapsed", duration(req.startedAt, end)],
   ];
 
   return (

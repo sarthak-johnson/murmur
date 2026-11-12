@@ -234,14 +234,14 @@ function Waits(props: {
 export function RequestBrief(props: {
   request: RequestView;
   done: boolean;
-  /** Claude stopped (done, or waiting on you with no helper at work): the clock stops at `end`. */
-  stopped: boolean;
+  /** Where the run's clock stops (state.ts `RequestNow.to`): never the wall clock in a replay. */
   end: string;
+  /** Where a wait's clock stops: the moment shown while the session ticks, else its last event. */
+  waitEnd: string;
   waiting: Waiting | null;
   lastLooked: string | null;
 }) {
-  const { request: req, done, stopped, end, waiting, lastLooked } = props;
-  const now = new Date().toISOString();
+  const { request: req, done, end, waiting, lastLooked } = props;
   const outcome = req.outcome;
   const edge = edgeOf(req, done);
   const moments = keyMoments(req, lastLooked ?? undefined);
@@ -320,14 +320,14 @@ export function RequestBrief(props: {
           </ol>
         </section>
       )}
-      <Numbers request={req} end={stopped ? end : now} done={done} />
+      <Numbers request={req} end={end} done={done} />
       {waiting && (
         <Waits
           request={req}
           waiting={waiting}
           risky={risky}
           lead={ask}
-          to={stopped ? end : now}
+          to={props.waitEnd}
         />
       )}
     </section>

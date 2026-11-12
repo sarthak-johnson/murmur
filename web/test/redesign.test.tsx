@@ -662,6 +662,22 @@ describe("waiting on you", () => {
     expect(call.textContent).toContain("Answer in the terminal");
   });
 
+  it("times a long wait to the moment, not to Claude's last word", () => {
+    // Three hours on, the session quiet since the question: the wait still counts on.
+    vi.useFakeTimers({
+      now: new Date(Date.parse(at(40)) + 3 * 3_600_000),
+      toFake: ["Date"],
+    });
+    const ask = ev("q1", 40, "PreToolUse", {
+      tool_name: "AskUserQuestion",
+      tool_use_id: "toolu_q",
+      tool_input: { questions: [{ question: "Morning or evening?" }] },
+    });
+    show(session(request()), { events: [ask] });
+    const call = screen.getByRole("region", { name: "Waiting on you" });
+    expect(call.textContent).toContain(`since ${clock(at(40))}, 3 h 00 m`);
+  });
+
   it("else takes the questions from Claude's last message once it stopped", () => {
     const req = request({
       agents: request().agents.map((a) => ({ ...a, status: "done" as const })),

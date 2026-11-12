@@ -200,13 +200,7 @@ describe("waiting on you while helpers work", () => {
 
   it("draws the blocked task and its phase amber on the track, never failed", () => {
     const { container } = render(
-      <PhaseTrack
-        sessionId="s1"
-        request={req}
-        done={false}
-        stopped={false}
-        end={at(10)}
-      />,
+      <PhaseTrack sessionId="s1" request={req} done={false} end={at(10)} />,
     );
     const voice = container.querySelectorAll(".trk-seg")[1] as HTMLElement;
     expect(voice.className).toContain("blocked");

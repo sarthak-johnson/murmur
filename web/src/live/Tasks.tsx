@@ -223,9 +223,11 @@ export function TasksTab(props: {
   done: boolean;
   /** The request's state at the moment shown (state.ts). */
   state?: State | undefined;
+  /** The moment shown (a replay's), for which helpers are still at work. */
+  at?: string | undefined;
 }) {
   const { sessionId, request: req, done } = props;
-  const groups = taskGroups(req, done, props.state);
+  const groups = taskGroups(req, done, props.state, props.at);
   if (!groups.length)
     return <p className="tab-empty">This request has no tasks.</p>;
   // The live phase's running row first, else the first running row, pulses.
