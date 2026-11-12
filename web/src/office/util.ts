@@ -103,3 +103,65 @@ export function spread(at: number[], width: number, gap: number): number[] {
     return Array.from({ length: c.n }, (_, k) => start + k * gap);
   });
 }
+
+/** The replay strip's axis: time as worked, a quiet stretch over `gap` counted as `gap`. */
+export interface TimeAxis {
+  /** The strip's length, in ms of worked time. */
+  total: number;
+  /** A moment's place on the strip, 0 to total. */
+  at(t: number): number;
+  /** The moment at a place on the strip. */
+  time(x: number): number;
+}
+
+/**
+ * The strip spends its width on what happened: between two events (sorted ms) a pause of
+ * more than `gap` takes only `gap`, so a burst of requests after a night's quiet is not
+ * crowded into a sliver. Within a pause, places map evenly onto its real time.
+ */
+export function timeAxis(
+  ms: readonly number[],
+  start: number,
+  end: number,
+  gap: number,
+): TimeAxis {
+  const pts = [start, ...ms.filter((t) => t > start && t < end), end];
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++)
+    cum.push(
+      (cum[i - 1] ?? 0) + Math.min(gap, (pts[i] ?? 0) - (pts[i - 1] ?? 0)),
+    );
+  const total = Math.max(1, cum.at(-1) ?? 0);
+  /** The last index whose value in `xs` is at or under v. */
+  const below = (xs: readonly number[], v: number) => {
+    let lo = 0;
+    let hi = xs.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if ((xs[mid] ?? 0) <= v) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+  const seg = (i: number) => {
+    const real = (pts[i + 1] ?? 0) - (pts[i] ?? 0);
+    return { real, len: Math.min(gap, real) };
+  };
+  return {
+    total,
+    at(t) {
+      if (t <= start) return 0;
+      if (t >= end) return total;
+      const i = below(pts, t);
+      const { real, len } = seg(i);
+      return (cum[i] ?? 0) + (real ? ((t - (pts[i] ?? 0)) / real) * len : 0);
+    },
+    time(x) {
+      if (x <= 0) return start;
+      if (x >= total) return end;
+      const i = below(cum, x);
+      const { real, len } = seg(i);
+      return (pts[i] ?? 0) + (len ? ((x - (cum[i] ?? 0)) / len) * real : 0);
+    },
+  };
+}

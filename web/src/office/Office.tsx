@@ -52,7 +52,7 @@ import {
 } from "./panelState";
 import { createRenderer, type Renderer } from "./render";
 import { activeRequest, deriveScene, type Scene } from "./scene";
-import { clockOf, dur, spread } from "./util";
+import { clockOf, dur, spread, timeAxis } from "./util";
 import "./office.css";
 
 interface PageProps {
@@ -166,6 +166,8 @@ const TICK_GAP = 12;
 const TICK_LABEL_GAP = 22;
 /** Playing skips quiet stretches longer than this, landing a few seconds before the next event. */
 const IDLE_MS = 3 * 60_000;
+/** On the replay strip a quiet stretch takes no more width than this much work time. */
+const AXIS_GAP = 5 * 60_000;
 const LEAD_MS = 5_000;
 
 const PHONE = 760;
@@ -849,7 +851,12 @@ export function Office(props: {
   // A session over more than a day says the day with the time.
   const spansDays =
     dayOf(new Date(START).toISOString()) !== dayOf(new Date(END).toISOString());
-  const total = Math.max(1, Math.round((END - START) / 1000));
+  // The strip spends its width on what happened: a quiet stretch takes only AXIS_GAP.
+  const axis = useMemo(
+    () => timeAxis(eventMs, START, END, AXIS_GAP),
+    [eventMs, START, END],
+  );
+  const total = Math.max(1, Math.round(axis.total / 1000));
   const working = scene.desks.filter((d) => d.status === "running");
   const carried = working.filter((d) => d.fromRequest);
   // The request as state.ts reads it, so the bar, the room and the panel agree. Paused is
@@ -894,13 +901,12 @@ export function Office(props: {
     () =>
       spread(
         view.requests.map(
-          (r) =>
-            ((Date.parse(r.startedAt) - START) / (END - START || 1)) * stripW,
+          (r) => (axis.at(Date.parse(r.startedAt)) / axis.total) * stripW,
         ),
         stripW,
         TICK_GAP,
       ),
-    [view.requests, START, END, stripW],
+    [view.requests, axis, stripW],
   );
   const tickAt = (i: number) => ((tickPx[i] ?? 0) / stripW) * 100;
   // Numbers on the strip, as many as fit without touching, the last always.
@@ -1291,7 +1297,7 @@ export function Office(props: {
             min={0}
             max={total}
             step={1}
-            value={Math.round((shownAt - START) / 1000)}
+            value={Math.round(axis.at(shownAt) / 1000)}
             aria-label="Replay time"
             aria-valuetext={`${dayOf(new Date(shownAt).toISOString())} ${clockOf(new Date(shownAt).toISOString())}${
               pinnedNow
@@ -1303,12 +1309,12 @@ export function Office(props: {
             // How far the replay has played, for the track's fill.
             style={
               {
-                "--p": `${(((tNow - START) / 1000 / total) * 100).toFixed(2)}%`,
+                "--p": `${((axis.at(tNow) / axis.total) * 100).toFixed(2)}%`,
               } as React.CSSProperties
             }
             onChange={(e) => {
               setPlaying(false);
-              const t = START + Number(e.target.value) * 1000;
+              const t = Math.round(axis.time(Number(e.target.value) * 1000));
               // A small drag step is a fast-forward: people walk (quickly) to their places.
               const small = Math.abs(t - tNow) < DRAG_STEP_MS;
               engine.current?.r.rush(small);
