@@ -16,6 +16,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { byDay } from "../src/format";
+import { askSplit } from "../src/office/Panel";
 import { Live, roomInJsdom } from "./officeShell";
 
 roomInJsdom();
@@ -700,14 +701,27 @@ describe("the top bar", () => {
       />,
     );
     const door = screen.getByRole("heading", {
-      name: "Claude is waiting on you",
+      name: /^Claude has been waiting on you since/,
     }).parentElement as HTMLElement;
-    // Claude Code's notice only restates the heading: it is not said twice.
+    // Claude Code's notice only restates the heading: it is not said twice, and the
+    // request's story is a link away, not repeated under it.
     expect(door.textContent).not.toContain("Claude needs your input");
+    expect(door.textContent?.match(/waiting/gi)).toHaveLength(1);
+    expect(screen.queryByText("You asked")).toBeNull();
     // Its last paragraph whole, not cut at a word.
     expect(door.textContent).toContain(
       "After that move, it needs your eyes on the Live tab before main.",
     );
+  });
+
+  it("the door shows what Claude asks first, what led up to it after", () => {
+    const text =
+      "The fix is pushed.\n\nI'm still waiting on your answers:\n\n- Try it on your phone.\n- OK to ship?";
+    expect(askSplit(text)).toEqual({
+      ask: "I'm still waiting on your answers:\n\n- Try it on your phone.\n- OK to ship?",
+      before: "The fix is pushed.",
+    });
+    expect(askSplit("All done and pushed.")).toBeUndefined();
   });
 
   it("waiting with helpers at work: the bar says they are still working", () => {

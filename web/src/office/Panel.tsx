@@ -621,60 +621,63 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
       )
         ? w.text
         : "";
-    // What it stopped on, whole: its last message, folded when long.
+    // What it stopped on: what it asks shown whole, what led up to it folded.
     const last = w?.said ? req.messages?.at(-1)?.text : undefined;
+    const split = last && !w?.questions.length ? askSplit(last) : undefined;
+    const story = floorPath(sessionId, props.floorId, "story");
     return (
-      <>
-        <section className="of-card">
-          <p className="of-kicker">Your door</p>
-          {w ? (
-            <>
-              <h2>
-                {w.permission
-                  ? notice || "Claude needs your permission"
-                  : "Claude is waiting on you"}
-              </h2>
-              {w.questions.length ? (
-                <ol className="of-asks">
-                  {w.questions.map((q) => (
-                    <li key={q.question}>
-                      <b>{q.question}</b>
-                      {q.detail && <span className="muted"> {q.detail}</span>}
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                !w.permission && notice && <p>{notice}</p>
-              )}
-              {last && (
-                <>
-                  <h3>What Claude said last</h3>
-                  <Fold text={last} lines={8} className="of-md" />
-                </>
-              )}
-              <p className="muted">
-                Since {clock(w.since)}. Reply in Claude Code.
-              </p>
-            </>
-          ) : (
-            <>
-              <h2>Nothing waiting on you</h2>
-              <p className="muted">
-                Claude has not asked you anything on this request yet. When it
-                does, Claude walks to this door and the question shows here.
-              </p>
-            </>
-          )}
-        </section>
-        <RequestBrief
-          request={req}
-          done={props.state === "done"}
-          end={props.stands.to}
-          waitEnd={waitEnd(props.ses)}
-          waiting={props.waiting}
-          lastLooked={props.lastLooked}
-        />
-      </>
+      <section className="of-card of-door">
+        <p className="of-kicker">Your door</p>
+        {w ? (
+          <>
+            <h2>
+              {w.permission
+                ? notice || "Claude needs your permission"
+                : `Claude has been waiting on you since ${clock(w.since)}`}
+            </h2>
+            {w.questions.length ? (
+              <ol className="of-asks">
+                {w.questions.map((q) => (
+                  <li key={q.question}>
+                    <b>{q.question}</b>
+                    {q.detail && <span className="muted"> {q.detail}</span>}
+                  </li>
+                ))}
+              </ol>
+            ) : split ? (
+              <Markdown text={split.ask} className="of-md" />
+            ) : (
+              !w.permission && notice && <p>{notice}</p>
+            )}
+            {(split ? split.before : last) && (
+              <>
+                <h3>
+                  {split ? "Before that, Claude said" : "What Claude said last"}
+                </h3>
+                <Fold
+                  text={(split ? split.before : last) ?? ""}
+                  lines={split ? 3 : 6}
+                  className="of-md"
+                />
+              </>
+            )}
+            <p className="muted">Answer in Claude Code, in the terminal.</p>
+          </>
+        ) : (
+          <>
+            <h2>Nothing waiting on you</h2>
+            <p className="muted">
+              Claude has not asked you anything on this request yet. When it
+              does, Claude walks to this door and the question shows here.
+            </p>
+          </>
+        )}
+        <p>
+          <a className="of-link" href={story} onClick={follow(story)}>
+            Its story ›
+          </a>
+        </p>
+      </section>
     );
   }
   if (kind === "terminal") return <Terminal {...props} />;
@@ -690,6 +693,23 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
       </a>
     </p>
   );
+}
+
+/**
+ * Claude's last message split at what it asks: the paragraph that opens its last list (or
+ * its last question) to the end, and what came before. Undefined when nothing stands out.
+ */
+export function askSplit(
+  text: string,
+): { ask: string; before: string } | undefined {
+  const ps = text.trim().split(/\n\s*\n/);
+  const asks = (p: string) =>
+    /^\s*(?:[-*+]|\d+[.)])\s/m.test(p) || /\?\s*$/.test(p.trim());
+  let i = ps.findLastIndex(asks);
+  if (i < 0) return undefined;
+  // The line that leads into a list ("...your three answers from before:") goes with it.
+  while (i > 0 && /:\s*$/.test((ps[i - 1] ?? "").trim())) i--;
+  return { ask: ps.slice(i).join("\n\n"), before: ps.slice(0, i).join("\n\n") };
 }
 
 /** A helper at its desk: who briefed it for what, what it is on, and what it said back. */
