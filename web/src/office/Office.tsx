@@ -47,7 +47,7 @@ import {
 } from "./panelState";
 import { createRenderer, type Renderer } from "./render";
 import { activeRequest, deriveScene, type Scene } from "./scene";
-import { clockOf, dur } from "./util";
+import { clockOf, dur, spread } from "./util";
 import "./office.css";
 
 interface PageProps {
@@ -143,6 +143,8 @@ function Brand() {
 }
 
 const DRAG_STEP_MS = 10 * 60_000;
+/** The least room between two ticks of the replay strip, in px. */
+const TICK_GAP = 7;
 /** Playing skips quiet stretches longer than this, landing a few seconds before the next event. */
 const IDLE_MS = 3 * 60_000;
 const LEAD_MS = 5_000;
@@ -804,18 +806,30 @@ export function Office(props: {
 
   // A tick's label, while the pointer is on the strip or a tick has the keyboard.
   const [tip, setTip] = useState<number | null>(null);
-  const tickAt = (i: number) =>
-    ((Date.parse(view.requests[i]?.startedAt ?? "") - START) /
-      (END - START || 1)) *
-    100;
+  // Where each request's tick sits on the strip: at its start, crowds spread so each is
+  // its own target (36 requests in a morning would sit on one pixel). The strip spans the
+  // footer less its 8 px insets each side.
+  const stripW = Math.max(1, box.vw - 2 * 16 - 16);
+  const tickPx = useMemo(
+    () =>
+      spread(
+        view.requests.map(
+          (r) =>
+            ((Date.parse(r.startedAt) - START) / (END - START || 1)) * stripW,
+        ),
+        stripW,
+        TICK_GAP,
+      ),
+    [view.requests, START, END, stripW],
+  );
+  const tickAt = (i: number) => ((tickPx[i] ?? 0) / stripW) * 100;
+  /** The tick under a point of the strip: the nearest as drawn. */
   const nearest = (x: number, el: Element) => {
     const b = el.getBoundingClientRect();
-    const t = START + ((x - b.left) / (b.width || 1)) * (END - START);
+    const px = ((x - b.left) / (b.width || 1)) * stripW;
     let best = 0;
-    view.requests.forEach((r, i) => {
-      const d = Math.abs(Date.parse(r.startedAt) - t);
-      const was = view.requests[best];
-      if (was && d < Math.abs(Date.parse(was.startedAt) - t)) best = i;
+    tickPx.forEach((p, i) => {
+      if (Math.abs(p - px) < Math.abs((tickPx[best] ?? 0) - px)) best = i;
     });
     return best;
   };
@@ -1083,10 +1097,24 @@ export function Office(props: {
         <div className="of-track">
           {/* Requests close in time overlap, so a click on the strip takes the nearest one;
               each tick is still its own button for the keyboard. */}
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents: the ticks inside are the keyboard's way */}
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: as above */}
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: the ticks inside are the keyboard's way */}
           <div
             className="of-ticks"
+            // The arrow keys walk the ticks: one tab stop, every request in reach.
+            onKeyDown={(e) => {
+              if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+              const all = [
+                ...e.currentTarget.querySelectorAll<HTMLButtonElement>(
+                  "button",
+                ),
+              ];
+              const i = all.indexOf(e.target as HTMLButtonElement);
+              const to = all[i + (e.key === "ArrowRight" ? 1 : -1)];
+              if (i < 0 || !to) return;
+              e.preventDefault();
+              e.stopPropagation();
+              to.focus();
+            }}
             onClick={(e) => {
               const r = view.requests[nearest(e.clientX, e.currentTarget)];
               if (r) goTo(r.startedAt);

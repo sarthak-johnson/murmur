@@ -335,6 +335,11 @@ describe("the office page", () => {
     expect(screen.getByRole("contentinfo").textContent).toContain(
       "2 Add alerts",
     );
+    // The arrow keys walk to the other requests' ticks from the one tab stop.
+    fireEvent.keyDown(tick, { key: "ArrowLeft" });
+    expect(document.activeElement?.getAttribute("aria-label")).toMatch(
+      /^Go to request 1:/,
+    );
   });
 
   it("a task's close-up keeps its request's pin on the floor Claude is on", async () => {

@@ -69,3 +69,37 @@ export function context2d(c: HTMLCanvasElement): CanvasRenderingContext2D {
   if (!g) throw new Error("Murmur office: no 2d canvas context");
   return g;
 }
+
+/**
+ * Marks on a strip `width` px wide at `at` (sorted, px), moved apart to at least `gap` px:
+ * each crowd is spread evenly about its own middle, kept inside the strip, so close marks
+ * stay where they happened as near as they can.
+ */
+export function spread(at: number[], width: number, gap: number): number[] {
+  if (at.length * gap > width) gap = width / Math.max(1, at.length);
+  // Crowds: runs of marks closer than the gap, merged until no two crowds overlap.
+  let crowds = at.map((x, i) => ({ from: i, n: 1, mid: x }));
+  const lay = (c: { n: number; mid: number }) => {
+    const span = (c.n - 1) * gap;
+    const start = Math.min(Math.max(c.mid - span / 2, 0), width - span);
+    return [start, start + span];
+  };
+  for (let merged = true; merged; ) {
+    merged = false;
+    const out: typeof crowds = [];
+    for (const c of crowds) {
+      const last = out.at(-1);
+      if (last && (lay(last)[1] ?? 0) + gap > (lay(c)[0] ?? 0)) {
+        const n = last.n + c.n;
+        last.mid = (last.mid * last.n + c.mid * c.n) / n;
+        last.n = n;
+        merged = true;
+      } else out.push({ ...c });
+    }
+    crowds = out;
+  }
+  return crowds.flatMap((c) => {
+    const [start = 0] = lay(c);
+    return Array.from({ length: c.n }, (_, k) => start + k * gap);
+  });
+}
