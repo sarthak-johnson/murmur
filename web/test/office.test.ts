@@ -421,13 +421,21 @@ describe("deriveScene", () => {
 
 describe("the floor Claude is on", () => {
   it("is the newest request at work or waiting, else the newest", () => {
-    const r = (id: string, state: string) => ({ id, state });
+    const r = (id: string, state: string, phases: unknown[] = []) => ({
+      id,
+      state,
+      phases,
+    });
     expect(
       activeRequest([r("1", "done"), r("2", "running"), r("3", "done")])?.id,
     ).toBe("2");
     expect(activeRequest([r("1", "waiting"), r("2", "done")])?.id).toBe("1");
     expect(activeRequest([r("1", "done"), r("2", "done")])?.id).toBe("2");
     expect(activeRequest([])).toBeUndefined();
+    // A newest request with its own plan stays the floor once over.
+    expect(activeRequest([r("1", "running"), r("2", "done", [{}])])?.id).toBe(
+      "2",
+    );
   });
 
   it("carries an earlier request's helper while it is at work, not once it has gone quiet", () => {

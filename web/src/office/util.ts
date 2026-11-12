@@ -36,10 +36,13 @@ export const clockOf = (iso: string): string =>
   });
 
 /** "40 s", "35 m", "2 h 5 m". */
+/** "40 s", "7 m", "3 h 07 m": the app's own form (story.ts `duration`), minutes floored. */
 export function dur(ms: number): string {
-  const m = Math.round(ms / 60000);
-  if (ms < 60000) return `${Math.max(1, Math.round(ms / 1000))} s`;
-  return m < 60 ? `${m} m` : `${Math.floor(m / 60)} h ${m % 60} m`;
+  if (ms < 60000) return `${Math.max(1, Math.floor(ms / 1000))} s`;
+  const m = Math.floor(ms / 60000);
+  return m < 60
+    ? `${m} m`
+    : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} m`;
 }
 
 /** Pick from a non-empty list by a whole number, wrapping round. */

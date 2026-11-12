@@ -126,15 +126,6 @@ const dayOf = (iso: string) =>
     month: "short",
   });
 
-/** "3 h 12 m", "35 m", "40 s", "8 d 3 h": the app's own form, at most two parts. */
-function span(ms: number) {
-  const m = Math.round(ms / 60000);
-  if (m >= 48 * 60)
-    return `${Math.floor(m / 1440)} d ${Math.floor((m % 1440) / 60)} h`;
-  if (m >= 60) return `${Math.floor(m / 60)} h ${m % 60} m`;
-  return m >= 1 ? `${m} m` : `${Math.max(1, Math.round(ms / 1000))} s`;
-}
-
 /** The helpers a pointed-at thing stands for: a desk, every helper on a sticky, or on a phase. */
 function pointedAgents(key: string | null, scene: Scene): string[] {
   if (!key) return [];
@@ -176,7 +167,7 @@ export function Office(props: {
   const lastAt = Date.parse(view.lastEventAt);
   const quietFor = open ? Math.max(0, wall - lastAt) : 0;
   // Waiting on you is live however long the wait: that clock runs on.
-  // Reconnecting, it is not quiet either: what is missing is the line to it, not the work.
+  // Reconnecting changes only the tag: the session is as last heard until the line is back.
   const reconnecting = status === "reconnecting";
   const live = open && (reconnecting || quietFor < QUIET_MS || !!view.needsYou);
   const END = live ? Math.max(lastAt, wall) : lastAt;
@@ -372,6 +363,13 @@ export function Office(props: {
     engine.current?.o.setScale(scale);
   }, [scale]);
 
+  // Playing fast, people walk fast too, or a replay leaves them crowding the corridors.
+  useEffect(() => {
+    engine.current?.r.rush(
+      playing ? Math.min(8, Math.max(1, speed / 10)) : false,
+    );
+  }, [playing, speed]);
+
   // A new scene walks people to their new places; a jump (or a drag's big step) snaps.
   const prev = useRef<{ t: number; req: string } | null>(null);
   const animate$ = useRef(true);
@@ -429,8 +427,9 @@ export function Office(props: {
       if (!w) return;
       // A pinned floor has no Claude on it: its board and desks are the story.
       const away = !sc.request.current;
+      // Low enough that the first desks show under Claude's corner, the board's foot above.
       const x = away ? 12 * T : sc.waiting ? 32 * T : (c?.x ?? 32 * T);
-      const y = away ? 9 * T : sc.waiting ? 3 * T : (c?.y ?? 3 * T) - T;
+      const y = away ? 7 * T : sc.waiting ? 4 * T : 8.5 * T;
       w.scrollTo({
         left: x * scale - w.clientWidth / 2,
         top: y * scale - w.clientHeight / 2,
@@ -538,7 +537,15 @@ export function Office(props: {
   }, [scene.waiting, view.title]);
 
   return (
-    <div className={phone ? "office phone" : "office"}>
+    <div
+      className={[
+        "office",
+        phone ? "phone" : "",
+        playing && speed >= 60 ? "fast" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <header className="of-top">
         <BackLink sessionId={sessionId} />
         <Brand />
@@ -547,7 +554,7 @@ export function Office(props: {
             className="of-tag quiet"
             title="The line to Murmur dropped; this shows the session as last heard, and catches up when it is back"
           >
-            Reconnecting…
+            Reconnecting
           </span>
         ) : following && live ? (
           <span
@@ -559,7 +566,7 @@ export function Office(props: {
         ) : following && open ? (
           <span
             className="of-tag quiet"
-            title={`Nothing has happened in this session for ${span(quietFor)}. It shows as it was left, and wakes up when Claude does.`}
+            title={`Nothing has happened in this session for ${dur(quietFor)}. It shows as it was left, and wakes up when Claude does.`}
           >
             Quiet · {dur(quietFor)}
           </span>
@@ -767,7 +774,7 @@ export function Office(props: {
               : open
                 ? " · latest"
                 : " · end"
-            : ` · ${span(END - tNow)} earlier`}
+            : ` · ${dur(END - tNow)} earlier`}
         </span>
         <label className="of-speed">
           <span className="sr-only">Replay speed</span>

@@ -164,11 +164,11 @@ describe("the office page", () => {
 
   it("is quiet when nothing has happened for a while", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(BASE + 3 * 3600_000);
+    vi.setSystemTime(BASE + 3 * 3600_000 + 10_000);
     show();
     await frames();
     expect(
-      within(screen.getByRole("banner")).getByText("Quiet · 3 h 0 m"),
+      within(screen.getByRole("banner")).getByText("Quiet · 3 h 00 m"),
     ).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Jump to the latest moment" }),

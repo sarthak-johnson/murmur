@@ -493,6 +493,14 @@ function stepWords(e: MainEntry): string {
   if (e.tool === "murmur:narrate")
     return `Noted on the board: ${e.label ?? ""}`.trim();
   if (e.tool === "murmur:map") return "Drew up the plan";
+  // A file tool's label is the file alone: say what it did to it.
+  const verb = {
+    Read: "Read",
+    Edit: "Edited",
+    Write: "Wrote",
+    MultiEdit: "Edited",
+  }[e.tool ?? ""];
+  if (verb && e.label) return `${verb} ${e.label}`;
   return e.label ?? (e.tool ? toolWords(e.tool) : "A step");
 }
 

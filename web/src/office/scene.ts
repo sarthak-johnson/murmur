@@ -124,12 +124,22 @@ export const QUIET_MS = 15 * 60_000;
  * The request Claude is on: the newest still at work or waiting on you, so a quick notice
  * answered while a long request runs on never hides that one; else the newest.
  */
-export function activeRequest<R extends { state?: string | undefined }>(
-  reqs: readonly R[],
-): R | undefined {
+export function activeRequest<
+  R extends {
+    state?: string | undefined;
+    phases: readonly unknown[];
+    planInferred?: boolean | undefined;
+  },
+>(reqs: readonly R[]): R | undefined {
+  const last = reqs.at(-1);
+  if (!last || last.state === "running" || last.state === "waiting")
+    return last;
+  // A newest request with its own plan is the floor even once over; only a quick one (no
+  // plan of its own: a notice, a question) gives way to an earlier one still at work, so
+  // the floor never swaps back and forth as states change.
+  if (last.phases.length && !last.planInferred) return last;
   return (
-    reqs.findLast((r) => r.state === "running" || r.state === "waiting") ??
-    reqs.at(-1)
+    reqs.findLast((r) => r.state === "running" || r.state === "waiting") ?? last
   );
 }
 
@@ -157,9 +167,12 @@ export function helperName(a: { description?: string | undefined }): string {
   const rest = verbless
     .replace(/^(Tasks?\s+[\w-]+|Phases?\s+\d+|B\d+)\s*/i, "")
     .replace(/^[\s:;,.\-–]+/, "");
-  let d = rest.replace(/^(fix round \d+:?)\s*/i, "");
+  let d = rest.replace(/^(fix rounds?(\s+\d+)?:?)\s*/i, "");
   // A bare leftover ("round 2", "fix round 4") says nothing alone, so it keeps its subject.
-  if (subject && /^((fix(es)?|round \d+|review|recheck)[\s:]*)*$/i.test(d))
+  if (
+    subject &&
+    /^((fix(es)?|rounds?(\s+\d+)?|review|recheck)[\s:]*)*$/i.test(d)
+  )
     d = `${subject} ${rest}`.trim();
   d = d || desc || "A helper";
   return cutWords(d.charAt(0).toUpperCase() + d.slice(1), 24);
@@ -182,6 +195,9 @@ const DOUBLE = new Set([
   "plan",
   "drop",
   "tap",
+  "skim",
+  "commit",
+  "grep",
 ]);
 /** "Read HeroMoney component" -> "Reading HeroMoney component"; anything else unchanged. */
 export function asDoing(text: string): string;
@@ -481,33 +497,31 @@ export function deriveScene(
     build: Array.from({ length: DESKS.build }, (): Helper | null => null),
     review: Array.from({ length: DESKS.review }, (): Helper | null => null),
   };
-  // Helpers with no desk in their own room; a free desk in the other room takes them.
-  const unseated: Helper[] = [];
-  for (const kind of ["build", "review"] as const) {
-    const slots = rooms[kind];
-    for (const a of helpers.filter(
-      (h) => (kind === "review") === REVIEW.has(h.role),
-    )) {
-      let s = slots.indexOf(null);
-      if (s < 0) {
-        s = slots.findIndex(
-          (o) => o?.status === "done" && o.endedAt && o.endedAt <= a.startedAt,
-        );
-      }
-      if (s < 0) {
-        unseated.push(a);
-        continue;
-      }
-      const was = slots[s];
-      if (was) off.push(was);
-      slots[s] = a;
+  // Seats in start order. A helper takes, in turn: a free desk in its own room, a free one in
+  // the other room, then a desk whose helper finished before it started (own room first).
+  // Only one that finds none, or a finished one moved off its desk, counts as off the floor.
+  const freed = (slots: (Helper | null)[], a: Helper) =>
+    slots.findIndex(
+      (o) => o?.status === "done" && !!o.endedAt && o.endedAt <= a.startedAt,
+    );
+  for (const a of helpers) {
+    const mine = REVIEW.has(a.role) ? rooms.review : rooms.build;
+    const other = mine === rooms.review ? rooms.build : rooms.review;
+    const tries: [(Helper | null)[], number][] = [
+      [mine, mine.indexOf(null)],
+      [other, other.indexOf(null)],
+      [mine, freed(mine, a)],
+      [other, freed(other, a)],
+    ];
+    const seat = tries.find(([, at]) => at >= 0);
+    if (!seat) {
+      off.push(a);
+      continue;
     }
-  }
-  for (const a of unseated) {
-    const other = REVIEW.has(a.role) ? rooms.build : rooms.review;
-    const s = other.indexOf(null);
-    if (s < 0) off.push(a);
-    else other[s] = a;
+    const [slots, at] = seat;
+    const was = slots[at];
+    if (was) off.push(was);
+    slots[at] = a;
   }
   for (const kind of ["build", "review"] as const) {
     rooms[kind].forEach((a, slot) => {

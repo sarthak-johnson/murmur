@@ -59,8 +59,14 @@ export function toolWords(tool: string): string {
     const server = (mcp[1] ?? "")
       .replace(/^(claude_ai_|plugin_[^_]+_)/, "")
       .replace(/^claude-in-chrome$/, "the browser")
-      .replace(/[_-]+/g, " ");
-    return `Used ${server}`;
+      .replace(/^mcp[_-]?/i, "")
+      .replace(/[_-]+/g, " ")
+      .trim();
+    if (!server) return "Used a connected tool";
+    const named = server.startsWith("the ")
+      ? server
+      : server.replace(/\b\w/g, (c) => c.toUpperCase());
+    return `Used ${named}`;
   }
   return `Used ${tool.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()}`;
 }

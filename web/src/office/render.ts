@@ -235,7 +235,8 @@ export interface Renderer {
   draw(now: number, t: string, s: number): void;
   claudePos(): ClaudePos | null;
   /** Walk faster while the replay bar is dragged. */
-  rush(on: boolean): void;
+  /** Walk faster: true for a drag (3x), a number for a playing replay, false for normal. */
+  rush(on: boolean | number): void;
   /** Light the cables of these helpers (pointed at, or selected); empty lights them all. */
   focusOn(ids: Iterable<string>): void;
   /** Everyone on their way somewhere. */
@@ -981,7 +982,7 @@ export function createRenderer(
     draw,
     claudePos,
     rush: (on) => {
-      rushing = on ? 3 : 1;
+      rushing = typeof on === "number" ? on : on ? 3 : 1;
     },
     focusOn: (ids) => {
       focus = new Set(ids);

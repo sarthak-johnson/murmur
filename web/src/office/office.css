@@ -1081,7 +1081,7 @@
 .of-legend .k.todo {
   background: #8d939c;
 }
-@media (max-width: 1200px) {
+@media (max-width: 1440px) {
   .of-legend {
     display: none;
   }
@@ -1324,4 +1324,18 @@
 }
 .phone .of-clock {
   overflow: visible;
+}
+/* Played fast, words change faster than a pop: they just appear. */
+.office.fast .of-overlay .bubble,
+.office.fast .of-overlay .dots {
+  animation: none;
+}
+/* At 2x a left-open sticky keeps one line of title and says it was left open. */
+.s2 .of-overlay .hit.note.wide .stage.left {
+  display: block;
+  font-size: 10px;
+  line-height: 11px;
+}
+.s2 .of-overlay .hit.note.wide:has(.stage.left) .t {
+  -webkit-line-clamp: 1;
 }
