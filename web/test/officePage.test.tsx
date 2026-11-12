@@ -223,6 +223,39 @@ describe("the office page", () => {
     expect(details()).toBeNull();
   });
 
+  it("moves focus into the panel it opens, back to Details on close, and not again on Back", async () => {
+    show();
+    await frames();
+    const btn = screen.getByRole("button", { name: "Details" });
+    await userEvent.click(btn);
+    expect(details()?.contains(document.activeElement)).toBe(true);
+    await userEvent.click(
+      within(details() as HTMLElement).getByRole("button", {
+        name: "Close details",
+      }),
+    );
+    expect(details()).toBeNull();
+    expect(document.activeElement).toBe(btn);
+    // Back reopens it as it was, but the reader's focus stays where it is.
+    history.back();
+    await waitFor(() => expect(details()).toBeTruthy());
+    await frames();
+    expect(document.activeElement).toBe(btn);
+  });
+
+  it("returns focus to Details when a panel opened by its address closes", async () => {
+    show("/s/s1?open=files");
+    await frames();
+    await userEvent.click(
+      within(details() as HTMLElement).getByRole("button", {
+        name: "Close details",
+      }),
+    );
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Details" }),
+    );
+  });
+
   it("[ and ] step to the request before and after; an old one is pinned and says so", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(BASE + 10_000);

@@ -258,11 +258,14 @@ export function Office(props: {
   );
   const ses = sessionNow(view, status, wall, asking);
   const { open, quietFor } = ses;
+  // Each second while it ticks; quiet, once a minute is enough to move its "quiet for".
+  // A new event wakes it at once: its time is past the clock, so it reads live.
+  const ticking = ses.ticking;
   useEffect(() => {
     if (!open) return;
-    const t = setInterval(() => setWall(Date.now()), 1000);
+    const t = setInterval(() => setWall(Date.now()), ticking ? 1000 : 60_000);
     return () => clearInterval(t);
-  }, [open]);
+  }, [open, ticking]);
   const first = view.requests[0];
   const START = Date.parse(ses.from);
   // Reconnecting changes only the tag: the session is as last heard until the line is back.
@@ -422,6 +425,24 @@ export function Office(props: {
 
   // Opened by a click in the room (not by a link in the panel): focus goes into it.
   const [focusKey, setFocusKey] = useState(0);
+  // A click's focus is taken once: the panel reopened by Back later does not pull focus in.
+  const focusTaken = useRef(0);
+  useEffect(() => {
+    focusTaken.current = focusKey;
+  }, [focusKey]);
+  const focusNow = focusKey !== focusTaken.current ? focusKey : 0;
+  const closePanel = useCallback(() => go(null), [go]);
+  // Closed with nothing left to hold focus (the panel's own opener gone), focus goes back
+  // to Details, the way it opens again.
+  const detailsBtn = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (!panel && wasOpen.current) {
+      const el = document.activeElement;
+      if (!el || el === document.body) detailsBtn.current?.focus();
+    }
+    wasOpen.current = !!panel;
+  }, [panel]);
   const [phase, setPhase] = useState<{ id: string; n: number }>();
   const [hover, setHover] = useState<string | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -462,6 +483,15 @@ export function Office(props: {
   }, [panel]);
   const [wide, setWide] = useState(() => stored(WIDE_KEY) !== "docked");
   const wideNow = !!panel && wide && isWideView(panel);
+  // Stable, so the memoised panel is not redrawn on every tick of the room.
+  const toggleWide = useCallback(
+    () =>
+      setWide((w) => {
+        keep(WIDE_KEY, w ? "docked" : "wide");
+        return !w;
+      }),
+    [],
+  );
   const fit = roomFit({
     w: box.w,
     h: box.h,
@@ -869,6 +899,7 @@ export function Office(props: {
           {pill && <span className={`of-pill s-${pill[0]}`}>{pill[1]}</span>}
           <span className="of-spacer" />
           <button
+            ref={detailsBtn}
             type="button"
             className="of-details"
             aria-expanded={!!panel}
@@ -1032,17 +1063,10 @@ export function Office(props: {
                 activeId={liveActiveId}
                 phase={phase}
                 wide={wideNow}
-                onWide={
-                  phone
-                    ? undefined
-                    : () => {
-                        keep(WIDE_KEY, wide ? "docked" : "wide");
-                        setWide(!wide);
-                      }
-                }
-                focusKey={focusKey}
+                onWide={phone ? undefined : toggleWide}
+                focusKey={focusNow}
                 onPickRequest={pick}
-                onClose={() => go(null)}
+                onClose={closePanel}
               />
             </div>
           )}
