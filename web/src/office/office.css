@@ -1119,6 +1119,9 @@
 .of-sess-st.live {
   --tone: var(--o-now);
 }
+.of-sess-st.waiting {
+  --tone: var(--o-need);
+}
 .of-sess-st.quiet {
   --tone: var(--o-t2);
 }

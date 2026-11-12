@@ -23,6 +23,7 @@ import {
 import {
   helperNow,
   requestNow,
+  rowState,
   sessionFacts,
   sessionNow,
   sessionSpan,
@@ -500,5 +501,34 @@ describe("what was asked and said", () => {
       },
     });
     expect(helperGist(final)).toBe("Added a spinner while waiting for data.");
+  });
+});
+
+describe("a session row's state", () => {
+  const row = (
+    min: number,
+    r: Partial<Parameters<typeof rowState>[0]> = {},
+  ) => ({
+    ended: false,
+    startedAt: "2026-11-01T00:00:00.000Z",
+    lastEventAt: new Date(
+      Date.parse("2026-11-01T12:00:00.000Z") - min * 60_000,
+    ).toISOString(),
+    ...r,
+  });
+  const NOW = Date.parse("2026-11-01T12:00:00.000Z");
+  it("reads live, quiet and ended by the office's own 15 minutes", () => {
+    expect(rowState(row(5), NOW)).toBe("live");
+    // The lobby once said quiet after 2 minutes while the office still said live.
+    expect(rowState(row(14), NOW)).toBe("live");
+    expect(rowState(row(16), NOW)).toBe("quiet");
+    expect(rowState(row(1, { ended: true }), NOW)).toBe("ended");
+  });
+  it("reads waiting on you when the row knows Claude is waiting", () => {
+    const needsYou = {
+      reason: "input",
+      since: "2026-11-01T10:00:00.000Z",
+    } as never;
+    expect(rowState(row(120, { needsYou }), NOW)).toBe("waiting");
   });
 });

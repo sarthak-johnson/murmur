@@ -3,7 +3,7 @@
 import type { MurmurEvent, RequestView, SessionView } from "@murmur/core";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, type Me, type SessionRow } from "../api";
-import { ago, byDay } from "../format";
+import { ago, byDay, folderOf } from "../format";
 import { StateMark, Words } from "../marks";
 import { EventView } from "../part/EventView";
 import { floorPath, follow, navigate } from "../router";
@@ -12,6 +12,8 @@ import {
   isOver,
   type RequestNow,
   requestNow,
+  rowState,
+  SESSION_WORD,
   type SessionNow,
   sessionNow,
 } from "../state";
@@ -82,17 +84,8 @@ function Pop(props: {
   );
 }
 
-const LIVE_MS = 2 * 60_000;
-/** A session's state as the lobby reads it from its row. */
-export function rowState(
-  s: SessionRow,
-  now: number,
-): "live" | "quiet" | "ended" {
-  if (s.ended) return "ended";
-  return now - Date.parse(s.lastEventAt) < LIVE_MS ? "live" : "quiet";
-}
-const ROW_WORD = { live: "Live", quiet: "Quiet", ended: "Ended" };
-const folder = (cwd: string) => cwd.split("/").filter(Boolean).pop() ?? cwd;
+// The lobby reads a row's state from here too, by the office's own rule (state.ts).
+export { rowState };
 
 /** The session's title as a menu of the recent sessions: another one is two clicks away. */
 export function SessionSwitcher(props: { sessionId: string; title: string }) {
@@ -146,9 +139,9 @@ export function SessionSwitcher(props: { sessionId: string; title: string }) {
                       </span>
                       <span className="of-sess-m">
                         <span className={`of-sess-st ${st}`}>
-                          {ROW_WORD[st]}
+                          {SESSION_WORD[st]}
                         </span>
-                        {folder(s.cwd)} · {s.machineName} ·{" "}
+                        {folderOf(s.cwd)} · {s.machineName} ·{" "}
                         {ago(s.lastEventAt, now)}
                       </span>
                     </a>

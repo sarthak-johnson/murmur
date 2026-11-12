@@ -59,3 +59,7 @@ export function cutWords(s: string, n: number): string {
   const space = head.lastIndexOf(" ");
   return `${(space > n / 3 ? head.slice(0, space) : head).replace(/[,;:]$/, "")}…`;
 }
+
+/** A working folder by its last name: "/Users/me/tradara" reads "tradara". */
+export const folderOf = (cwd: string) =>
+  cwd.split("/").filter(Boolean).pop() ?? cwd;

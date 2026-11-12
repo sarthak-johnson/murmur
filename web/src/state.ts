@@ -176,6 +176,27 @@ export function sessionNow(
   };
 }
 
+export type RowTag = "live" | "waiting" | "quiet" | "ended";
+
+/**
+ * A session's tag as a list row (the lobby, the switcher) knows it: by the same rule as
+ * `sessionNow`, live for 15 minutes after its last event, then waiting on you or quiet. A
+ * row knows no stream, so an open session is taken as connected.
+ */
+export function rowState(
+  row: Pick<SessionView, "ended" | "lastEventAt" | "startedAt"> & {
+    needsYou?: SessionView["needsYou"] | undefined;
+  },
+  now: number = Date.now(),
+): RowTag {
+  const { tag } = sessionNow(
+    { ...row, needsYou: row.needsYou ?? null, requests: [] },
+    "live",
+    now,
+  );
+  return tag === "live" || tag === "waiting" || tag === "ended" ? tag : "quiet";
+}
+
 /**
  * How long a session has run, in words: "21 h 57 m", "3 days". From its first request to
  * where its clocks stop (`end`), so it matches the spans of its requests and chapters.
