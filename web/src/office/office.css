@@ -392,7 +392,7 @@
 }
 .of-overlay .sheet small {
   display: block;
-  font: 700 8px / 1.4 var(--o-ui);
+  font: 700 9px / 1.4 var(--o-ui);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #8a7f70;
@@ -671,6 +671,28 @@
 }
 .s1 .of-overlay .plate {
   display: none;
+}
+/* 1x: the shelf names run into each other, and the waiting bubble steps down. */
+.s1 .of-overlay .spot-label {
+  display: none;
+}
+.s1 .of-overlay .bubble.wait {
+  font-size: 13px;
+  max-width: 260px;
+  padding: 6px 10px;
+}
+.s1 .of-overlay .bubble.wait small {
+  font-size: 12px;
+}
+/* Under 2x: the door's plate is too small for its word, and a wide sticky has one line. */
+.s15 .of-overlay .you-plate {
+  visibility: hidden;
+}
+.s15 .of-overlay .hit.note.wide .t {
+  display: block;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin-top: 3px;
 }
 
 .of-card h2 {
@@ -1336,6 +1358,17 @@
 .of-dock {
   min-height: 0;
   min-width: 0;
+}
+/* No room for the room beside the panel: the room keeps its size and the panel lies over its
+   right side; the room can scroll its right part out from under the panel. */
+.of-stage.over-panel > .of-dock {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: var(--of-pw);
+  z-index: 4;
+}
+.of-stage.over-panel .of-map {
+  margin-right: var(--of-pw);
 }
 /* It holds the app's views, drawn in the same pixel kit as the room's chrome; its edge is
    the kit's 2 px line with a bevel, on a hard drop over the room. */

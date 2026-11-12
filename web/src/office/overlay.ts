@@ -84,7 +84,7 @@ export interface Walker {
 }
 
 export interface Overlay {
-  /** The whole-number scale the canvas is drawn at. */
+  /** The scale the canvas is drawn at: crisp, so whole or (on a dense screen) a fraction. */
   setScale(v: number): void;
   render(
     scene: Scene,
@@ -581,7 +581,10 @@ export function createOverlay(
       s = v;
       const m = root.parentElement;
       if (!m) return;
-      m.classList.toggle("s1", v < 2);
+      // Lesser words step down, then hide, as the room shrinks: s2 under 3x, s15 under 2x,
+      // s1 under 1.5x.
+      m.classList.toggle("s1", v < 1.5);
+      m.classList.toggle("s15", v < 2);
       m.classList.toggle("s2", v < 3);
       m.classList.toggle("s4", v >= 4);
       m.style.setProperty("--s", String(v));

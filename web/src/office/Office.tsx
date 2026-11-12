@@ -33,6 +33,7 @@ import {
   touchersOf,
   useViewAt,
 } from "./feed";
+import { RAIL_W, roomFit } from "./fit";
 import { H, T, W } from "./map";
 import { createOverlay, type Overlay } from "./overlay";
 import { Panel } from "./Panel";
@@ -149,13 +150,8 @@ const LEAD_MS = 5_000;
 const PHONE = 760;
 /** Under this width the rail folds into the request picker. */
 const RAIL_MIN = 1200;
-const RAIL_W = 248;
-/** The panel's docked width: a third of a wide screen, within reading limits. */
-const dockWidth = (w: number) =>
-  Math.round(Math.min(640, Math.max(480, w * 0.3)));
-/** Its wide width, for the boards: most of the stage, the room keeping a strip. */
-const wideWidth = (stage: number) =>
-  Math.round(Math.min(stage - 160, Math.max(960, stage * 0.55)));
+/** The top and replay bars' height, for guessing the body's before it is measured. */
+const BARS_H = 200;
 
 /** A remembered choice of this viewer's; storage can be off, then it is the default. */
 function stored(key: string): string | null {
@@ -185,8 +181,17 @@ function defaultOpen(pinned: boolean): string | null {
   if (last === "closed") return null;
   if (last && isTab(last)) return last;
   const vw = window.innerWidth;
-  const stage = vw - (vw >= RAIL_MIN ? RAIL_W : 0);
-  return vw > PHONE && stage - dockWidth(vw) - 16 >= W * 2 ? "story" : null;
+  const fit = roomFit({
+    w: vw,
+    h: window.innerHeight - BARS_H,
+    vw,
+    dpr: window.devicePixelRatio || 1,
+    rail:
+      vw < RAIL_MIN ? "none" : stored(RAIL_KEY) === "shut" ? "shut" : "open",
+    panel: true,
+    wide: false,
+  });
+  return vw > PHONE && !fit.over ? "story" : null;
 }
 
 const dayOf = (iso: string) =>
@@ -409,39 +414,62 @@ export function Office(props: {
   const [focusKey, setFocusKey] = useState(0);
   const [phase, setPhase] = useState<{ id: string; n: number }>();
   const [hover, setHover] = useState<string | null>(null);
-  const stage = useRef<HTMLElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const overlayEl = useRef<HTMLDivElement>(null);
   const mapWrap = useRef<HTMLDivElement>(null);
   const dock = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState({ w: 0, h: 0, vw: 0 });
+  // The room's box is the body under the bars, less the rail: measured, never guessed from
+  // the window, so the bars' own heights and the rail's width are always in it.
+  const body = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 0, h: 0, vw: 0, dpr: 1 });
   useEffect(() => {
-    const el = stage.current;
+    const el = body.current;
     if (!el) return;
     const on = () =>
-      setBox({ w: el.clientWidth, h: el.clientHeight, vw: window.innerWidth });
+      setBox({
+        w: el.clientWidth,
+        h: el.clientHeight,
+        vw: window.innerWidth,
+        dpr: window.devicePixelRatio || 1,
+      });
     on();
     const ro = new ResizeObserver(on);
     ro.observe(el);
-    return () => ro.disconnect();
+    // A zoom changes the device px per CSS px, and with it which scales are crisp.
+    window.addEventListener("resize", on);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", on);
+    };
   }, []);
   const phone = box.vw > 0 && box.vw <= PHONE;
   const railOn = box.vw >= RAIL_MIN;
   const [railOpen, setRailOpen] = useState(() => stored(RAIL_KEY) !== "shut");
+  // Opening the rail while it was folded for the panel keeps it open until the panel closes.
+  const [railInsist, setRailInsist] = useState(false);
+  useEffect(() => {
+    if (!panel) setRailInsist(false);
+  }, [panel]);
   const [wide, setWide] = useState(() => stored(WIDE_KEY) !== "docked");
   const wideNow = !!panel && wide && isWideView(panel);
-  // The panel beside the room; on a phone, the sheet under it.
-  const pw =
-    !panel || phone
-      ? 0
-      : wideNow
-        ? Math.max(dockWidth(box.vw), wideWidth(box.w))
-        : dockWidth(box.vw);
-  const room = box.w - pw;
-  const scale = phone
-    ? 2
-    : // Never under 2x, where words stay readable: a smaller window pans the room instead.
-      Math.max(2, Math.floor(Math.min((room - 16) / W, (box.h - 16) / H)));
+  const fit = roomFit({
+    w: box.w,
+    h: box.h,
+    vw: box.vw,
+    dpr: box.dpr,
+    rail: railOn
+      ? railOpen
+        ? railInsist
+          ? "insist"
+          : "open"
+        : "shut"
+      : "none",
+    panel: !!panel && !phone,
+    wide: wideNow,
+  });
+  const railShown = railOpen && !fit.railFolded;
+  const pw = fit.pw;
+  const scale = phone ? 2 : fit.scale;
   const selected = roomKey(panel, req);
 
   // The engine: one renderer and overlay per mount, painted every frame from refs.
@@ -605,8 +633,8 @@ export function Office(props: {
     };
   }, [reqId, phone, !!scene.waiting]);
 
-  // A room wider than its column (the panel beside it, a small window) re-centres in what
-  // is left: on the thing the panel is about, else on Claude, or a pinned floor's board.
+  // A room bigger than what shows of it (a panel over it, a small window) re-centres in what
+  // shows: on the thing the panel is about, else on Claude, or a pinned floor's board.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on the room's box, floor or selection changing
   useEffect(() => {
     const w = mapWrap.current;
@@ -630,13 +658,15 @@ export function Office(props: {
         : away
           ? [x0, y0 + map.height / 2]
           : [x0 + (c?.x ?? W / 2) * scale, y0 + (c?.y ?? H / 2) * scale];
+      // A panel over the room hides its right part: centre in the strip left of it.
+      const shows = w.clientWidth - (fit.over ? pw : 0);
       w.scrollTo?.({
-        left: away && !sel ? 0 : x - w.clientWidth / 2,
+        left: away && !sel ? 0 : x - shows / 2,
         top: y - w.clientHeight / 2,
       });
     });
     return () => cancelAnimationFrame(raf);
-  }, [pw, scale, box.w, box.h, phone, selected, reqId]);
+  }, [pw, scale, box.w, box.h, phone, selected, reqId, fit.over]);
 
   // A click in the room on a phone opens the sheet under it: bring it into view.
   useEffect(() => {
@@ -893,15 +923,15 @@ export function Office(props: {
         </div>
       </header>
 
-      <div className="of-body">
+      <div className="of-body" ref={body}>
         {railOn && (
           <aside
-            className={railOpen ? "of-rail" : "of-rail shut"}
+            className={railShown ? "of-rail" : "of-rail shut"}
             aria-label="Requests rail"
             style={{ "--of-rw": `${RAIL_W}px` } as React.CSSProperties}
           >
             <div className="of-rail-head">
-              {railOpen && (
+              {railShown && (
                 <span className="of-rail-k" title={sessionFacts(view, ses)}>
                   {sessionFacts(view, ses)}
                 </span>
@@ -909,12 +939,21 @@ export function Office(props: {
               <button
                 type="button"
                 className="of-rail-btn"
-                aria-expanded={railOpen}
+                aria-expanded={railShown}
                 aria-label={
-                  railOpen ? "Fold the requests rail" : "Show the requests rail"
+                  railShown
+                    ? "Fold the requests rail"
+                    : "Show the requests rail"
                 }
-                title={railOpen ? "Fold the rail" : "Show the requests"}
+                title={
+                  fit.railFolded
+                    ? "Folded to make room for the panel: show the requests"
+                    : railShown
+                      ? "Fold the rail"
+                      : "Show the requests"
+                }
                 onClick={() => {
+                  if (fit.railFolded) return setRailInsist(true);
                   keep(RAIL_KEY, railOpen ? "shut" : "open");
                   setRailOpen(!railOpen);
                 }}
@@ -922,12 +961,17 @@ export function Office(props: {
                 <span className="of-rail-chev" aria-hidden="true" />
               </button>
             </div>
-            {railOpen && <RequestList {...list} />}
+            {railShown && <RequestList {...list} />}
           </aside>
         )}
         <main
-          className={pw ? "of-stage with-panel" : "of-stage"}
-          ref={stage}
+          className={[
+            "of-stage",
+            pw && !fit.over ? "with-panel" : "",
+            fit.over ? "over-panel" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
           id="main"
           tabIndex={-1}
           style={{ "--of-pw": `${pw}px` } as React.CSSProperties}
