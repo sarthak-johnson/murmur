@@ -216,6 +216,12 @@ describe("the Tasks tab", () => {
     expect(link.getAttribute("aria-current")).toBe("page");
   });
 
+  it("says so for a request with no plan and no parts", () => {
+    show(guide({ phases: [], parts: [] }), "tasks");
+    expect(screen.getByText("This request has no tasks.")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Tasks" })).toBeNull();
+  });
+
   it("lists the tasks by phase, in the plan's order, each numbered in the plan", () => {
     show(guide(), "tasks");
     const heads = groups().map((g) => g.querySelector("h2")?.textContent);

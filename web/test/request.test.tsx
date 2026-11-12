@@ -1015,6 +1015,62 @@ describe("helpers, files and checks", () => {
     );
   });
 
+  it("puts every helper on the request's clock, and counts who is still running", () => {
+    tab("helpers");
+    expect(document.querySelector(".files-total")?.textContent).toBe(
+      "3 helpers · 1 running",
+    );
+    const bars = [
+      ...panel()
+        .getByRole("list", { name: "Helpers" })
+        .querySelectorAll<HTMLElement>(".hl-b i"),
+    ];
+    expect(bars).toHaveLength(3);
+    for (const b of bars) {
+      expect(b.style.left).toMatch(/%$/);
+      expect(Number.parseFloat(b.style.width)).toBeGreaterThan(0);
+    }
+    expect(bars[0]?.className).toBe("running");
+  });
+
+  it("says all done only when no helper was left running", () => {
+    tab("helpers", running({ finished: true, state: "left-open" }));
+    expect(document.querySelector(".files-total")?.textContent).toBe(
+      "3 helpers",
+    );
+    cleanup();
+    tab(
+      "helpers",
+      running({
+        finished: true,
+        state: "done",
+        agents: running().agents.map((a) => ({ ...a, status: "done" })),
+      }),
+    );
+    expect(document.querySelector(".files-total")?.textContent).toBe(
+      "3 helpers · all done",
+    );
+  });
+
+  it("counts many helpers by role first, each role on the clock", () => {
+    const many = Array.from({ length: 10 }, (_, i) =>
+      agent(`b${i}`, {
+        description: `Build Task ${i}`,
+        role: i % 2 ? "review" : "build",
+      }),
+    );
+    tab("helpers", running({ agents: many, beyond: undefined }));
+    const roles = panel().getByRole("list", { name: "By role" });
+    expect(
+      [...roles.querySelectorAll(".hl-n")].map((n) => n.textContent),
+    ).toEqual(["5 built", "5 reviewed"]);
+    expect(roles.querySelectorAll(".hl-b i")).toHaveLength(2);
+    // Every one of them is still listed under it.
+    expect(
+      panel().getByRole("list", { name: "Helpers" }).children,
+    ).toHaveLength(10);
+  });
+
   it("the Files tab groups the files by the task that changed them, named as the board names it", () => {
     tab("files");
     const groups = [...document.querySelectorAll(".file-group")];

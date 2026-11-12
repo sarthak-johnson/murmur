@@ -128,9 +128,12 @@ const VERDICT: Record<string, { label: string; tone: Tone }> = {
   NEEDS_CONTEXT: { label: "Needs context", tone: "warn" },
 };
 
-/** "verdict is **fix first**", "Verdict: Compliant.": the first verdict a report names. */
+/**
+ * "verdict is **fix first**", "Verdict: Compliant.": the first verdict a report names. Not
+ * where it was put ("the verdict is written to `review.md`"), nor a path or code.
+ */
 const SAID_VERDICT =
-  /\bverdict\b[*_]*\s*(?:is\b|:)\s*[*_]*\s*([^*_.\n:;(]{2,40})/i;
+  /\bverdict\b[*_]*\s*(?:is\b|:)(?![\s*_]*(?:written|saved|stored|recorded|in|at|below|above)\b)\s*[*_]*\s*([^*_.\n:;(`]{2,40})/i;
 
 /** A report's verdict line as a label and a tone; failed and stopped reports say so. */
 export function verdictOf(

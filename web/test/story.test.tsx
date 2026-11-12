@@ -386,6 +386,13 @@ describe("story helpers", () => {
       label: "Approved",
       tone: "done",
     });
+    // Where a verdict went is no verdict.
+    expect(
+      verdictOf({
+        ...r(),
+        text: "Done. The verdict is written to `.sdd/task-56-review.md`.",
+      }),
+    ).toBeUndefined();
     // Negatives first: these hold "approv" and "pass".
     expect(verdictOf(r("Not approved"))?.tone).toBe("bad");
     expect(verdictOf(r("Doesn't pass"))?.tone).toBe("bad");

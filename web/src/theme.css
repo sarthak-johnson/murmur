@@ -1807,6 +1807,17 @@ a.helper:focus-visible {
   font-size: 13px;
   line-height: 18px;
 }
+/* The helper's run on the request's clock, under its line. */
+.h-bar {
+  display: block;
+  max-width: 420px;
+}
+.hl-roles {
+  max-width: 860px;
+  margin: 12px 0 4px;
+  padding: 12px;
+  box-shadow: inset 0 0 0 2px var(--s5);
+}
 .h-line {
   display: block;
   margin-top: 4px;

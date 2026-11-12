@@ -354,6 +354,7 @@ function PanelBody(props: PanelProps) {
             events={events}
             now={props.t}
             state={props.stands.state}
+            end={props.stands.to}
           />
         ) : (
           <>
