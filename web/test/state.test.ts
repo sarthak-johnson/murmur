@@ -185,6 +185,44 @@ describe("a request's state", () => {
     expect(now.label).toBe("Waiting on you · 65 h 00 m");
   });
 
+  it("a turn ended while its helper works on is not over: a replay never reads it finished", () => {
+    const helper = agent({
+      id: "a1",
+      status: "running",
+      startedAt: t(H + 50 * 60_000),
+    });
+    const view = session({
+      requests: [
+        request({
+          id: "r1",
+          state: "left-open",
+          finished: true,
+          agents: [helper],
+        }),
+      ],
+    });
+    const r = view.requests[0] as RequestView;
+    // Its helper at work a few minutes ago: running, and its work with it.
+    const now = requestNow(view, r, [], sessionNow(view, "live", T0 + 2 * H));
+    expect(now.state).toBe("running");
+    // In a replay, a request the session has more of later is not over at the moment.
+    const quiet = session({
+      requests: [request({ id: "r1", state: "left-open", finished: true })],
+    });
+    const at = sessionNow(quiet, "live", T0 + 2 * H);
+    const q = quiet.requests[0] as RequestView;
+    expect(requestNow(quiet, q, [], { ...at, goesOn: "r1" }).state).toBe(
+      "running",
+    );
+    expect(requestNow(quiet, q, [], at).state).toBe("open");
+    // An ended session's request was left open, whatever is said after.
+    const ended = { ...quiet, ended: true };
+    expect(
+      requestNow(ended, q, [], { ...sessionNow(ended, "live"), goesOn: "r1" })
+        .state,
+    ).toBe("open");
+  });
+
   it("a request core left open reads left open, its work too", () => {
     const view = session({
       requests: [request({ id: "r1", state: "left-open", finished: true })],

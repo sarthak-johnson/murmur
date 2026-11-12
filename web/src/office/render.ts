@@ -150,10 +150,7 @@ function layOut(scene: Pick<Scene, "columns">, s: number): PlacedColumn[] {
     };
     const height = (n: Note, subW: number) => {
       if (s < 3)
-        return Math.max(
-          12,
-          Math.ceil((small(n, subW).rows * 12 + 2) / s),
-        );
+        return Math.max(12, Math.ceil((small(n, subW).rows * 12 + 2) / s));
       const lines = lineCount(n.title, (subW - 20) * s);
       return Math.max(12, Math.ceil((lines * 19 + (n.stage ? 18 : 0)) / s));
     };

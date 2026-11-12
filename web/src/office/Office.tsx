@@ -372,9 +372,24 @@ export function Office(props: {
     () => sessionNow(view, status, listTick, asking),
     [view, status, listTick, asking],
   );
+  // In a replay, the newest request at the moment goes on when the session has more of it
+  // later (an event of it after the moment, before the next request): it is not over yet.
+  const newestT = viewT.requests.at(-1);
+  const goesOn = useMemo(() => {
+    if (at === null || !newestT) return undefined;
+    const next =
+      view.requests[view.requests.findIndex((r) => r.id === newestT.id) + 1];
+    const after = events[n];
+    return after && (!next || after.ts < next.startedAt)
+      ? newestT.id
+      : undefined;
+  }, [at, newestT, view.requests, events, n]);
   const sesT = useMemo(
-    () => sessionNow(drawerView, status, tick, at === null && asking),
-    [drawerView, status, tick, at, asking],
+    () => ({
+      ...sessionNow(drawerView, status, tick, at === null && asking),
+      goesOn,
+    }),
+    [drawerView, status, tick, at, asking, goesOn],
   );
   const mark = useMemo(
     () => (req ? requestNow(drawerView, req, drawerEvents, sesT) : null),
@@ -493,7 +508,9 @@ export function Office(props: {
     };
     const watchDpr = () => {
       mq?.removeEventListener("change", onDpr);
-      mq = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      mq = window.matchMedia?.(
+        `(resolution: ${window.devicePixelRatio || 1}dppx)`,
+      );
       mq?.addEventListener?.("change", onDpr);
     };
     watchDpr();

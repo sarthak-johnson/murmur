@@ -132,6 +132,11 @@ export interface SessionNow {
   from: string;
   /** Its last event. */
   last: string;
+  /**
+   * In a replay, the request whose work goes on after the moment (the session has more of
+   * it later): at the moment it is not over, whatever its last word then.
+   */
+  goesOn?: string | undefined;
 }
 
 /**
@@ -302,9 +307,22 @@ export function requestNow(
   const at = Date.parse(ses.at);
   // Every later event is the newest request's: its work runs to the session's end.
   const newest = req === view.requests.at(-1);
+  // Claude's turn can end while a helper (or a background command) works on: it is woken
+  // when that reports. Until then the newest request is not over, though core's word at
+  // that moment is: it goes on in the replay, or a helper of it is at work right now.
+  const goesOn =
+    newest &&
+    !view.ended &&
+    (ses.goesOn === req.id ||
+      (ses.ticking &&
+        req.agents.some(
+          (a) =>
+            a.status === "running" &&
+            at - Date.parse(a.doing?.ts ?? a.startedAt) < STALE_MS,
+        )));
   let state: State;
   let to: string;
-  if (m.mark === "running") {
+  if (m.mark === "running" || (goesOn && m.mark !== "waiting")) {
     const sign = lastSign(req, m.end);
     const stale = !ses.ticking || at - Date.parse(sign) >= STALE_MS;
     state = stale ? "paused" : "running";
