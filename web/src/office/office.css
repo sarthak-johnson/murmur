@@ -1059,7 +1059,7 @@
 /* More helpers than desks: the sign that says so. */
 .of-overlay .off-sign {
   transform: translate(-50%, -50%);
-  font: max(8px, calc(3.5px * var(--s))) / 1 var(--o-pix);
+  font: clamp(9px, calc(5px * var(--s)), 15px) / 1 var(--o-pix);
   color: #2a211c;
   background: #eadfc6;
   border: 0;

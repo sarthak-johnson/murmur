@@ -19,14 +19,6 @@ import { cutWords, type Scene } from "./scene";
 import { hash, helperLook, LINEAGE, phaseColor } from "./sprites";
 import { clockOf, context2d, dur, esc, phaseShort } from "./util";
 
-const MODEL: Record<string, string> = {
-  opus: "Opus",
-  sonnet: "Sonnet",
-  haiku: "Haiku",
-};
-const modelWord = (m: string | undefined) =>
-  MODEL[(m ?? "").toLowerCase().split(/[-\s]/)[0] ?? ""] ?? "";
-
 // Bubbles pop in when the words change and fade after a while, unless you point at their speaker.
 const SAY_MS = { helper: 6000, claude: 9000 };
 const hashText = (t: string) => hash(t).toString(36);
@@ -398,18 +390,9 @@ export function createOverlay(
         pc = LINEAGE;
         chipText = `Req ${d.fromRequest}`;
       }
-      // Role, model and time, dropping the model, then the role, so the time is never the
-      // part cut off. At 2x too: a reviewer seated on the work floor is told apart by it.
-      const model = s >= 3 ? modelWord(d.model) : "";
-      const room = 78 * s - (chipText ? chipText.length * 7 + 18 : 0) - 6;
-      const parts = [
-        model ? `${d.roleWord} · ${model} · ` : `${d.roleWord} · `,
-        `${d.roleWord} · `,
-        "",
-      ];
-      const lead = parts.find((p) => fits(`${p}${when}`, room, 13)) ?? "";
-      const role = esc(lead);
-      const sub = `${chipText ? `<i class="ph" style="--ph:${pc}">${esc(chipText)}</i>` : ""}${role}${esc(when)}`;
+      // The same two things on every plate of every request: its phase chip (or the earlier
+      // request it works for) and its time. Its role and model are in its close-up.
+      const sub = `${chipText ? `<i class="ph" style="--ph:${pc}">${esc(chipText)}</i>` : ""}${esc(when)}`;
       const py = (tl.y + 1) * T + 1;
       const sel = selected === `agent:${d.agent}`;
       // The desk's hit area first, so its selection ring sits under the plate and bubble, never through them.
