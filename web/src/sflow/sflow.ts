@@ -31,6 +31,8 @@ export const CARD_H_BARE = 76;
 /** A title's second line, when it does not fit on one. */
 export const TITLE_LINE = 22;
 const MIN_COL = 252;
+/** The least a column can be in a narrow panel. */
+const MIN_NARROW = 180;
 const MAX_COL = 560;
 /** A column alone is a timeline: wide enough to fill a laptop's page, capped on a big screen. */
 const ONE_COL = 960;
@@ -261,7 +263,11 @@ export function layoutSessionFlow(
   const n = Math.max(1, shown.length);
   const room = (opts.width || 1000) - GUTTER - LEAD - PAD_R - (n - 1) * GAP;
   const max = n === 1 ? ONE_COL : MAX_COL;
-  const w = Math.max(MIN_COL, Math.min(max, Math.floor(room / n)));
+  // A docked panel narrower than a column's least: one column fills what it shows, whole,
+  // the next a scroll away, never a card cut at its right edge.
+  const one = (opts.width || 1000) - GUTTER - LEAD - PAD_R;
+  const least = Math.min(MIN_COL, Math.max(MIN_NARROW, one));
+  const w = Math.max(least, Math.min(max, Math.floor(room / n)));
   const cols = shown.map((thread, i) => ({
     thread,
     x: GUTTER + LEAD + i * (w + GAP),

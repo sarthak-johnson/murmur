@@ -4518,7 +4518,8 @@ code.nw {
 }
 .sf-time {
   position: absolute;
-  left: 16px;
+  /* Room for "Wed 11 Nov" clear of the gutter's rule. */
+  left: 10px;
   display: flex;
   flex-direction: column;
   padding-top: 12px;
