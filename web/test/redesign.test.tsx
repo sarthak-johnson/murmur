@@ -20,6 +20,7 @@ import { PartDetail } from "../src/part/PartDetail";
 import type { Tab } from "../src/router";
 import { questionsIn } from "../src/session";
 import { clock } from "../src/story";
+import { clockAt } from "./clock";
 
 /** A request's own page: the newest request unless the test names one. */
 function Live(p: React.ComponentProps<typeof Page>) {
@@ -59,6 +60,8 @@ beforeEach(() => {
 
 const at = (min: number) =>
   new Date(Date.UTC(2026, 10, 6, 9, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(at(45));
 
 function part(p: Partial<PartView> & { id: string; title: string }): PartView {
   return {
@@ -576,7 +579,7 @@ describe("phase track", () => {
       within(track()).getByRole("link", { name: /Schedule maths/ }),
     );
     // Its close-up in the office, on the floor Claude is on.
-    expect(location.search).toBe("?open=task:maths");
+    expect(location.search).toBe("?open=task:t2");
     cleanup();
     show(session(request()), { requestId: "r2", partId: "maths" });
     const here = within(
@@ -689,7 +692,7 @@ describe("waiting on you", () => {
 describe("story by phase", () => {
   const story = () => screen.getByRole("region", { name: "What happened" });
 
-  it("groups Claude's words under their phase, in plan order: the live one newest first", () => {
+  it("groups Claude's words under their phase, in plan order, every one oldest first", () => {
     show(session(request()));
     const groups = [...story().querySelectorAll(".st-phase")] as HTMLElement[];
     expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual([
@@ -697,8 +700,12 @@ describe("story by phase", () => {
       "Phase 2: the screen",
     ]);
     const [done, live] = groups;
-    expect(live?.querySelector(".st-meta")?.textContent).toContain(
+    expect(live?.querySelector(".st-meta")?.textContent).not.toContain(
       "newest first",
+    );
+    // The live section ends with what is at work now, marked for the panel to scroll to.
+    expect(live?.querySelector("[data-newest]")?.textContent).toMatch(
+      /Fix bug B1, running for/,
     );
     const texts = (g: HTMLElement) =>
       [...g.querySelectorAll(".story-text")].map((t) => t.textContent);
@@ -1068,7 +1075,7 @@ describe("review fixes: words", () => {
     expect(now.textContent).not.toContain("still running");
   });
 
-  it("an open AskUserQuestion reads as asking you, not as a tool name", () => {
+  it("an open AskUserQuestion reads as what it asks you, not as a tool name", () => {
     const ask = ev("q1", 40, "PreToolUse", {
       tool_name: "AskUserQuestion",
       tool_use_id: "toolu_q",
@@ -1087,8 +1094,9 @@ describe("review fixes: words", () => {
       ),
       { events: [ask] },
     );
-    const now = within(bar()).getByRole("region", { name: "Now" });
-    expect(now.textContent).toContain("Asking you 2 questions");
+    // Waiting on you, the line says what Claude asked, not its last narration.
+    const now = within(bar()).getByRole("region", { name: "Asked" });
+    expect(now.textContent).toContain("2 questions. A?");
     expect(now.textContent).not.toContain("AskUserQuestion");
   });
 

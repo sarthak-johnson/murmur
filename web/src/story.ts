@@ -128,24 +128,35 @@ const VERDICT: Record<string, { label: string; tone: Tone }> = {
   NEEDS_CONTEXT: { label: "Needs context", tone: "warn" },
 };
 
+/** "verdict is **fix first**", "Verdict: Compliant.": the first verdict a report names. */
+const SAID_VERDICT =
+  /\bverdict\b[*_]*\s*(?:is\b|:)\s*[*_]*\s*([^*_.\n:;(]{2,40})/i;
+
 /** A report's verdict line as a label and a tone; failed and stopped reports say so. */
 export function verdictOf(
   report: AgentReport | undefined,
 ): { label: string; tone: Tone } | undefined {
   if (!report) return undefined;
-  const v = report.verdict?.trim();
+  // A `Status:` line, else the verdict a review names in its words ("My verdict is fix first").
+  const v =
+    report.verdict?.trim() ||
+    SAID_VERDICT.exec(report.text.slice(0, 600))?.[1]
+      ?.replace(/^[^\p{L}\p{N}]+/u, "")
+      .trim();
   if (v) {
     const known = VERDICT[v.toUpperCase()];
     if (known) return known;
     const words = v.replace(/[_-]+/g, " ").toLowerCase();
     const label = words.charAt(0).toUpperCase() + words.slice(1);
-    const tone: Tone = /approv|pass|\bok\b|done|complete|ready/.test(words)
-      ? "done"
-      : /fail|block|issue|change|reject|problem|broke/.test(words)
-        ? "bad"
-        : /concern|need|partial|warn/.test(words)
-          ? "warn"
-          : "plain";
+    const tone: Tone = /fix(?:es)? first|needs? fix|not pass/.test(words)
+      ? "bad"
+      : /approv|pass|\bok\b|done|complete|ready|compliant/.test(words)
+        ? "done"
+        : /fail|block|issue|change|reject|problem|broke/.test(words)
+          ? "bad"
+          : /concern|need|partial|warn/.test(words)
+            ? "warn"
+            : "plain";
     return { label, tone };
   }
   if (report.status === "failed") return { label: "Failed", tone: "bad" };
@@ -166,17 +177,62 @@ export function aboutWork(brief: string | undefined): string | undefined {
 
 /**
  * What a helper is at, in a line: while it runs, its latest action and the files it has
- * changed so far; once finished, the first sentence of its report (else of its last
- * words). Empty when there is nothing to say.
+ * changed so far; once finished, the first sentence of its gist (`helperGist`). Empty when
+ * there is nothing to say.
  */
-export function helperLine(a: AgentView, running: boolean): string {
+export function helperLine(
+  a: AgentView,
+  running: boolean,
+  req?: RequestView,
+): string {
   const files = a.files?.length ?? 0;
   if (running)
     return [a.doing?.text, files ? `${nOf(files, "file")} so far` : ""]
       .filter(Boolean)
       .join(" · ");
-  const said = firstSentence(reportLine(a.report) || a.lastText || "");
-  return cutWords(said, 160);
+  return cutWords(firstSentence(helperGist(a, req)), 160);
+}
+
+/** Words about waiting on its own work: no gist of what a helper did. */
+const WAITING =
+  /\b(?:still (?:going|running|in progress|being)|in flight|in the background|(?:running|going) now|(?:i'?ll|i will|let me) wait|waiting (?:for|on)|wait(?:ing)? until|will (?:notify|report|ping)|once (?:it|they) (?:finish|finishes|end|ends|complete|completes)|when (?:it|they) (?:end|ends|finish|finishes|complete|completes))\b/i;
+
+/** A report's paragraphs of prose: no status lines, headings or lists. */
+function prose(text: string): string[] {
+  return text
+    .split(/\n\s*\n/)
+    .map((p) =>
+      p
+        .split("\n")
+        .filter((l) => !STATUS_LINE.test(l) && !/^\s*#/.test(l))
+        .join("\n")
+        .trim(),
+    )
+    .filter((p) => p && !/^\s*(?:[-*+]|\d+[.)])\s/.test(p));
+}
+
+/**
+ * What a finished helper did, in a few words: its report's lead; a report that only says
+ * it is waiting on its own background work gives way to its other prose, then to Claude's
+ * word on that report, then to its last words. A helper whose every word was about
+ * waiting says it stopped with its own work still running.
+ */
+export function helperGist(a: AgentView, req?: RequestView): string {
+  const r = a.report;
+  const lead = r ? reportLine(r) : "";
+  // A final report says what it did; only an interim one, or none, is read for waiting.
+  if (lead && !r?.interim) return lead;
+  const said = [
+    ...(r ? prose(r.text) : []),
+    ...(req?.messages ?? [])
+      .filter((m) => m.agent === a.id)
+      .map((m) => plainText(m.text.split(/\n\s*\n/)[0] ?? m.text)),
+    ...(a.lastText ? prose(a.lastText) : []),
+  ].find((p) => !WAITING.test(firstSentence(p)));
+  if (said) return said;
+  if (r?.interim || lead || a.lastText)
+    return "Stopped while its own checks were still running; no final report came.";
+  return "";
 }
 
 /** A report in a line: its lead paragraph, else its summary unless that only says it finished. */

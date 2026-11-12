@@ -254,6 +254,8 @@ describe("the office page", () => {
   });
 
   it("the requests rail lists every request by day and pins one on a click, keeping the tab", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(BASE + 10_000);
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       value: 1600,

@@ -9,17 +9,27 @@ import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
 import { PIECES, StateMark, Words } from "../marks";
 import { follow, partPath } from "../router";
 import { livePhase, type Mark, phaseSpan, shortTitle } from "../session";
+import { helperNow, WORD as STATE_WORD, type State, workState } from "../state";
 import { clock, duration, nOf, verdictOf } from "../story";
 
-export type Shown = "done" | "now" | "todo" | "failed" | "blocked" | "open";
+export type Shown =
+  | "done"
+  | "now"
+  | "todo"
+  | "failed"
+  | "blocked"
+  | "open"
+  | "paused";
 
+/** The state words of state.ts, in lower case for a list's screen-reader tail. */
 export const WORD: Record<Shown, string> = {
-  done: "done",
-  now: "in progress",
-  blocked: "waiting on you",
-  todo: "not started",
-  failed: "failed",
-  open: "left open",
+  done: STATE_WORD.done.toLowerCase(),
+  now: STATE_WORD.running.toLowerCase(),
+  blocked: STATE_WORD.waiting.toLowerCase(),
+  todo: STATE_WORD.todo.toLowerCase(),
+  failed: STATE_WORD.failed.toLowerCase(),
+  open: STATE_WORD.open.toLowerCase(),
+  paused: STATE_WORD.paused.toLowerCase(),
 };
 export const MARK: Record<Shown, Mark> = {
   done: "done",
@@ -28,6 +38,7 @@ export const MARK: Record<Shown, Mark> = {
   failed: "failed",
   blocked: "waiting",
   open: "open",
+  paused: "open",
 };
 
 interface Station {
@@ -96,21 +107,33 @@ export const span = (from?: string, to?: string) =>
       : `${clock(from)} to ${clock(to)}`
     : "";
 
-export function agentShown(a: AgentView, over: boolean): Shown {
-  if (a.status === "running") return over ? "open" : "now";
-  if (/failed|killed/.test(a.report?.status ?? "")) return "failed";
-  return "done";
+const SHOWN: Record<State, Shown> = {
+  running: "now",
+  waiting: "blocked",
+  paused: "paused",
+  done: "done",
+  open: "open",
+  failed: "failed",
+  todo: "todo",
+};
+/** A state (state.ts) as the lists draw it. */
+export const shownOf = (s: State): Shown => SHOWN[s];
+/** A request's state, from the old "over" flag where only that is known. */
+const reqState = (r: boolean | State): State =>
+  typeof r === "string" ? r : r ? "done" : "running";
+
+/** A helper's state at `at` (state.ts `helperNow`), under its request's state. */
+export function agentShown(
+  a: AgentView,
+  request: boolean | State,
+  at = new Date().toISOString(),
+): Shown {
+  return SHOWN[helperNow(a, at, reqState(request)).state];
 }
 
-/** A task's state: once the request is over, one not done is left open. */
-export const taskShown = (t: TaskView, over: boolean): Shown =>
-  t.status === "failed"
-    ? "failed"
-    : t.status === "done"
-      ? "done"
-      : over
-        ? "open"
-        : t.status;
+/** A task's state: once the request is over, one not done is left open (state.ts `workState`). */
+export const taskShown = (t: TaskView, request: boolean | State): Shown =>
+  SHOWN[workState(t.status, reqState(request))];
 
 /** A phase's state; `live` is the phase where the work is (`livePhase`). */
 export function phaseShown(
@@ -318,7 +341,8 @@ export function PhaseTrack(props: {
                       ? `${t.title}: ${t.problem}`
                       : t.title,
                   shown: taskShown(t, over),
-                  part: t.part,
+                  // Its close-up by the task's own id: several tasks share one part.
+                  part: t.part && t.id,
                 }))}
               />
             </li>

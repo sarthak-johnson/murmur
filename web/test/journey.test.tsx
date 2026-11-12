@@ -155,6 +155,8 @@ const station = (n: number) =>
 
 beforeEach(() => {
   history.pushState(null, "", "/s/s1");
+  // The fixture as it stands five minutes after its last event: live, not quiet.
+  vi.useFakeTimers({ now: Date.parse(day(9, 45)), toFake: ["Date"] });
   vi.stubGlobal(
     "fetch",
     vi.fn(
@@ -170,6 +172,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("the session page is the journey", () => {
@@ -247,6 +250,18 @@ describe("from here to here", () => {
     expect(to.getAttribute("href")).toBe("/s/s1/r/r4?open=story");
     expect(to.querySelector(".jr-need")).toBeNull();
     expect(to.textContent).not.toMatch(/wait on you/);
+  });
+
+  it("a session quiet for days: its running request is paused, timed to its last sign, as the office says", () => {
+    vi.setSystemTime(Date.parse(day(12)));
+    show(session());
+    const to = within(ends()).getAllByRole("link")[1] as HTMLElement;
+    expect(to.textContent).toContain("Where it stopped");
+    expect(to.textContent).not.toMatch(/running/);
+    expect(to.textContent).toMatch(/Request 4, paused after/);
+    const facts = screen.getByRole("group", { name: "Summary" });
+    expect(facts.textContent).toMatch(/1 paused/);
+    expect(facts.textContent).not.toMatch(/running now/);
   });
 
   it("counts what waits on you in amber when Claude asked", () => {

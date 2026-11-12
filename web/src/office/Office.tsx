@@ -7,10 +7,10 @@
 import type { MurmurEvent, SessionView } from "@murmur/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Me } from "../api";
-import { sessionFacts } from "../format";
 import { useLastLooked } from "../lastLooked";
 import { closedHere, floorPath, follow, navigate } from "../router";
 import { type RequestState, requestMark, requestShort } from "../session";
+import { requestNow, sessionFacts, sessionNow } from "../state";
 import { clock } from "../story";
 import { type SessionStatus, useSession } from "../useSession";
 import {
@@ -45,7 +45,7 @@ import {
   roomKey,
 } from "./panelState";
 import { createRenderer, type Renderer } from "./render";
-import { activeRequest, deriveScene, QUIET_MS, type Scene } from "./scene";
+import { activeRequest, deriveScene, type Scene } from "./scene";
 import { clockOf, dur } from "./util";
 import "./office.css";
 
@@ -238,24 +238,10 @@ export function Office(props: {
   onSignOut?: (() => void) | undefined;
 }) {
   const { sessionId, view, events, status } = props;
-  // Live: the stream is up, the session has not ended and something happened lately; the
-  // clock then runs with real time. Up but silent for a while, it is quiet: its clock stops
-  // at its last event, so nothing reads as running for a day.
-  // A reconnect is a blip, not the session stopping: it stays live meanwhile.
-  const open = (status === "live" || status === "reconnecting") && !view.ended;
+  // Live, waiting or quiet, as every view reads it (state.ts): while it ticks the clock
+  // runs with real time; quiet, it stops at the last event, so nothing reads as running
+  // for a day. Waiting on you ticks however long the wait.
   const [wall, setWall] = useState(() => Date.now());
-  useEffect(() => {
-    if (!open) return;
-    const t = setInterval(() => setWall(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [open]);
-  const first = view.requests[0];
-  const START = Date.parse(first?.startedAt ?? view.startedAt);
-  const lastAt = Date.parse(view.lastEventAt);
-  const quietFor = open ? Math.max(0, wall - lastAt) : 0;
-  // Waiting on you is live however long the wait: that clock runs on.
-  // Reconnecting changes only the tag: the session is as last heard until the line is back.
-  const reconnecting = status === "reconnecting";
   // The floor Claude is on, now: pinned to it is following it, and the address says so.
   const liveActive = activeRequest(view.requests);
   const liveActiveId = liveActive?.id;
@@ -265,7 +251,19 @@ export function Office(props: {
       !!liveActive && requestMark(view, liveActive, events).mark === "waiting",
     [view, liveActive, events],
   );
-  const live = open && (quietFor < QUIET_MS || !!view.needsYou || asking);
+  const ses = sessionNow(view, status, wall, asking);
+  const { open, quietFor } = ses;
+  useEffect(() => {
+    if (!open) return;
+    const t = setInterval(() => setWall(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [open]);
+  const first = view.requests[0];
+  const START = Date.parse(ses.from);
+  // Reconnecting changes only the tag: the session is as last heard until the line is back.
+  const reconnecting = status === "reconnecting";
+  const live = ses.ticking;
+  const lastAt = Date.parse(ses.last);
   const END = live ? Math.max(lastAt, wall) : lastAt;
   const pinnedId =
     props.pinnedId &&
@@ -358,12 +356,24 @@ export function Office(props: {
   // The panel reads one view: the moment's, or the live one when a stale moment lacks the request.
   const drawerView = req && viewT.requests.includes(req) ? viewT : view;
   const drawerEvents = drawerView === viewT ? eventsT : events;
-  const mark = useMemo(
-    () => (req ? requestMark(drawerView, req, drawerEvents) : null),
-    [drawerView, req, drawerEvents],
-  );
   // Its clocks tick in 10 s steps, so a playing replay does not redraw it ten times a second.
   const drawerT = new Date(Math.floor(tNow / 10_000) * 10_000).toISOString();
+  // Following, the request stands as the session does now; a replay's moment reads its own.
+  const tick = Math.floor((at === null ? wall : tNow) / 10_000) * 10_000;
+  // The requests list reads the live session in 10 s steps, not on every second's tick.
+  const listTick = Math.floor(wall / 10_000) * 10_000;
+  const listSes = useMemo(
+    () => sessionNow(view, status, listTick, asking),
+    [view, status, listTick, asking],
+  );
+  const sesT = useMemo(
+    () => sessionNow(drawerView, status, tick, at === null && asking),
+    [drawerView, status, tick, at, asking],
+  );
+  const mark = useMemo(
+    () => (req ? requestNow(drawerView, req, drawerEvents, sesT) : null),
+    [drawerView, req, drawerEvents, sesT],
+  );
 
   // Every change of the panel is a step in the history: Back undoes it.
   const floor$ = useRef(pinnedId);
@@ -454,7 +464,7 @@ export function Office(props: {
       if (key.startsWith("req:")) return pick(key.slice(4));
       if (key.startsWith("phase:"))
         setPhase((p) => ({ id: key.slice(6), n: (p?.n ?? 0) + 1 }));
-      go(openFor(key, floorReq$.current));
+      go(openFor(key));
       setFocusKey((k) => k + 1);
     },
     [go, pick],
@@ -684,43 +694,25 @@ export function Office(props: {
   const total = Math.max(1, Math.round((END - START) / 1000));
   const working = scene.desks.filter((d) => d.status === "running");
   const carried = working.filter((d) => d.fromRequest);
-  // The request's own mark wins (core's state), so the bar, the room and the panel agree.
+  // The request as state.ts reads it, so the bar, the room and the panel agree. Paused is
+  // not over: the panel reads it as stopped mid-work, not done.
   const state: RequestState = !mark
     ? "running"
-    : mark.mark === "running" || mark.mark === "waiting"
-      ? mark.mark
-      : "done";
-  // Waiting on you: since when, and how many questions when there are more than one.
-  const since = scene.waiting?.since ?? mark?.waiting?.since;
-  const asks = mark?.waiting?.questions.length ?? 0;
+    : mark.state === "running" || mark.state === "paused"
+      ? "running"
+      : mark.state === "waiting"
+        ? "waiting"
+        : "done";
+  // Waiting on you: how many questions when there are more than one.
+  const asks =
+    mark?.state === "waiting" ? (mark.waiting?.questions.length ?? 0) : 0;
   const pill =
     !req || !mark
       ? null
-      : since && (scene.waiting || state === "waiting")
-        ? ([
-            "blocked",
-            `Waiting on you · ${dur(tNow - Date.parse(since))}${asks > 1 ? ` · ${asks} questions` : ""}`,
-          ] as const)
-        : state === "running" && following && open && !live
-          ? // Left mid-work: it ran this long, then nothing more came.
-            ([
-              "todo",
-              `Paused · ran ${dur(tNow - Date.parse(req.startedAt))}`,
-            ] as const)
-          : state === "running"
-            ? ([
-                "now",
-                `Running · ${dur(tNow - Date.parse(req.startedAt))}`,
-              ] as const)
-            : mark.mark === "failed"
-              ? (["failed", "Failed"] as const)
-              : mark.mark === "open"
-                ? (["todo", "Left open"] as const)
-                : ([
-                    "done",
-                    // How long it took, from its ask to its last word.
-                    `Done · ${dur(Math.min(tNow, Date.parse(mark.end)) - Date.parse(req.startedAt))}`,
-                  ] as const);
+      : ([
+          mark.tone,
+          `${mark.label}${asks > 1 ? ` · ${asks} questions` : ""}`,
+        ] as const);
   const helperMeta = !working.length
     ? "No helpers at work"
     : !carried.length
@@ -758,6 +750,7 @@ export function Office(props: {
     events,
     currentId: reqId,
     activeId: liveActiveId,
+    ses: listSes,
     keep: keepFor(panel),
     onPick: pick,
   };
@@ -801,12 +794,21 @@ export function Office(props: {
             >
               Pinned
             </span>
-          ) : following && live ? (
+          ) : following && ses.tag === "live" ? (
             <span
               className="of-tag live"
               title="Following the session as it happens"
             >
-              Live
+              {ses.word}
+            </span>
+          ) : following && ses.tag === "waiting" ? (
+            // Waiting on you ticks on, but nothing has happened: it is not live. How long the
+            // wait has run is the pill's to say, so the bar never shows two clocks for it.
+            <span
+              className="of-tag quiet waiting"
+              title={`Claude is waiting on you; nothing else has happened in this session for ${dur(quietFor)}.`}
+            >
+              Waiting
             </span>
           ) : following && open ? (
             <span
@@ -884,6 +886,8 @@ export function Office(props: {
               done={state === "done"}
               events={drawerEvents}
               cwd={view.cwd}
+              waiting={mark?.state === "waiting" ? mark.waiting : null}
+              paused={mark?.state === "paused"}
             />
           )}
         </div>
@@ -898,8 +902,8 @@ export function Office(props: {
           >
             <div className="of-rail-head">
               {railOpen && (
-                <span className="of-rail-k" title={sessionFacts(view)}>
-                  {sessionFacts(view)}
+                <span className="of-rail-k" title={sessionFacts(view, ses)}>
+                  {sessionFacts(view, ses)}
                 </span>
               )}
               <button
@@ -960,7 +964,8 @@ export function Office(props: {
                 events={drawerEvents}
                 request={req}
                 state={state}
-                end={mark.end}
+                stands={mark}
+                ses={sesT}
                 waiting={mark.waiting}
                 lastLooked={props.lastLooked ?? null}
                 mainLog={mainLog}
@@ -1096,7 +1101,7 @@ export function Office(props: {
             type="button"
             className={
               following && !pinnedNow
-                ? live
+                ? ses.tag === "live"
                   ? "of-live on live"
                   : "of-live on"
                 : "of-live"
@@ -1107,14 +1112,14 @@ export function Office(props: {
               follow$();
             }}
             aria-label={
-              live
+              ses.tag === "live"
                 ? "Follow the session live"
                 : open
                   ? "Jump to the latest moment"
                   : "Jump to the end"
             }
           >
-            {live ? "Live" : open ? "Latest" : "End"}
+            {ses.tag === "live" ? "Live" : open ? "Latest" : "End"}
           </button>
           <span className="of-spacer" />
           <div className="of-legend">

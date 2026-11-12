@@ -1,5 +1,4 @@
-import type { RequestView, SessionView } from "@murmur/core";
-import { duration } from "./story";
+import type { RequestView } from "@murmur/core";
 
 const DAY = new Intl.DateTimeFormat("en-GB", {
   weekday: "short",
@@ -23,27 +22,6 @@ export function byDay(requests: RequestView[]) {
     else days.push({ label: dayLabel(req.startedAt), rows: [row] });
   });
   return days;
-}
-
-const many = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
-
-/** How long the session has run: "7 days", "3 h 07 m", "under a minute". */
-export function sessionSpan(view: SessionView): string {
-  const ms = Date.parse(view.lastEventAt) - Date.parse(view.startedAt);
-  return ms < 86_400_000
-    ? duration(view.startedAt, view.lastEventAt)
-    : many(Math.round(ms / 86_400_000), "day");
-}
-
-/** "13 requests · 136 helpers · 7 days". */
-export function sessionFacts(view: SessionView): string {
-  const helpers = view.requests.reduce((n, r) => n + r.tally.helpers, 0);
-  const span = sessionSpan(view);
-  return [
-    many(view.requests.length, "request"),
-    ...(helpers ? [many(helpers, "helper")] : []),
-    span === "under a minute" ? "just started" : span,
-  ].join(" · ");
 }
 
 export function ago(iso: string | null, now = Date.now()): string {

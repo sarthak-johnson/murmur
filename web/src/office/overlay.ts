@@ -12,7 +12,7 @@ import {
   T,
 } from "./map";
 import { boardLayout, type ClaudePos, deskTile } from "./render";
-import type { Scene } from "./scene";
+import { cutWords, type Scene } from "./scene";
 import { hash, helperLook, LINEAGE, phaseColor } from "./sprites";
 import { clockOf, context2d, dur, esc, phaseShort } from "./util";
 
@@ -246,8 +246,9 @@ export function createOverlay(
         y: sheet.y + 4,
         w: sheet.w - 2,
         h: sheet.h - 5,
-        html: `<small>You asked</small><span>${esc(scene.request.short)}</span>`,
-        label: `Request ${scene.request.n}: ${scene.request.goal}`,
+        // Your own words, cut to the sheet; the whole of them reads in its label.
+        html: `<small>You asked</small><span>${esc(cutWords(scene.request.asked, 90))}</span>`,
+        label: `Request ${scene.request.n}, you asked: ${scene.request.asked}`,
       });
     }
     // Each small card carries its request's number; the older stack says how many it holds.

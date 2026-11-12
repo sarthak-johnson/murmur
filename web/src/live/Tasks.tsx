@@ -7,7 +7,14 @@ import type { PartView, RequestView, TaskView } from "@murmur/core";
 import { cutWords } from "../format";
 import { StateMark, Words } from "../marks";
 import { follow, partPath } from "../router";
-import { livePhase, shortTitle, taskAgents, taskTimes } from "../session";
+import {
+  livePhase,
+  phaseName,
+  taskAgents,
+  taskTimes,
+  taskTitle,
+} from "../session";
+import { coreState, type State, workState } from "../state";
 import {
   clock,
   duration,
@@ -16,7 +23,15 @@ import {
   outcome,
   verdictOf,
 } from "../story";
-import { agentShown, MARK, type Shown, span, taskShown, WORD } from "./Track";
+import {
+  agentShown,
+  MARK,
+  type Shown,
+  shownOf,
+  span,
+  taskShown,
+  WORD,
+} from "./Track";
 
 interface Row {
   key: string;
@@ -27,6 +42,8 @@ interface Row {
   line?: string | undefined;
   facts: string[];
   part?: string | undefined;
+  /** The plan task it is, when it is one: one part can carry several. */
+  task?: string | undefined;
 }
 
 interface Group {
@@ -71,12 +88,13 @@ function quiet(s: string | undefined, title: string) {
   return bare(s) === bare(title) ? undefined : cutWords(firstSentence(s), 160);
 }
 
-function taskRow(req: RequestView, t: TaskView, over: boolean): Row {
+function taskRow(req: RequestView, t: TaskView, state: State): Row {
   const tasks = req.phases.flatMap((p) => p.tasks);
   const part = req.parts.find((p) => p.id === t.part);
   // A part shared by several tasks says nothing about any one of them.
   const own = part && tasks.filter((x) => x.part === part.id).length === 1;
-  const shown = taskShown(t, over);
+  const shown = taskShown(t, state);
+  const title = taskTitle(t);
   const times = taskTimes(req, t);
   const from = times[0] ?? (own ? part.span?.start : undefined);
   const to = times.at(-1) ?? (own ? part.span?.end : undefined);
@@ -94,8 +112,8 @@ function taskRow(req: RequestView, t: TaskView, over: boolean): Row {
     key: t.id,
     n: String(tasks.indexOf(t) + 1),
     shown,
-    title: shortTitle(t.title),
-    line: quiet(line, shortTitle(t.title)),
+    title,
+    line: quiet(line, title),
     facts: factsOf(
       shown,
       taskAgents(req, t).length,
@@ -104,25 +122,26 @@ function taskRow(req: RequestView, t: TaskView, over: boolean): Row {
       to,
     ),
     part: t.part,
+    task: t.id,
   };
 }
 
-function partShown(p: PartView, over: boolean): Shown {
+function partShown(p: PartView, state: State): Shown {
   if (p.failures >= 3) return "failed";
-  if (p.status === "done") return "done";
-  return over ? "open" : p.status;
+  return shownOf(workState(p.status, state));
 }
 
-function partRow(req: RequestView, p: PartView, i: number, over: boolean): Row {
-  const shown = partShown(p, over);
+function partRow(req: RequestView, p: PartView, i: number, state: State): Row {
+  const shown = partShown(p, state);
   const line =
     shown === "done" ? (p.steps.at(-1)?.text ?? p.aim?.aim) : p.aim?.aim;
+  const title = taskTitle(p);
   return {
     key: p.id,
     n: String(i + 1),
     shown,
-    title: shortTitle(p.title),
-    line: quiet(line, shortTitle(p.title)),
+    title,
+    line: quiet(line, title),
     facts: factsOf(
       shown,
       p.agents.filter((id) => req.agents.some((a) => a.id === id)).length,
@@ -135,8 +154,14 @@ function partRow(req: RequestView, p: PartView, i: number, over: boolean): Row {
 }
 
 /** The groups the list shows: the plan's phases and the work after it, else the parts. */
-export function taskGroups(req: RequestView, done: boolean): Group[] {
-  const over = done || req.finished;
+export function taskGroups(
+  req: RequestView,
+  done: boolean,
+  /** The request's state at the moment shown (state.ts); else read from `done` and core. */
+  reqState?: State,
+  at = new Date().toISOString(),
+): Group[] {
+  const state = reqState ?? (done || req.finished ? "done" : coreState(req));
   if (!req.phases.length)
     return req.parts.length
       ? [
@@ -144,7 +169,7 @@ export function taskGroups(req: RequestView, done: boolean): Group[] {
             key: "parts",
             title: "Parts",
             meta: `${req.parts.filter((p) => p.status === "done").length} of ${req.parts.length} done`,
-            rows: req.parts.map((p, i) => partRow(req, p, i, over)),
+            rows: req.parts.map((p, i) => partRow(req, p, i, state)),
           },
         ]
       : [];
@@ -153,11 +178,11 @@ export function taskGroups(req: RequestView, done: boolean): Group[] {
     const n = ph.tasks.filter((t) => t.status === "done").length;
     return {
       key: ph.id,
-      title: ph.title,
+      title: phaseName(ph, state === "running"),
       meta: [`${n} of ${ph.tasks.length} done`, span(times[0], times.at(-1))]
         .filter(Boolean)
         .join(" · "),
-      rows: ph.tasks.map((t) => taskRow(req, t, over)),
+      rows: ph.tasks.map((t) => taskRow(req, t, state)),
     };
   });
   const beyond = req.beyond;
@@ -170,7 +195,7 @@ export function taskGroups(req: RequestView, done: boolean): Group[] {
       title: "Beyond the plan",
       meta: `since ${clock(beyond.since)}`,
       rows: helpers.map((a) => {
-        const shown = agentShown(a, over);
+        const shown = agentShown(a, state, at);
         return {
           key: a.id,
           n: "",
@@ -194,9 +219,11 @@ export function TasksTab(props: {
   sessionId: string;
   request: RequestView;
   done: boolean;
+  /** The request's state at the moment shown (state.ts). */
+  state?: State | undefined;
 }) {
   const { sessionId, request: req, done } = props;
-  const groups = taskGroups(req, done);
+  const groups = taskGroups(req, done, props.state);
   if (!groups.length)
     return <p className="tab-empty">This request has no tasks.</p>;
   // The live phase's running row first, else the first running row, pulses.
@@ -216,8 +243,9 @@ export function TasksTab(props: {
           </div>
           <ol className="tk-rows">
             {g.rows.map((r) => {
+              // A plan task opens as itself: several tasks can share one part.
               const path = r.part
-                ? partPath(sessionId, req.id, r.part)
+                ? partPath(sessionId, req.id, r.task ?? r.part)
                 : undefined;
               const body = (
                 <>

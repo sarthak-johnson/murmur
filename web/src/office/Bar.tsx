@@ -4,11 +4,17 @@ import type { MurmurEvent, RequestView, SessionView } from "@murmur/core";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, type Me, type SessionRow } from "../api";
 import { ago, byDay } from "../format";
-import { MARK_WORD, StateMark, Words } from "../marks";
+import { StateMark, Words } from "../marks";
 import { EventView } from "../part/EventView";
 import { floorPath, follow, navigate } from "../router";
-import { type Mark, nowLine, requestMark, requestShort } from "../session";
-import { duration } from "../story";
+import { nowLine, requestShort, type Waiting } from "../session";
+import {
+  isOver,
+  type RequestNow,
+  requestNow,
+  type SessionNow,
+  sessionNow,
+} from "../state";
 
 /**
  * Closes an open popover on Escape (focus back on its button) or a click outside it. Its
@@ -181,16 +187,21 @@ export function RequestList(props: {
   currentId: string;
   /** The floor Claude is on: its row's link follows the session. */
   activeId: string | undefined;
+  /** The session at the moment shown (default: live, now): a quiet one's running request is paused. */
+  ses?: SessionNow | undefined;
   /** The `open` a row's link keeps. */
   keep: string | null;
   onPick(requestId: string): void;
   label?: string;
 }) {
   const { sessionId, view, events, currentId, activeId, keep, onPick } = props;
-  const marks = useMemo(
-    () => new Map(view.requests.map((r) => [r, requestMark(view, r, events)])),
-    [view, events],
-  );
+  // Each request as every view reads it (state.ts): a quiet session's running one is paused.
+  const marks = useMemo(() => {
+    const ses = props.ses ?? sessionNow(view);
+    return new Map(
+      view.requests.map((r) => [r, requestNow(view, r, events, ses)]),
+    );
+  }, [view, events, props.ses]);
   const box = useRef<HTMLElement>(null);
   // The floor's row comes into view when the floor changes, only if it is out of view.
   // biome-ignore lint/correctness/useExhaustiveDependencies: placed per floor
@@ -198,16 +209,13 @@ export function RequestList(props: {
     const cur = box.current?.querySelector<HTMLElement>("[aria-current]");
     cur?.scrollIntoView?.({ block: "nearest" });
   }, [currentId]);
-  const now = new Date().toISOString();
-  const sub = (req: RequestView, mark: Mark, end: string) => {
-    const live = mark === "running" || mark === "waiting";
-    const took = duration(req.startedAt, live ? now : end);
-    return [
-      ...(live ? [MARK_WORD[mark]] : []),
-      took === "under a minute" ? "<1 m" : took,
+  const sub = (req: RequestView, rn: RequestNow) =>
+    [
+      // Its state's own span, as the bar's pill times it: a wait from when it began.
+      ...(isOver(rn.state) ? [] : [rn.word]),
+      rn.clock,
       ...(req.tally.helpers ? [many(req.tally.helpers, "helper")] : []),
     ].join(" · ");
-  };
   return (
     <nav className="of-rl" aria-label={props.label ?? "Requests"} ref={box}>
       {byDay(view.requests).map((day) => (
@@ -215,10 +223,8 @@ export function RequestList(props: {
           <h3 className="of-rl-day">{day.label}</h3>
           <ol>
             {day.rows.map(({ req, n }) => {
-              const { mark, end } = marks.get(req) ?? {
-                mark: "done" as const,
-                end: now,
-              };
+              const rn = marks.get(req);
+              const mark = rn?.mark ?? "done";
               const cur = req.id === currentId;
               const path = floorPath(
                 sessionId,
@@ -251,10 +257,10 @@ export function RequestList(props: {
                         <b className="of-rl-n">{n}</b>
                         <Words text={requestShort(req)} />
                       </span>
-                      <span className="of-rl-sub">{sub(req, mark, end)}</span>
+                      {rn && <span className="of-rl-sub">{sub(req, rn)}</span>}
                     </span>
-                    {mark !== "running" && mark !== "waiting" && (
-                      <span className="sr-only">, {MARK_WORD[mark]}</span>
+                    {rn && isOver(rn.state) && (
+                      <span className="sr-only">, {rn.word}</span>
                     )}
                   </a>
                 </li>
@@ -309,6 +315,10 @@ export function NowLine(props: {
   done: boolean;
   events: MurmurEvent[];
   cwd: string;
+  /** Waiting on you: the line says what Claude asked, not its last narration. */
+  waiting?: Waiting | null | undefined;
+  /** Paused (state.ts): its now is its last word, not what Claude is doing. */
+  paused?: boolean | undefined;
 }) {
   const { request, done, events, cwd } = props;
   const [open, setOpen] = useState(false);
@@ -316,7 +326,9 @@ export function NowLine(props: {
   const btn = useRef<HTMLButtonElement>(null);
   const close = useMemo(() => () => setOpen(false), []);
   useDismiss(open, close, box, btn);
-  const line = nowLine(request, events, done);
+  const said = nowLine(request, events, done, props.waiting);
+  const line =
+    props.paused && said.label === "Now" ? { ...said, label: "Last" } : said;
   const more = !!(line.src || line.why);
   return (
     <section className="of-now" aria-label={line.label} ref={box}>

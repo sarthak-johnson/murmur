@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import type { RequestView, SessionView } from "@murmur/core";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clockAt } from "./clock";
 import { Live, roomInJsdom } from "./officeShell";
 
 roomInJsdom();
@@ -28,6 +29,8 @@ function reducedRules(): string {
 
 const day = (d: number, min = 0) =>
   new Date(Date.UTC(2026, 10, d, 12, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(day(3, 5));
 
 function request(r: Partial<RequestView> & { id: string }): RequestView {
   return {

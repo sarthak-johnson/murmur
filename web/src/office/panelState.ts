@@ -40,18 +40,14 @@ export const isWideView = (open: string) =>
   open.startsWith("task:");
 
 /** A room's click target (overlay.ts) as the panel's `open`. */
-export function openFor(key: string, req: RequestView | undefined): string {
+export function openFor(key: string): string {
   const [kind, id = ""] = key.split(/:(.*)/s);
   if (kind === "phase") return "tasks";
   if (kind === "archive") return "files";
   if (kind === "helpers") return "helpers";
   if (kind === "jobs") return "requests";
   if (kind === "agent") return `helper:${id}`;
-  if (kind === "task") {
-    // A sticky is a task of the plan; its close-up is its part's page when it has one.
-    const task = req?.phases.flatMap((p) => p.tasks).find((t) => t.id === id);
-    return `task:${task?.part ?? id}`;
-  }
+  // A sticky is a task of the plan: its close-up keeps which task (several share a part).
   return key;
 }
 
@@ -61,9 +57,10 @@ export function roomKey(open: string | null, req: RequestView | undefined) {
   const [kind, id = ""] = open.split(/:(.*)/s);
   if (kind === "helper") return `agent:${id}`;
   if (kind === "task") {
-    const task = req?.phases
-      .flatMap((p) => p.tasks)
-      .find((t) => t.part === id || t.id === id);
+    // A task's own sticky, else (a part's close-up) the sticky of its first task.
+    const tasks = req?.phases.flatMap((p) => p.tasks) ?? [];
+    const task =
+      tasks.find((t) => t.id === id) ?? tasks.find((t) => t.part === id);
     return `task:${task?.id ?? id}`;
   }
   return SPOTS.includes(open) ? open : null;

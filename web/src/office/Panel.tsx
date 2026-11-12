@@ -28,12 +28,22 @@ import {
   cleanPrompt,
   KIND,
   type Mark,
+  placeOf,
   type RequestState,
   requestShort,
-  shortTitle,
+  taskTitle,
   type Waiting,
 } from "../session";
 import { SessionFlow } from "../sflow/SessionFlow";
+import {
+  coreState,
+  helperNow,
+  type RequestNow,
+  type SessionNow,
+  type State,
+  WORD,
+  workState,
+} from "../state";
 import {
   clock,
   duration,
@@ -61,7 +71,10 @@ export interface PanelProps {
   events: MurmurEvent[];
   request: RequestView;
   state: RequestState;
-  end: string;
+  /** How the request stands at the moment shown (state.ts), word, clock and all. */
+  stands: RequestNow;
+  /** The session at the moment shown (state.ts), for the Requests list's states. */
+  ses: SessionNow;
   waiting: Waiting | null;
   lastLooked: string | null;
   mainLog: MainEntry[];
@@ -90,13 +103,17 @@ export interface PanelProps {
 /** Redrawn only when what it shows changes: the room repaints far more often. */
 export const Panel = memo(PanelBody);
 
-/** A task's place in its request's plan, as its breadcrumb says it. */
+/** A close-up's `task:<id>`: a plan task's id, else a part's (then its first task). */
+const closeUpPlace = (req: RequestView, id: string) => {
+  const own = placeOf(req, { task: id });
+  return own?.task ? own : (placeOf(req, { part: id }) ?? own);
+};
+
+/** A task's place in its request's plan, as its breadcrumb says it: its one number and title. */
 function taskLabel(req: RequestView, id: string): string {
-  const tasks = req.phases.flatMap((p) => p.tasks);
-  const part = req.parts.find((p) => p.id === id);
-  const task = tasks.find((t) => (part ? t.part === part.id : t.id === id));
-  const name = shortTitle(part?.title ?? task?.title ?? "Task");
-  return task ? `Task ${tasks.indexOf(task) + 1} · ${name}` : name;
+  const place = closeUpPlace(req, id);
+  if (!place) return "Task";
+  return place.task ? `Task ${place.n} · ${place.title}` : place.title;
 }
 
 /** The close-up's own level of the breadcrumb. */
@@ -119,7 +136,7 @@ function closeUpLabel(view: SessionView, req: RequestView, open: string) {
 
 function PanelBody(props: PanelProps) {
   const { sessionId, view, events, request: req, open } = props;
-  const { state, end, waiting, floorId } = props;
+  const { state, waiting, floorId } = props;
   const done = state === "done";
   const n = view.requests.indexOf(req) + 1;
   const body = useRef<HTMLDivElement>(null);
@@ -143,13 +160,19 @@ function PanelBody(props: PanelProps) {
     },
     [],
   );
-  // A new view starts at its top, or at the message or phase its link names.
+  // A new view starts at the message or phase its link names, else the story (oldest
+  // first) at its newest row, else at its top.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on what is shown changing
   useEffect(() => {
     const id = decodeURIComponent(location.hash.slice(1));
-    const el = id ? document.getElementById(id) : null;
-    if (el && body.current?.contains(el))
-      el.scrollIntoView?.({ block: "start" });
+    const named = id ? document.getElementById(id) : null;
+    const el =
+      named && body.current?.contains(named)
+        ? named
+        : open === "story"
+          ? body.current?.querySelector("[data-newest]")
+          : null;
+    if (el) el.scrollIntoView?.({ block: named ? "start" : "center" });
     else body.current?.scrollTo?.({ top: 0 });
   }, [open, req.id]);
   // A phase header opens Tasks at that phase, marked for a moment: once per click, not on
@@ -278,8 +301,13 @@ function PanelBody(props: PanelProps) {
           <CloseUp {...props} onOpenPart={openPart} />
         ) : open === "journey" ? (
           <>
-            <SessionHead view={view} events={events} />
-            <Journey sessionId={sessionId} view={view} events={events} />
+            <SessionHead view={view} events={events} ses={props.ses} />
+            <Journey
+              sessionId={sessionId}
+              view={view}
+              events={events}
+              ses={props.ses}
+            />
           </>
         ) : open === "timeline" ? (
           <SessionFlow sessionId={sessionId} view={view} events={events} />
@@ -288,6 +316,7 @@ function PanelBody(props: PanelProps) {
             sessionId={sessionId}
             view={view}
             events={events}
+            ses={props.ses}
             currentId={req.id}
             activeId={props.activeId}
             keep="story"
@@ -295,9 +324,18 @@ function PanelBody(props: PanelProps) {
             label="Every request"
           />
         ) : open === "tasks" ? (
-          <TasksTab sessionId={sessionId} request={req} done={done} />
+          <TasksTab
+            sessionId={sessionId}
+            request={req}
+            done={done}
+            state={props.stands.state}
+          />
         ) : open === "flow" ? (
-          <FlowBoard sessionId={sessionId} request={req} />
+          <FlowBoard
+            sessionId={sessionId}
+            request={req}
+            state={props.stands.state}
+          />
         ) : open === "files" ? (
           <FilesTab request={req} events={events} cwd={view.cwd} />
         ) : open === "helpers" ? (
@@ -306,6 +344,7 @@ function PanelBody(props: PanelProps) {
             request={req}
             events={events}
             now={props.t}
+            state={props.stands.state}
           />
         ) : (
           <>
@@ -313,8 +352,8 @@ function PanelBody(props: PanelProps) {
             <RequestBrief
               request={req}
               done={done}
-              stopped={state !== "running" || !props.following}
-              end={props.following ? end : earlier(end, props.t)}
+              stopped
+              end={props.stands.to}
               waiting={waiting}
               lastLooked={props.lastLooked}
             />
@@ -322,11 +361,17 @@ function PanelBody(props: PanelProps) {
               sessionId={sessionId}
               request={req}
               done={done}
-              stopped={state !== "running" || !props.following}
-              end={props.following ? end : earlier(end, props.t)}
+              stopped
+              end={props.stands.to}
             />
             <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
-            <Story request={req} done={done} onOpenPart={openPart} />
+            <Story
+              request={req}
+              done={done}
+              state={props.stands.state}
+              at={props.t}
+              onOpenPart={openPart}
+            />
             <Checked request={req} />
           </>
         )}
@@ -334,10 +379,6 @@ function PanelBody(props: PanelProps) {
     </aside>
   );
 }
-
-/** A replay's or a quiet session's clock stops at the moment shown, or the request's end before it. */
-const earlier = (a: string, b: string) =>
-  Date.parse(a) <= Date.parse(b) ? a : b;
 
 const n_ = (n: number, one: string, many = `${one}s`) =>
   n ? [`${n} ${n === 1 ? one : many}`] : [];
@@ -456,16 +497,16 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
           agent={a}
           t={props.t}
           model={props.models.get(a.id)}
+          floor={{ request: req, state: props.stands.state }}
           onOpenPart={props.onOpenPart}
         />
       );
   }
   if (kind === "task") {
-    // A part's id, else a task of the plan (a sticky with no part of its own yet).
-    const task = req.phases.flatMap((p) => p.tasks).find((x) => x.id === id);
-    const part =
-      req.parts.find((p) => p.id === id) ??
-      req.parts.find((p) => p.id === task?.part);
+    // A plan task's id, else a part's: one number and title, as the board gives them.
+    const place = closeUpPlace(req, id);
+    const task = place?.task;
+    const part = place?.part;
     if (part)
       return (
         <PartDetail
@@ -474,6 +515,10 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
           requestNumber={n}
           request={req}
           running={running}
+          state={props.stands.state}
+          task={task?.id}
+          at={props.t}
+          onTask={(key) => navigate(floorPath(sessionId, props.floorId, key))}
           part={part}
           events={events}
         />
@@ -482,13 +527,9 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
       return (
         <section className="of-card">
           <p className="of-kicker">Task</p>
-          <h2>{task.title}</h2>
+          <h2>{taskTitle(task)}</h2>
           <p className="muted">
-            {task.status === "done"
-              ? "Done."
-              : task.status === "now"
-                ? "Under way."
-                : "Not started yet."}
+            {WORD[workState(task.status, props.stands.state)]}.
           </p>
         </section>
       );
@@ -518,6 +559,12 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
               ) : (
                 w.text && <p>{w.text}</p>
               )}
+              {w.said && (
+                <p>
+                  <span className="muted">Claude's last words: </span>
+                  {w.said}
+                </p>
+              )}
               <p className="muted">
                 Since {clock(w.since)}. Reply in Claude Code.
               </p>
@@ -535,8 +582,8 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
         <RequestBrief
           request={req}
           done={props.state === "done"}
-          stopped={props.state !== "running" || !props.following}
-          end={props.following ? props.end : earlier(props.end, props.t)}
+          stopped
+          end={props.stands.to}
           waiting={props.waiting}
           lastLooked={props.lastLooked}
         />
@@ -564,13 +611,21 @@ function HelperCloseUp(props: {
   agent: AgentView;
   t: string;
   model: string | undefined;
+  /** The floor's request and its state: its helpers stand as it does. */
+  floor: { request: RequestView; state: State };
   onOpenPart(partId: string): void;
 }) {
   const { view, agent: a, t, model } = props;
   const req = view.requests.find((r) => r.agents.includes(a));
   const part = req ? helperPart(req, a) : undefined;
-  const runningNow = a.status === "running";
-  const took = duration(a.startedAt, a.endedAt ?? a.report?.ts ?? t);
+  // As the room seats it: one silent for an hour is not at work.
+  const at = helperNow(
+    a,
+    t,
+    req === props.floor.request ? props.floor.state : req && coreState(req),
+  );
+  const runningNow = at.state === "running";
+  const took = duration(at.from, at.to);
   const verdict = verdictOf(a.report);
 
   return (
@@ -582,7 +637,7 @@ function HelperCloseUp(props: {
       <h2>{a.description || "A helper"}</h2>
       <p className="of-chips">
         <span className={runningNow ? "of-chip now" : "of-chip done"}>
-          {runningNow ? `Running · ${took}` : `Done · took ${took}`}
+          {runningNow ? `${at.word} · ${took}` : `${at.word} · took ${took}`}
         </span>
         {verdict && !/^done$/i.test(verdict.label) && (
           <span className={`of-chip ${verdict.tone}`}>{verdict.label}</span>

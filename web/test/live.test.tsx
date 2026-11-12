@@ -214,11 +214,14 @@ let calls: ReturnType<typeof mockFetch>;
 beforeEach(() => {
   calls = mockFetch();
   history.pushState(null, "", "/s/s1");
+  // The fixture as it stands a few minutes after its last event: live, not quiet.
+  vi.useFakeTimers({ now: Date.parse(T0) + 5 * 60_000, toFake: ["Date"] });
 });
 afterEach(() => {
   cleanup();
   localStorage.clear();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("live screen", () => {
@@ -272,7 +275,7 @@ describe("live screen", () => {
     show(session());
     const track = screen.getByRole("region", { name: "Phase track" });
     const live = within(track).getByRole("link", {
-      name: "Endpoint to save an alert, in progress",
+      name: "Endpoint to save an alert, running",
     });
     expect(live.closest(".st")?.className).toBe("st now");
     expect(live.title).toBe("Endpoint to save an alert: tried a fix 3 times");
@@ -512,7 +515,7 @@ describe("live screen", () => {
     await userEvent.click(
       within(track).getByRole("link", { name: /Reuse push code to notify/ }),
     );
-    expect(location.search).toBe("?open=task:push");
+    expect(location.search).toBe("?open=task:t6");
   });
 
   it("the now line waits for Claude when there is no now", () => {
@@ -690,7 +693,7 @@ describe("live screen", () => {
     const track = screen.getByRole("region", { name: "Phase track" });
     expect(
       within(track).getByRole("link", {
-        name: "Endpoint to save an alert, in progress",
+        name: "Endpoint to save an alert, running",
       }),
     ).toBeTruthy();
     cleanup();
@@ -746,12 +749,12 @@ describe("live screen", () => {
     show(view);
     const bar = within(screen.getByRole("banner"));
     expect(bar.queryByText("Done")).toBeNull();
-    expect(bar.getByText("Left open").className).toBe("of-pill s-todo");
+    expect(bar.getByText(/^Left open/).className).toBe("of-pill s-todo");
     cleanup();
     view.requests[1] = request({ finished: true, state: "failed" });
     show(view);
     expect(
-      within(screen.getByRole("banner")).getByText("Failed").className,
+      within(screen.getByRole("banner")).getByText(/^Failed/).className,
     ).toBe("of-pill s-failed");
   });
 

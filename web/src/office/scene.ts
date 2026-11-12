@@ -10,7 +10,10 @@ import type {
   SessionView,
   TaskView,
 } from "@murmur/core";
-import { requestShort } from "../session";
+import { phaseName, requestShort, taskTitle, youAsked } from "../session";
+import { coreState, helperNow, QUIET_MS } from "../state";
+
+export { QUIET_MS };
 
 /** One of Claude's own main-thread events: a prompt, a helper's report coming in, a Stop or a tool call. */
 export interface MainEntry {
@@ -105,13 +108,9 @@ const STAGE: Partial<Record<AgentRole, string>> = {
   research: "researching",
 };
 
-const STALE_MS = 60 * 60_000;
 /** Words that number a stretch of work: "Batch 2" chips as B2. */
 const NUMBERED =
   /^(Batch|Round|Step|Stage|Wave|Part|Milestone|Sprint)\s+(\d+[a-z]?)\b/i;
-
-/** Claude's own last call older than this is no longer what it is doing. */
-export const QUIET_MS = 15 * 60_000;
 
 /**
  * The request Claude is on: the newest still at work or waiting on you, so a quick notice
@@ -235,7 +234,13 @@ export function shortOf(title: string): string {
   const numbered = NUMBERED.exec(title);
   if (numbered)
     return `${(numbered[1] ?? "").charAt(0).toUpperCase()}${numbered[2]}`;
-  return (title.split(/[\s:]+/)[0] ?? "").slice(0, 8);
+  // Its first word whole; a long one cut with a stop, so it reads as cut ("Unhandled",
+  // "Screensh."), never as a code of its own.
+  const word = (title.split(/[\s:,;/]+/).find(Boolean) ?? "").replace(
+    /[^\p{L}\p{N}'-]+$/u,
+    "",
+  );
+  return word.length <= 10 ? word : `${word.slice(0, 8)}.`;
 }
 
 /** What kind of work a helper's latest action is, for its screen and hands. The doing text is built
@@ -351,6 +356,8 @@ export interface Scene {
     n: number;
     short: string;
     goal: string;
+    /** Your own words, verbatim (`youAsked`), for the pinned sheet. */
+    asked: string;
     state?: RequestState | undefined;
     startedAt: string;
     /** The latest request: Claude is on this floor. */
@@ -464,20 +471,17 @@ export function deriveScene(
             ? []
             : r.agents
                 .filter(
-                  (a) =>
-                    a.status === "running" &&
-                    Date.parse(t) - Date.parse(a.doing?.ts ?? a.startedAt) <
-                      STALE_MS,
+                  (a) => helperNow(a, t, coreState(r)).state === "running",
                 )
                 .map((a) => ({ ...a, fromRequest: i + 1 })),
         )
     : [];
-  // This request's own helper gone quiet for an hour reads as stopped at its last sign.
+  // This request's own helper not at work as state.ts reads it (quiet for an hour, or
+  // its request over) reads as stopped at its last sign, as the panel says it.
   const own: Helper[] = req.agents.map((a) => {
-    const lastSign = a.doing?.ts ?? a.startedAt;
-    return a.status === "running" &&
-      Date.parse(t) - Date.parse(lastSign) >= STALE_MS
-      ? { ...a, status: "done", endedAt: lastSign }
+    const h = helperNow(a, t, coreState(req));
+    return a.status === "running" && h.state !== "running"
+      ? { ...a, status: "done", endedAt: h.sign }
       : a;
   });
   const helpers: Helper[] = [...carried, ...own].sort((a, b) =>
@@ -575,10 +579,7 @@ export function deriveScene(
   );
   const columns: Column[] = req.phases.map((p) => ({
     id: p.id,
-    title:
-      p.title === "What Claude did" && p.status === "now"
-        ? "What Claude is doing"
-        : p.title,
+    title: phaseName(p, !reqOver),
     status: p.status,
     notes: p.tasks.map((task) => {
       const agents = task.agents ?? [];
@@ -599,7 +600,7 @@ export function deriveScene(
           task.status === "now" && on.length === 0 && reqOver
             ? "todo"
             : task.status,
-        title: task.title,
+        title: taskTitle(task),
         agents,
         heads: on.map((d) => d.agent),
         stage:
@@ -616,13 +617,18 @@ export function deriveScene(
   const noteChip = new Map<string, string>();
   const only = columns.length === 1 ? columns[0] : undefined;
   if (only) {
-    const base = only.notes.map((n) => shortOf(n.title));
+    // From the plan's own title, which keeps its number ("Task 3: X" chips as T3).
+    const raw = new Map(
+      req.phases.flatMap((p) => p.tasks).map((t) => [t.id, t.title]),
+    );
+    const base = only.notes.map((n) => shortOf(raw.get(n.id) ?? n.title));
     only.notes.forEach((n, i) => {
       const mine = base[i] ?? "";
       const same = base.flatMap((b, j) => (b === mine ? [j] : []));
+      // Two that would read the same are numbered: "Final 1", "Final 2".
       noteChip.set(
         n.id,
-        same.length > 1 ? mine + "abcdefghij"[same.indexOf(i)] : mine,
+        same.length > 1 ? `${mine} ${same.indexOf(i) + 1}` : mine,
       );
     });
   }
@@ -691,6 +697,7 @@ export function deriveScene(
       n: idx + 1,
       short: requestShort(req),
       goal: req.goal,
+      asked: youAsked(req).words,
       state: req.state,
       startedAt: req.startedAt,
       current,

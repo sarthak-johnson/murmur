@@ -77,7 +77,7 @@ export const sessionPath = (sessionId: string, tab?: SessionTab) =>
 export const requestPath = (sessionId: string, requestId: string, tab?: Tab) =>
   floorPath(sessionId, requestId, tab ?? "story");
 
-/** A task's close-up on its request's floor. */
+/** A task's close-up on its request's floor, by a plan task's id or else a part's. */
 export const partPath = (
   sessionId: string,
   requestId: string,

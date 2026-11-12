@@ -490,7 +490,7 @@ export function aimOf(brief: string): string | undefined {
 }
 // A review report that asks for changes.
 const SENT_BACK =
-  /\b(?:needs?[ _-]?fix(?:es)?|changes[ _-]requested|not approved|rejected|blocking issues?)\b/i;
+  /\b(?:needs?[ _-]?fix(?:es)?|fix(?:es)?[ _-]first|changes[ _-]requested|not approved|rejected|blocking issues?|(?:does not|doesn't|did not) pass)\b/i;
 const NUMBER = [
   "no",
   "one",

@@ -483,15 +483,16 @@ describe("what a click in the room opens", () => {
     const req = {
       phases: [{ tasks: [{ id: "1.1", part: "db" }, { id: "1.2" }] }],
     } as unknown as RequestView;
-    expect(openFor("phase:2", req)).toBe("tasks");
-    expect(openFor("archive", req)).toBe("files");
-    expect(openFor("jobs", req)).toBe("requests");
-    expect(openFor("claude", req)).toBe("claude");
-    expect(openFor("agent:a1", req)).toBe("helper:a1");
-    // A sticky opens its part's page, else the task itself.
-    expect(openFor("task:1.1", req)).toBe("task:db");
-    expect(openFor("task:1.2", req)).toBe("task:1.2");
-    // And the panel's close-up lights the same thing in the room.
+    expect(openFor("phase:2")).toBe("tasks");
+    expect(openFor("archive")).toBe("files");
+    expect(openFor("jobs")).toBe("requests");
+    expect(openFor("claude")).toBe("claude");
+    expect(openFor("agent:a1")).toBe("helper:a1");
+    // A sticky opens as its own task: several tasks can share one part.
+    expect(openFor("task:1.1")).toBe("task:1.1");
+    expect(openFor("task:1.2")).toBe("task:1.2");
+    // And the panel's close-up lights the same thing in the room, a part's by its first task.
+    expect(roomKey("task:1.1", req)).toBe("task:1.1");
     expect(roomKey("task:db", req)).toBe("task:1.1");
     expect(roomKey("helper:a1", req)).toBe("agent:a1");
     expect(roomKey("story", req)).toBeNull();

@@ -15,9 +15,12 @@ roomInJsdom();
 
 import type { Tab } from "../src/router";
 import { clock } from "../src/story";
+import { clockAt } from "./clock";
 
 const at = (min: number) =>
   new Date(Date.UTC(2026, 10, 9, 15, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(at(10));
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -270,10 +273,10 @@ describe("the Tasks tab", () => {
     show(guide(), "tasks");
     const name = (href: string) =>
       rows().find((r) => r.getAttribute("href") === href)?.textContent;
-    expect(name("/s/s1/r/r1?open=task:outline")).toContain(", done");
-    expect(name("/s/s1/r/r1?open=task:water")).toContain(", in progress");
-    expect(name("/s/s1/r/r1?open=task:photos")).toContain(", not started");
-    expect(name("/s/s1/r/r1?open=task:send")).toContain(", failed");
+    expect(name("/s/s1/r/r1?open=task:t1")).toContain(", done");
+    expect(name("/s/s1/r/r1?open=task:t2")).toContain(", running");
+    expect(name("/s/s1/r/r1?open=task:t3")).toContain(", not started");
+    expect(name("/s/s1/r/r1?open=task:t4")).toContain(", failed");
     const title = rows()[1]?.querySelector(".tk-t");
     expect(title?.querySelectorAll(".w").length).toBeGreaterThan(1);
     expect(title?.textContent).toBe("Write the watering section");
@@ -282,15 +285,15 @@ describe("the Tasks tab", () => {
   it("opens each task's page, rows in order as links, the running one the only pulse", () => {
     show(guide(), "tasks");
     expect(rows().map((r) => r.getAttribute("href"))).toEqual([
-      "/s/s1/r/r1?open=task:outline",
-      "/s/s1/r/r1?open=task:water",
-      "/s/s1/r/r1?open=task:photos",
-      "/s/s1/r/r1?open=task:send",
+      "/s/s1/r/r1?open=task:t1",
+      "/s/s1/r/r1?open=task:t2",
+      "/s/s1/r/r1?open=task:t3",
+      "/s/s1/r/r1?open=task:t4",
     ]);
     const pulses = document.querySelectorAll(".pulse");
     expect(pulses).toHaveLength(1);
     expect(pulses[0]?.closest("a.tk-row")?.getAttribute("href")).toBe(
-      "/s/s1/r/r1?open=task:water",
+      "/s/s1/r/r1?open=task:t2",
     );
   });
 
@@ -472,7 +475,7 @@ describe("a task's page", () => {
     const on = within(about).getByRole("link", {
       name: "Task 2 · Write the watering section",
     });
-    expect(on.getAttribute("href")).toBe("/s/s1/r/r1?open=task:water");
+    expect(on.getAttribute("href")).toBe("/s/s1/r/r1?open=task:t2");
     expect(about.textContent).toContain("Claude is on");
     expect(
       screen.queryByText("Claude has not described this part yet."),

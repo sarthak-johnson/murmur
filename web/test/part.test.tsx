@@ -9,6 +9,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { PartDetail } from "../src/part/PartDetail";
 import { clock } from "../src/story";
+import { clockAt } from "./clock";
 
 afterEach(cleanup);
 
@@ -137,6 +138,8 @@ function show(p: PartView, r = request([p])) {
 
 const at = (min: number) =>
   new Date(Date.UTC(2026, 10, 6, 10, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(at(20));
 
 /** Task 1 the way the inferred history builds it: three helper calls, with reports. */
 function task1(over: { agents?: Partial<AgentView>[] } = {}) {
@@ -268,9 +271,11 @@ const section = (name: string) => screen.getByRole("region", { name });
 describe("PartDetail", () => {
   it("shows aim and done-when as what it was for", () => {
     show(full);
+    // Named as its one task, as the board and the Tasks list name it; the part under it.
     expect(
-      screen.getByRole("heading", { level: 1, name: "Server endpoint" }),
+      screen.getByRole("heading", { level: 1, name: "Build endpoint" }),
     ).toBeTruthy();
+    expect(screen.getByText("Part of Server endpoint")).toBeTruthy();
     const why = section("What it was for");
     expect(within(why).getByText("Accept alert requests")).toBeTruthy();
     expect(why.textContent).toContain("Done when the test passes");
@@ -975,7 +980,7 @@ describe("task page (reshape)", () => {
     expect(outcome()).toBe("Done");
     cleanup();
     showIt(reshaped({ status: "now" }));
-    expect(outcome()).toBe("In progress");
+    expect(outcome()).toBe("Running");
   });
 
   it("the facts row reads the time span from core, with how long it took", () => {
@@ -1105,9 +1110,9 @@ describe("task page (reshape)", () => {
       name: /Next/,
     });
     expect(prev.textContent).toContain("Task 1 · Lit plate tokens");
-    expect(prev.getAttribute("href")).toBe("/s/s1/r/r1?open=task:task:1");
+    expect(prev.getAttribute("href")).toBe("/s/s1/r/r1?open=task:t1");
     expect(next.textContent).toContain("Task 3 · Dot field");
-    expect(next.getAttribute("href")).toBe("/s/s1/r/r1?open=task:plate");
+    expect(next.getAttribute("href")).toBe("/s/s1/r/r1?open=task:t3");
     cleanup();
     showIt();
     const [first] = screen.getAllByRole("navigation", { name: "Tasks" });

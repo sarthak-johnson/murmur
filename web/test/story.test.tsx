@@ -27,6 +27,7 @@ import {
   sentBack,
   verdictOf,
 } from "../src/story";
+import { clockAt } from "./clock";
 
 /** A request's own page: the newest request unless the test names one. */
 function Live(p: React.ComponentProps<typeof Page>) {
@@ -54,6 +55,8 @@ beforeEach(() => {
 
 const at = (min: number) =>
   new Date(Date.UTC(2026, 10, 6, 10, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(at(45));
 
 function part(p: Partial<PartView> & { id: string; title: string }): PartView {
   return {
@@ -509,7 +512,7 @@ describe("request page, story first", () => {
     ]);
   });
 
-  it("the live phase runs newest first while the request runs", () => {
+  it("the live phase runs oldest first too, its newest row marked for the panel", () => {
     const [phase] = request().phases;
     show(
       session(
@@ -520,12 +523,15 @@ describe("request page, story first", () => {
       ),
     );
     expect(storyTexts().map((t) => t.slice(0, 12))).toEqual([
-      "Task 1 is do",
-      "I also added",
-      "The review f",
-      "One builder ",
       "Approved, so",
+      "One builder ",
+      "The review f",
+      "I also added",
+      "Task 1 is do",
     ]);
+    expect(
+      story().querySelector("[data-newest] .story-text")?.textContent,
+    ).toMatch(/^Task 1 is do/);
   });
 
   it("each moment has its time, task chip and badge", async () => {
@@ -540,7 +546,7 @@ describe("request page, story first", () => {
       ),
     );
     const items = within(story()).getAllByRole("listitem");
-    const [done, plan, problem, decision] = items as HTMLElement[];
+    const [, decision, problem, plan, done] = items as HTMLElement[];
     expect(within(decision as HTMLElement).getByText("Decision")).toBeTruthy();
     expect(
       within(problem as HTMLElement).getByText("Problem found"),
@@ -624,7 +630,7 @@ describe("request page, story first", () => {
     ).toBeTruthy();
   });
 
-  it("a run keeps its messages oldest first inside, while the live section runs newest first", async () => {
+  it("a run keeps its messages oldest first inside, as the live section does", async () => {
     const [phase] = request().phases;
     const run = [
       msg("m0", 6, "Starting."),
@@ -643,14 +649,15 @@ describe("request page, story first", () => {
       ),
     );
     const rows = [...story().querySelectorAll(".st-phase > ol > li")];
-    // The newest run is on top and open; "Waiting." carries on Task 1's run.
+    // The newest run is at the bottom and open; "Waiting." carries on Task 1's run.
+    expect(rows[0]?.textContent).toContain("Starting.");
     expect(
-      within(rows[0] as HTMLElement)
+      within(rows[1] as HTMLElement)
         .getAllByRole("button")[0]
         ?.getAttribute("aria-expanded"),
     ).toBe("true");
     const texts = [
-      ...(rows[0] as HTMLElement).querySelectorAll(".story-text"),
+      ...(rows[1] as HTMLElement).querySelectorAll(".story-text"),
     ].map((e) => e.textContent);
     expect(texts).toEqual([
       "Task 1 is being built.",
@@ -658,7 +665,6 @@ describe("request page, story first", () => {
       "Task 1 is done.",
       "Waiting.",
     ]);
-    expect(rows[1]?.textContent).toContain("Starting.");
   });
 
   it("renders Markdown in messages as formatted text", () => {

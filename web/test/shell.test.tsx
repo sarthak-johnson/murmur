@@ -16,10 +16,13 @@ roomInJsdom();
 
 import type { Tab } from "../src/router";
 import { nowLine, requestMark, requestShort, shortOf } from "../src/session";
+import { clockAt } from "./clock";
 
 /** Noon UTC on a November day, the same calendar day in any time zone a test runs in. */
 const day = (d: number, min = 0) =>
   new Date(Date.UTC(2026, 10, d, 12, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(day(9, 45));
 
 function part(p: Partial<PartView> & { id: string; title: string }): PartView {
   return {
@@ -629,7 +632,7 @@ describe("the top bar", () => {
     show(view);
     const pill = bar().querySelector(".of-pill");
     expect(pill?.className).toBe("of-pill s-blocked");
-    expect(pill?.textContent).toBe("Waiting on you · 5 m · 2 questions");
+    expect(pill?.textContent).toBe("Waiting on you · 4 m · 2 questions");
   });
 
   it("waiting with helpers at work: the bar says they are still working", () => {
@@ -647,6 +650,22 @@ describe("the top bar", () => {
       /^Waiting on you/,
     );
     expect(bar().textContent).toContain("1 helper at work");
+  });
+
+  it("paused: the pill says how long it ran, and the now line is its last word", () => {
+    // Two hours after the last event: quiet, so the running request is paused.
+    vi.useFakeTimers({ now: new Date(day(9, 160)), toFake: ["Date"] });
+    const view = session();
+    view.requests[3] = {
+      ...(view.requests[3] as RequestView),
+      now: { text: "Running the checks", why: "", ts: day(9, 30) },
+    };
+    show(view);
+    expect(bar().querySelector(".of-pill")?.textContent).toMatch(
+      /^Paused · ran /,
+    );
+    const last = within(bar()).getByRole("region", { name: "Last" });
+    expect(last.textContent).toContain("Running the checks");
   });
 
   it("the now line never shows a raw command or a raw tool name", () => {
