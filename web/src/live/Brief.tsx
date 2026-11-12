@@ -161,11 +161,11 @@ function Numbers(props: { request: RequestView; end: string; done: boolean }) {
   );
 }
 
-/** The second sentence: what is still running, or what was left open. */
-function edgeOf(req: RequestView, done: boolean): string {
+/** The second sentence: what is still running (or stopped mid-work), or what was left open. */
+function edgeOf(req: RequestView, done: boolean, paused: boolean): string {
   const running = req.agents.filter((a) => a.status === "running");
   if (!done && running.length)
-    return `Still running: ${few(running.map((a) => a.description || "a helper"))}.`;
+    return `${paused ? "Stopped mid-work" : "Still running"}: ${few(running.map((a) => a.description || "a helper"))}.`;
   const open = req.phases
     .flatMap((p) => p.tasks)
     .filter((t) => t.status !== "done");
@@ -241,10 +241,13 @@ export function RequestBrief(props: {
   waitEnd: string;
   waiting: Waiting | null;
   lastLooked: string | null;
+  /** Paused (state.ts): its last word is how it stood then, not what is happening now. */
+  paused?: boolean | undefined;
 }) {
   const { request: req, done, end, waiting, lastLooked } = props;
+  const paused = !done && !!props.paused;
   const outcome = req.outcome;
-  const edge = edgeOf(req, done);
+  const edge = edgeOf(req, done, paused);
   const moments = keyMoments(req, lastLooked ?? undefined);
   const fresh = moments.filter((m) => m.new).length;
   const tasks = new Map(
@@ -266,7 +269,7 @@ export function RequestBrief(props: {
           {asked.summary && <p className="rb-sum">{asked.summary}</p>}
         </section>
       )}
-      {(ask || outcome || edge) && (
+      {(ask || outcome || edge || paused) && (
         <section className="rb-cell rb-stands" aria-label={stands}>
           <h2 className="k">{stands}</h2>
           {ask && (
@@ -275,7 +278,19 @@ export function RequestBrief(props: {
               <span>{ask}</span>
             </p>
           )}
-          {outcome && <p className="rb-out">{outcome}</p>}
+          {paused && (
+            <p className="rb-edge">
+              Paused: nothing has happened on it since {clock(end)}.
+            </p>
+          )}
+          {outcome && (
+            <p className="rb-out">
+              {paused && (
+                <span className="lbl-inline">Its last word then </span>
+              )}
+              {outcome}
+            </p>
+          )}
           {edge && <p className="rb-edge">{edge}</p>}
         </section>
       )}

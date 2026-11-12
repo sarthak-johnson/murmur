@@ -15,6 +15,7 @@ import { Live as Page, panel, roomInJsdom } from "./officeShell";
 
 roomInJsdom();
 
+import { RequestBrief } from "../src/live/Brief";
 import { clock } from "../src/story";
 import { clockAt } from "./clock";
 
@@ -256,6 +257,30 @@ describe("the brief", () => {
     expect(cell.querySelector(".rb-edge")?.textContent).toBe(
       "Still running: Build Task 38: capture chat reads.",
     );
+  });
+
+  it("paused, its last word is how it stood then, not what is happening now", () => {
+    const req = running();
+    render(
+      <RequestBrief
+        request={req}
+        done={false}
+        end={req.startedAt}
+        waitEnd={req.startedAt}
+        waiting={null}
+        lastLooked={null}
+        paused
+      />,
+    );
+    const cell = region("Where it stands");
+    expect(cell.textContent).toContain(
+      "Paused: nothing has happened on it since",
+    );
+    expect(cell.querySelector(".rb-out")?.textContent).toMatch(
+      /^Its last word then /,
+    );
+    expect(cell.textContent).toContain("Stopped mid-work:");
+    expect(cell.textContent).not.toContain("Still running");
   });
 
   it("once finished it says what came out of it, and what was left open", () => {

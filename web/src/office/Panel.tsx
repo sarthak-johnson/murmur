@@ -362,6 +362,7 @@ function PanelBody(props: PanelProps) {
               waitEnd={waitEnd(props.ses)}
               waiting={waiting}
               lastLooked={props.lastLooked}
+              paused={props.stands.state === "paused"}
             />
             <PhaseTrack
               sessionId={sessionId}
