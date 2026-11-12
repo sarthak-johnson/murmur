@@ -16,7 +16,14 @@ import { type CSSProperties, useEffect, useRef } from "react";
 import { dayLabel, folderOf } from "../format";
 import { StateMark } from "../marks";
 import { follow, requestPath } from "../router";
-import { askOf, cleanPrompt, KIND, type Mark, requestShort } from "../session";
+import {
+  askOf,
+  cleanPrompt,
+  excerpt,
+  KIND,
+  type Mark,
+  requestShort,
+} from "../session";
 import {
   requestNow,
   type SessionNow,
@@ -183,8 +190,21 @@ export function Journey(props: {
   const start = reqs[0] as RequestView;
   const last = reqs.at(-1) as RequestView;
   const lastMark = marks.get(last.id);
+  const byIdOf = new Map(reqs.map((r) => [r.id, r]));
+  // A chapter named by its first request's words reads as that request's title does.
   const chapters: Chapter[] = j?.chapters.length
-    ? j.chapters
+    ? j.chapters.map((c) => {
+        const first = byIdOf.get(c.requestIds[0] ?? "");
+        return first && c.title
+          ? {
+              ...c,
+              title: excerpt(
+                c.title,
+                [first.goal ?? "", first.prompt ?? ""].map(cleanPrompt),
+              ),
+            }
+          : c;
+      })
     : [
         {
           title: "",

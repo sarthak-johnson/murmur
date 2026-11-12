@@ -21,7 +21,13 @@ import { Live, roomInJsdom } from "./officeShell";
 roomInJsdom();
 
 import type { Tab } from "../src/router";
-import { nowLine, requestMark, requestShort, shortOf } from "../src/session";
+import {
+  excerpt,
+  nowLine,
+  requestMark,
+  requestShort,
+  shortOf,
+} from "../src/session";
 import { clockAt } from "./clock";
 
 /** Noon UTC on a November day, the same calendar day in any time zone a test runs in. */
@@ -284,6 +290,28 @@ describe("short titles", () => {
     );
     expect(shortOf("Fix the login form.")).toBe("Fix the login form");
     expect(shortOf("a".repeat(40))).toBe(`${"a".repeat(32)}…`);
+  });
+
+  it("say they are a cut when they stop in the middle of what was said, never reworded", () => {
+    const src = ["Most of Umang's update makes takes better", "(pasted text)"];
+    expect(excerpt("Most of Umang's update makes", src)).toBe(
+      "Most of Umang's update makes…",
+    );
+    // Cut at a comma, or the whole of it: a title as it is.
+    expect(excerpt("Sure", ["Sure, please start"])).toBe("Sure");
+    expect(excerpt("Send to Ankur", ["Send to Ankur", "Send to Ankur"])).toBe(
+      "Send to Ankur",
+    );
+    // Claude's own sentence, the prompt after it, is not a cut.
+    expect(
+      excerpt("The run is still going", [
+        "The run is still going",
+        "how much more time",
+      ]),
+    ).toBe("The run is still going");
+    expect(excerpt("-- Didn't work", ["-- Didn't work , tavily"])).toBe(
+      "Didn't work",
+    );
   });
 
   it("prefer core's short title, and fall back to the prompt", () => {

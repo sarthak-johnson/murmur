@@ -341,8 +341,26 @@ export const askOf = (req: RequestView) => cleanPrompt(req.goal || req.prompt);
  */
 export function requestShort(req: RequestView): string {
   const own = req.short && cleanPrompt(req.short);
-  if (own) return own;
+  if (own)
+    return excerpt(own, [req.goal ?? "", req.prompt ?? ""].map(cleanPrompt));
   return shortOf(askOf(req)) || "Untitled request";
+}
+
+/**
+ * A short title cut from the middle of what was said ("Most of Umang's update makes", of
+ * "...makes takes better") says so with an ellipsis, so it never reads as a whole title;
+ * a dash or stop it starts with goes. It is never reworded: nothing is made up.
+ */
+export function excerpt(short: string, sources: string[]): string {
+  const s = short.replace(/^[\s.,;:\-–]+/, "") || short;
+  if (s.endsWith("…")) return s;
+  const cut = sources.some((src) => {
+    const text = src.replace(/\s+/g, " ");
+    const at = text.toLowerCase().indexOf(s.toLowerCase());
+    const next = at < 0 ? "" : text.slice(at + s.length, at + s.length + 2);
+    return /^(\s?[a-z0-9]|[A-Za-z])/.test(next);
+  });
+  return cut ? `${s}…` : s;
 }
 
 const count = (n: number, one: string, many: string) =>
