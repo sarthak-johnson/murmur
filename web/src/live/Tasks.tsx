@@ -190,23 +190,25 @@ export function taskGroups(
     const helpers = req.agents
       .filter((a) => beyond.agents.includes(a.id))
       .sort((a, b) => (a.startedAt < b.startedAt ? -1 : 1));
-    groups.push({
-      key: "beyond",
-      title: "Beyond the plan",
-      meta: `since ${clock(beyond.since)}`,
-      rows: helpers.map((a) => {
-        const shown = agentShown(a, state, at);
-        return {
-          key: a.id,
-          n: "",
-          shown,
-          title: a.description || "A helper",
-          line: verdictOf(a.report)?.label,
-          facts: factsOf(shown, 0, 0, a.startedAt, a.endedAt ?? a.report?.ts),
-          part: a.part,
-        };
-      }),
-    });
+    // Work after the plan with no helper of its own has no row here (its story says it).
+    if (helpers.length)
+      groups.push({
+        key: "beyond",
+        title: "Beyond the plan",
+        meta: `since ${clock(beyond.since)}`,
+        rows: helpers.map((a) => {
+          const shown = agentShown(a, state, at);
+          return {
+            key: a.id,
+            n: "",
+            shown,
+            title: a.description || "A helper",
+            line: verdictOf(a.report)?.label,
+            facts: factsOf(shown, 0, 0, a.startedAt, a.endedAt ?? a.report?.ts),
+            part: a.part,
+          };
+        }),
+      });
   }
   return groups;
 }

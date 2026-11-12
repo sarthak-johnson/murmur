@@ -26,14 +26,36 @@ function font(sel: string): [number, number, number] {
 }
 
 describe("no serif", () => {
-  it("loads and names only Geist and Geist Mono", () => {
+  it("loads and names only Geist, Geist Mono and the pixel face", () => {
     expect(html).not.toMatch(/Newsreader/);
+    expect(html).toMatch(/family=Silkscreen/);
     expect(css).not.toMatch(/Newsreader|Georgia|Iowan|--font-read/);
-    // Every family the sheet names is one of the two.
+    // Every family the sheet names is one of the three.
     for (const [, f] of css.matchAll(
       /font(?:-family)?:[^;]*var\((--[\w-]+)\)/g,
     ))
-      expect(["--font-ui", "--font-code"]).toContain(f);
+      expect(["--font-ui", "--font-code", "--pix"]).toContain(f);
+  });
+
+  it("sets the pixel face only on short labels, never under 12 px", () => {
+    for (const [decl, size] of css.matchAll(
+      /font: (?:\d+ )?(?:max\()?([\d.]+)px[^;]*var\(--pix\)/g,
+    ))
+      expect(Number(size), decl).toBeGreaterThanOrEqual(12);
+    // Titles, Claude's words and briefs stay in Geist.
+    for (const sel of [
+      ".pd-title",
+      ".ask",
+      ".story .story-text",
+      ".step-text",
+      ".reading",
+      ".rb-out",
+      ".rb-edge",
+      ".tk-t",
+      ".jr-card-ttl",
+      ".lobby-title",
+    ])
+      expect(rule(sel), sel).not.toMatch(/--pix/);
   });
 
   it("titles carry their weight at 600", () => {

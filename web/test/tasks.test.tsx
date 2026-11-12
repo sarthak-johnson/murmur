@@ -321,6 +321,16 @@ describe("the Tasks tab", () => {
     );
   });
 
+  it("leaves out work after the plan that has no helper of its own", () => {
+    show(
+      guide({ beyond: { since: at(7), agents: [], messages: [], rounds: 0 } }),
+      "tasks",
+    );
+    expect(
+      groups().map((g) => g.querySelector("h2")?.textContent),
+    ).not.toContain("Beyond the plan");
+  });
+
   it("lists a request's parts as its tasks when it has no plan", () => {
     show(guide({ phases: [] }), "tasks");
     expect(groups()).toHaveLength(1);
