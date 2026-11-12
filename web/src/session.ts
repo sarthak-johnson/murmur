@@ -571,13 +571,23 @@ const valid = (ts: string | undefined): ts is string =>
 /** When a task's work was seen, earliest and latest: its helpers, steps and messages. */
 export function taskTimes(req: RequestView, task: TaskView): string[] {
   const part = req.parts.find((p) => p.id === task.part);
+  // A part several tasks share times all of them: only its helpers and steps that are this
+  // task's own count, else every task would read the part's whole span.
+  const shared =
+    !!task.part &&
+    req.phases.some((ph) =>
+      ph.tasks.some((t) => t !== task && t.part === task.part),
+    );
+  const agents = taskAgents(req, task).filter(
+    (a) => !shared || task.agents.includes(a.id),
+  );
+  const mine = new Set(agents.map((a) => a.id));
+  const steps = (part?.steps ?? []).filter(
+    (st) => !shared || (st.agentId !== undefined && mine.has(st.agentId)),
+  );
   return [
-    ...taskAgents(req, task).flatMap((a) => [
-      a.startedAt,
-      a.endedAt,
-      a.report?.ts,
-    ]),
-    ...(req.recap ? [] : (part?.steps.map((s) => s.ts) ?? [])),
+    ...agents.flatMap((a) => [a.startedAt, a.endedAt, a.report?.ts]),
+    ...(req.recap ? [] : steps.map((st) => st.ts)),
     ...(req.messages ?? []).filter((m) => m.task === task.id).map((m) => m.ts),
   ]
     .filter(valid)
@@ -588,7 +598,16 @@ export function phaseSpan(
   req: RequestView,
   phase: PhaseView,
 ): { from?: string; to?: string } {
-  const times = phase.tasks.flatMap((t) => taskTimes(req, t)).sort();
+  // Its tasks' own times, and the whole span of the parts they work in.
+  const parts = req.parts.filter((p) =>
+    phase.tasks.some((t) => t.part === p.id),
+  );
+  const times = [
+    ...phase.tasks.flatMap((t) => taskTimes(req, t)),
+    ...parts.flatMap((p) => [p.span?.start, p.span?.end]),
+  ]
+    .filter(valid)
+    .sort();
   const from = times[0];
   const to = times.at(-1);
   return { ...(from ? { from } : {}), ...(to ? { to } : {}) };

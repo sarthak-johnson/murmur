@@ -18,7 +18,13 @@ const bash = (id: string, command: string, paths: string[]): MurmurEvent => ({
         files: paths.map((filePath) => ({
           filePath,
           hunks: [
-            { oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ["-a", "+b"] },
+            {
+              oldStart: 1,
+              oldLines: 1,
+              newStart: 1,
+              newLines: 1,
+              lines: ["-a", "+b"],
+            },
           ],
         })),
       },
@@ -28,7 +34,10 @@ const bash = (id: string, command: string, paths: string[]): MurmurEvent => ({
 
 describe("a helper's files", () => {
   it("come from its own commands: another helper's concurrent writes in the same diff are not its", () => {
-    const a = { id: "a1", files: ["tests/app.test.js"] } as unknown as AgentView;
+    const a = {
+      id: "a1",
+      files: ["tests/app.test.js"],
+    } as unknown as AgentView;
     const files = helperFiles(a, [
       // Its own append, while two other builders wrote in the same folder.
       bash("1", "cat >> tests/app.test.js <<'EOF'\nit()\nEOF", [
