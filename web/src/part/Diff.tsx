@@ -1,5 +1,6 @@
 import type { FileTouch, MurmurEvent } from "@murmur/core";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
+import { PathText } from "../files";
 import { clock } from "../story";
 
 export interface Hunk {
@@ -177,5 +178,46 @@ export function DiffView({ hunks }: { hunks: Hunk[] }) {
         </button>
       )}
     </div>
+  );
+}
+
+const MINUS = "−";
+
+/**
+ * A changed file as a row: its path, lines added and removed, new or not, its diff one
+ * click away. `note` is said inside the row (a role); `children` follow it, under the row.
+ */
+export function DiffRow(props: {
+  file: FileTouch;
+  cwd: string;
+  strip?: string | undefined;
+  byId: Map<string, MurmurEvent>;
+  note?: ReactNode;
+  children?: ReactNode;
+}) {
+  const { file, cwd, strip, byId } = props;
+  const [open, setOpen] = useState(false);
+  return (
+    <li className={open ? "file-row open" : "file-row"}>
+      <button
+        type="button"
+        className="pd-file"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <PathText path={file.path} cwd={cwd} {...(strip ? { strip } : {})} />
+        <span className={file.added ? "pd-add" : "pd-add zero"}>
+          +{file.added}
+        </span>
+        <span className={file.removed ? "pd-del" : "pd-del zero"}>
+          {MINUS}
+          {file.removed}
+        </span>
+        {file.isNew && <span className="pd-tag">new</span>}
+        {props.note}
+      </button>
+      {props.children}
+      {open && <DiffView hunks={hunksOf(file, byId)} />}
+    </li>
   );
 }

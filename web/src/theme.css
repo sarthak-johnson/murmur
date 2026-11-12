@@ -1726,6 +1726,32 @@ time {
   margin-top: 28px;
   color: var(--t3);
 }
+/* Lists of changed files whose rows open their diffs. */
+.diff-files {
+  max-width: 860px;
+  margin: 10px 0 0;
+}
+/* The session's files: find one, and see every request and task that changed it. */
+.sfiles-find {
+  width: min(360px, 100%);
+  margin: 8px 0 4px;
+}
+.sfiles-by {
+  list-style: none;
+  margin: -2px 0 6px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  font-size: 13px;
+  line-height: 18px;
+}
+.sfiles-by a {
+  color: var(--t2);
+}
+.sfiles-by a:hover {
+  color: var(--t1);
+}
 /* The request's files in all, each counted once. */
 .files-total {
   margin: 16px 0 4px;
@@ -4254,7 +4280,8 @@ code.nw {
 /* Totals */
 .jr-totals {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* As many columns as tiles, so four never leave an empty fifth. */
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
   margin: 18px 0 0;
   padding: 0;
@@ -4278,6 +4305,24 @@ code.nw {
   color: var(--t3);
   font-size: 13px;
   line-height: 18px;
+}
+/* A tile that opens a view: the whole tile is its link, lit on hover like a frame. */
+.jr-tot.link {
+  padding: 0;
+}
+.jr-tot.link:hover {
+  --pf: var(--s8);
+}
+.jr-tot-a {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 18px;
+  color: inherit;
+  text-decoration: none;
+}
+.jr-tot-a:hover .jr-tot-l {
+  color: var(--t1);
+  text-decoration: underline;
 }
 /* Chapters: a segmented strip, each segment as wide as its requests, the live one lit */
 .jr-chapters {

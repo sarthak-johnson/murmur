@@ -8,19 +8,26 @@ import type {
   RequestView,
   SessionView,
 } from "@murmur/core";
-import { memo, useEffect, useRef } from "react";
-import { PathText } from "../files";
+import { memo, useEffect, useMemo, useRef } from "react";
+import { helperFiles } from "../fileIndex";
+import { FileList } from "../files";
 import { FlowBoard } from "../flow/FlowBoard";
 import { dayLabel } from "../format";
 import { Assumptions } from "../live/Assumptions";
 import { RequestBrief } from "../live/Brief";
 import { Journey, SessionHead } from "../live/Journey";
 import { Story } from "../live/Story";
-import { FilesTab, HelpersTab, helperPart } from "../live/Tabs";
+import {
+  FilesTab,
+  HelpersTab,
+  helperPart,
+  SessionFilesTab,
+} from "../live/Tabs";
 import { TasksTab } from "../live/Tasks";
 import { PhaseTrack } from "../live/Track";
 import { Markdown } from "../markdown";
 import { StateMark } from "../marks";
+import { DiffRow } from "../part/Diff";
 import { PartDetail } from "../part/PartDetail";
 import { floorPath, follow, navigate } from "../router";
 import {
@@ -54,7 +61,7 @@ import {
   thousands,
   verdictOf,
 } from "../story";
-import { RequestList } from "./Bar";
+
 import {
   isSessionTab,
   isTab,
@@ -309,6 +316,7 @@ function PanelBody(props: PanelProps) {
               view={view}
               events={events}
               ses={props.ses}
+              filesHref={at("allfiles")}
             />
           </>
         ) : open === "timeline" ? (
@@ -318,18 +326,8 @@ function PanelBody(props: PanelProps) {
             events={events}
             ses={props.ses}
           />
-        ) : open === "requests" ? (
-          <RequestList
-            sessionId={sessionId}
-            view={view}
-            events={events}
-            ses={props.ses}
-            currentId={req.id}
-            activeId={props.activeId}
-            keep="story"
-            onPick={props.onPickRequest}
-            label="Every request"
-          />
+        ) : open === "allfiles" ? (
+          <SessionFilesTab sessionId={sessionId} view={view} events={events} />
         ) : open === "tasks" ? (
           <TasksTab
             sessionId={sessionId}
@@ -500,6 +498,7 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
       return (
         <HelperCloseUp
           view={view}
+          events={events}
           agent={a}
           t={props.t}
           model={props.models.get(a.id)}
@@ -612,6 +611,7 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
 /** A helper at its desk: who briefed it for what, what it is on, and what it said back. */
 function HelperCloseUp(props: {
   view: SessionView;
+  events: MurmurEvent[];
   agent: AgentView;
   t: string;
   model: string | undefined;
@@ -648,7 +648,7 @@ function HelperCloseUp(props: {
         )}
         <span className="muted">started {clock(a.startedAt)}</span>
       </p>
-      <p>{helperLine(a, runningNow)}</p>
+      <p>{helperLine(a, runningNow, req)}</p>
       {part && (
         <p>
           <button
@@ -676,19 +676,32 @@ function HelperCloseUp(props: {
           <Markdown text={a.report.text} className="of-md" />
         </>
       )}
-      {!!a.files?.length && (
-        <>
-          <h3>Files it changed</h3>
-          <ul className="of-files">
-            {a.files.map((f) => (
-              <li key={f}>
-                <PathText path={f} cwd={view.cwd} />
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+      <HelperFiles agent={a} events={props.events} cwd={view.cwd} />
     </section>
+  );
+}
+
+/** The files a helper changed itself, its own lines added and removed, each diff a click away. */
+function HelperFiles(props: {
+  agent: AgentView;
+  events: MurmurEvent[];
+  cwd: string;
+}) {
+  const { agent: a, events, cwd } = props;
+  const files = useMemo(() => helperFiles(a, events), [a, events]);
+  const byId = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
+  if (!files.length) return null;
+  return (
+    <>
+      <h3 className="of-h-files">Files it changed</h3>
+      <FileList
+        files={files}
+        events={events}
+        label="Files it changed"
+        className="pd-files diff-files"
+        row={(f) => <DiffRow key={f.path} file={f} cwd={cwd} byId={byId} />}
+      />
+    </>
   );
 }
 

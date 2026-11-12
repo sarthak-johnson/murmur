@@ -10,7 +10,7 @@ import {
   type TaskView,
 } from "@murmur/core";
 import { type ReactNode, useState } from "react";
-import { FileList, PathText, sharedFolder } from "../files";
+import { FileList, sharedFolder } from "../files";
 import { Fold, inline, Markdown } from "../markdown";
 import { Glyph, NeedIcon, PlanSource } from "../marks";
 import { Pill } from "../Pill";
@@ -45,7 +45,7 @@ import {
   type Tone,
   verdictOf,
 } from "../story";
-import { DiffView, hunksOf } from "./Diff";
+import { DiffRow } from "./Diff";
 import { EventData, EventView } from "./EventView";
 import { claudeSaid, helperLanes, MANY, Timeline } from "./Timeline";
 
@@ -273,37 +273,6 @@ function StepCard(props: {
           ))}
         </div>
       )}
-    </li>
-  );
-}
-
-function FileRow(props: {
-  file: FileTouch;
-  cwd: string;
-  strip: string;
-  byId: Map<string, MurmurEvent>;
-}) {
-  const { file, cwd, strip, byId } = props;
-  const [open, setOpen] = useState(false);
-  return (
-    <li className={open ? "file-row open" : "file-row"}>
-      <button
-        type="button"
-        className="pd-file"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        <PathText path={file.path} cwd={cwd} strip={strip} />
-        <span className={file.added ? "pd-add" : "pd-add zero"}>
-          +{file.added}
-        </span>
-        <span className={file.removed ? "pd-del" : "pd-del zero"}>
-          {MINUS}
-          {file.removed}
-        </span>
-        {file.isNew && <span className="pd-tag">new</span>}
-      </button>
-      {open && <DiffView hunks={hunksOf(file, byId)} />}
     </li>
   );
 }
@@ -939,7 +908,7 @@ function PartBody(props: {
                   events={events}
                   className="pd-files"
                   row={(f) => (
-                    <FileRow
+                    <DiffRow
                       key={f.path}
                       file={f}
                       cwd={cwd}

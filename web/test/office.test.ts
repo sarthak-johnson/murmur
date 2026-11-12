@@ -484,8 +484,8 @@ describe("what a click in the room opens", () => {
       phases: [{ tasks: [{ id: "1.1", part: "db" }, { id: "1.2" }] }],
     } as unknown as RequestView;
     expect(openFor("phase:2")).toBe("tasks");
-    expect(openFor("archive")).toBe("files");
-    expect(openFor("jobs")).toBe("requests");
+    expect(openFor("archive")).toBe("allfiles");
+    expect(openFor("jobs")).toBe("timeline");
     expect(openFor("claude")).toBe("claude");
     expect(openFor("agent:a1")).toBe("helper:a1");
     // A sticky opens as its own task: several tasks can share one part.

@@ -3,7 +3,15 @@
  * request's loose files), so one path can sit under several tasks of a request and under
  * several requests; totals count it once and add its lines up.
  */
-import type { FileTouch, RequestView, SessionView } from "@murmur/core";
+import {
+  type AgentView,
+  addTouch,
+  type FileTouch,
+  type MurmurEvent,
+  type RequestView,
+  type SessionView,
+  touchesOf,
+} from "@murmur/core";
 import { placeOf, taskTitle } from "./session";
 
 /** One request's (or task's) change to a file. */
@@ -13,7 +21,7 @@ export interface FileChange {
   n: number;
   /** The part it is under; unset for the request's loose files. */
   part?: string;
-  /** What the panel opens it by (`Place.key`), and its title; unset when loose. */
+  /** What the panel opens it by (`Place.key`), and its name ("Task 2 · Lit plate"); unset when loose. */
   key?: string;
   title?: string;
   added: number;
@@ -52,7 +60,9 @@ function changesOf(req: RequestView, n: number): [string, FileChange][] {
           n,
           part: p.id,
           key: place?.key ?? `task:${p.id}`,
-          title: place?.title ?? taskTitle(p),
+          title: place?.task
+            ? `Task ${place.n} · ${place.title}`
+            : (place?.title ?? taskTitle(p)),
           ...own(f),
         },
       ]);
@@ -100,3 +110,29 @@ export function fileIndex(view: SessionView): IndexedFile[] {
       b.changes.length - a.changes.length || a.path.localeCompare(b.path),
   );
 }
+
+/**
+ * The files a helper changed itself, from its own edits: its counts, not its request's
+ * (several helpers can share a file), and its own edits for the diff.
+ */
+export function helperFiles(a: AgentView, events: MurmurEvent[]): FileTouch[] {
+  if (!a.files?.length) return [];
+  const out: FileTouch[] = [];
+  for (const e of events)
+    if (e.payload.agent_id === a.id)
+      for (const t of touchesOf(e)) addTouch(out, t);
+  // Its first change first, as core lists them.
+  const order = new Map(a.files.map((p, i) => [p, i]));
+  return out.sort(
+    (x, y) => (order.get(x.path) ?? 1e9) - (order.get(y.path) ?? 1e9),
+  );
+}
+
+/** A file as one change over the whole session: its counts and every edit, for the diff. */
+export const asTouch = (f: IndexedFile): FileTouch => ({
+  path: f.path,
+  added: f.added,
+  removed: f.removed,
+  isNew: f.isNew,
+  eventIds: f.changes.flatMap((c) => c.eventIds),
+});

@@ -160,6 +160,8 @@ export function Journey(props: {
   events: MurmurEvent[];
   /** The session at the moment shown (state.ts); else live, now. */
   ses?: SessionNow | undefined;
+  /** Where the "files changed" tile goes: the session's every file. */
+  filesHref?: string | undefined;
 }) {
   const { sessionId, view, events } = props;
   const reqs = view.requests;
@@ -267,7 +269,14 @@ export function Journey(props: {
         </a>
       </div>
 
-      {j && <Totals totals={j.totals} pauses={pauses} rise={rise} />}
+      {j && (
+        <Totals
+          totals={j.totals}
+          pauses={pauses}
+          rise={rise}
+          filesHref={props.filesHref}
+        />
+      )}
 
       {chapters.length > 1 && (
         <nav className="jr-chapters" aria-label="Chapters">
@@ -408,8 +417,9 @@ function Totals(props: {
   totals: NonNullable<SessionView["journey"]>["totals"];
   pauses: Pause[];
   rise: boolean;
+  filesHref?: string | undefined;
 }) {
-  const { totals: t, pauses, rise } = props;
+  const { totals: t, pauses, rise, filesHref } = props;
   const longest = pauses.reduce<Pause | undefined>(
     (a, p) =>
       !a ||
@@ -437,12 +447,30 @@ function Totals(props: {
   if (!shown.length) return null;
   return (
     <ul className={rise ? "jr-totals jr-in" : "jr-totals"} aria-label="Totals">
-      {shown.map(([n, label]) => (
-        <li key={label} className="jr-tot">
-          <b className="jr-tot-v num">{thousands(n)}</b>
-          <span className="jr-tot-l">{label}</span>
-        </li>
-      ))}
+      {shown.map(([n, label]) => {
+        const body = (
+          <>
+            <b className="jr-tot-v num">{thousands(n)}</b>
+            <span className="jr-tot-l">{label}</span>
+          </>
+        );
+        // The files tile opens every file the session changed, and who changed it.
+        return filesHref && label === "files changed" ? (
+          <li key={label} className="jr-tot link">
+            <a
+              className="jr-tot-a"
+              href={filesHref}
+              onClick={follow(filesHref)}
+            >
+              {body}
+            </a>
+          </li>
+        ) : (
+          <li key={label} className="jr-tot">
+            {body}
+          </li>
+        );
+      })}
     </ul>
   );
 }

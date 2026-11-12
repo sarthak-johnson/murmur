@@ -5,7 +5,7 @@ import { type SessionTab, TABS, type Tab } from "../router";
 export const SESSION_VIEWS: readonly (readonly [SessionTab, string])[] = [
   ["journey", "Journey"],
   ["timeline", "Timeline"],
-  ["requests", "Requests"],
+  ["allfiles", "All files"],
 ];
 export const REQUEST_VIEWS: readonly (readonly [Tab, string])[] = [
   ["story", "Story"],
@@ -27,6 +27,8 @@ export const isTab = (open: string): open is PanelTab =>
 /** `open` as the panel can show it: a tab or a close-up; anything else is nothing. */
 export function readOpen(open: string | undefined): string | null {
   if (!open) return null;
+  // The Requests list it once had only repeated the rail; its requests are on the Timeline.
+  if (open === "requests") return "timeline";
   if (isTab(open) || SPOTS.includes(open)) return open;
   const [kind, id] = open.split(/:(.*)/s);
   return (kind === "task" || kind === "helper") && id ? open : null;
@@ -43,9 +45,10 @@ export const isWideView = (open: string) =>
 export function openFor(key: string): string {
   const [kind, id = ""] = key.split(/:(.*)/s);
   if (kind === "phase") return "tasks";
-  if (kind === "archive") return "files";
+  // The archive holds the whole session's files; the request's are on its Files tab.
+  if (kind === "archive") return "allfiles";
   if (kind === "helpers") return "helpers";
-  if (kind === "jobs") return "requests";
+  if (kind === "jobs") return "timeline";
   if (kind === "agent") return `helper:${id}`;
   // A sticky is a task of the plan: its close-up keeps which task (several share a part).
   return key;

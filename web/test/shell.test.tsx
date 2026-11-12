@@ -748,7 +748,7 @@ describe("the panel's tabs", () => {
     ).toEqual([
       ["Journey", "/s/s1/r/r3?open=journey"],
       ["Timeline", "/s/s1/r/r3?open=timeline"],
-      ["Requests", "/s/s1/r/r3?open=requests"],
+      ["All files", "/s/s1/r/r3?open=allfiles"],
     ]);
   });
 
@@ -773,7 +773,7 @@ describe("the panel's tabs", () => {
     show(session(), { requestId: "r3", tab: "files" });
     const groups = [...document.querySelectorAll<HTMLElement>(".file-group")];
     expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual([
-      "Lit plate tokens",
+      "Task 1 · Lit plate tokens",
       "Outside any task",
     ]);
     expect(

@@ -3,13 +3,17 @@ import type {
   FileTouch,
   MurmurEvent,
   RequestView,
+  SessionView,
 } from "@murmur/core";
-import { requestFiles } from "../fileIndex";
+import { displayPath } from "@murmur/core";
+import { useMemo, useState } from "react";
+import { asTouch, fileIndex, requestFiles } from "../fileIndex";
 import { FileList, PathText } from "../files";
 import { StateMark } from "../marks";
 import { Pill } from "../Pill";
-import { follow, helperPath } from "../router";
-import { modelOf, taskTitle } from "../session";
+import { DiffRow } from "../part/Diff";
+import { floorPath, follow, helperPath } from "../router";
+import { modelOf, placeOf, taskTitle } from "../session";
 import { coreState, helperNow, type State } from "../state";
 import {
   clock,
@@ -37,6 +41,17 @@ export function fileRow(cwd: string) {
   );
 }
 
+/** A task's name as the board and the Tasks tab give it: "Task 2 · Lit plate". */
+const partName = (req: RequestView, partId: string, fallback: string) => {
+  const place = placeOf(req, { part: partId });
+  if (!place) return fallback;
+  return place.task ? `Task ${place.n} · ${place.title}` : place.title;
+};
+
+/** Events by id, for diffs. */
+const useById = (events: MurmurEvent[]) =>
+  useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
+
 /** The request's files, grouped by the part that changed them, then the rest. */
 export function FilesTab(props: {
   request: RequestView;
@@ -44,10 +59,15 @@ export function FilesTab(props: {
   cwd: string;
 }) {
   const { request, events, cwd } = props;
+  const byId = useById(events);
   const groups = [
     ...request.parts
       .filter((p) => p.files.length > 0)
-      .map((p) => ({ key: p.id, title: taskTitle(p), files: p.files })),
+      .map((p) => ({
+        key: p.id,
+        title: partName(request, p.id, taskTitle(p)),
+        files: p.files,
+      })),
     ...(request.looseFiles.length
       ? [{ key: "", title: "Outside any task", files: request.looseFiles }]
       : []),
@@ -84,12 +104,107 @@ export function FilesTab(props: {
               files={g.files}
               events={events}
               label={g.title}
-              className="loose-files"
-              row={fileRow(cwd)}
+              className="pd-files diff-files"
+              row={(f) => (
+                <DiffRow
+                  key={f.path}
+                  file={f}
+                  cwd={cwd}
+                  byId={byId}
+                  note={f.role && <span className="muted">{f.role}</span>}
+                />
+              )}
             />
           </section>
         );
       })}
+    </div>
+  );
+}
+
+/** Shown before "Show all": a long session changes hundreds of files. */
+const FILES_SHOWN = 40;
+
+/**
+ * Every file the session changed, each once: which requests and tasks changed it and by
+ * how much, its whole diff a click away. It answers "which request changed this file".
+ */
+export function SessionFilesTab(props: {
+  sessionId: string;
+  view: SessionView;
+  events: MurmurEvent[];
+}) {
+  const { sessionId, view, events } = props;
+  const files = useMemo(() => fileIndex(view), [view]);
+  const byId = useById(events);
+  const [q, setQ] = useState("");
+  const [all, setAll] = useState(false);
+  if (!files.length)
+    return <p className="tab-empty">No files changed in this session yet.</p>;
+  const find = q.trim().toLowerCase();
+  const found = find
+    ? files.filter((f) =>
+        displayPath(f.path, view.cwd).toLowerCase().includes(find),
+      )
+    : files;
+  const shown = all || find ? found : found.slice(0, FILES_SHOWN);
+  const added = files.reduce((n, f) => n + f.added, 0);
+  const removed = files.reduce((n, f) => n + f.removed, 0);
+  const several = files.filter((f) => f.requests.length > 1).length;
+  return (
+    <div className="tab-files sfiles">
+      <p className="files-total num">
+        {nOf(files.length, "file")} changed, +{thousands(added)} {MINUS}
+        {thousands(removed)}
+        {several > 0 &&
+          ` · ${nOf(several, "file")} changed in more than one request`}
+      </p>
+      <input
+        type="search"
+        className="sfiles-find"
+        placeholder="Find a file"
+        aria-label="Find a file"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+      {find && (
+        <p className="muted small" aria-live="polite">
+          {nOf(found.length, "file")} match
+        </p>
+      )}
+      <ul className="pd-files diff-files" aria-label="Every file">
+        {shown.map((f) => (
+          <DiffRow key={f.path} file={asTouch(f)} cwd={view.cwd} byId={byId}>
+            <ul className="sfiles-by" aria-label="Changed in">
+              {f.changes.map((c) => {
+                const to = floorPath(sessionId, c.requestId, c.key ?? "files");
+                return (
+                  <li key={`${c.requestId}|${c.key ?? ""}`}>
+                    <a href={to} onClick={follow(to)}>
+                      Request {c.n}
+                      {c.title ? ` · ${c.title}` : ""}
+                    </a>{" "}
+                    <span className="num muted">
+                      +{c.added} {MINUS}
+                      {c.removed}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </DiffRow>
+        ))}
+      </ul>
+      {!find && found.length > FILES_SHOWN && (
+        <button
+          type="button"
+          className="link show-all"
+          aria-expanded={all}
+          onClick={() => setAll(!all)}
+        >
+          {all ? "Show fewer" : `Show all ${found.length}`}
+        </button>
+      )}
     </div>
   );
 }

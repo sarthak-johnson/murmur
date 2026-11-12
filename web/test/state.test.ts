@@ -376,8 +376,8 @@ describe("files counted once", () => {
     const x = files.find((f) => f.path === "x.ts");
     expect([x?.added, x?.removed]).toEqual([5, 1]);
     expect(x?.changes.map((c) => [c.key, c.title])).toEqual([
-      ["task:ta", "Build A"],
-      ["task:tb", "Build B"],
+      ["task:ta", "Task 1 · Build A"],
+      ["task:tb", "Task 2 · Build B"],
     ]);
   });
 

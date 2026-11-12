@@ -1015,13 +1015,13 @@ describe("helpers, files and checks", () => {
     );
   });
 
-  it("the Files tab groups the files by the task that changed them", () => {
+  it("the Files tab groups the files by the task that changed them, named as the board names it", () => {
     tab("files");
     const groups = [...document.querySelectorAll(".file-group")];
     expect(groups.map((g) => g.querySelector("h2")?.textContent)).toEqual([
-      "Recorded chat answers",
-      "Chat parts",
-      "Tracker",
+      "Task 1 · Fresh builder for Task 38",
+      "Task 2 · Fresh reviewer for Task 39",
+      "Task 3 · Found the source",
     ]);
     expect(
       groups.map((g) => g.querySelector(".sect .num")?.textContent),

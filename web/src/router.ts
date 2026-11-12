@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 export const TABS = ["story", "tasks", "flow", "files", "helpers"] as const;
 export type Tab = (typeof TABS)[number];
 /** The session's views in the office's panel. */
-export const SESSION_TABS = ["journey", "timeline", "requests"] as const;
+export const SESSION_TABS = ["journey", "timeline", "allfiles"] as const;
 export type SessionTab = (typeof SESSION_TABS)[number];
 
 /**

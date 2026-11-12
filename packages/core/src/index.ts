@@ -2,7 +2,7 @@ export * from "./events.js";
 export * from "./narration.js";
 export * from "./scrub.js";
 export { catchUp } from "./view/catchup.js";
-export { displayPath } from "./view/files.js";
+export { addTouch, displayPath, touchesOf } from "./view/files.js";
 export { assumptionKey, isRisky } from "./view/flags.js";
 export {
   askIn,

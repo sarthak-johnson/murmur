@@ -195,19 +195,19 @@ afterEach(() => {
 });
 
 describe("session tabs", () => {
-  it("Journey, Timeline and Requests are the panel's session row, each a link, the shown one current", () => {
+  it("Journey, Timeline and All files are the panel's session row, each a link, the shown one current", () => {
     show();
     const tabs = screen.getByRole("navigation", { name: "This session" });
     const links = [...tabs.querySelectorAll("a")];
     expect(links.map((a) => a.textContent)).toEqual([
       "Journey",
       "Timeline",
-      "Requests",
+      "All files",
     ]);
     expect(links.map((a) => a.getAttribute("href"))).toEqual([
       "/s/s1?open=journey",
       "/s/s1?open=timeline",
-      "/s/s1?open=requests",
+      "/s/s1?open=allfiles",
     ]);
     expect(links[1]?.getAttribute("aria-current")).toBe("page");
     expect(links[0]?.getAttribute("aria-current")).toBeNull();
