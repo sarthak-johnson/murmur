@@ -527,10 +527,19 @@ export function Timeline(props: {
   const each = helperLanes(part, helpers, events);
   if (!each.length) return null;
   const lanes = each.length > MANY ? byRole(each) : each;
-  const said = claudeSaid(request, part, helpers).filter(
-    (m) => !Number.isNaN(Date.parse(m.ts)),
-  );
-  const end = said.length ? undefined : closing(request, part);
+  // The axis covers the helpers' work: Claude's words long after it (a status hours
+  // later) would squash every bar into the first tenth, so only those near it are drawn.
+  const runs = each.flatMap((l) => l.runs);
+  const lo = Math.min(...runs.map((r) => Date.parse(r.from)));
+  const hi = Math.max(...runs.map((r) => Date.parse(r.to)));
+  const slack = Math.max(10 * 60_000, (hi - lo) * 0.2);
+  const near = (ts: string | undefined) => {
+    const v = ts ? Date.parse(ts) : Number.NaN;
+    return v >= lo - slack && v <= hi + slack;
+  };
+  const said = claudeSaid(request, part, helpers).filter((m) => near(m.ts));
+  const closed = said.length ? undefined : closing(request, part);
+  const end = closed && near(closed.ts) ? closed : undefined;
   const layout = layoutTimeline(
     lanes,
     track,
