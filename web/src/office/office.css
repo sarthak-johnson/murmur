@@ -192,6 +192,10 @@
 .of-pill.s-todo {
   --tone: var(--o-todo);
 }
+/* A request is never "not started": grey on the bar means it was left open. */
+.of-pill.s-todo::before {
+  background-image: var(--mark-open);
+}
 .of-meta {
   color: var(--o-t2);
   white-space: nowrap;
@@ -295,7 +299,7 @@
   pointer-events: none;
 }
 .of-overlay .you-plate {
-  font: 700 max(10px, calc(4px * var(--s))) / calc(8px * var(--s)) var(--o-pix);
+  font: 700 max(9px, calc(4px * var(--s))) / calc(8px * var(--s)) var(--o-pix);
   color: #2a211c;
   text-align: center;
   pointer-events: none;
