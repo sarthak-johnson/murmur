@@ -148,15 +148,20 @@ export function verdictOf(
     if (known) return known;
     const words = v.replace(/[_-]+/g, " ").toLowerCase();
     const label = words.charAt(0).toUpperCase() + words.slice(1);
-    const tone: Tone = /fix(?:es)? first|needs? fix|not pass/.test(words)
-      ? "bad"
-      : /approv|pass|\bok\b|done|complete|ready|compliant/.test(words)
-        ? "done"
-        : /fail|block|issue|change|reject|problem|broke/.test(words)
-          ? "bad"
-          : /concern|need|partial|warn/.test(words)
-            ? "warn"
-            : "plain";
+    // Negatives first: "Not approved" holds "approv", "Doesn't pass" holds "pass".
+    const tone: Tone =
+      /fix(?:es)? first|needs? fix|\bnot (?:approved|passed?|ok|ready)\b|n['’]t pass|reject|fail/.test(
+        words,
+      )
+        ? "bad"
+        : /\bno (?:blocking )?(?:issues?|problems?)\b/.test(words) ||
+            /approv|pass|\bok\b|done|complete|ready|compliant/.test(words)
+          ? "done"
+          : /block|issue|change|problem|broke/.test(words)
+            ? "bad"
+            : /concern|need|partial|warn/.test(words)
+              ? "warn"
+              : "plain";
     return { label, tone };
   }
   if (report.status === "failed") return { label: "Failed", tone: "bad" };

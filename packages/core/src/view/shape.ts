@@ -488,9 +488,10 @@ export function aimOf(brief: string): string | undefined {
     ? cutWords(rest.charAt(0).toUpperCase() + rest.slice(1), AIM_MAX)
     : undefined;
 }
-// A review report that asks for changes.
+// A review report that asks for changes. "Does not pass" counts only of a review or a
+// test, so "the helper did not pass the cwd" is no verdict.
 const SENT_BACK =
-  /\b(?:needs?[ _-]?fix(?:es)?|fix(?:es)?[ _-]first|changes[ _-]requested|not approved|rejected|blocking issues?|(?:does not|doesn't|did not) pass)\b/i;
+  /\b(?:needs?[ _-]?fix(?:es)?|fix(?:es)?[ _-]first|changes[ _-]requested|not approved|rejected|(?<!\bno )blocking issues?|(?:does not|doesn't|did not) pass (?:the |its |this )?(?:review|re-?review|tests?|checks?|spec))\b/i;
 const NUMBER = [
   "no",
   "one",

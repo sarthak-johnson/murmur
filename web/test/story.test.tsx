@@ -386,6 +386,11 @@ describe("story helpers", () => {
       label: "Approved",
       tone: "done",
     });
+    // Negatives first: these hold "approv" and "pass".
+    expect(verdictOf(r("Not approved"))?.tone).toBe("bad");
+    expect(verdictOf(r("Doesn't pass"))?.tone).toBe("bad");
+    expect(verdictOf(r("Not passed"))?.tone).toBe("bad");
+    expect(verdictOf(r("No blocking issues"))?.tone).toBe("done");
     expect(verdictOf(r(undefined, "failed"))).toEqual({
       label: "Failed",
       tone: "bad",

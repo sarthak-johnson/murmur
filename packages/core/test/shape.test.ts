@@ -755,6 +755,22 @@ describe("full cards for every part", () => {
     }
   });
 
+  test("a review that only says something else did not pass is no sending back", () => {
+    for (const said of [
+      "Approved. The helper did not pass the cwd, but the code takes it from the env.",
+      "Approved: no blocking issues.",
+    ]) {
+      const [r] = reduce([
+        prompt(0, "go"),
+        mapCall(1, LIT),
+        ...helper(10, "Implement Task 2: hero", "a1"),
+        ...helper(20, "Review Task 2", "a2", said),
+      ]).requests;
+      const hero = r?.parts.find((p) => p.id === "hero");
+      expect(hero?.steps.map((s) => s.text)).toEqual(["Built", "Passed"]);
+    }
+  });
+
   test("span from the first to the last event", () => {
     expect(part("tokens")?.span).toEqual({ start: ts(11), end: ts(40) });
   });
