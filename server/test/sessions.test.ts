@@ -327,3 +327,23 @@ test("ingest after delete recreates the session with only the new events", async
     decisions: [],
   });
 });
+
+test("a session's events and the list are gzipped; the live stream is not", async () => {
+  t = await testApp();
+  const { token, cookie } = await linkMachine(t, "ada", "ada-mbp");
+  const prompt = "make the board readable ".repeat(100);
+  await ingest(t, token, [
+    ev("s1", "SessionStart", { cwd: "/x" }),
+    ev("s1", "UserPromptSubmit", { payload: { prompt } }),
+  ]);
+  const headers = { Cookie: cookie, "Accept-Encoding": "gzip" };
+  for (const path of ["/api/sessions/s1/events", "/api/sessions"]) {
+    const res = await t.app.request(path, { headers });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-encoding")).toBe("gzip");
+  }
+  const live = await t.app.request("/api/sessions/s1/stream", { headers });
+  expect(live.headers.get("content-type")).toBe("text/event-stream");
+  expect(live.headers.get("content-encoding")).toBeNull();
+  await live.body?.cancel();
+});

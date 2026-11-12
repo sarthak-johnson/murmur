@@ -8,7 +8,7 @@ import type {
   RequestView,
   SessionView,
 } from "@murmur/core";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { FileList } from "../files";
 import { FlowBoard } from "../flow/FlowBoard";
 import { dayLabel } from "../format";
