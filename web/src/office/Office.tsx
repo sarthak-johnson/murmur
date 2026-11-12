@@ -713,11 +713,17 @@ export function Office(props: {
     return () => cancelAnimationFrame(raf);
   }, [pw, scale, box.w, box.h, phone, selected, reqId, fit.over]);
 
-  // A click in the room on a phone opens the sheet under it: bring it into view.
+  // On a phone the panel is a sheet under the room: whatever opens it (a tap, a link, an
+  // address), it comes into view with its content, the same every way.
+  const sheetOpen = phone && !!panel;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on each new view of the sheet
   useEffect(() => {
-    if (!phone || !focusKey) return;
-    dock.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-  }, [focusKey, phone]);
+    if (!sheetOpen) return;
+    const raf = requestAnimationFrame(() =>
+      dock.current?.scrollIntoView?.({ block: "start" }),
+    );
+    return () => cancelAnimationFrame(raf);
+  }, [sheetOpen, panel, focusKey]);
 
   const seek = (ms: number, smooth = false) => {
     animate$.current = smooth;

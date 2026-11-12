@@ -1631,7 +1631,8 @@
 /* Phone: a pannable strip of the room, the panel as a sheet under it, the replay bar below. */
 .office.phone {
   position: static;
-  display: block;
+  display: flex;
+  flex-direction: column;
   min-height: 100dvh;
   overflow: visible;
   padding-bottom: 120px;
@@ -1684,11 +1685,14 @@
   flex-basis: 100%;
 }
 .phone .of-body {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
 }
 .phone .of-stage {
   display: flex;
   flex-direction: column;
+  flex: 1 0 auto;
 }
 .phone .of-ask {
   --pf: var(--o-need);
@@ -1700,6 +1704,7 @@
 }
 .office.phone .of-mapwrap {
   display: block;
+  flex: none;
   max-height: 46vh;
   margin-top: 12px;
   touch-action: pan-x pan-y;
@@ -1723,10 +1728,23 @@
 .phone .of-scope-k {
   width: auto;
   min-width: 62px;
+  align-self: flex-start;
+  padding: 10px 0 0;
 }
+/* The office has no sticky page bar: a sheet brought into view lands at the very top. */
+html:has(.office.phone) {
+  scroll-padding-top: 0;
+}
+/* With the panel closed, the strip takes the screen down to the replay bar. */
+.office.phone .of-stage:not(:has(> .of-dock)) .of-mapwrap {
+  flex: 1 1 0;
+  min-height: 240px;
+  max-height: 640px;
+}
+/* Every tab in sight: a row that does not fit wraps, rather than hiding its last tabs. */
 .phone .of-tabs {
-  mask-image: linear-gradient(90deg, #000 85%, transparent);
-  padding-right: 24px;
+  flex-wrap: wrap;
+  overflow: visible;
 }
 .phone .of-db {
   overflow: visible;
