@@ -342,7 +342,7 @@ export function createOverlay(
           w: n.slotW - 4,
           h: n.rowH + 2,
           ring: `task:${n.id}`,
-          html: `<span class="t">${esc(n.title)}</span>${n.stage ? `<span class="stage">${esc(n.stage)}</span>` : ""}`,
+          html: `<span class="t">${esc(n.title)}</span>${n.stage ? `<span class="stage${n.status === "todo" ? " left" : ""}">${esc(n.stage)}</span>` : ""}`,
           label: `Task: ${n.title}, ${n.stage ?? WORD[n.status] ?? n.status}`,
           open: `task:${n.id}`,
         });

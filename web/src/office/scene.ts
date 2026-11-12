@@ -589,7 +589,9 @@ export function deriveScene(
         stage:
           task.status === "now" && stages.length
             ? stages.join(" + ")
-            : undefined,
+            : task.status === "now" && reqOver
+              ? "left open"
+              : undefined,
       };
     }),
   }));

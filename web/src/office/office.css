@@ -626,6 +626,10 @@
   font: 600 13px / 18px var(--o-ui);
   color: #1d4f86;
 }
+/* Left open: the request ended with it unfinished. */
+.of-overlay .hit.note .stage.left {
+  color: rgba(28, 33, 40, 0.6);
+}
 .of-overlay .hit.note.done .t {
   color: rgba(28, 33, 40, 0.72);
 }
