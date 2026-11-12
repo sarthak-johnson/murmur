@@ -20482,6 +20482,8 @@ function needsYou(events) {
       if (main2) {
         ask2 = null;
         said2 = "";
+        if (e.hook === "PreToolUse" && p.tool_name === "AskUserQuestion")
+          ask2 = { reason: "question", text: questionOf(p), since: e.ts };
       }
     } else if (reason && out?.reason !== reason && !(ask2 && reason === "idle")) {
       const tool = str2(p.tool_name);
@@ -20490,6 +20492,11 @@ function needsYou(events) {
     }
   }
   return out ?? ask2;
+}
+function questionOf(p) {
+  const qs = obj2(p.tool_input).questions;
+  const q = Array.isArray(qs) ? str2(obj2(qs[0]).question)?.trim() : void 0;
+  return q || "Claude asked you a question";
 }
 var claudeWords = (message) => message.replace(
   /^[a-z][\w-]*(?= needs your (input|attention|permission)\b)/,
@@ -21297,9 +21304,33 @@ var tag = (name, s) => {
 };
 var VERDICT = /^Status:\s*([A-Z][A-Z_]+)(?![A-Za-z])/;
 var INTERIM = /waiting on its own background work|may be interim/i;
-function verdictOf(text3) {
+function statusOf(text3) {
   const first = text3.trim().split("\n")[0]?.replace(/\*/g, "") ?? "";
   return VERDICT.exec(first.trim())?.[1];
+}
+var KNOWN = {
+  DONE: { label: "Done", tone: "done" },
+  DONE_WITH_CONCERNS: { label: "Done, with concerns", tone: "warn" },
+  BLOCKED: { label: "Blocked", tone: "bad" },
+  NEEDS_CONTEXT: { label: "Needs context", tone: "warn" }
+};
+var SAID_VERDICT = /\bverdict\b[*_]*\s*(?:is\b|:)(?![\s*_]*(?:written|saved|stored|recorded|in|at|below|above)\b)\s*[*_]*\s*([^*_.\n:;(`]{2,40})/i;
+function verdictOf(report) {
+  if (!report) return void 0;
+  const v = report.verdict?.trim() || SAID_VERDICT.exec(report.text.slice(0, 600))?.[1]?.replace(/^[^\p{L}\p{N}]+/u, "").trim();
+  if (v) {
+    const known = KNOWN[v.toUpperCase()];
+    if (known) return known;
+    const words = v.replace(/[_-]+/g, " ").toLowerCase();
+    const label = words.charAt(0).toUpperCase() + words.slice(1);
+    const tone = /fix(?:es)? first|needs? fix|\bnot (?:approved|pass(?:ed)?|ok|ready)\b|n['’]t pass|reject|fail|changes? (?:needed|requested|required)/.test(
+      words
+    ) ? "bad" : /\bno (?:blocking )?(?:issues?|problems?)\b/.test(words) || /approv|pass|\bok\b|done|complete|ready|compliant/.test(words) ? "done" : /block|issue|change|problem|broke/.test(words) ? "bad" : /concern|need|partial|warn/.test(words) ? "warn" : "plain";
+    return { label, tone };
+  }
+  if (report.status === "failed") return { label: "Failed", tone: "bad" };
+  if (report.status === "killed") return { label: "Stopped", tone: "bad" };
+  return void 0;
 }
 function parseNotification(prompt, ts) {
   if (!/^\s*<task-notification>/.test(prompt)) return void 0;
@@ -21309,7 +21340,7 @@ function parseNotification(prompt, ts) {
   const close = prompt.lastIndexOf("</result>");
   const text3 = open2 >= 0 && close > open2 ? unentity(prompt.slice(open2 + "<result>".length, close).trim()) : "";
   const summary = tag("summary", prompt) ?? "";
-  const verdict = verdictOf(text3);
+  const verdict = statusOf(text3);
   return {
     use,
     report: {
@@ -21357,7 +21388,7 @@ function reportOf(e, started) {
   const agentId = str5(res.agentId) || started.get(str5(e.payload.tool_use_id)) || "";
   const text3 = foregroundText(res);
   if (!agentId || !text3) return;
-  const verdict = verdictOf(text3);
+  const verdict = statusOf(text3);
   return {
     agentId,
     report: {
@@ -21736,6 +21767,7 @@ function applyShape(req, events, trace, ctx) {
   if (beyond) req.beyond = beyond;
   placeMessages(req, live2, events, beyond);
   req.state = stateOf(req, events, live2, ctx);
+  underWay(req);
   if (req.state === "waiting") {
     const asked = waitingOf(req, events);
     if (asked.length) req.waiting = asked;
@@ -21750,6 +21782,18 @@ function applyShape(req, events, trace, ctx) {
       f.role = groupOf(f.path);
       f.roleInferred = true;
     }
+}
+function underWay(req) {
+  if (!req.planInferred || req.state !== "running" && req.state !== "waiting")
+    return;
+  const folder = (id2) => !!id2?.startsWith("dir:");
+  for (const p of req.parts)
+    if (folder(p.id) && p.status === "done") p.status = "now";
+  for (const ph of req.phases) {
+    for (const t of ph.tasks)
+      if (folder(t.part) && t.status === "done") t.status = "now";
+    if (ph.tasks.some((t) => t.status === "now")) ph.status = "now";
+  }
 }
 function runTied(req, ctx) {
   const running = new Set(req.agents.filter(ctx.live).map((a) => a.id));
@@ -22006,7 +22050,7 @@ function aimOf(brief) {
   const rest = colon < 0 ? "" : first.slice(colon + 2).trim();
   return rest ? cutWords(rest.charAt(0).toUpperCase() + rest.slice(1), AIM_MAX) : void 0;
 }
-var SENT_BACK = /\b(?:needs?[ _-]?fix(?:es)?|fix(?:es)?[ _-]first|changes[ _-]requested|not approved|rejected|(?<!\bno )blocking issues?|(?:does not|doesn't|did not) pass (?:the |its |this )?(?:review|re-?review|tests?|checks?|spec))\b/i;
+var SENT_BACK = /\b(?:needs?[ _-]?fix(?:es)?|fix(?:es)?[ _-]first|changes[ _-](?:requested|needed|required)|not approved|rejected|(?<!\bno )blocking issues?|(?:does not|doesn't|did not|didn't) pass (?:the |its |this )?(?:review|re-?review|tests?|checks?|spec)|(?:tests?|checks?|builds?|specs?) (?:do not|don't|does not|doesn't|did not|didn't) pass)\b/i;
 var NUMBER = [
   "no",
   "one",
@@ -22097,13 +22141,18 @@ function fillPart(req, part, at, starts, live2, ctx) {
     part.span = underWay2 ? { start } : { start, end: times.at(-1) };
   }
 }
+function saysSentBack(r) {
+  if (!r || /failed|killed/.test(r.status)) return false;
+  const v = verdictOf(r);
+  return v ? v.tone === "bad" : SENT_BACK.test(r.text.slice(0, 300));
+}
 function helperStep(a, after, starts, ctx) {
   const running = ctx.live(a);
   const r = a.report;
   const failed = !!r && /failed|killed/.test(r.status);
   const backed = after.some(
     (b) => b.subject === a.subject && (b.round ?? 0) > (a.round ?? 0) && (b.role === "fix" || b.role === "recheck")
-  ) || SENT_BACK.test(`${r?.verdict ?? ""} ${r?.text.slice(0, 300) ?? ""}`);
+  ) || saysSentBack(r);
   const review = a.role === "review" || a.role === "recheck";
   const text3 = review ? running ? a.role === "review" ? "Reviewing" : "Re-reviewing" : backed ? "Sent back" : r && !failed ? "Passed" : a.role === "review" ? "Reviewed" : "Re-reviewed" : a.role === "build" ? running ? "Building" : "Built" : a.role === "fix" ? running ? "Fixing" : "Fixed" : a.role === "plan" ? "Planned" : a.role === "research" ? "Researched" : a.description || "A helper";
   const startEvent = starts.get(a.id);
@@ -22152,17 +22201,6 @@ function groupOf(path4) {
 }
 
 // ../packages/core/src/view/reduce.ts
-function underWay(req) {
-  if (!req.planInferred || req.state !== "running") return;
-  const folder = (id2) => !!id2?.startsWith("dir:");
-  for (const p of req.parts)
-    if (folder(p.id) && p.status === "done") p.status = "now";
-  for (const ph of req.phases) {
-    for (const t of ph.tasks)
-      if (folder(t.part) && t.status === "done") t.status = "now";
-    if (ph.tasks.some((t) => t.status === "now")) ph.status = "now";
-  }
-}
 function reduce(events) {
   const every = sortEvents(events);
   const titles = titlesOf(every.filter(isTitles));
@@ -22203,7 +22241,6 @@ function reduce(events) {
       live: live2,
       title: said2[i]
     });
-    underWay(req);
   });
   requests.forEach((req, i) => {
     const t = said2[i];
