@@ -177,9 +177,9 @@ code {
  * border. Tune one with its variables, never by redrawing it:
  *   --pf   the line          --pfb  the fill
  *   --phi  the bevel's light  --plo  the bevel's shade (swap them for a sunk well)
- * Use the classes: .px (a frame), .px-sunk (a well: code, a diff, a terminal),
- * .px-btn (a button), .px-tag (a short state word), .px-kick (a section's caption),
- * .px-tabs (a row of tabs). Existing classes join them by name in the lists below.
+ * A thing joins by its class name in the lists below: the frames (.px for a new one),
+ * the wells (code, a diff, a terminal), the buttons, the tags (a short state word), the
+ * tab rows.
  */
 :where(
   .px,
@@ -227,21 +227,15 @@ code {
   .ev-json,
   .term,
   .assumptions ul,
-  .px-sunk,
   .panel,
-  .delete-note,
-  .menu-pop,
-  .now-pop,
   .copy-row,
   input,
   select,
   textarea,
-  .px-btn,
   button:not([class]),
   .primary,
   .small-btn,
   .link-button,
-  .icon-btn,
   .of-details,
   .of-close,
   .of-live,
@@ -270,7 +264,6 @@ code {
 }
 /* A well: the bevel turned inside out, the fill below the page. */
 :where(
-  .px-sunk,
   .code,
   .md .md-code,
   .diff-scroll,
@@ -287,7 +280,7 @@ code {
   --plo: var(--px-hi);
 }
 /* A floating frame (a menu, a popover) stands off the page on a hard pixel shadow. */
-:where(.menu-pop, .now-pop, .delete-note, .of-pop, .of-tick-tip) {
+:where(.of-pop, .of-tick-tip) {
   --pf: var(--s8);
   --pfb: var(--s3);
   box-shadow: 4px 4px 0 var(--px-drop);
@@ -299,7 +292,6 @@ code {
   cursor: pointer;
 }
 :where(
-  .px-btn,
   .fb-edge,
   .fb-ix,
   .fd-open,
@@ -308,7 +300,6 @@ code {
   .primary,
   .small-btn,
   .link-button,
-  .icon-btn,
   .of-details,
   .of-close,
   .of-live,
@@ -334,7 +325,6 @@ code {
   cursor: pointer;
 }
 :where(
-  .px-btn,
   .fb-edge,
   .fb-ix,
   .fd-open,
@@ -343,7 +333,6 @@ code {
   .primary,
   .small-btn,
   .link-button,
-  .icon-btn,
   .of-details,
   .of-close,
   .of-live,
@@ -359,7 +348,6 @@ code {
   text-decoration: none;
 }
 :where(
-  .px-btn,
   .fb-edge,
   .fb-ix,
   .fd-open,
@@ -368,7 +356,6 @@ code {
   .primary,
   .small-btn,
   .link-button,
-  .icon-btn,
   .of-details,
   .of-close,
   .of-live,
@@ -382,19 +369,19 @@ code {
   box-shadow: 1px 1px 0 var(--px-drop);
 }
 /* The one that matters on a screen: lit, its label dark on the light. */
-:where(.primary, .px-btn.primary, .fd-open) {
+:where(.primary, .fd-open) {
   --pf: var(--t2);
   --pfb: var(--t1);
   --phi: rgb(255 255 255 / 50%);
   --plo: rgb(0 0 0 / 18%);
   color: var(--s1);
 }
-:where(.primary, .px-btn.primary, .fd-open):hover {
+:where(.primary, .fd-open):hover {
   --pf: var(--t1);
   --pfb: #fff8ee;
   color: var(--s1);
 }
-:where(.small-btn, .px-btn.small) {
+:where(.small-btn) {
   min-height: 24px;
   padding: 2px 8px;
 }
@@ -433,14 +420,11 @@ textarea:focus-visible {
 }
 /* A short word for a state or a kind: Silkscreen in a 2 px frame of its tone, no bevel. */
 :where(
-  .px-tag,
   .lobby-state,
   .fc-rel,
   .pill,
   .label-chip,
   .badge,
-  .need-chip,
-  .state-pill,
   .of-tag,
   .of-pill,
   .of-chip,
@@ -466,42 +450,9 @@ textarea:focus-visible {
   font: 400 12px / 16px var(--pix);
   white-space: nowrap;
 }
-/* A section's caption: Silkscreen, short, never a sentence. */
-:where(.px-kick) {
-  margin: 0 0 8px;
-  color: var(--t3);
-  font: 400 12px / 16px var(--pix);
-  letter-spacing: 0;
-  text-transform: none;
-}
-/* A status mark: the room's sticky for that state, 12 px, one pixel to a CSS pixel. */
-:where(.px-mark) {
-  display: inline-block;
-  flex: none;
-  width: 12px;
-  height: 12px;
-  background: var(--mark-todo) center / 12px 12px no-repeat;
-}
-.px-mark.done {
-  background-image: var(--mark-done);
-}
-.px-mark.now,
-.px-mark.running {
-  background-image: var(--mark-now);
-}
-.px-mark.blocked,
-.px-mark.waiting {
-  background-image: var(--mark-blocked);
-}
-.px-mark.failed {
-  background-image: var(--mark-failed);
-}
-.px-mark.open,
-.px-mark.left-open {
-  background-image: var(--mark-open);
-}
+
 /* Tabs: Silkscreen names on a 2 px rule; the one shown is a raised tab joined to the page. */
-:where(.px-tabs, .tabs, .of-tabs) {
+:where(.tabs, .of-tabs) {
   display: flex;
   gap: 2px;
   margin: 0;
@@ -511,7 +462,7 @@ textarea:focus-visible {
   overflow-x: auto;
   scrollbar-width: none;
 }
-:where(.px-tabs, .tabs, .of-tabs) :where(a, button) {
+:where(.tabs, .of-tabs) :where(a, button) {
   --pf: transparent;
   --pfb: transparent;
   display: block;
@@ -530,17 +481,16 @@ textarea:focus-visible {
   text-decoration: none;
   box-shadow: none;
 }
-:where(.px-tabs, .tabs, .of-tabs) :where(a, button):hover {
+:where(.tabs, .of-tabs) :where(a, button):hover {
   color: var(--t1);
   text-decoration: none;
 }
-:where(.px-tabs, .tabs, .of-tabs)
-  :where([aria-current="page"], [aria-selected="true"]) {
+:where(.tabs, .of-tabs) :where([aria-current="page"], [aria-selected="true"]) {
   --pf: var(--s7);
   --pfb: var(--s1);
   color: var(--t1);
 }
-:where(.px-tabs, .tabs, .of-tabs) :where(a, button):focus-visible {
+:where(.tabs, .of-tabs) :where(a, button):focus-visible {
   outline-offset: -4px;
 }
 
@@ -766,7 +716,6 @@ label {
   color: var(--t3);
   font: 400 12px / 16px var(--pix);
 }
-.lbl-note,
 .lbl-count {
   margin-left: 8px;
   color: var(--faint);
@@ -781,21 +730,7 @@ label {
   text-transform: none;
   margin-left: 8px;
 }
-.delete-session {
-  position: relative;
-  flex: none;
-  font-size: 12px;
-}
-.delete-note {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 10;
-  width: max-content;
-  max-width: min(320px, 80vw);
-  padding: 6px 10px;
-  color: var(--muted);
-}
+
 .header-note {
   font-size: 12px;
 }
@@ -1082,14 +1017,6 @@ button.link.more {
   font-family: var(--font-ui);
 }
 
-.pd-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.pd-list li {
-  padding: 4px 0;
-}
 .pd-files {
   list-style: none;
   margin: 0;
@@ -1442,90 +1369,7 @@ time {
     opacity: 0.45;
   }
 }
-.nowline {
-  position: relative;
-  display: flex;
-  flex: 1 1 0;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  min-width: 0;
-  max-width: 440px;
-  margin-left: auto;
-  font-size: 15px;
-  line-height: 22px;
-  container-type: inline-size;
-}
-/* On a phone the chip and the pill keep to one row. */
-@media (max-width: 480px) {
-  .pill-more {
-    display: none;
-  }
-}
-/* A helper's action names its owner too, and a wide bar has the room. */
-@media (min-width: 1800px) {
-  .nowline {
-    max-width: 720px;
-  }
-}
-/* Too narrow to say anything whole: it steps aside rather than show a stub. */
-@container (max-width: 140px) {
-  .nowline > * {
-    visibility: hidden;
-  }
-}
 
-.nowline .k {
-  flex: none;
-  color: var(--t3);
-  font: 400 12px / 16px var(--pix);
-}
-.nowline .txt {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--t1);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.now-more {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  margin-left: -4px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--t3);
-}
-.now-more:hover,
-.now-more[aria-expanded="true"] {
-  background: var(--s5);
-  color: var(--t1);
-}
-.now-more .chev {
-  width: 14px;
-  height: 14px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  shape-rendering: crispEdges;
-  transition: transform 120ms steps(2, end);
-}
-.now-more[aria-expanded="true"] .chev {
-  transform: rotate(180deg);
-}
-.now-pop {
-  position: absolute;
-  top: calc(100% + 16px);
-  right: 0;
-  z-index: 30;
-  width: min(640px, calc(100vw - 32px));
-  max-height: 60vh;
-  overflow: auto;
-  padding: 16px 18px;
-}
 .now-why {
   margin: 0 0 12px;
   color: var(--t2);
@@ -1535,170 +1379,17 @@ time {
   margin: 0;
 }
 
-/* The needs-you chip and the state pill: tags at the top bar's height, mark first. */
-.need-chip,
-.state-pill {
-  height: 32px;
-  padding: 0 10px 0 8px;
-  gap: 8px;
-  text-decoration: none;
-}
-.need-chip {
-  --tone: var(--need);
-}
-.need-chip:hover,
-.need-chip:focus-visible {
-  --pfb: var(--need-hover);
-  color: var(--need);
-  text-decoration: none;
-}
-.need-chip .num {
-  color: var(--need-soft);
-  font: 13px var(--font-code);
-}
-.state-pill.running {
-  --tone: var(--now);
-}
-.state-pill.done {
-  --tone: var(--done);
-}
-.state-pill.waiting {
-  --tone: var(--need);
-}
-.state-pill.open {
-  --tone: var(--t2);
-}
-.state-pill.failed {
-  --tone: var(--bad);
-}
 .menu {
   position: relative;
   flex: none;
 }
-.icon-btn {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  color: var(--t2);
-}
-.icon-btn[aria-expanded="true"] {
-  --pfb: var(--s5);
-  color: var(--t1);
-}
-.icon-btn svg {
-  width: 16px;
-  height: 16px;
-  fill: currentColor;
-}
-.menu-pop {
-  position: absolute;
-  top: calc(100% + 12px);
-  right: 0;
-  z-index: 30;
-  width: 280px;
-  max-width: calc(100vw - 32px);
-  padding: 6px;
-}
-.menu-pop nav {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 6px;
-  padding-bottom: 6px;
-  box-shadow: inset 0 -2px 0 var(--s6);
-}
-.menu-who {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  color: var(--t3);
-  font-size: 13px;
-}
-.menu-who img {
-  width: 20px;
-  height: 20px;
-}
-.menu-item {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: 40px;
-  padding: 0 10px;
-  border: 0;
-  background: none;
-  color: var(--t2);
-  font: 400 12px / 16px var(--pix);
-  text-align: left;
-  text-decoration: none;
-}
-.menu-item:hover,
-.menu-item:focus-visible {
-  background: var(--s5);
-  box-shadow: inset 2px 0 0 var(--t2);
-  color: var(--t1);
-  text-decoration: none;
-}
-.menu-item.danger,
-.menu-item.danger:hover {
-  color: var(--bad-text);
-}
-.menu-item.armed {
-  background: var(--bad-tint);
-}
-.menu-note {
-  margin: 4px 10px 8px;
-  color: var(--t3);
-  font-size: 13px;
-  line-height: 18px;
-}
-.menu-note.error {
-  color: var(--bad-text);
-}
 
-::view-transition-old(root) {
-  animation: 120ms ease-out both vt-out;
-}
-/* The new page rises once the old has mostly gone, landing with the title at 260 ms. */
-::view-transition-new(root) {
-  animation: 200ms cubic-bezier(0.2, 0.7, 0.2, 1) 60ms both vt-rise;
-}
-::view-transition-group(page-title) {
-  animation-duration: 260ms;
-  animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-@keyframes vt-out {
-  to {
-    opacity: 0;
-  }
-}
-@keyframes vt-in {
-  from {
-    opacity: 0;
-  }
-}
-@keyframes vt-rise {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-}
 @media (prefers-reduced-motion: reduce) {
   .mk.pulse {
     animation: none;
     box-shadow:
       0 0 0 2px var(--s1),
       0 0 0 4px var(--now);
-  }
-  ::view-transition-group(page-title) {
-    animation: none;
-  }
-  ::view-transition-old(root),
-  ::view-transition-old(page-title) {
-    animation: 150ms ease both vt-out;
-  }
-  ::view-transition-new(root),
-  ::view-transition-new(page-title) {
-    animation: 150ms ease both vt-in;
   }
 }
 
@@ -1858,23 +1549,6 @@ a.helper:focus-visible {
   margin-right: 8px;
   color: var(--t3);
   font-size: 13px;
-}
-.loose-files {
-  list-style: none;
-  max-width: 760px;
-  margin: 10px 0 0;
-  padding: 0;
-}
-.loose-files li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 10px;
-  padding: 5px 0;
-  font-size: 13px;
-}
-.loose-files li + li {
-  box-shadow: inset 0 2px 0 var(--s5);
 }
 
 .inferred {
@@ -2872,34 +2546,7 @@ a.helper:focus-visible {
 .page .sk {
   min-height: 160px;
 }
-.sk-title {
-  width: 70%;
-  height: 38px;
-}
-.sk-facts {
-  width: 40%;
-  height: 16px;
-  margin-top: 12px;
-}
-.sk-brief {
-  height: 200px;
-  margin-top: 24px;
-}
-.sk-line {
-  width: 80%;
-  height: 20px;
-  margin-top: 22px;
-}
-.sk-ph {
-  height: 120px;
-  margin-bottom: 16px;
-}
 
-/* ── More specific rules, kept after the ones they refine ─────────────── */
-.loose-files li > .pd-path {
-  flex: 0 1 auto;
-  min-width: 0;
-}
 .md li > ul,
 .md li > ol {
   margin: 0.15em 0 0;
@@ -2942,43 +2589,11 @@ a.helper:focus-visible {
     scroll-padding-top: 16px;
   }
 
-  .need-chip {
-    order: 3;
-    height: 40px;
-  }
-  .state-pill {
-    order: 4;
-    height: 36px;
-  }
   .menu {
     order: 5;
     margin-left: auto;
   }
-  .icon-btn {
-    width: 40px;
-    height: 40px;
-  }
-  .nowline {
-    order: 6;
-    flex: 1 0 100%;
-    justify-content: flex-start;
-    max-width: none;
-    min-height: 44px;
-    margin: 0 -16px;
-    padding: 0 16px;
-    box-shadow: inset 0 2px 0 var(--s6);
-  }
-  .now-more {
-    width: 40px;
-    height: 40px;
-  }
 
-  .now-pop {
-    left: 16px;
-    right: 16px;
-    width: auto;
-    top: 100%;
-  }
   .main {
     padding: 24px 16px 64px;
   }
@@ -3489,9 +3104,6 @@ code.nw {
   }
 }
 
-.req-story {
-  min-width: 0;
-}
 @media (min-width: 1200px) {
   .side {
     position: sticky;
@@ -3728,8 +3340,7 @@ code.nw {
   text-transform: none;
 }
 .hl,
-.ck,
-.fl-list {
+.ck {
   display: flex;
   flex-direction: column;
   margin: 0;
@@ -3770,17 +3381,7 @@ code.nw {
   font-size: 13px;
   line-height: 18px;
 }
-.hl-do {
-  display: -webkit-box;
-  margin-top: 2px;
-  overflow: hidden;
-  color: var(--t2);
-  font-size: 13px;
-  line-height: 18px;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
+
 .hl-b {
   position: relative;
   height: 4px;
@@ -3803,51 +3404,7 @@ code.nw {
 .hl-b i.failed {
   background: var(--bad-line);
 }
-.side-more {
-  display: inline-block;
-  margin-top: 12px;
-  color: var(--t3);
-  font-size: 13px;
-  text-decoration: underline;
-  text-decoration-color: var(--s8);
-  text-underline-offset: 3px;
-}
-.side-more:hover,
-.side-more:focus-visible {
-  color: var(--t1);
-}
-.fl-grp + .fl-grp {
-  margin-top: 12px;
-}
-.fl-g {
-  margin-bottom: 6px;
-  color: var(--t2);
-  font-size: 14px;
-  line-height: 20px;
-}
-.fl-list {
-  gap: 6px;
-}
-.fl-f {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  color: var(--t3);
-  font: 400 13px / 18px var(--font-code);
-}
-.fl-f .p {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  /* Cut from the left, so the file name stays in view. */
-  direction: rtl;
-  text-align: left;
-}
-.fl-f .d {
-  margin-left: auto;
-  white-space: nowrap;
-}
+
 .ck {
   gap: 8px;
   color: var(--t2);
@@ -4759,58 +4316,6 @@ code.nw {
   .jr-card:hover,
   .jr-card:focus-visible {
     transform: none;
-  }
-}
-
-/* The title every page morphs through (see "Moving between pages" above). */
-.pd .pd-title,
-.jr-title,
-.vt-morph .vt-src {
-  view-transition-name: page-title;
-}
-.vt-morph .pd .pd-title,
-.vt-morph .jr-title {
-  view-transition-name: none;
-}
-/* A wide track's station is a box of no size (its mark and caption sit on the track), so
-   its dot is what the title grows out of and shrinks back into. A dot stretched to the
-   title's size is a blur, so with `vt-dot` (router.ts) both pictures keep their own size
-   while the title moves between the station and the header, the dot fading as it goes. */
-@media (min-width: 900px) {
-  .vt-morph .trk-st .vt-src {
-    view-transition-name: none;
-  }
-  .vt-morph .trk-st .vt-src .mk {
-    view-transition-name: page-title;
-  }
-  /* A stacked track's station is a row with its name, like a rail row. */
-  .vt-morph :where(.trk.stack) .trk-st .vt-src {
-    view-transition-name: page-title;
-  }
-  .vt-morph :where(.trk.stack) .trk-st .vt-src .mk {
-    view-transition-name: none;
-  }
-  .vt-dot::view-transition-old(page-title),
-  .vt-dot::view-transition-new(page-title) {
-    inline-size: auto;
-    block-size: auto;
-  }
-}
-
-/* Session flow */
-
-/*
- * Storylines run side by side: on a wide screen the board runs wider than the page, while
- * the head, tabs and note keep the journey's place, so switching tabs moves nothing.
- */
-@media (min-width: 1600px) {
-  .main.sf-main:has(.sf-board:not(.one)) {
-    max-width: 2400px;
-  }
-  .main.sf-main > :not(.sf),
-  .main.sf-main .sf-note {
-    max-width: calc(var(--content) - 80px);
-    margin-inline: auto;
   }
 }
 

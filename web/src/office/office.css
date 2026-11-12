@@ -36,7 +36,9 @@
   background: var(--o-bg);
   color: var(--o-t1);
   font: 15px / 1.5 var(--o-ui);
-  overflow: hidden;
+  /* Clip, not hidden: a hidden box still scrolls when something inside is brought into view,
+     which slid the whole office up under its own top edge. */
+  overflow: clip;
 }
 
 /* Top bar */
@@ -73,10 +75,7 @@
   padding: 6px 4px;
   flex: none;
 }
-.of-brand-sub {
-  color: var(--o-t3);
-  font-weight: 400;
-}
+
 .of-brand-mark {
   width: 14px;
   height: 14px;
@@ -312,10 +311,7 @@
 .of-overlay .phase-h:hover {
   text-decoration: underline;
 }
-.of-overlay .focus-col {
-  border: 3px solid var(--o-now);
-  pointer-events: none;
-}
+
 .of-overlay .more {
   font: 600 13px var(--o-ui);
   color: var(--o-ink);
@@ -736,7 +732,6 @@
   color: var(--t2);
   overflow-wrap: anywhere;
 }
-.of-files,
 .of-runs {
   list-style: none;
   margin: 0;
@@ -769,9 +764,6 @@
   .of-db .rb-cell + .rb-cell {
     box-shadow: inset 0 2px 0 var(--s6);
   }
-}
-.of-db .req-split {
-  display: block;
 }
 
 /* Replay bar */
