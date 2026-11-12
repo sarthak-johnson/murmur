@@ -115,13 +115,22 @@ function Boom(): never {
   throw new Error("boom");
 }
 
+// Hostile input that blows up takes seconds; the budget is a few times a normal render,
+// measured after one warm-up render so a cold runner's first-render cost does not count.
+const BUDGET_MS = 250;
+const warm = () => {
+  render(<Markdown text={"- a\n  - b\n> c"} />);
+  cleanup();
+};
+
 describe("Markdown, hostile input", () => {
   it("10,000 nested quotes render fast, the rest as a plain paragraph", () => {
+    warm();
     const t0 = performance.now();
     const { container } = render(
       <Markdown text={`${">".repeat(10_000)} deep`} />,
     );
-    expect(performance.now() - t0).toBeLessThan(100);
+    expect(performance.now() - t0).toBeLessThan(BUDGET_MS);
     expect(container.querySelectorAll("blockquote").length).toBeLessThanOrEqual(
       20,
     );
@@ -133,9 +142,10 @@ describe("Markdown, hostile input", () => {
       { length: 1000 },
       (_, i) => `${"  ".repeat(i)}- level ${i}`,
     ).join("\n");
+    warm();
     const t0 = performance.now();
     const { container } = render(<Markdown text={text} />);
-    expect(performance.now() - t0).toBeLessThan(100);
+    expect(performance.now() - t0).toBeLessThan(BUDGET_MS);
     expect(container.querySelectorAll("ul").length).toBeLessThanOrEqual(20);
     expect(container.textContent).toContain("level 999");
   });
