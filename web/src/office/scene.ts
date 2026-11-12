@@ -571,7 +571,7 @@ export function deriveScene(
   );
   const columns: Column[] = req.phases.map((p) => ({
     id: p.id,
-    title: phaseName(p, !reqOver),
+    title: phaseName(p, reqState === "running"),
     status: p.status,
     notes: p.tasks.map((task) => {
       const agents = task.agents ?? [];

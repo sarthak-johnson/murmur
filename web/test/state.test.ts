@@ -284,6 +284,13 @@ describe("one task, one title, one number, one phase name", () => {
     expect(
       taskTitle({ id: "dir:server/alphatake", title: "server/alphatake" }),
     ).toBe("Changes in alphatake");
+    // A folder named like a file reads as words too.
+    expect(
+      taskTitle({
+        id: "dir:tests/alphatake/guided.cassette.test.js.cassettes",
+        title: "tests/alphatake/guided.cassette.test.js.cassettes",
+      }),
+    ).toBe("Changes in guided cassettes");
     expect(taskTitle({ id: "x", title: "web/src/state.ts" })).toBe("state.ts");
     expect(taskTitle({ id: "x", title: "Task 3: Reminder list" })).toBe(
       "Reminder list",

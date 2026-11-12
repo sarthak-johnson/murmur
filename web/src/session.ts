@@ -437,6 +437,24 @@ export function shortTitle(title: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : title;
 }
 
+// Pieces of a name that say how it is stored, not what it is.
+const CODE_WORD =
+  /^(?:[cm]?[jt]sx?|py|rb|go|rs|json|ya?ml|md|css|html?|test|spec)$/i;
+
+/**
+ * A folder named like a file ("guided.cassette.test.js.cassettes") as words: its pieces
+ * without the code ones, a piece its plural repeats dropped ("guided cassettes").
+ */
+// ponytail: a word heuristic for folder names with dots; a plain folder name stays as it is.
+function folderWords(name: string): string {
+  if (!name.includes(".")) return name;
+  const words = name.split(/[._-]+/).filter((w) => w && !CODE_WORD.test(w));
+  const kept = words.filter(
+    (w, i) => !words.some((o, j) => j !== i && o === `${w}s`),
+  );
+  return kept.join(" ") || name;
+}
+
 /**
  * A task's or a part's one title, for the board, the lists and its page: its name without
  * its plan number. A folder Murmur grouped the work by ("server/alphatake", id "dir:...")
@@ -447,7 +465,7 @@ export function taskTitle(t: { id: string; title: string }): string {
   const folder = t.id.startsWith("dir:")
     ? title.split("/").filter(Boolean).at(-1)
     : undefined;
-  if (folder) return `Changes in ${folder}`;
+  if (folder) return `Changes in ${folderWords(folder)}`;
   if (/^[\w.@~-]*\/[\w./@~-]+$/.test(title))
     return title.split("/").filter(Boolean).at(-1) ?? title;
   return shortTitle(title);
