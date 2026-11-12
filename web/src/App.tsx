@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { api, type Me, UNAUTHORIZED } from "./api";
-import { OfficePage } from "./office/Office";
+import { OfficePage, OfficeShell } from "./office/Office";
 import { Device } from "./pages/Device";
 import { Login } from "./pages/Login";
-import { LiveSkeleton, SessionPage } from "./pages/Session";
 import { Sessions } from "./pages/Sessions";
 import { Settings } from "./pages/Settings";
-import { navigate, useRoute } from "./router";
+import { follow, navigate, useRoute } from "./router";
+import { forgetSessions } from "./useSession";
 
 const PENDING = "murmur:pendingDevice";
 
@@ -21,14 +21,10 @@ function store(op: () => unknown): string | null {
 
 function Header(props: { me: Me; onSignOut: () => void }) {
   const { me, onSignOut } = props;
-  const go = (path: string) => (e: React.MouseEvent) => {
-    e.preventDefault();
-    navigate(path);
-  };
   return (
     <header className="header">
       <div className="header-in">
-        <a className="wordmark" href="/" onClick={go("/")}>
+        <a className="wordmark" href="/" onClick={follow("/")}>
           Murmur
         </a>
         <span className="user">
@@ -36,7 +32,7 @@ function Header(props: { me: Me; onSignOut: () => void }) {
           {me.login}
         </span>
         <nav>
-          <a href="/settings" onClick={go("/settings")}>
+          <a href="/settings" onClick={follow("/settings")}>
             Settings
           </a>
           <button type="button" className="link" onClick={onSignOut}>
@@ -80,7 +76,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const out = () => setMe(null);
+    const out = () => {
+      forgetSessions();
+      setMe(null);
+    };
     window.addEventListener(UNAUTHORIZED, out);
     return () => window.removeEventListener(UNAUTHORIZED, out);
   }, []);
@@ -99,16 +98,11 @@ export function App() {
     }
   }, [me, route]);
 
-  const wide =
-    route.name === "session" ||
-    route.name === "request" ||
-    route.name === "part" ||
-    route.name === "office";
   const note = unreachable ? "Could not reach Murmur. Retrying…" : undefined;
   if (me === undefined)
-    // The live frame brings its own bar, so nothing moves when the page loads.
-    return wide ? (
-      <LiveSkeleton {...(note ? { note } : {})} />
+    // A session's address shows the office's own shell, so nothing moves when it loads.
+    return route.name === "session" ? (
+      <OfficeShell {...(note ? { note } : {})} />
     ) : (
       <>
         <header className="header">
@@ -130,6 +124,7 @@ export function App() {
 
   async function signOut() {
     await api.logout().catch(() => {});
+    forgetSessions();
     setMe(null);
     navigate("/");
   }
@@ -152,27 +147,14 @@ export function App() {
         </main>
       );
       break;
-    case "office":
-      // The office is a room of its own: its own bars, the whole window.
+    case "session":
+      // Every session address is the office: its own bars, the whole window.
       return (
         <OfficePage
           key={route.sessionId}
           sessionId={route.sessionId}
-          {...(route.requestId ? { requestId: route.requestId } : {})}
-        />
-      );
-    case "session":
-    case "request":
-    case "part":
-      // The live frame has its own bar; the account links sit in its session menu.
-      return (
-        <SessionPage
-          key={route.sessionId}
-          sessionId={route.sessionId}
-          requestId={route.name === "session" ? undefined : route.requestId}
-          partId={route.name === "part" ? route.partId : undefined}
-          tab={route.name === "request" ? route.tab : undefined}
-          sessionTab={route.name === "session" ? route.tab : undefined}
+          requestId={route.requestId}
+          open={route.open}
           me={me}
           onSignOut={signOut}
         />

@@ -300,8 +300,9 @@ it("captures the live page and the first part's drill-down", async () => {
       await ctx.close();
     };
     const live = `/s/${view.sessionId}`;
-    await shoot(live, ".live-title", "live-1440.png");
-    await shoot(live, ".live-title", "live-375.png", {
+    // The office, its panel on the newest request's story.
+    await shoot(`${live}?open=story`, ".live-title", "live-1440.png");
+    await shoot(`${live}?open=story`, ".live-title", "live-375.png", {
       width: 375,
       height: 812,
     });

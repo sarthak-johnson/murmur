@@ -11,8 +11,13 @@ import type {
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Live as Page } from "../src/pages/Session";
+import { Live as Page, panel, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
+import { RequestBrief } from "../src/live/Brief";
 import { clock } from "../src/story";
+import { clockAt } from "./clock";
 
 /** A request's own page: the newest request unless the test names one. */
 function Live(p: React.ComponentProps<typeof Page>) {
@@ -21,6 +26,8 @@ function Live(p: React.ComponentProps<typeof Page>) {
 
 const at = (min: number) =>
   new Date(Date.UTC(2026, 10, 9, 15, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(at(20));
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -252,6 +259,30 @@ describe("the brief", () => {
     );
   });
 
+  it("paused, its last word is how it stood then, not what is happening now", () => {
+    const req = running();
+    render(
+      <RequestBrief
+        request={req}
+        done={false}
+        end={req.startedAt}
+        waitEnd={req.startedAt}
+        waiting={null}
+        lastLooked={null}
+        paused
+      />,
+    );
+    const cell = region("Where it stands");
+    expect(cell.textContent).toContain(
+      "Paused: nothing has happened on it since",
+    );
+    expect(cell.querySelector(".rb-out")?.textContent).toMatch(
+      /^Its last word then /,
+    );
+    expect(cell.textContent).toContain("Stopped mid-work:");
+    expect(cell.textContent).not.toContain("Still running");
+  });
+
   it("once finished it says what came out of it, and what was left open", () => {
     const req = running({
       finished: true,
@@ -318,9 +349,11 @@ describe("the brief", () => {
     expect(
       within(first).getByText("Done", { selector: ".sr-only" }),
     ).toBeTruthy();
-    expect(within(first).getByText("Fresh builder for Task 38")).toBeTruthy();
+    expect(
+      within(first).getByText("Task 1", { selector: ".chip" }),
+    ).toBeTruthy();
     expect(first.className).not.toContain("new");
-    expect(rows[1]?.querySelector(".mk.beyond")).toBeTruthy();
+    expect(rows[1]?.querySelector(".mk.moment")).toBeTruthy();
     const last = rows[2] as HTMLElement;
     expect(last.querySelector(".mk.failed")).toBeTruthy();
     expect(last.className).toContain("new");
@@ -445,9 +478,9 @@ describe("the phase track", () => {
     const link = within(first).getByRole("link", {
       name: "Fresh builder for Task 38, done",
     });
-    expect(link.getAttribute("href")).toBe("/s/s1/r/r13/p/capture");
+    expect(link.getAttribute("href")).toBe("/s/s1/r/r13?open=task:t1");
     await userEvent.click(link);
-    expect(location.pathname).toBe("/s/s1/r/r13/p/capture");
+    expect(location.search).toBe("?open=task:t1");
   });
 
   it("marks done, live, todo and failed by shape and word", () => {
@@ -483,7 +516,7 @@ describe("the phase track", () => {
     );
     expect(words).toEqual([
       "st done: , done",
-      "st now: , in progress",
+      "st now: , running",
       "st failed: , failed",
       "st todo: , not started",
       "st todo: , not started",
@@ -590,7 +623,7 @@ describe("the phase track", () => {
     expect(block).toMatch(
       /:where\(\.trk\.stack\) \.trk-segs\s*\{[^}]*flex-direction: column/,
     );
-    expect(block).toMatch(/animation: trk-draw 900ms/);
+    expect(block).toMatch(/animation: trk-draw 480ms steps\(8, end\)/);
     expect(block).toMatch(/prefers-reduced-motion/);
   });
 });
@@ -623,15 +656,31 @@ describe("the story", () => {
       "Task 1 note: the builder is recording.",
     ]);
     expect(texts(p2 as Element)).toEqual(["The new tracker is live."]);
-    // The live section reads newest first, under a now row for helpers not reported yet.
+    // The live section reads oldest first too, ending with a now row for helpers not
+    // reported yet.
     const rows = texts(beyond as Element);
-    expect(rows[0]).toMatch(
+    expect(rows[0]).toBe("Task 39 is done after two rounds of fixes.");
+    expect(rows[1]).toMatch(
       /^Build Task 38: capture chat reads, running for [\dhm ]+\. No report yet\.$/,
     );
-    expect(rows[1]).toBe("Task 39 is done after two rounds of fixes.");
   });
 
-  it("a live phase reads newest first, a finished one oldest first", () => {
+  it("while Claude waits on you, the live section says so, never Running", () => {
+    show(
+      session(running({ state: "waiting", agents: [] }), {
+        needsYou: { reason: "input", text: "Merge it?", since: at(16) },
+      }),
+    );
+    const beyond = [...story().querySelectorAll(".st-phase")].at(-1);
+    expect(beyond?.querySelector("h2, h3")?.textContent).toContain(
+      "Beyond the plan",
+    );
+    expect(beyond?.querySelector(".st-word")?.textContent).toMatch(
+      /Waiting on you$/,
+    );
+  });
+
+  it("a live phase reads oldest first, as a finished one does, its newest row marked", () => {
     const req = running({
       beyond: undefined,
       agents: [],
@@ -659,9 +708,9 @@ describe("the story", () => {
     show(session(req));
     const [one, two] = [...story().querySelectorAll(".st-phase")];
     expect(texts(one as Element)).toEqual(["First.", "Second."]);
-    expect(texts(two as Element)).toEqual(["Fourth.", "Third."]);
-    expect(two?.querySelector(".st-meta")?.textContent).toContain(
-      "newest first",
+    expect(texts(two as Element)).toEqual(["Third.", "Fourth."]);
+    expect(two?.querySelector("[data-newest]")?.textContent).toContain(
+      "Fourth.",
     );
     cleanup();
     show(session({ ...req, finished: true, state: "done" }));
@@ -704,7 +753,7 @@ describe("the story", () => {
     expect(run.className).toContain("st-run");
     const button = within(run).getByRole("button");
     expect(button.textContent).toBe(
-      "Task 2 · HeroMoneybuilt, passed6 m · 2 helpers · 4 messages",
+      "Task 1 · HeroMoneybuilt, passed6 m · 2 helpers · 4 messages",
     );
     expect(button.getAttribute("aria-expanded")).toBe("false");
     expect(run.querySelectorAll(".story-text")).toHaveLength(0);
@@ -843,7 +892,7 @@ describe("the story", () => {
     const runsNow = () => [
       ...story().querySelectorAll<HTMLElement>(".st-phase .st-run"),
     ];
-    const [newest, older] = runsNow();
+    const [older, newest] = runsNow();
     const toggle = (r?: HTMLElement) =>
       within(r as HTMLElement).getAllByRole("button")[0] as HTMLElement;
     expect(newest?.querySelector(".st-run-t")?.textContent).toBe(
@@ -866,7 +915,7 @@ describe("the story", () => {
       );
     // A message joins the open run: same row, still open, the older one still open.
     later([msg("m5", 5, "The review is still running.", { phase: "p1" })]);
-    expect(runsNow()[0]).toBe(newest);
+    expect(runsNow().at(-1)).toBe(newest);
     expect(toggle(newest).getAttribute("aria-expanded")).toBe("true");
     expect(newest?.querySelectorAll(".story-text")).toHaveLength(3);
     expect(toggle(older).getAttribute("aria-expanded")).toBe("true");
@@ -876,7 +925,7 @@ describe("the story", () => {
       msg("m5", 5, "The review is still running.", { phase: "p1" }),
       msg("m6", 6, "Task 2 passed.", { phase: "p1" }),
     ]);
-    expect(runsNow()[0]).toBe(newest);
+    expect(runsNow().at(-1)).toBe(newest);
     expect(toggle(newest).getAttribute("aria-expanded")).toBe("false");
   });
 
@@ -981,75 +1030,104 @@ describe("the story", () => {
   });
 });
 
-describe("the side column", () => {
-  it("lists helpers on a shared clock, the running one marked", () => {
-    show(session(running()));
-    const card = region("Helpers");
-    expect(card.querySelector(".cnt")?.textContent).toBe("3 · 1 running");
-    const rows = [...card.querySelectorAll(".hl-row")];
-    expect(rows.map((r) => r.querySelector(".hl-n")?.textContent)).toEqual([
-      "Build Task 38: capture chat reads",
-      "Review Task 39 chat parts",
-      "Re-review Task 39 fix round",
-    ]);
-    expect(rows[0]?.querySelector(".mk.running")).toBeTruthy();
-    expect(rows[1]?.querySelector(".mk.failed")).toBeTruthy();
-    expect(rows[1]?.querySelector(".hl-s")?.textContent).toBe(
-      `${clock(at(1))} to ${clock(at(7))} · Changes requested`,
+describe("helpers, files and checks", () => {
+  const tab = (tab: "helpers" | "files", r: RequestView = running()) =>
+    render(
+      <Live
+        sessionId="s1"
+        view={session(r)}
+        tab={tab}
+        status="live"
+        lastLooked={null}
+      />,
     );
-    const bar = rows[2]?.querySelector(".hl-b i") as HTMLElement;
-    expect(bar.style.left).toMatch(/%$/);
-    expect(Number.parseFloat(bar.style.width)).toBeGreaterThan(0);
+
+  it("the Helpers tab lists every helper, the running one marked, each opening its close-up", () => {
+    tab("helpers");
+    const rows = [...panel().getByRole("list", { name: "Helpers" }).children];
+    // Each by its one name, as its desk says it; its brief's words under it.
+    expect(rows.map((r) => r.querySelector(".h-name")?.textContent)).toEqual([
+      "Capture chat reads",
+      "Chat parts",
+      "Task 39 fix round",
+    ]);
+    expect(rows[1]?.querySelector(".h-meta")?.textContent).toContain(
+      "Review Task 39 chat parts",
+    );
+    expect(rows[0]?.querySelector(".mk.running")).toBeTruthy();
+    expect(rows[1]?.textContent).toContain("Changes requested");
+    expect(rows[0]?.querySelector("a")?.getAttribute("href")).toBe(
+      "/s/s1/r/r13?open=helper:a1",
+    );
+  });
+
+  it("puts every helper on the request's clock, and counts who is still running", () => {
+    tab("helpers");
+    expect(document.querySelector(".files-total")?.textContent).toBe(
+      "3 helpers · 1 running",
+    );
+    const bars = [
+      ...panel()
+        .getByRole("list", { name: "Helpers" })
+        .querySelectorAll<HTMLElement>(".hl-b i"),
+    ];
+    expect(bars).toHaveLength(3);
+    for (const b of bars) {
+      expect(b.style.left).toMatch(/%$/);
+      expect(Number.parseFloat(b.style.width)).toBeGreaterThan(0);
+    }
+    expect(bars[0]?.className).toBe("running");
   });
 
   it("says all done only when no helper was left running", () => {
-    show(session(running({ finished: true, state: "left-open" })));
-    expect(region("Helpers").querySelector(".cnt")?.textContent).toBe("3");
-    cleanup();
-    show(
-      session(
-        running({
-          finished: true,
-          state: "done",
-          agents: running().agents.map((a) => ({ ...a, status: "done" })),
-        }),
-      ),
+    tab("helpers", running({ finished: true, state: "left-open" }));
+    expect(document.querySelector(".files-total")?.textContent).toBe(
+      "3 helpers",
     );
-    expect(region("Helpers").querySelector(".cnt")?.textContent).toBe(
-      "3 · all done",
+    cleanup();
+    tab(
+      "helpers",
+      running({
+        finished: true,
+        state: "done",
+        agents: running().agents.map((a) => ({ ...a, status: "done" })),
+      }),
+    );
+    expect(document.querySelector(".files-total")?.textContent).toBe(
+      "3 helpers · all done",
     );
   });
 
-  it("groups many helpers by role", () => {
+  it("counts many helpers by role first, each role on the clock", () => {
     const many = Array.from({ length: 10 }, (_, i) =>
       agent(`b${i}`, {
         description: `Build Task ${i}`,
         role: i % 2 ? "review" : "build",
       }),
     );
-    show(session(running({ agents: many, beyond: undefined })));
-    const card = region("Helpers");
+    tab("helpers", running({ agents: many, beyond: undefined }));
+    const roles = panel().getByRole("list", { name: "By role" });
     expect(
-      [...card.querySelectorAll(".hl-n")].map((n) => n.textContent),
+      [...roles.querySelectorAll(".hl-n")].map((n) => n.textContent),
     ).toEqual(["5 built", "5 reviewed"]);
+    expect(roles.querySelectorAll(".hl-b i")).toHaveLength(2);
+    // Every one of them is still listed under it.
     expect(
-      within(card)
-        .getByRole("link", { name: "All 10 helpers" })
-        .getAttribute("href"),
-    ).toBe("/s/s1/r/r13/helpers");
+      panel().getByRole("list", { name: "Helpers" }).children,
+    ).toHaveLength(10);
   });
 
-  it("lists the top five files by task, the rest one click away", () => {
-    show(session(running()));
-    const card = region("Files");
-    expect(card.querySelector(".cnt")?.textContent).toBe("7 · +1,133 −140");
+  it("the Files tab groups the files by the task that changed them, named as the board names it", () => {
+    tab("files");
+    const groups = [...document.querySelectorAll(".file-group")];
+    expect(groups.map((g) => g.querySelector("h2")?.textContent)).toEqual([
+      "Task 1 · Fresh builder for Task 38",
+      "Task 2 · Fresh reviewer for Task 39",
+      "Task 3 · Found the source",
+    ]);
     expect(
-      [...card.querySelectorAll(".fl-g")].map((g) => g.textContent),
-    ).toEqual(["Recorded chat answers · 1", "Chat parts · 5", "Tracker · 1"]);
-    expect(card.querySelectorAll(".fl-f")).toHaveLength(5);
-    expect(
-      within(card).getByRole("link", { name: "2 more" }).getAttribute("href"),
-    ).toBe("/s/s1/r/r13/files");
+      groups.map((g) => g.querySelector(".sect .num")?.textContent),
+    ).toEqual(["1 file", "5 files", "1 file"]);
   });
 
   it("lists what was checked: pass, fail and untried", () => {
@@ -1060,7 +1138,7 @@ describe("the side column", () => {
     ).toEqual([
       "mk done|3,612 frontend tests pass, passed",
       "mk failed|Light theme contrast, failed",
-      "mk open|Task 38 recording, not yet checked",
+      "mk todo|Task 38 recording, not yet checked",
     ]);
   });
 

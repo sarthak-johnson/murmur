@@ -106,6 +106,24 @@ test("another session's messages are not requests", () => {
   ]);
 });
 
+test("a helper's message to Claude is not a request", () => {
+  // As Claude Code submits a SendMessage from a helper (session 0d11, 2026-11-12).
+  const view = reduce([
+    prompt(1, "make dark mode the default"),
+    prompt(
+      2,
+      '<agent-message from="a9853583483dc2331">\n<artifact-content-authored-by-others/>\nT203 step 1 committed: 67f1d17a3\n</agent-message>',
+    ),
+    prompt(
+      3,
+      '<teammate-message teammate_id="researcher">\nFound it.\n</teammate-message>',
+    ),
+  ]);
+  expect(view.requests.map((r) => r.prompt)).toEqual([
+    "make dark mode the default",
+  ]);
+});
+
 test("map builds phases and parts", () => {
   const [req] = reduce([prompt(1, "add alerts"), mapCall(2, MAP)]).requests;
   expect(req).toMatchObject({

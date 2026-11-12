@@ -16,12 +16,18 @@ import { FlowBoard } from "../src/flow/FlowBoard";
 import { partMark, stateWord } from "../src/flow/flow";
 import { HelpersTab } from "../src/live/Tabs";
 import { PhaseTrack } from "../src/live/Track";
-import { Live as Page } from "../src/pages/Session";
+import { Live as Page, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import { PartDetail } from "../src/part/PartDetail";
 import { nowLine, requestMark } from "../src/session";
+import { clockAt } from "./clock";
 
 const at = (n: number) =>
   new Date(Date.UTC(2026, 10, 6, 0, 0, n)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(at(600));
 const ev = (
   n: number,
   hook: MurmurEvent["hook"],
@@ -149,6 +155,9 @@ describe("waiting on you while helpers work", () => {
   });
 
   it("leads the brief with the ask, once, and says who is still working", () => {
+    // Minutes after its last event: the helper is fresh, at its desk in the room.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse(at(600)));
     render(
       <Live
         sessionId="s1"
@@ -162,9 +171,14 @@ describe("waiting on you while helpers work", () => {
     expect(stands.textContent).toContain("Sign in to it");
     const call = screen.getByRole("region", { name: "Waiting on you" });
     expect(call.textContent).not.toContain("Sign in to it");
-    expect(document.querySelector(".need-chip")?.textContent).toContain(
-      "1 helper still working",
+    // The bar says both: waiting on you, and the helper still at work.
+    const bar = document.querySelector(".of-top") as HTMLElement;
+    expect(bar.querySelector(".of-pill")?.textContent).toContain(
+      "Waiting on you",
     );
+    expect(stands.textContent).toContain("Still running: Build scenes 1, 2.");
+    expect(bar.textContent).toContain("1 helper at work");
+    vi.useRealTimers();
   });
 
   it("heads the phase amber and lists a running helper under its own task's phase", () => {
@@ -186,13 +200,7 @@ describe("waiting on you while helpers work", () => {
 
   it("draws the blocked task and its phase amber on the track, never failed", () => {
     const { container } = render(
-      <PhaseTrack
-        sessionId="s1"
-        request={req}
-        done={false}
-        stopped={false}
-        end={at(10)}
-      />,
+      <PhaseTrack sessionId="s1" request={req} done={false} end={at(10)} />,
     );
     const voice = container.querySelectorAll(".trk-seg")[1] as HTMLElement;
     expect(voice.className).toContain("blocked");
@@ -216,13 +224,7 @@ describe("waiting on you while helpers work", () => {
     const voice = req.parts.find((p) => p.id === "voice");
     if (!voice) throw new Error("no voice part");
     render(
-      <PartDetail
-        sessionId="s1"
-        requestNumber={1}
-        request={req}
-        part={voice}
-        events={events}
-      />,
+      <PartDetail sessionId="s1" request={req} part={voice} events={events} />,
     );
     const ask = screen.getByRole("region", { name: "Waiting on you" });
     expect(ask.textContent).toContain("Sign in to it");

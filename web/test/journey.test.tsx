@@ -1,8 +1,11 @@
 import type { Journey, RequestView, SessionView } from "@murmur/core";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { dayLabel } from "../src/live/Rail";
-import { Live } from "../src/pages/Session";
+import { dayLabel } from "../src/format";
+import { Live, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import { clock } from "../src/story";
 
 /** Noon UTC on a November day, the same calendar day in any time zone a test runs in. */
@@ -152,6 +155,8 @@ const station = (n: number) =>
 
 beforeEach(() => {
   history.pushState(null, "", "/s/s1");
+  // The fixture as it stands five minutes after its last event: live, not quiet.
+  vi.useFakeTimers({ now: Date.parse(day(9, 45)), toFake: ["Date"] });
   vi.stubGlobal(
     "fetch",
     vi.fn(
@@ -167,6 +172,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("the session page is the journey", () => {
@@ -177,12 +183,12 @@ describe("the session page is the journey", () => {
     );
     expect(ends()).toBeTruthy();
     expect(main().querySelector(".req-story")).toBeNull();
-    // The rail marks the session as the page, no request as current.
-    const rail = screen.getByRole("complementary", { name: "This session" });
-    expect(rail.querySelector(".rail-sess")?.getAttribute("aria-current")).toBe(
-      "page",
+    // The panel's breadcrumb says the session is where you are, no request.
+    const crumbs = screen.getByRole("navigation", { name: "Where you are" });
+    expect(crumbs.querySelector("[aria-current]")?.textContent).toContain(
+      "Session",
     );
-    expect(rail.querySelector(".stop.cur")).toBeNull();
+    expect(crumbs.querySelectorAll("li")).toHaveLength(1);
   });
 
   it("waits for every page of events before drawing the journey", () => {
@@ -197,7 +203,7 @@ describe("the session page is the journey", () => {
       />,
     );
     expect(container.querySelector(".jr")).toBeNull();
-    expect(container.querySelector(".skeleton")).toBeTruthy();
+    expect(container.querySelector(".of-empty[aria-busy=true]")).toBeTruthy();
     rerender(
       <Live sessionId="s1" view={session()} status="live" lastLooked={null} />,
     );
@@ -232,7 +238,7 @@ describe("from here to here", () => {
     expect(from.textContent).toContain(`${dayLabel(day(2))}, ${clock(day(2))}`);
     expect(from.textContent).toContain("Question");
     expect(from.textContent).toContain("Half agree, bro.");
-    expect(from.getAttribute("href")).toBe("/s/s1/r/r1");
+    expect(from.getAttribute("href")).toBe("/s/s1/r/r1?open=story");
   });
 
   it("ends at the live request's outcome, time and state, amber only when waiting", () => {
@@ -241,9 +247,21 @@ describe("from here to here", () => {
     expect(to.textContent).toContain("Task 39 passed after two fix rounds.");
     expect(to.textContent).toContain("Where it is now");
     expect(to.textContent).toMatch(/Request 4, running/);
-    expect(to.getAttribute("href")).toBe("/s/s1/r/r4");
+    expect(to.getAttribute("href")).toBe("/s/s1/r/r4?open=story");
     expect(to.querySelector(".jr-need")).toBeNull();
     expect(to.textContent).not.toMatch(/wait on you/);
+  });
+
+  it("a session quiet for days: its running request is paused, timed to its last sign, as the office says", () => {
+    vi.setSystemTime(Date.parse(day(12)));
+    show(session());
+    const to = within(ends()).getAllByRole("link")[1] as HTMLElement;
+    expect(to.textContent).toContain("Where it stopped");
+    expect(to.textContent).not.toMatch(/running/);
+    expect(to.textContent).toMatch(/Request 4, paused after/);
+    const facts = screen.getByRole("group", { name: "Summary" });
+    expect(facts.textContent).toMatch(/1 paused/);
+    expect(facts.textContent).not.toMatch(/running now/);
   });
 
   it("counts what waits on you in amber when Claude asked", () => {
@@ -360,10 +378,13 @@ describe("the line", () => {
     show(session());
     const s = station(3);
     const card = s.querySelector("a.jr-card") as HTMLAnchorElement;
-    expect(card.getAttribute("href")).toBe("/s/s1/r/r3");
-    expect(card.hasAttribute("data-morph")).toBe(true);
+    expect(card.getAttribute("href")).toBe("/s/s1/r/r3?open=story");
     expect(card.querySelector(".label-chip")?.textContent).toBe("Feature");
+    // Its one title, as the rail names it, and what it asked under it.
     expect(card.querySelector(".jr-card-ttl")?.textContent).toBe(
+      "Restyle the logged-in app to the…",
+    );
+    expect(card.querySelector(".jr-card-goal")?.textContent).toBe(
       "Restyle the logged-in app to the Lit plate design, then speed up My Agents",
     );
     expect(card.querySelector(".jr-out")?.textContent).toBe(
@@ -461,6 +482,42 @@ describe("the line", () => {
     expect(line().querySelector(".jr-pause, .jr-dec, .jr-load")).toBeNull();
     expect(ends().textContent).toContain("Where it ended");
     expect(document.querySelector(".mk.pulse")).toBeNull();
+  });
+
+  it("a chapter named by a bare reply takes a later request's name; an image is never quoted", () => {
+    const view = session({
+      requests: [
+        request({
+          id: "r1",
+          prompt: "[Image #2]",
+          goal: "Note for build 17",
+          short: "Note for build 17",
+        }),
+        request({
+          id: "r2",
+          prompt: "Sure, please start",
+          goal: "Sure, please start",
+        }),
+        request({
+          id: "r3",
+          prompt: "Run the take flow tests",
+          goal: "Run the take flow tests",
+          short: "Run the take flow tests",
+        }),
+      ],
+      journey: journey({
+        chapters: [
+          { title: "Note for build 17", requestIds: ["r1"], state: "done" },
+          { title: "Sure", requestIds: ["r2", "r3"], state: "done" },
+        ],
+      }),
+    });
+    show(view);
+    const strip = screen.getByRole("navigation", { name: "Chapters" });
+    expect(strip.textContent).toContain("Run the take flow tests");
+    expect(strip.textContent).not.toMatch(/\bSure\b/);
+    expect(ends().textContent).not.toContain("(image)");
+    expect(ends().textContent).toContain("Note for build 17");
   });
 
   it("works for a view built before core had a journey", () => {

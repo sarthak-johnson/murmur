@@ -11,6 +11,7 @@ import { type AppEnv, requireIngest } from "./auth.js";
 import { events, sessions } from "./db/schema.js";
 import { UUID } from "./sessions.js";
 import { bus } from "./stream.js";
+import { summarizeSoon } from "./summary.js";
 
 const MAX_BYTES = 5_000_000;
 const MAX_EVENTS = 500;
@@ -141,7 +142,7 @@ export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
       if (!bySession.size) return c.json({ accepted: 0 });
 
       const batch = [...bySession.values()].flat();
-      const { stored, cwds } = await db.transaction(async (tx) => {
+      const { fresh, cwds } = await db.transaction(async (tx) => {
         const stored = await tx
           .insert(events)
           .values(
@@ -156,10 +157,19 @@ export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
           )
           .onConflictDoNothing()
           .returning({ id: events.id });
+        // Only what is new changes a session: a replay leaves it, and its summary, as is.
+        // Each id once, should a batch hold it twice.
+        const ids = new Set(stored.map((r) => r.id));
+        const fresh = new Map<string, MurmurEvent[]>();
+        for (const [sid, list] of bySession) {
+          const added = list.filter((e) => ids.delete(e.id));
+          if (added.length) fresh.set(sid, added);
+        }
+        if (!fresh.size) return { fresh, cwds: [] };
         const cwds = await tx
           .insert(sessions)
           .values(
-            [...bySession].map(([sid, list]) =>
+            [...fresh].map(([sid, list]) =>
               sessionRow(userId, machineId, sid, list),
             ),
           )
@@ -171,23 +181,28 @@ export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
               lastEventAt: sql`greatest(${sessions.lastEventAt}, excluded.last_event_at)`,
               title: sql`coalesce(${sessions.title}, excluded.title)`,
               ended: sql`${sessions.ended} or excluded.ended`,
+              // Counted in the database, so ingests at once never step back.
+              version: sql`${sessions.version} + 1`,
             },
           })
           .returning({ sessionId: sessions.sessionId, cwd: sessions.cwd });
-        return { stored, cwds };
+        return { fresh, cwds };
       });
 
       // Published with the session's cwd, the same shape GET /events returns.
-      const fresh = new Set(stored.map((r) => r.id));
       const cwdOf = new Map(cwds.map((r) => [r.sessionId, r.cwd]));
-      for (const [sid, list] of bySession) {
+      let accepted = 0;
+      for (const [sid, list] of fresh) {
         const cwd = cwdOf.get(sid) as string;
-        const out = list
-          .filter((e) => fresh.delete(e.id))
-          .map((e) => ({ ...e, cwd }));
-        if (out.length) bus.publish(userId, sid, out);
+        accepted += list.length;
+        bus.publish(
+          userId,
+          sid,
+          list.map((e) => ({ ...e, cwd })),
+        );
+        summarizeSoon(db, userId, sid);
       }
-      return c.json({ accepted: stored.length });
+      return c.json({ accepted });
     },
   );
 }

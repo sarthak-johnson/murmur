@@ -1,4 +1,6 @@
 // Text and click targets over the canvas, in plain DOM so text stays crisp at any scale.
+
+import { WORD as STATE_WORD } from "../state";
 import {
   BOARD,
   CLAUDE_DESK,
@@ -10,19 +12,12 @@ import {
   ROOMS,
   SHELVES,
   T,
+  W,
 } from "./map";
 import { boardLayout, type ClaudePos, deskTile } from "./render";
-import type { Scene } from "./scene";
+import { cutWords, type Scene } from "./scene";
 import { hash, helperLook, LINEAGE, phaseColor } from "./sprites";
 import { clockOf, context2d, dur, esc, phaseShort } from "./util";
-
-const MODEL: Record<string, string> = {
-  opus: "Opus",
-  sonnet: "Sonnet",
-  haiku: "Haiku",
-};
-const modelWord = (m: string | undefined) =>
-  MODEL[(m ?? "").toLowerCase().split(/[-\s]/)[0] ?? ""] ?? "";
 
 // Bubbles pop in when the words change and fade after a while, unless you point at their speaker.
 const SAY_MS = { helper: 6000, claude: 9000 };
@@ -74,6 +69,8 @@ interface Placed {
   label?: string;
   open?: string | undefined;
   ring?: string | undefined;
+  /** A bubble's size as last measured, and the scale and words it was measured for. */
+  box?: { w: number; h: number; s: number; html: string | undefined };
 }
 
 /** Someone on the floor, for keeping labels clear of them. */
@@ -84,7 +81,7 @@ export interface Walker {
 }
 
 export interface Overlay {
-  /** The whole-number scale the canvas is drawn at. */
+  /** The scale the canvas is drawn at: crisp, so whole or (on a dense screen) a fraction. */
   setScale(v: number): void;
   render(
     scene: Scene,
@@ -168,13 +165,41 @@ export function createOverlay(
       p.open = it.open;
       p.ring = it.ring;
       const st = el.style;
-      st.left = `${it.x * s}px`;
-      st.top = `${it.y * s}px`;
       if (it.w !== undefined) st.width = `${it.w * s}px`;
       if (it.h !== undefined) st.height = `${it.h * s}px`;
       if (it.maxW) st.maxWidth = `${it.maxW}px`;
       if (it.who) st.setProperty("--who", it.who);
-      if (it.tail !== undefined) st.setProperty("--tail", `${it.tail}px`); // a shifted bubble still points at its speaker
+      let x = it.x * s;
+      let y = it.y * s;
+      let tail = it.tail ?? 0;
+      // A bubble keeps inside the room, whatever the scale: shifted along, its tail still
+      // points at its speaker. Measured once per words and scale, not every frame.
+      if (it.cls.startsWith("bubble")) {
+        if (p.box?.s !== s || p.box.html !== p.html)
+          p.box = { w: el.offsetWidth, h: el.offsetHeight, s, html: p.html };
+        const { w, h } = p.box;
+        const below = it.cls.includes("wait");
+        const left = it.cls.includes(" left");
+        const x0 = left ? x : x - w / 2;
+        const shift = Math.max(2, Math.min(W * s - w - 2, x0)) - x0;
+        x += shift;
+        // From the tail's own place (the middle, or 14 px in for a bubble to the right).
+        tail = left
+          ? Math.max(-6, Math.min(w - 22, tail - shift))
+          : Math.max(8 - w / 2, Math.min(w / 2 - 8, tail - shift));
+        // Above its speaker it never rises past the room's top.
+        if (!below) y = Math.max(y, h + 8);
+      }
+      // The "!" over a waiting Claude stays under the room's top too.
+      if (it.cls === "bang") {
+        if (p.box?.s !== s)
+          p.box = { w: el.offsetWidth, h: el.offsetHeight, s, html: p.html };
+        y = Math.max(y, p.box.h + 2);
+      }
+      st.left = `${x}px`;
+      st.top = `${y}px`;
+      if (it.tail !== undefined || it.cls.startsWith("bubble"))
+        st.setProperty("--tail", `${tail}px`);
       st.visibility = it.hidden ? "hidden" : "";
     }
     for (const [k, p] of els) {
@@ -246,8 +271,9 @@ export function createOverlay(
         y: sheet.y + 4,
         w: sheet.w - 2,
         h: sheet.h - 5,
-        html: `<small>You asked</small><span>${esc(scene.request.short)}</span>`,
-        label: `Request ${scene.request.n}: ${scene.request.goal}`,
+        // Your own words, cut to the sheet; the whole of them reads in its label.
+        html: `<small>You asked</small><span>${esc(cutWords(scene.request.asked, 90))}</span>`,
+        label: `Request ${scene.request.n}, you asked: ${scene.request.asked}`,
       });
     }
     // Each small card carries its request's number; the older stack says how many it holds.
@@ -269,15 +295,6 @@ export function createOverlay(
       html: "Archive",
       x: SHELVES.px.x + 2,
       y: 0,
-    });
-    out.push({
-      key: "you",
-      cls: "you-plate",
-      html: "YOU",
-      x: DOOR.px.x + DOOR.px.w + 6,
-      y: DOOR.px.y + 10,
-      w: 12,
-      h: 8,
     });
 
     // Ring a note's helpers when the note is hovered or chosen, and the other way round.
@@ -307,9 +324,10 @@ export function createOverlay(
             ? "No plan yet. Claude is working without one."
             : "No plan on this request: Claude did it in one go.",
       });
-    // One style for every column head: the longest form that fits them all.
-    const size = s >= 3 ? 15 : 13;
-    const pad = s >= 3 ? 12 : 8;
+    // One style for every column head: the longest form that fits them all, else each
+    // head's first word, cut with an ellipsis inside its own column (never into the next).
+    const size = s >= 3 ? 15 : s >= 1 ? 13 : 10;
+    const pad = s >= 3 ? 12 : s >= 1 ? 8 : 4;
     const firstWord = (title: string) => phaseShort(title).split(" ")[0] ?? "";
     const forms = [(title: string) => title, phaseShort, firstWord];
     const form =
@@ -336,14 +354,16 @@ export function createOverlay(
         out.push({
           key: `n-${n.id}`,
           button: true,
-          cls: `hit note${n.status === "done" ? " done" : ""}${n.slotW >= 60 ? " wide" : ""}${sel ? " sel" : ""}${ring ? " ring" : ""}`,
+          // Under 3x a title shows as many lines as its box holds (never one cut through),
+          // or none: a narrow note is only its mark.
+          cls: `hit note${n.status === "done" ? " done" : ""}${s < 3 && !n.lines ? " mute" : ""}${s < 3 && n.leftLine ? " says" : ""}${sel ? " sel" : ""}${ring ? " ring" : ""}`,
           x: n.x - 1,
           y: n.y - 1,
           w: n.slotW - 4,
           h: n.rowH + 2,
           ring: `task:${n.id}`,
-          html: `<span class="t">${esc(n.title)}</span>${n.stage ? `<span class="stage${n.status === "todo" ? " left" : ""}">${esc(n.stage)}</span>` : ""}`,
-          label: `Task: ${n.title}, ${n.stage ?? WORD[n.status] ?? n.status}`,
+          html: `<span class="t"${s < 3 && n.lines ? ` style="-webkit-line-clamp:${n.lines}"` : ""}>${esc(n.title)}</span>${n.stage ? `<span class="stage${n.status === "open" || n.status === "paused" ? " left" : ""}">${esc(n.stage)}</span>` : ""}`,
+          label: `Task: ${n.title}, ${n.stage ?? STATE_WORD[n.status].toLowerCase()}`,
           open: `task:${n.id}`,
         });
       }
@@ -376,18 +396,9 @@ export function createOverlay(
         pc = LINEAGE;
         chipText = `Req ${d.fromRequest}`;
       }
-      // Role, model and time, dropping the model, then the role, so the time is never the
-      // part cut off. At 2x too: a reviewer seated on the work floor is told apart by it.
-      const model = s >= 3 ? modelWord(d.model) : "";
-      const room = 78 * s - (chipText ? chipText.length * 7 + 18 : 0) - 6;
-      const parts = [
-        model ? `${d.roleWord} · ${model} · ` : `${d.roleWord} · `,
-        `${d.roleWord} · `,
-        "",
-      ];
-      const lead = parts.find((p) => fits(`${p}${when}`, room, 13)) ?? "";
-      const role = esc(lead);
-      const sub = `${chipText ? `<i class="ph" style="--ph:${pc}">${esc(chipText)}</i>` : ""}${role}${esc(when)}`;
+      // The same two things on every plate of every request: its phase chip (or the earlier
+      // request it works for) and its time. Its role and model are in its close-up.
+      const sub = `${chipText ? `<i class="ph" style="--ph:${pc}">${esc(chipText)}</i>` : ""}${esc(when)}`;
       const py = (tl.y + 1) * T + 1;
       const sel = selected === `agent:${d.agent}`;
       // The desk's hit area first, so its selection ring sits under the plate and bubble, never through them.
@@ -580,7 +591,11 @@ export function createOverlay(
       s = v;
       const m = root.parentElement;
       if (!m) return;
-      m.classList.toggle("s1", v < 2);
+      // Lesser words step down, then hide, as the room shrinks: s2 under 3x, s15 under 2x,
+      // s1 under 1.5x, s0 under 1x.
+      m.classList.toggle("s0", v < 1);
+      m.classList.toggle("s1", v < 1.5);
+      m.classList.toggle("s15", v < 2);
       m.classList.toggle("s2", v < 3);
       m.classList.toggle("s4", v >= 4);
       m.style.setProperty("--s", String(v));

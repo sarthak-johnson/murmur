@@ -6,18 +6,37 @@
 import {
   type AgentView,
   type MurmurEvent,
+  type PartView,
   type PhaseView,
   questionsIn,
   type RequestView,
   type SessionView,
   type TaskView,
 } from "@murmur/core";
+import { plainText } from "./markdown";
 
 export { questionsIn };
+
+/** No event for this long: the session is quiet, its clocks stop at its last event (state.ts). */
+export const QUIET_MS = 15 * 60_000;
+/** No sign of a helper (or a running request) for this long: it is not at work (state.ts). */
+export const STALE_MS = 60 * 60_000;
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const obj = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+
+/** The index of the first event at or after `ts`: events come sorted by time (useSession). */
+function firstAt(events: MurmurEvent[], ts: string): number {
+  let lo = 0;
+  let hi = events.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((events[mid] as MurmurEvent).ts < ts) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
 
 /** The events between a request's prompt and the next one's. */
 export function requestEvents(
@@ -26,8 +45,9 @@ export function requestEvents(
   events: MurmurEvent[],
 ): MurmurEvent[] {
   const next = view.requests[view.requests.indexOf(req) + 1];
-  return events.filter(
-    (e) => e.ts >= req.startedAt && (!next || e.ts < next.startedAt),
+  return events.slice(
+    firstAt(events, req.startedAt),
+    next ? firstAt(events, next.startedAt) : events.length,
   );
 }
 
@@ -45,7 +65,23 @@ export interface Waiting {
   permission?: boolean;
   /** Claude ended its turn asking for this (`NeedsYou` reason "input"). */
   asked?: boolean;
+  /**
+   * With no question to list: the last paragraph of Claude's last message, so the door
+   * and the story say what it stopped on rather than only "reply in Claude Code".
+   */
+  said?: string;
 }
+
+/** A message's last paragraph as plain text, whole: each view cuts it to its own room. */
+const lastParagraph = (text: string) =>
+  plainText(
+    text
+      .split(/\n\s*\n/)
+      .filter((p) => p.trim())
+      .at(-1) ?? "",
+  )
+    .replace(/\s+/g, " ")
+    .trim();
 
 /** An AskUserQuestion call on the main thread with no result yet. */
 function pendingAsk(evs: MurmurEvent[]): MurmurEvent | undefined {
@@ -98,34 +134,45 @@ export function lastActivity(
 }
 
 /**
- * What Claude waits on you for, or null: a question it asked (an AskUserQuestion call
- * still open), a needs-you from Claude Code, or the questions of its last message once
- * it stopped. Only the newest request of a session still going can wait.
+ * What Claude waits on you for, or null. Whether it waits is core's word alone (the
+ * request core reads as "waiting", from `needsYou`), so the room, the rail and the lobby
+ * agree; this only says it: an AskUserQuestion's questions with their options, the
+ * questions of Claude's last message, else core's reading of what it asked.
  */
 export function waitingOn(
   view: SessionView,
   req: RequestView,
   events: MurmurEvent[],
 ): Waiting | null {
-  if (req !== view.requests.at(-1) || view.ended || req.finished) return null;
-  const { evs, last, stopped } = lastActivity(view, req, events);
-  const ask = pendingAsk(evs);
-  if (ask) return { since: ask.ts, questions: askQuestions(ask), text: "" };
-  const lastMsg = req.messages?.at(-1);
-  const asked = lastMsg ? questionsIn(lastMsg.text) : [];
-  const fromMessage = asked.map((question) => ({ question }));
   const n = view.needsYou;
-  if (n)
-    return {
-      since: n.since,
-      questions: n.reason === "permission" ? [] : fromMessage,
-      text: n.text,
-      ...(n.reason === "permission" ? { permission: true } : {}),
-      ...(n.reason === "input" ? { asked: true } : {}),
-    };
-  if (stopped && last && asked.length)
-    return { since: last.ts, questions: fromMessage, text: "" };
-  return null;
+  if (!n || req.state !== "waiting") return null;
+  const ask =
+    n.reason === "question"
+      ? pendingAsk(requestEvents(view, req, events))
+      : undefined;
+  if (ask) return { since: n.since, questions: askQuestions(ask), text: "" };
+  const lastMsg = req.messages?.at(-1);
+  const fromMessage = (lastMsg ? questionsIn(lastMsg.text) : []).map(
+    (question) => ({ question }),
+  );
+  const permission = n.reason === "permission";
+  // No question in its words: core's reading of what it asked, else what it last said.
+  const core = (req.waiting ?? [])
+    .filter((q) => q && q !== n.text)
+    .map((question) => ({ question }));
+  const questions = permission ? [] : fromMessage.length ? fromMessage : core;
+  const said =
+    !permission && !questions.length && lastMsg
+      ? lastParagraph(lastMsg.text)
+      : "";
+  return {
+    since: n.since,
+    questions,
+    text: n.text,
+    ...(permission ? { permission: true } : {}),
+    ...(n.reason === "input" ? { asked: true } : {}),
+    ...(said ? { said } : {}),
+  };
 }
 
 export type RequestState = "running" | "waiting" | "done";
@@ -146,15 +193,18 @@ export function requestState(
   return { state: done ? "done" : "running", end };
 }
 
-/** "2 waiting on you", "Permission needed", "Waiting on you". */
-export function waitingLabel(w: Waiting): string {
-  const n = w.questions.length;
-  if (n) return `${n} waiting on you`;
-  return w.permission ? "Permission needed" : "Waiting on you";
-}
-
-/** How a request stands, as the rail marks it: each with its own shape and colour. */
-export type Mark = "done" | "running" | "waiting" | "open" | "failed";
+/**
+ * How a request (or a task, a helper) stands, as the rail marks it: each with its own
+ * shape and colour. Core never reads a request as paused or not started; state.ts can.
+ */
+export type Mark =
+  | "done"
+  | "running"
+  | "waiting"
+  | "open"
+  | "failed"
+  | "paused"
+  | "todo";
 const MARKS: readonly string[] = [
   "done",
   "running",
@@ -186,6 +236,31 @@ export function requestMark(
   if (req.finished && tasks.some((t) => t.status !== "done"))
     return { mark: "open", ...at };
   return { mark: "done", ...at };
+}
+
+/**
+ * The session at a moment of its replay with its requests named as they are now: a
+ * request keeps one title (short and goal) through the replay, though Claude may have
+ * named it after that moment.
+ */
+export function namedAsNow(at: SessionView, now: SessionView): SessionView {
+  if (at === now) return at;
+  const named = new Map(now.requests.map((r) => [r.id, r]));
+  return {
+    ...at,
+    title: now.title,
+    requests: at.requests.map((r) => {
+      const n = named.get(r.id);
+      if (!n) return r;
+      const { short: _s, titledBy: _t, ...rest } = r;
+      return {
+        ...rest,
+        goal: n.goal,
+        ...(n.short !== undefined ? { short: n.short } : {}),
+        ...(n.titledBy ? { titledBy: n.titledBy } : {}),
+      };
+    }),
+  };
 }
 
 /** A request's kind, as its chip says it. */
@@ -240,6 +315,22 @@ export function cleanPrompt(text: string): string {
   );
 }
 
+/**
+ * What you asked, in your own words (the prompt, cleaned), and the summary under it (the
+ * request's goal) when that says something else. Every request has one.
+ */
+export function youAsked(req: RequestView): {
+  words: string;
+  summary?: string;
+} {
+  const words = cleanPrompt(req.prompt) || cleanPrompt(req.goal);
+  const summary = cleanPrompt(req.goal);
+  return {
+    words,
+    ...(summary && summary !== words ? { summary } : {}),
+  };
+}
+
 /** What a request asked, as one line of text: its goal, else its prompt, cleaned. */
 export const askOf = (req: RequestView) => cleanPrompt(req.goal || req.prompt);
 
@@ -249,8 +340,26 @@ export const askOf = (req: RequestView) => cleanPrompt(req.goal || req.prompt);
  */
 export function requestShort(req: RequestView): string {
   const own = req.short && cleanPrompt(req.short);
-  if (own) return own;
+  if (own)
+    return excerpt(own, [req.goal ?? "", req.prompt ?? ""].map(cleanPrompt));
   return shortOf(askOf(req)) || "Untitled request";
+}
+
+/**
+ * A short title cut from the middle of what was said ("Most of Umang's update makes", of
+ * "...makes takes better") says so with an ellipsis, so it never reads as a whole title;
+ * a dash or stop it starts with goes. It is never reworded: nothing is made up.
+ */
+export function excerpt(short: string, sources: string[]): string {
+  const s = short.replace(/^[\s.,;:\-–]+/, "") || short;
+  if (s.endsWith("…")) return s;
+  const cut = sources.some((src) => {
+    const text = src.replace(/\s+/g, " ");
+    const at = text.toLowerCase().indexOf(s.toLowerCase());
+    const next = at < 0 ? "" : text.slice(at + s.length, at + s.length + 2);
+    return /^(\s?[a-z0-9]|[A-Za-z])/.test(next);
+  });
+  return cut ? `${s}…` : s;
 }
 
 const count = (n: number, one: string, many: string) =>
@@ -283,14 +392,26 @@ const tool = (text: string) =>
 
 /**
  * The now line. Claude's narrated now wins; an inferred one from a command reads as the
- * command's description, else "Running a command", never as the command itself.
+ * command's description, else "Running a command", never as the command itself. While
+ * Claude waits on you, the line says what it asked: its last narration ("The tests are
+ * running now") is no longer what is happening.
  */
 export function nowLine(
   req: RequestView,
   events: MurmurEvent[],
   done: boolean,
+  waiting?: Waiting | null,
 ): { label: string; text: string; src?: MurmurEvent; why?: string } {
   const now = req.now;
+  if (waiting) {
+    const [q, ...more] = waiting.questions;
+    const text = q
+      ? more.length
+        ? `${waiting.questions.length} questions. ${q.question}`
+        : q.question
+      : waiting.said || waiting.text;
+    if (text) return { label: "Asked", text };
+  }
   const over =
     done && (req.planInferred || !!req.recap || !now || !!now.inferred);
   if (over) return { label: "In all", text: doneLine(req.tally) };
@@ -335,6 +456,125 @@ export function shortTitle(title: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : title;
 }
 
+// Pieces of a name that say how it is stored, not what it is.
+const CODE_WORD =
+  /^(?:[cm]?[jt]sx?|py|rb|go|rs|json|ya?ml|md|css|html?|test|spec)$/i;
+
+/**
+ * A folder named like a file ("guided.cassette.test.js.cassettes") as words: its pieces
+ * without the code ones, a piece its plural repeats dropped ("guided cassettes").
+ */
+// ponytail: a word heuristic for folder names with dots; a plain folder name stays as it is.
+function folderWords(name: string): string {
+  if (!name.includes(".")) return name;
+  const words = name.split(/[._-]+/).filter((w) => w && !CODE_WORD.test(w));
+  const kept = words.filter(
+    (w, i) => !words.some((o, j) => j !== i && o === `${w}s`),
+  );
+  return kept.join(" ") || name;
+}
+
+/**
+ * A task's or a part's one title, for the board, the lists and its page: its name without
+ * its plan number. A folder Murmur grouped the work by ("server/alphatake", id "dir:...")
+ * reads "Changes in alphatake"; a bare path reads as its last piece.
+ */
+export function taskTitle(t: { id: string; title: string }): string {
+  const title = t.title.trim();
+  const folder = t.id.startsWith("dir:")
+    ? title.split("/").filter(Boolean).at(-1)
+    : undefined;
+  if (folder) return `Changes in ${folderWords(folder)}`;
+  if (/^[\w.@~-]*\/[\w./@~-]+$/.test(title))
+    return title.split("/").filter(Boolean).at(-1) ?? title;
+  return shortTitle(title);
+}
+
+/** "What Claude did" says what it is doing while its request is under way. */
+export function phaseName(phase: PhaseView, running: boolean): string {
+  return phase.title === "What Claude did" && running && phase.status === "now"
+    ? "What Claude is doing"
+    : phase.title;
+}
+
+/** The phase a part sits in: its own, else the phase of a plan task on it. */
+export function partPhase(
+  req: RequestView,
+  part: PartView,
+): PhaseView | undefined {
+  return (
+    req.phases.find((p) => p.id === part.phase) ??
+    req.phases.find((p) => p.tasks.some((t) => t.part === part.id))
+  );
+}
+
+export interface Place {
+  /** The plan task, when the part has one. */
+  task?: TaskView;
+  part?: PartView;
+  /** Its number in the plan (1-based), else in the map; `of` how many there are. */
+  n: number;
+  of: number;
+  title: string;
+  phase?: PhaseView;
+  /** The panel's close-up of it (`?open=`): `task:<task id>`, or `task:<part id>` with no plan. */
+  key: string;
+}
+
+/**
+ * Where a task stands in its request's plan, by its task id or its part's id (a part's
+ * first task then): its one number, title and phase, the same on the board, the Tasks
+ * list, its page and the links either side of it. With no plan, the map's parts in order.
+ */
+export function placeOf(
+  req: RequestView,
+  ref: { task?: string | undefined; part?: string | undefined },
+): Place | undefined {
+  const tasks = req.phases.flatMap((p) => p.tasks);
+  const task =
+    tasks.find((t) => t.id === ref.task) ??
+    (ref.task ? undefined : tasks.find((t) => t.part === ref.part));
+  if (task) {
+    const part = req.parts.find((p) => p.id === task.part);
+    const phase = req.phases.find((p) => p.tasks.includes(task));
+    return {
+      task,
+      ...(part ? { part } : {}),
+      n: tasks.indexOf(task) + 1,
+      of: tasks.length,
+      title: taskTitle(task),
+      ...(phase ? { phase } : {}),
+      key: `task:${task.id}`,
+    };
+  }
+  const part = req.parts.find((p) => p.id === (ref.part ?? ref.task));
+  if (!part) return undefined;
+  const phase = partPhase(req, part);
+  return {
+    part,
+    n: req.parts.indexOf(part) + 1,
+    of: req.parts.length,
+    title: taskTitle(part),
+    ...(phase ? { phase } : {}),
+    key: `task:${part.id}`,
+  };
+}
+
+/** The tasks either side of one in the plan (else the map), as places. */
+export function besideOf(
+  req: RequestView,
+  place: Place,
+): { prev?: Place; next?: Place } {
+  const tasks = req.phases.flatMap((p) => p.tasks);
+  const at = (i: number) =>
+    place.task
+      ? placeOf(req, { task: tasks[i]?.id })
+      : placeOf(req, { part: req.parts[i]?.id });
+  const prev = place.n > 1 ? at(place.n - 2) : undefined;
+  const next = place.n < place.of ? at(place.n) : undefined;
+  return { ...(prev ? { prev } : {}), ...(next ? { next } : {}) };
+}
+
 /** The helpers on a task, by its own list and its part's. */
 export function taskAgents(req: RequestView, task: TaskView): AgentView[] {
   const part = req.parts.find((p) => p.id === task.part);
@@ -345,16 +585,49 @@ export function taskAgents(req: RequestView, task: TaskView): AgentView[] {
 const valid = (ts: string | undefined): ts is string =>
   !!ts && !Number.isNaN(Date.parse(ts));
 
+/** A helper fits a task, but a builder a review task: the build is another task's. */
+const fits = (a: AgentView, t: TaskView) =>
+  a.role !== "build" || !/^(re-?)?(review|check)/i.test(t.title.trim());
+
+/** The other tasks of the plan sharing this task's part. */
+const siblings = (req: RequestView, task: TaskView) =>
+  task.part
+    ? req.phases.flatMap((ph) =>
+        ph.tasks.filter((t) => t !== task && t.part === task.part),
+      )
+    : [];
+
+/**
+ * A task's own helpers. A part several tasks share would give each all of the part's:
+ * only those core gave the task count, but a builder core gave a review task: a task
+ * given none takes it ("Build Task 56" is the build task's, not its review's).
+ */
+export function ownAgents(req: RequestView, task: TaskView): AgentView[] {
+  const sibs = siblings(req, task);
+  if (!sibs.length) return taskAgents(req, task);
+  const mine = req.agents.filter(
+    (a) => task.agents.includes(a.id) && fits(a, task),
+  );
+  if (mine.length) return mine;
+  return req.agents.filter((a) =>
+    sibs.some((t) => t.agents.includes(a.id) && !fits(a, t) && fits(a, task)),
+  );
+}
+
 /** When a task's work was seen, earliest and latest: its helpers, steps and messages. */
 export function taskTimes(req: RequestView, task: TaskView): string[] {
   const part = req.parts.find((p) => p.id === task.part);
+  // A part several tasks share times all of them: only its helpers and steps that are this
+  // task's own count, else every task would read the part's whole span.
+  const shared = siblings(req, task).length > 0;
+  const agents = ownAgents(req, task);
+  const mine = new Set(agents.map((a) => a.id));
+  const steps = (part?.steps ?? []).filter(
+    (st) => !shared || (st.agentId !== undefined && mine.has(st.agentId)),
+  );
   return [
-    ...taskAgents(req, task).flatMap((a) => [
-      a.startedAt,
-      a.endedAt,
-      a.report?.ts,
-    ]),
-    ...(req.recap ? [] : (part?.steps.map((s) => s.ts) ?? [])),
+    ...agents.flatMap((a) => [a.startedAt, a.endedAt, a.report?.ts]),
+    ...(req.recap ? [] : steps.map((st) => st.ts)),
     ...(req.messages ?? []).filter((m) => m.task === task.id).map((m) => m.ts),
   ]
     .filter(valid)
@@ -365,7 +638,16 @@ export function phaseSpan(
   req: RequestView,
   phase: PhaseView,
 ): { from?: string; to?: string } {
-  const times = phase.tasks.flatMap((t) => taskTimes(req, t)).sort();
+  // Its tasks' own times, and the whole span of the parts they work in.
+  const parts = req.parts.filter((p) =>
+    phase.tasks.some((t) => t.part === p.id),
+  );
+  const times = [
+    ...phase.tasks.flatMap((t) => taskTimes(req, t)),
+    ...parts.flatMap((p) => [p.span?.start, p.span?.end]),
+  ]
+    .filter(valid)
+    .sort();
   const from = times[0];
   const to = times.at(-1);
   return { ...(from ? { from } : {}), ...(to ? { to } : {}) };
@@ -388,12 +670,6 @@ export function livePhase(
   return running.reduce((a, b) => (last(b) > last(a) ? b : a));
 }
 
-/** "Phase 1 of 2": a phase's own number when its title has one, else its place. */
-export function phasePlace(req: RequestView, phase: PhaseView): string {
-  const own = /^phase\s+(\d+)\b/i.exec(phase.title)?.[1];
-  return `Phase ${own ?? req.phases.indexOf(phase) + 1} of ${req.phases.length}`;
-}
-
 /** A helper's model, from the Agent call that started it. */
 export function modelOf(a: AgentView, events: MurmurEvent[]): string {
   const call = events.find(
@@ -406,15 +682,36 @@ export function modelOf(a: AgentView, events: MurmurEvent[]): string {
   return m ? m.charAt(0).toUpperCase() + m.slice(1) : "";
 }
 
-/** A helper by what it works on: "Build demo scenes 3, 5" reads "Demo scenes 3, 5". */
-export function helperName(a: AgentView): string {
-  const d = a.description.trim();
-  const rest = d.replace(
-    /^(?:implement|build|write|add|draft|create|make|fix|review|re-?review|re-?check)\s+/i,
-    "",
-  );
-  const name = rest || d || "A helper";
-  return name.charAt(0).toUpperCase() + name.slice(1);
+/**
+ * A helper's one name, by what it works on, for its desk, the Helpers list and its
+ * close-up: "Build Task 67 Portfolio reads/styles" reads "Portfolio reads/styles".
+ */
+export function helperName(a: { description?: string | undefined }): string {
+  // A model note ("(Opus)") is on the plate already; it never names the work.
+  const desc = (a.description ?? "")
+    .replace(/\s*\((opus|sonnet|haiku)[^)]*\)\s*$/i, "")
+    .trim();
+  const verbless = desc
+    .replace(
+      /^(Build|Review|Re-?review|Recheck|Plan|Fix|Write|Implement|Research|Draft|Add|Create)\s+/i,
+      "",
+    )
+    // "Fix round Task 142 News page": the round goes, its subject comes first.
+    .replace(/^(fix\s+)?rounds?(\s+\d+)?:?\s+(?=(Tasks?|Phases?|B)\s*\d)/i, "");
+  const subject = /^(Tasks?\s+[\w-]+|Phases?\s+\d+|B\d+)/i.exec(verbless)?.[0];
+  // What is left after the subject; "Task 38: capture chat reads" leaves a colon behind.
+  const rest = verbless
+    .replace(/^(Tasks?\s+[\w-]+|Phases?\s+\d+|B\d+)\s*/i, "")
+    .replace(/^[\s:;,.\-–]+/, "");
+  let d = rest.replace(/^(fix rounds?(\s+\d+)?:?)\s*/i, "");
+  // A bare leftover ("round 2", "fix round 4") says nothing alone, so it keeps its subject.
+  if (
+    subject &&
+    /^((fix(es)?|rounds?(\s+\d+)?|review|recheck)[\s:]*)*$/i.test(d)
+  )
+    d = `${subject} ${rest}`.trim();
+  d = d || desc || "A helper";
+  return d.charAt(0).toUpperCase() + d.slice(1);
 }
 
 export type HelperKind = "build" | "review" | "recheck";
@@ -469,10 +766,20 @@ export function helperRuns(
     const next = starts[i + 1];
     const end = ends.find((t) => t >= from && (!next || t <= next));
     const last = i === starts.length - 1;
-    const running = last && a.status === "running" && !end;
+    // Silent for an hour, it is not at work (state.ts `helperNow`): the run ends at its
+    // last sign.
+    const sign = a.doing?.ts ?? a.startedAt;
+    const stale =
+      a.status === "running" && Date.parse(now) - Date.parse(sign) >= STALE_MS;
+    const running = last && a.status === "running" && !end && !stale;
     // A run resumed after the helper's last stop, with no stop of its own seen, ends
     // where it starts rather than before.
-    const stopped = a.endedAt && a.endedAt > from ? a.endedAt : from;
+    const stopped =
+      a.endedAt && a.endedAt > from
+        ? a.endedAt
+        : stale && sign > from
+          ? sign
+          : from;
     return { from, to: end ?? (running ? now : stopped), running };
   });
 }

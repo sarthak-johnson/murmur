@@ -1,5 +1,6 @@
 import { type Context, Hono } from "hono";
 import { except } from "hono/combine";
+import { compress } from "hono/compress";
 import { accountRoutes } from "./account.js";
 import {
   type AppEnv,
@@ -70,6 +71,10 @@ export function createApp(deps: Deps): Hono<AppEnv> {
     "/api/*",
     except(NOT_COOKIE, requireSameOrigin(deps), requireUser(deps)),
   );
+  // A session's events are large JSON pages (tens of MB for a long one) and compress about
+  // tenfold. Only these JSON routes: the SSE stream must not be buffered by a compressor.
+  app.use("/api/sessions", compress());
+  app.use("/api/sessions/:id/events", compress());
   authRoutes(app, deps);
   deviceRoutes(app, deps);
   ingestRoutes(app, deps);

@@ -6,28 +6,39 @@
  */
 import type { AgentView, PhaseView, RequestView, TaskView } from "@murmur/core";
 import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
+import { PIECES, StateMark, Words } from "../marks";
 import { follow, partPath } from "../router";
 import { livePhase, type Mark, phaseSpan, shortTitle } from "../session";
+import { helperNow, WORD as STATE_WORD, type State, workState } from "../state";
 import { clock, duration, nOf, verdictOf } from "../story";
-import { PIECES, StateMark, Words } from "./Rail";
 
-export type Shown = "done" | "now" | "todo" | "failed" | "blocked" | "open";
+export type Shown =
+  | "done"
+  | "now"
+  | "todo"
+  | "failed"
+  | "blocked"
+  | "open"
+  | "paused";
 
+/** The state words of state.ts, in lower case for a list's screen-reader tail. */
 export const WORD: Record<Shown, string> = {
-  done: "done",
-  now: "in progress",
-  blocked: "waiting on you",
-  todo: "not started",
-  failed: "failed",
-  open: "left open",
+  done: STATE_WORD.done.toLowerCase(),
+  now: STATE_WORD.running.toLowerCase(),
+  blocked: STATE_WORD.waiting.toLowerCase(),
+  todo: STATE_WORD.todo.toLowerCase(),
+  failed: STATE_WORD.failed.toLowerCase(),
+  open: STATE_WORD.open.toLowerCase(),
+  paused: STATE_WORD.paused.toLowerCase(),
 };
 export const MARK: Record<Shown, Mark> = {
   done: "done",
   now: "running",
-  todo: "open",
+  todo: "todo",
   failed: "failed",
   blocked: "waiting",
   open: "open",
+  paused: "paused",
 };
 
 interface Station {
@@ -76,7 +87,6 @@ function Stations(props: {
                 href={href(s.part)}
                 title={s.title}
                 onClick={follow(href(s.part))}
-                data-morph=""
               >
                 {inner}
               </a>
@@ -97,33 +107,47 @@ export const span = (from?: string, to?: string) =>
       : `${clock(from)} to ${clock(to)}`
     : "";
 
-export function agentShown(a: AgentView, over: boolean): Shown {
-  if (a.status === "running") return over ? "open" : "now";
-  if (/failed|killed/.test(a.report?.status ?? "")) return "failed";
-  return "done";
+const SHOWN: Record<State, Shown> = {
+  running: "now",
+  waiting: "blocked",
+  paused: "paused",
+  done: "done",
+  open: "open",
+  failed: "failed",
+  todo: "todo",
+};
+/** A state (state.ts) as the lists draw it. */
+export const shownOf = (s: State): Shown => SHOWN[s];
+/** A request's state, from the old "over" flag where only that is known. */
+const reqState = (r: boolean | State): State =>
+  typeof r === "string" ? r : r ? "done" : "running";
+
+/** A helper's state at `at` (state.ts `helperNow`), under its request's state. */
+export function agentShown(
+  a: AgentView,
+  request: boolean | State,
+  at = new Date().toISOString(),
+): Shown {
+  return SHOWN[helperNow(a, at, reqState(request)).state];
 }
 
-/** A task's state: once the request is over, one not done is left open. */
-export const taskShown = (t: TaskView, over: boolean): Shown =>
-  t.status === "failed"
-    ? "failed"
-    : t.status === "done"
-      ? "done"
-      : over
-        ? "open"
-        : t.status;
+/** A task's state: once the request is over, one not done is left open (state.ts `workState`). */
+export const taskShown = (t: TaskView, request: boolean | State): Shown =>
+  SHOWN[workState(t.status, reqState(request))];
 
 /** A phase's state; `live` is the phase where the work is (`livePhase`). */
 export function phaseShown(
   ph: PhaseView,
   over: boolean,
   live: PhaseView | undefined,
+  /** Its request stopped mid-work (state.ts): the phase under way stands paused too. */
+  paused = false,
 ): Shown {
   if (ph.status === "done") return "done";
   if (over) return "open";
   // Waiting on you outranks running: it is the one thing the reader can do.
   if (ph.status === "blocked") return "blocked";
-  if (ph === live || ph.status === "now") return "now";
+  if (ph === live || ph.status === "now") return paused ? "paused" : "now";
   return ph.tasks.some((t) => t.status === "failed") ? "failed" : "todo";
 }
 
@@ -138,6 +162,7 @@ export function phaseLine(req: RequestView, ph: PhaseView, shown: Shown) {
   if (shown === "blocked") return `${count} · waiting on you`;
   if (shown === "now")
     return from ? `${count} · started ${clock(from)}` : count;
+  if (shown === "paused") return `${count} · paused`;
   return `${nOf(ph.tasks.length, "task")}, not started`;
 }
 
@@ -237,11 +262,12 @@ export function PhaseTrack(props: {
   sessionId: string;
   request: RequestView;
   done: boolean;
-  /** The clock stops at `end`: done, or waiting on you with no helper at work. */
-  stopped: boolean;
+  /** Where its clock stops (state.ts `RequestNow.to`): never the wall clock in a replay. */
   end: string;
+  /** The request's state (state.ts), so a paused one's work reads paused, not running. */
+  state?: State | undefined;
 }) {
-  const { sessionId, request: req, done, stopped, end } = props;
+  const { sessionId, request: req, done, end } = props;
   const beyond = req.beyond;
   const beyondAgents = beyond
     ? req.agents
@@ -259,8 +285,6 @@ export function PhaseTrack(props: {
   const tasks = req.phases.flatMap((p) => p.tasks);
   const doneN = tasks.filter((t) => t.status === "done").length;
   const running = req.agents.filter((a) => a.status === "running").length;
-  const now = new Date().toISOString();
-
   const still = [
     ...(running ? [`${nOf(running, "helper")} running`] : []),
     ...(beyond?.rounds
@@ -278,14 +302,14 @@ export function PhaseTrack(props: {
       : []),
     over
       ? ["Took", duration(req.startedAt, end)]
-      : ["Elapsed", duration(req.startedAt, stopped ? end : now)],
+      : ["Elapsed", duration(req.startedAt, end)],
   ];
 
   return (
     <section className={stacked ? "trk stack" : "trk"} aria-label="Phase track">
       <ol className="trk-segs" ref={ref}>
         {req.phases.map((ph) => {
-          const shown = phaseShown(ph, over, live);
+          const shown = phaseShown(ph, over, live, props.state === "paused");
           const fill = ph.tasks.length
             ? ph.tasks.filter((t) => t.status === "done").length /
               ph.tasks.length
@@ -318,8 +342,9 @@ export function PhaseTrack(props: {
                     : t.problem
                       ? `${t.title}: ${t.problem}`
                       : t.title,
-                  shown: taskShown(t, over),
-                  part: t.part,
+                  shown: taskShown(t, over ? true : (props.state ?? false)),
+                  // Its close-up by the task's own id: several tasks share one part.
+                  part: t.part && t.id,
                 }))}
               />
             </li>
@@ -348,7 +373,7 @@ export function PhaseTrack(props: {
                   title: verdict
                     ? `${a.description}: ${verdict}`
                     : a.description,
-                  shown: agentShown(a, over),
+                  shown: agentShown(a, over, end),
                   part: a.part,
                 };
               })}

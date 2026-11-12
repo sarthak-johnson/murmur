@@ -1,5 +1,6 @@
 import { displayPath, type FileTouch, type MurmurEvent } from "@murmur/core";
 import { Fragment, type ReactNode, useState } from "react";
+import { eventsById } from "./format";
 
 const SHOWN = 8;
 
@@ -35,10 +36,10 @@ export function PathText(props: { path: string; cwd: string; strip?: string }) {
 
 /** Newest first by the latest event of each file; files with no known event keep their order. */
 function newestFirst(files: FileTouch[], events: MurmurEvent[]) {
-  const ts = new Map(events.map((e) => [e.id, e.ts]));
+  const byId = eventsById(events);
   const last = (f: FileTouch) =>
     f.eventIds
-      .map((id) => ts.get(id) ?? "")
+      .map((id) => byId.get(id)?.ts ?? "")
       .sort()
       .at(-1) ?? "";
   return [...files].sort((a, b) => {

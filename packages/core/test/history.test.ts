@@ -343,14 +343,8 @@ describe("plan and map", () => {
         id: "did",
         title: "What Claude did",
         status: "now",
+        // A folder of changes is a part, not a task.
         tasks: [
-          {
-            id: "dir:web/src",
-            title: "web/src",
-            part: "dir:web/src",
-            status: "done",
-            agents: [],
-          },
           {
             id: "task:1",
             title: "Task 1: tokens",
@@ -374,6 +368,50 @@ describe("plan and map", () => {
     expect(r?.agents.map((a) => [a.id, a.part])).toEqual([
       ["a1", "task:1"],
       ["a2", "task:2"],
+    ]);
+  });
+
+  test("a folder of changes is under way while its request runs, done once its turn ends", () => {
+    const events = [
+      prompt(0, "go"),
+      edit(1, "web/src/a.ts", ["+a"]),
+      edit(2, "web/src/b.ts", ["+a"]),
+    ];
+    const folder = (es: MurmurEvent[]) => {
+      const [r] = reduce(es).requests;
+      // Only folders: no plan, so no phase reads it running.
+      expect(r?.phases).toEqual([]);
+      return r?.parts[0]?.status;
+    };
+    expect(folder(events)).toBe("now");
+    expect(folder([...events, at(3, "Stop", {})])).toBe("done");
+    // Waiting on you is no end of the work: the folder is still under way, its span open.
+    const asked = [
+      ...events,
+      at(3, "Stop", { last_assistant_message: "Should I also do the docs?" }),
+    ];
+    const [r] = reduce(asked).requests;
+    expect(r?.state).toBe("waiting");
+    expect(folder(asked)).toBe("now");
+    expect(r?.parts[0]?.span?.end).toBeUndefined();
+  });
+
+  test("a phase of helpers reads done once they are, beside a folder still under way", () => {
+    const [r] = reduce([
+      prompt(0, "go"),
+      ...run(1, "Implement Task 1: tokens", "a1"),
+      by(edit(3, "web/src/a.ts", ["+a"]), "a1"),
+      stop(4, "a1"),
+      edit(5, "server/app.ts", ["+a"]),
+      edit(6, "server/db.ts", ["+a"]),
+    ]).requests;
+    expect(r?.state).toBe("running");
+    expect(r?.parts.map((p) => [p.id, p.status])).toEqual([
+      ["task:1", "done"],
+      ["dir:server", "now"],
+    ]);
+    expect(r?.phases.map((p) => [p.status, p.tasks.map((t) => t.id)])).toEqual([
+      ["done", ["task:1"]],
     ]);
   });
 

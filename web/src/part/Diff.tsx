@@ -1,6 +1,8 @@
 import type { FileTouch, MurmurEvent } from "@murmur/core";
-import { useState } from "react";
-import { clock } from "../story";
+import { type ReactNode, useState } from "react";
+import { PathText } from "../files";
+import { eventsById, MINUS } from "../format";
+import { clock, thousands } from "../story";
 
 export interface Hunk {
   oldStart: number;
@@ -65,6 +67,9 @@ export function hunksOfEvent(
 }
 
 /** A file's hunks across its events; each later edit starts with a divider. */
+/** A request's events by id, as a diff and a step read them; kept while the events are. */
+export const useById = (events: MurmurEvent[]) => eventsById(events);
+
 export function hunksOf(file: FileTouch, byId: Map<string, MurmurEvent>) {
   const out: Hunk[] = [];
   let edits = 0;
@@ -177,5 +182,47 @@ export function DiffView({ hunks }: { hunks: Hunk[] }) {
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * A changed file as a row: its path, lines added and removed, new or not, its diff one
+ * click away. `note` is said inside the row (a role); `children` follow it, under the row.
+ */
+export function DiffRow(props: {
+  file: FileTouch;
+  cwd: string;
+  strip?: string | undefined;
+  byId: Map<string, MurmurEvent>;
+  note?: ReactNode;
+  children?: ReactNode;
+}) {
+  const { file, cwd, strip, byId } = props;
+  const [open, setOpen] = useState(false);
+  return (
+    <li className={open ? "file-row open" : "file-row"}>
+      <button
+        type="button"
+        className="pd-file"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <PathText path={file.path} cwd={cwd} {...(strip ? { strip } : {})} />
+        {/* Its counts and tags stay on one line together, beside the path. */}
+        <span className="pd-facts">
+          <span className={file.added ? "pd-add" : "pd-add zero"}>
+            +{thousands(file.added)}
+          </span>
+          <span className={file.removed ? "pd-del" : "pd-del zero"}>
+            {MINUS}
+            {thousands(file.removed)}
+          </span>
+          {file.isNew && <span className="pd-tag">new</span>}
+          {props.note}
+        </span>
+      </button>
+      {props.children}
+      {open && <DiffView hunks={hunksOf(file, byId)} />}
+    </li>
   );
 }

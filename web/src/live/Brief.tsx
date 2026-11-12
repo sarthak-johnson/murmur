@@ -8,29 +8,31 @@ import {
   type KeyMoment,
   keyMoments,
   type RequestView,
+  type TaskView,
 } from "@murmur/core";
-import { few } from "../format";
-import { shortTitle, type Waiting } from "../session";
+import { few, MINUS } from "../format";
+import { Fold } from "../markdown";
+import { NeedIcon, StateMark } from "../marks";
 import {
-  clock,
-  duration,
-  fixRoundCount,
-  nOf,
-  taskNumber,
-  thousands,
-} from "../story";
-import { StateMark } from "./Rail";
-import { NeedIcon } from "./TopBar";
+  placeOf,
+  shortTitle,
+  taskTitle,
+  type Waiting,
+  youAsked,
+} from "../session";
+import { clock, duration, fixRoundCount, nOf, thousands } from "../story";
 
-const MINUS = "−";
-
-/** A key moment's mark: its own shape and colour, its word for screen readers. */
+/**
+ * A key moment's mark, its word for screen readers. A moment is past, not a state: only
+ * an outcome (done, a problem) takes a state's mark; a fix round, a decision or a plan is
+ * a plain bullet, so nothing in the list reads as running or left open.
+ */
 const MOMENT_MARK: Record<KeyMoment["mark"], { cls: string; word: string }> = {
   done: { cls: "done", word: "Done" },
   problem: { cls: "failed", word: "Problem found" },
-  fixing: { cls: "waiting fix", word: "Fixing" },
-  decision: { cls: "open", word: "Decision" },
-  plan: { cls: "beyond", word: "Plan" },
+  fixing: { cls: "moment", word: "Fixing" },
+  decision: { cls: "moment", word: "Decision" },
+  plan: { cls: "moment", word: "Plan" },
 };
 
 export function MomentMark({ mark }: { mark: KeyMoment["mark"] }) {
@@ -40,18 +42,17 @@ export function MomentMark({ mark }: { mark: KeyMoment["mark"] }) {
       {mark === "done" || mark === "problem" ? (
         <StateMark mark={mark === "done" ? "done" : "failed"} />
       ) : (
-        <span className={`mk ${cls}`} aria-hidden="true">
-          {mark === "fixing" ? "!" : null}
-        </span>
+        <span className={`mk ${cls}`} aria-hidden="true" />
       )}
       <span className="sr-only">{word}</span>
     </>
   );
 }
 
-/** A task as a chip: its plan number when its title has one, else its short name. */
-export function chipLabel(title: string): string {
-  return taskNumber(title) ?? shortTitle(title);
+/** A task as a chip: its number in the plan, as the board and the Tasks list number it. */
+export function chipLabel(req: RequestView, task: TaskView): string {
+  const place = placeOf(req, { task: task.id });
+  return place ? `Task ${place.n}` : shortTitle(task.title);
 }
 
 /** "17 min" or "3 h 06 m", the number large and its unit small. */
@@ -160,11 +161,11 @@ function Numbers(props: { request: RequestView; end: string; done: boolean }) {
   );
 }
 
-/** The second sentence: what is still running, or what was left open. */
-function edgeOf(req: RequestView, done: boolean): string {
+/** The second sentence: what is still running (or stopped mid-work), or what was left open. */
+function edgeOf(req: RequestView, done: boolean, paused: boolean): string {
   const running = req.agents.filter((a) => a.status === "running");
   if (!done && running.length)
-    return `Still running: ${few(running.map((a) => a.description || "a helper"))}.`;
+    return `${paused ? "Stopped mid-work" : "Still running"}: ${few(running.map((a) => a.description || "a helper"))}.`;
   const open = req.phases
     .flatMap((p) => p.tasks)
     .filter((t) => t.status !== "done");
@@ -180,9 +181,10 @@ function Waits(props: {
   risky: Flag[];
   /** The ask "Where it stands" already leads with, not said twice. */
   lead?: string | undefined;
+  /** Where the wait's clock stops: the brief's end. */
+  to: string;
 }) {
-  const { request, waiting, risky, lead } = props;
-  const now = new Date().toISOString();
+  const { request, waiting, risky, lead, to: now } = props;
   const items = waiting.questions.length
     ? waiting.questions.map((q) => ({ text: q.question, detail: q.detail }))
     : (request.waiting ?? []).map((text) => ({ text, detail: undefined }));
@@ -201,6 +203,11 @@ function Waits(props: {
       </h2>
       {!items.length && waiting.text && waiting.text !== lead && (
         <p className="rb-q">{waiting.text}</p>
+      )}
+      {waiting.said && (
+        <p className="rb-said">
+          <span className="lbl-inline">Claude's last words</span> {waiting.said}
+        </p>
       )}
       {(left.length > 0 || risky.length > 0) && (
         <ul className="rb-qs">
@@ -228,16 +235,19 @@ function Waits(props: {
 export function RequestBrief(props: {
   request: RequestView;
   done: boolean;
-  /** Claude stopped (done, or waiting on you with no helper at work): the clock stops at `end`. */
-  stopped: boolean;
+  /** Where the run's clock stops (state.ts `RequestNow.to`): never the wall clock in a replay. */
   end: string;
+  /** Where a wait's clock stops: the moment shown while the session ticks, else its last event. */
+  waitEnd: string;
   waiting: Waiting | null;
   lastLooked: string | null;
+  /** Paused (state.ts): its last word is how it stood then, not what is happening now. */
+  paused?: boolean | undefined;
 }) {
-  const { request: req, done, stopped, end, waiting, lastLooked } = props;
-  const now = new Date().toISOString();
+  const { request: req, done, end, waiting, lastLooked } = props;
+  const paused = !done && !!props.paused;
   const outcome = req.outcome;
-  const edge = edgeOf(req, done);
+  const edge = edgeOf(req, done, paused);
   const moments = keyMoments(req, lastLooked ?? undefined);
   const fresh = moments.filter((m) => m.new).length;
   const tasks = new Map(
@@ -249,9 +259,17 @@ export function RequestBrief(props: {
   const ask = waiting?.asked
     ? (waiting.questions[0]?.question ?? waiting.text)
     : undefined;
+  const asked = youAsked(req);
   return (
     <section className="rb" aria-label="The brief">
-      {(ask || outcome || edge) && (
+      {asked.words && (
+        <section className="rb-cell rb-asked" aria-label="You asked">
+          <h2 className="k">You asked</h2>
+          <Fold text={asked.words} lines={4} className="rb-words" />
+          {asked.summary && <p className="rb-sum">{asked.summary}</p>}
+        </section>
+      )}
+      {(ask || outcome || edge || paused) && (
         <section className="rb-cell rb-stands" aria-label={stands}>
           <h2 className="k">{stands}</h2>
           {ask && (
@@ -260,7 +278,19 @@ export function RequestBrief(props: {
               <span>{ask}</span>
             </p>
           )}
-          {outcome && <p className="rb-out">{outcome}</p>}
+          {paused && (
+            <p className="rb-edge">
+              Paused: nothing has happened on it since {clock(end)}.
+            </p>
+          )}
+          {outcome && (
+            <p className="rb-out">
+              {paused && (
+                <span className="lbl-inline">Its last word then </span>
+              )}
+              {outcome}
+            </p>
+          )}
           {edge && <p className="rb-edge">{edge}</p>}
         </section>
       )}
@@ -295,8 +325,8 @@ export function RequestBrief(props: {
                       </>
                     )}
                     {t && (
-                      <span className="chip" title={t.title}>
-                        {chipLabel(t.title)}
+                      <span className="chip" title={taskTitle(t)}>
+                        {chipLabel(req, t)}
                       </span>
                     )}
                   </span>
@@ -306,9 +336,15 @@ export function RequestBrief(props: {
           </ol>
         </section>
       )}
-      <Numbers request={req} end={stopped ? end : now} done={done} />
+      <Numbers request={req} end={end} done={done} />
       {waiting && (
-        <Waits request={req} waiting={waiting} risky={risky} lead={ask} />
+        <Waits
+          request={req}
+          waiting={waiting}
+          risky={risky}
+          lead={ask}
+          to={props.waitEnd}
+        />
       )}
     </section>
   );

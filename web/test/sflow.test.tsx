@@ -1,8 +1,17 @@
 import type { RequestView, SessionView, Thread } from "@murmur/core";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Live } from "../src/pages/Session";
+import { Live, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import {
   chainOf,
   drawnFollows,
@@ -166,7 +175,7 @@ const lit = () =>
     .map((c) => Number(c.dataset.n));
 
 beforeEach(() => {
-  history.replaceState(null, "", "/s/s1/flow");
+  history.replaceState(null, "", "/s/s1?open=timeline");
   vi.stubGlobal(
     "fetch",
     vi.fn(
@@ -181,42 +190,42 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe("session tabs", () => {
-  it("Journey, Flow and Office sit under the title, each a link, the shown one current", () => {
+  it("Journey, Timeline and All files are the panel's session row, each a link, the shown one current", () => {
     show();
-    const tabs = screen.getByRole("navigation", {
-      name: "Views of this session",
-    });
+    const tabs = screen.getByRole("navigation", { name: "This session" });
     const links = [...tabs.querySelectorAll("a")];
     expect(links.map((a) => a.textContent)).toEqual([
       "Journey",
-      "Flow",
-      "Office",
+      "Timeline",
+      "All files",
     ]);
     expect(links.map((a) => a.getAttribute("href"))).toEqual([
-      "/s/s1",
-      "/s/s1/flow",
-      "/s/s1/office",
+      "/s/s1?open=journey",
+      "/s/s1?open=timeline",
+      "/s/s1?open=allfiles",
     ]);
     expect(links[1]?.getAttribute("aria-current")).toBe("page");
     expect(links[0]?.getAttribute("aria-current")).toBeNull();
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
-      "Tradara app",
-    );
-    // The journey's own body is not drawn on the flow tab.
+    // The breadcrumb names the session the timeline is of.
+    expect(
+      screen
+        .getByRole("navigation", { name: "Where you are" })
+        .querySelector("[aria-current]")?.textContent,
+    ).toBe("Session · Tradara app");
+    // The journey's own body is not drawn on the timeline.
     expect(document.querySelector(".jr-line")).toBeNull();
   });
 
-  it("the bare session path is the journey, its tab current", () => {
+  it("with no request named the panel is the journey, its tab current", () => {
     render(
       <Live sessionId="s1" view={view()} status="live" lastLooked={null} />,
     );
-    const tabs = screen.getByRole("navigation", {
-      name: "Views of this session",
-    });
+    const tabs = screen.getByRole("navigation", { name: "This session" });
     expect(tabs.querySelector('[aria-current="page"]')?.textContent).toBe(
       "Journey",
     );
@@ -403,13 +412,13 @@ describe("the board", () => {
     show(unthreaded());
     expect(
       screen.getByText(
-        "Claude has not named this session's storylines yet, so its requests run in one line.",
+        /^Claude has not named this session's storylines yet, so its (requests|\d+ chapters) run in one line, as on its Journey\.$/,
       ),
     ).toBeTruthy();
     // One column needs no header naming it, and a click lights no storyline.
     expect(document.querySelector(".sf-head")).toBeNull();
     expect(document.querySelector(".sf-hint")?.textContent).toBe(
-      "Click a request to light what it picks up from; click it again or press Enter to open it.",
+      "Point at a request to light what it picks up from; click it to open it.",
     );
   });
 
@@ -437,6 +446,9 @@ describe("the board", () => {
   });
 
   it("the running request carries the one pulse on the page", () => {
+    // Its states are read at the session's moment (state.ts): a minute after its last event.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse(day(5, 81)));
     show();
     const pulses = document.querySelectorAll(".pulse");
     expect(pulses).toHaveLength(1);
@@ -445,42 +457,44 @@ describe("the board", () => {
 });
 
 describe("selection", () => {
-  it("a click lights its thread and its follows chain and dims the rest; Escape clears", async () => {
+  it("pointing at a card lights its thread and its follows chain and dims the rest", () => {
     show();
-    await userEvent.click(card(5));
+    fireEvent.pointerEnter(card(5));
     expect(card(5).getAttribute("aria-pressed")).toBe("true");
     // Thread t1 (1, 3, 5) and the chain 1, 5, 6.
     expect(lit()).toEqual([1, 3, 5, 6]);
-    expect(location.search).toBe("?r=r5");
     const on = [...document.querySelectorAll(".sf-link.on")].map((l) =>
       l.getAttribute("data-key"),
     );
     expect(on).toEqual(["r1>r5", "r5>r6"]);
-    fireEvent.keyDown(card(5), { key: "Escape" });
+    fireEvent.pointerLeave(card(5));
     expect(lit()).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(location.search).toBe("");
   });
 
-  it("in Murmur's one guessed column a click lights its follows chain, not the whole column", async () => {
+  it("in Murmur's one guessed column pointing lights its follows chain, not the whole column", () => {
     show(unthreaded());
-    await userEvent.click(card(5));
+    fireEvent.pointerEnter(card(5));
     expect(lit()).toEqual([1, 5, 6]);
   });
 
-  it("?r= selects on load", () => {
-    history.replaceState(null, "", "/s/s1/flow?r=r4");
+  it("?r= selects on load, and Escape clears it from the card and the address", () => {
+    history.replaceState(null, "", "/s/s1?open=timeline&r=r4");
     show();
     expect(card(4).getAttribute("aria-pressed")).toBe("true");
     expect(card(4).tabIndex).toBe(0);
     expect(lit()).toEqual([1, 2, 4]);
+    fireEvent.keyDown(card(4), { key: "Escape" });
+    expect(lit()).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(location.search).toBe("?open=timeline");
   });
 
-  it("arrow keys move through time and across columns", async () => {
+  it("arrow keys move through time and across columns, the selection in the address", () => {
     show();
-    await userEvent.click(card(1));
+    card(1).focus();
     fireEvent.keyDown(card(1), { key: "ArrowDown" });
     expect(card(2).getAttribute("aria-pressed")).toBe("true");
     expect(document.activeElement).toBe(card(2));
+    expect(location.search).toBe("?open=timeline&r=r2");
     fireEvent.keyDown(card(2), { key: "ArrowLeft" });
     // The nearest request in time in the column to the left.
     expect(document.activeElement).toBe(card(1));
@@ -490,18 +504,19 @@ describe("selection", () => {
     expect(document.activeElement).toBe(card(1));
   });
 
-  it("Enter opens the request; so does a click on the selected card", async () => {
+  it("one click opens the request in the office; so does Enter", async () => {
     show();
-    await userEvent.click(card(3));
-    fireEvent.keyDown(card(3), { key: "Enter" });
-    expect(location.pathname).toBe("/s/s1/r/r3");
+    await userEvent.click(card(2));
+    expect(location.pathname + location.search).toBe("/s/s1/r/r2?open=story");
+    // Back comes to the timeline with the card it opened still selected.
+    history.back();
+    await waitFor(() => expect(location.search).toBe("?open=timeline&r=r2"));
     cleanup();
-    history.replaceState(null, "", "/s/s1/flow");
+    history.replaceState(null, "", "/s/s1?open=timeline");
     show();
-    await userEvent.click(card(2));
-    expect(location.pathname).toBe("/s/s1/flow");
-    await userEvent.click(card(2));
-    expect(location.pathname).toBe("/s/s1/r/r2");
+    card(3).focus();
+    fireEvent.keyDown(card(3), { key: "Enter" });
+    expect(location.pathname + location.search).toBe("/s/s1/r/r3?open=story");
   });
 });
 
@@ -540,7 +555,13 @@ describe("under 900 px", () => {
       "3 days away",
     );
     const a = items[0]?.querySelector("a");
-    expect(a?.getAttribute("href")).toBe("/s/s1/r/r1");
+    expect(a?.getAttribute("href")).toBe("/s/s1/r/r1?open=story");
+    // Read days after its last event, its running request is paused (state.ts): no pulse.
+    expect(document.querySelectorAll(".pulse")).toHaveLength(0);
+    cleanup();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse(day(5, 81)));
+    show();
     expect(document.querySelectorAll(".pulse")).toHaveLength(1);
   });
 

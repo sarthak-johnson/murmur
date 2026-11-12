@@ -7,6 +7,7 @@ import { purgeUnlisted } from "./auth.js";
 import { loadConfig } from "./config.js";
 import { openDb } from "./db/client.js";
 import { runRetention } from "./retention.js";
+import { backfillSummaries, stopSummaries } from "./summary.js";
 import { webRoutes } from "./web.js";
 
 let loaded: ReturnType<typeof loadConfig>;
@@ -37,6 +38,8 @@ const retain = () =>
   runRetention(db, new Date()).catch((e) => console.error("retention:", e));
 await retain();
 const timer = setInterval(retain, 60 * 60 * 1000);
+// The lobby reads stored summaries; any missing or stale are read in the background.
+void backfillSummaries(db).catch((e) => console.error("summaries:", e));
 
 const server = serve(
   { fetch: root.fetch, port, ...(host ? { hostname: host } : {}) },
@@ -49,7 +52,14 @@ const stop = () => {
   if (stopping) return;
   stopping = true;
   clearInterval(timer);
-  server.close(() => close().finally(() => process.exit(0)));
+  // Summary reads under way finish before the pool closes; ones still waiting are read
+  // again at the next start (backfillSummaries).
+  server.close(() =>
+    stopSummaries()
+      .catch((e) => console.error("summaries:", e))
+      .then(close)
+      .finally(() => process.exit(0)),
+  );
   // Open SSE streams would hold close() forever.
   (server as HttpServer).closeAllConnections();
 };

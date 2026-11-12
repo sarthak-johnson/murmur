@@ -1,87 +1,68 @@
 /*
- * The office. Its own warm palette (--o-*), scoped to .office so the app's tokens stay as
- * they are for the views in its drawer. The room is a canvas at a whole-number scale (--s)
- * with a DOM overlay for words: labels, plates, bubbles, sticky-note text.
+ * The office: the app's one shell. Its --o-* names alias the app's tokens (theme.css), and
+ * its chrome is built from the same pixel kit as the views in its panel. The room is a
+ * canvas at a whole-number scale (--s) with a DOM overlay for words: labels, plates,
+ * bubbles, sticky-note text.
  */
 .office {
-  --o-bg: #0d0b0a;
-  --o-bar: #15110f;
-  --o-panel: #1a1512;
-  --o-line: #33291f;
-  --o-line2: #4a3830;
-  --o-t1: #f3ebe0;
-  --o-t2: #d5c8b8;
-  --o-t3: #a8a29a;
+  /* The office's names for the app's tokens (theme.css :root): one palette, one source. */
+  --o-bg: var(--s1);
+  --o-bar: var(--s2);
+  --o-panel: var(--s3);
+  --o-line: var(--s6);
+  --o-line2: var(--s7);
+  --o-t1: var(--t1);
+  --o-t2: var(--t2);
+  --o-t3: var(--t3);
   --o-ink: #1c2128;
-  --o-now: #6db4ff;
-  --o-now-bg: #16263a;
-  --o-done: #74d394;
-  --o-done-bg: #15281d;
-  --o-need: #ffbf4a;
-  --o-need-bg: #2e2310;
-  --o-bad: #ff6f61;
-  --o-bad-bg: #2e1512;
+  --o-now: var(--now);
+  --o-now-bg: var(--now-tint);
+  --o-done: var(--done);
+  --o-done-bg: var(--done-tint);
+  --o-need: var(--need);
+  --o-need-bg: var(--need-tint);
+  --o-bad: var(--bad);
+  --o-bad-bg: var(--bad-tint);
   --o-todo: #c0b6aa;
-  --o-todo-bg: #2a2420;
-  --o-ui: "Geist", system-ui, sans-serif;
-  --o-mono: "Geist Mono", ui-monospace, monospace;
-  --o-pix: "Silkscreen", "Geist Mono", monospace;
-  --o-top: 56px;
-  --o-foot: 72px;
+  --o-todo-bg: var(--todo-tint);
+  --o-ui: var(--font-ui);
+  --o-mono: var(--font-code);
+  --o-pix: var(--pix);
   position: fixed;
   inset: 0;
   display: grid;
-  grid-template-rows: var(--o-top) minmax(0, 1fr) var(--o-foot);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-columns: minmax(0, 1fr);
   background: var(--o-bg);
   color: var(--o-t1);
   font: 15px / 1.5 var(--o-ui);
-  overflow: hidden;
-}
-.office button,
-.office select,
-.office input {
-  font: inherit;
-  color: inherit;
-}
-.office button {
-  cursor: pointer;
-}
-.office .sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
+  /* Clip, not hidden: a hidden box still scrolls when something inside is brought into view,
+     which slid the whole office up under its own top edge. */
+  overflow: clip;
 }
 
 /* Top bar */
+/* Two rows: where you are and what to do on the first, how the floor stands on the second. */
 .of-top {
+  background: var(--o-bar);
+  box-shadow: inset 0 -2px 0 var(--o-line);
+  min-width: 0;
+  padding: 0 16px;
+  position: relative;
+  z-index: 5;
+}
+.of-top-row {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 24px 0 12px;
-  background: var(--o-bar);
-  border-bottom: 1px solid var(--o-line);
+  gap: 12px;
   min-width: 0;
+  height: 52px;
 }
-.of-back-link {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  color: var(--o-t2);
-  font-size: 22px;
-  line-height: 1;
-  text-decoration: none;
-  flex: none;
-}
-.of-back-link:hover,
-.of-back-link:focus-visible {
-  background: #241d19;
-  color: var(--o-t1);
+.of-top-row.of-status {
+  height: 36px;
+  box-shadow: inset 0 2px 0 var(--o-line);
+  gap: 16px;
+  font-size: 14px;
 }
 .of-brand {
   font: 700 16px var(--o-pix);
@@ -89,11 +70,12 @@
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+  color: var(--o-t1);
+  text-decoration: none;
+  padding: 6px 4px;
+  flex: none;
 }
-.of-brand-sub {
-  color: var(--o-t3);
-  font-weight: 400;
-}
+
 .of-brand-mark {
   width: 14px;
   height: 14px;
@@ -104,44 +86,33 @@
 }
 /* Live or a replay, said once by the brand: a live session follows its newest moment. */
 .of-tag {
-  font: 700 11px var(--o-pix);
-  letter-spacing: 0.04em;
-  border-radius: 4px;
-  padding: 3px 7px;
-  white-space: nowrap;
+  height: 24px;
   cursor: help;
 }
 .of-tag::before {
   content: "";
-  display: inline-block;
+  flex: none;
   width: 6px;
   height: 6px;
-  margin-right: 6px;
-  vertical-align: 1px;
   background: currentColor;
 }
 .of-tag.live {
-  color: var(--o-now);
-  border: 1px solid #2c4f78;
-  background: var(--o-now-bg);
+  --tone: var(--o-now);
 }
 .of-tag.live::before {
-  border-radius: 50%;
-  animation: of-breathe 2s ease-in-out infinite;
+  animation: of-breathe 2s steps(1, end) infinite;
 }
 .of-tag.quiet {
-  color: var(--o-t2);
-  border: 1px solid var(--o-line2);
-  background: #1d1714;
+  --tone: var(--o-t2);
 }
 .of-tag.quiet::before {
-  border-radius: 50%;
   opacity: 0.6;
 }
+.of-tag.ended {
+  --tone: var(--o-t3);
+}
 .of-tag.replay {
-  color: #f2b8a0;
-  border: 1px solid #6a3a2c;
-  background: #2a1712;
+  --tone: #f2b8a0;
 }
 .of-tag.replay::before {
   clip-path: polygon(0 0, 100% 50%, 0 100%);
@@ -151,22 +122,23 @@
     opacity: 0.35;
   }
 }
-.of-req {
-  display: flex;
-  align-items: center;
+/* The popover buttons (session switcher, request picker, menu): pixel buttons; the
+   request's title in Geist, its number a label. */
+.of-pop-btn {
+  justify-content: flex-start;
   gap: 10px;
   min-width: 0;
   max-width: 620px;
-  padding: 6px 12px;
-  border: 1px solid var(--o-line2);
-  border-radius: 6px;
-  background: #1d1714;
+  min-height: 36px;
+  padding: 4px 12px;
+  font: 15px / 22px var(--o-ui);
 }
-.of-req:hover {
-  border-color: #6a5446;
+.of-pop-btn[aria-expanded="true"] {
+  --pf: var(--s9);
+  --pfb: var(--s5);
 }
 .of-req-n {
-  font-size: 14px;
+  font: 400 12px / 16px var(--o-pix);
   color: var(--o-t3);
   white-space: nowrap;
 }
@@ -176,40 +148,62 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* A pixel caret: three rows of a stepped triangle. */
 .of-caret {
-  width: 0;
-  height: 0;
-  border: 5px solid transparent;
-  border-top-color: var(--o-t3);
-  margin-top: 5px;
+  flex: none;
+  width: 10px;
+  height: 6px;
+  background:
+    linear-gradient(var(--o-t3) 0 0) 0 0 / 10px 2px,
+    linear-gradient(var(--o-t3) 0 0) 2px 2px / 6px 2px,
+    linear-gradient(var(--o-t3) 0 0) 4px 4px / 2px 2px;
+  background-repeat: no-repeat;
 }
+/* The state: a tag at the bar's height, its state's pixel mark first. */
 .of-pill {
-  font-size: 14px;
-  font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 999px;
-  white-space: nowrap;
-  border: 1px solid currentColor;
+  height: 32px;
+  padding: 0 10px 0 8px;
 }
-.office .s-now {
-  color: var(--o-now);
-  background: var(--o-now-bg);
+.of-pill::before {
+  content: "";
+  flex: none;
+  width: 12px;
+  height: 12px;
+  background: var(--mark-todo) center / 12px 12px no-repeat;
 }
-.office .s-done {
-  color: var(--o-done);
-  background: var(--o-done-bg);
+.of-pill.s-now {
+  --tone: var(--o-now);
 }
-.office .s-blocked {
-  color: var(--o-need);
-  background: var(--o-need-bg);
+.of-pill.s-now::before {
+  background-image: var(--mark-now);
 }
-.office .s-failed {
-  color: var(--o-bad);
-  background: var(--o-bad-bg);
+.of-pill.s-done {
+  --tone: var(--o-done);
 }
-.office .s-todo {
-  color: var(--o-todo);
-  background: var(--o-todo-bg);
+.of-pill.s-done::before {
+  background-image: var(--mark-done);
+}
+.of-pill.s-blocked {
+  --tone: var(--o-need);
+}
+.of-pill.s-blocked::before {
+  background-image: var(--mark-blocked);
+}
+.of-pill.s-failed {
+  --tone: var(--o-bad);
+}
+.of-pill.s-failed::before {
+  background-image: var(--mark-failed);
+}
+.of-pill.s-todo {
+  --tone: var(--o-todo);
+}
+/* A request is never "not started": grey on the bar means it was left open, or paused. */
+.of-pill.s-todo::before {
+  background-image: var(--mark-open);
+}
+.of-pill.m-paused::before {
+  background-image: var(--mark-paused);
 }
 .of-meta {
   color: var(--o-t2);
@@ -222,71 +216,105 @@
 .of-spacer {
   flex: 1;
 }
-.of-session {
-  color: var(--o-t3);
-  font-size: 15px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
 .of-details {
-  border: 1px solid var(--o-line2);
-  background: #1d1714;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 14px;
-  color: var(--o-t1);
   flex: none;
 }
-.of-details:hover {
-  border-color: #6a5446;
-}
-@media (max-width: 1500px) {
-  .of-session {
-    display: none;
-  }
-}
-@media (max-width: 1180px) {
-  .of-meta + .of-meta {
-    display: none;
-  }
+.of-details[aria-expanded="true"] {
+  --pf: var(--t3);
+  --pfb: var(--s5);
 }
 
-/* Stage and room */
-.of-stage {
-  position: relative;
+/* The body: the requests rail, then the stage (the room, the panel beside it). */
+.of-body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
 }
-.of-stage.docked {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--of-dw);
-  grid-template-rows: minmax(0, 1fr);
+/* The stage: the room's box, and the panel beside it (or under it, on a tall stage). The
+   room fills its box at the largest scale that fits (fit.ts); each frame centres it on whole
+   device px. When the panel's width changes, the box slides to its new size and the room
+   grows or shrinks with it. */
+.of-stage {
+  /* The last column, with or without a rail before it. */
+  grid-column: -2;
+  position: relative;
+  min-height: 0;
+  min-width: 0;
 }
-.of-empty {
-  display: grid;
-  place-items: center;
-}
-/* "safe": a room wider than its window pans from its left edge instead of spilling past it. */
 .of-mapwrap {
   position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: safe center;
+  inset: 0 var(--of-pw, 0px) 0 0;
+  overflow: hidden;
+  transition: right 180ms ease-out;
+}
+/* Under the legible floor the room is bigger than its box: it pans, the camera on what matters. */
+.of-stage.pans .of-mapwrap {
   overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--o-line2) transparent;
 }
-.of-stage.docked .of-mapwrap {
-  position: relative;
-  inset: auto;
-}
+/* Whatever is laid over the room stays in its box: nothing runs out under the panel. */
 .of-map {
   position: relative;
+  width: max-content;
+  overflow: clip;
 }
+/* Drawn at a whole number of device px per room pixel and scaled smoothly to the fit
+   ("sharp bilinear"); at a whole number on the screen too, nothing to smooth. */
 .of-cv {
   display: block;
-  image-rendering: pixelated;
   width: calc(624px * var(--s));
   height: calc(320px * var(--s));
+}
+.of-cv.crisp {
+  image-rendering: pixelated;
+}
+/* The panel: beside the room on the right, its width docked or wide. */
+.of-stage > .of-dock {
+  min-height: 0;
+  min-width: 0;
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: var(--of-pw);
+  /* With the room's box: one motion on Dock and Wide. */
+  transition: width 180ms ease-out;
+}
+.of-stage.below .of-mapwrap {
+  inset: 0 0 auto;
+  height: var(--of-rh);
+}
+.of-stage.below > .of-dock {
+  inset: var(--of-rh) 0 0;
+  width: auto;
+}
+/* Before the room: what is happening, centred in a card, with the way back to the lobby. */
+.of-body.of-empty {
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  padding: 24px 16px;
+}
+.of-empty-card {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  width: min(440px, 100%);
+  padding: 20px 24px 24px;
+}
+.of-empty-card p[role="status"] {
+  margin: 0 0 14px;
+  color: var(--o-t1);
+}
+/* The requests under a room with no rail beside it. */
+.of-under {
+  overflow-y: auto;
+  background: var(--o-bar);
+  box-shadow: inset 0 2px 0 var(--o-line);
+}
+.of-under .of-rl {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 4px 8px 16px;
 }
 .of-overlay {
   position: absolute;
@@ -299,7 +327,7 @@
 }
 /* While Claude waits on you the room dims, but the plan stays readable. */
 .of-overlay.waitdim
-  > :not(.bang):not(.wait):not(.tag):not(.you-plate):not(.note):not(.phase-h) {
+  > :not(.bang):not(.wait):not(.tag):not(.note):not(.phase-h) {
   opacity: 0.55;
 }
 .of-ask {
@@ -307,7 +335,7 @@
 }
 
 .of-overlay .room-label {
-  font: calc(6px * var(--s)) var(--o-pix);
+  font: max(10px, calc(6px * var(--s))) var(--o-pix);
   color: #9a938a;
   white-space: nowrap;
   pointer-events: none;
@@ -315,24 +343,21 @@
 }
 /* The same pixel caps as the room names. */
 .of-overlay .spot-label {
-  font: calc(4px * var(--s)) / 1 var(--o-pix);
+  font: max(12px, calc(4px * var(--s))) / 1 var(--o-pix);
   color: #9a938a;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
   pointer-events: none;
 }
-.of-overlay .you-plate {
-  font: 700 calc(4px * var(--s)) / calc(8px * var(--s)) var(--o-pix);
-  color: #2a211c;
-  text-align: center;
-  pointer-events: none;
-}
 .of-overlay .phase-h {
   font: 600 15px / 1 var(--o-ui);
   color: var(--o-ink);
   white-space: nowrap;
-  overflow: hidden;
+  /* Cut along its column with an ellipsis, never through its letters' feet on a small room. */
+  overflow-x: clip;
+  overflow-y: visible;
+  text-overflow: ellipsis;
   text-align: left;
   background: none;
   border: 0;
@@ -341,13 +366,9 @@
 .of-overlay .phase-h:hover {
   text-decoration: underline;
 }
-.of-overlay .focus-col {
-  border: 3px solid var(--o-now);
-  border-radius: 3px;
-  pointer-events: none;
-}
+
 .of-overlay .more {
-  font: 600 13px var(--o-ui);
+  font: 600 clamp(9px, calc(4.5px * var(--s)), 13px) var(--o-ui);
   color: var(--o-ink);
   pointer-events: none;
 }
@@ -357,7 +378,6 @@
   font-style: normal;
   color: #1c1720;
   background: var(--ph);
-  border-radius: 3px;
   padding: 2px 4px 1px;
   margin-right: 6px;
   vertical-align: 1px;
@@ -419,13 +439,13 @@
 }
 .of-overlay .sheet small {
   display: block;
-  font: 700 8px / 1.4 var(--o-ui);
+  font: 700 9px / 1.4 var(--o-ui);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #8a7f70;
 }
 .of-overlay .card-n {
-  font: 700 calc(3px * var(--s)) / 1 var(--o-pix);
+  font: 700 max(9px, calc(3px * var(--s))) / 1 var(--o-pix);
   color: #6b6253;
   text-align: center;
   pointer-events: none;
@@ -442,21 +462,20 @@
   transform: translateX(-50%);
   text-shadow: 0 1px 0 #000;
 }
-/* Speech bubbles: pop in with a spring when the words change, a tail to the speaker, a border
-   in the speaker's shirt colour, and a gentle fade once they have been up a while. */
+/* Speech bubbles: pixel frames in the speaker's shirt colour with a stepped tail to the
+   speaker; they pop in when the words change and fade once they have been up a while. */
 .of-overlay .bubble {
   --bc: var(--who, #4d3e34);
+  --pf: var(--bc);
+  --pfb: #120e0c;
   font: 500 15px / 1.3 var(--o-ui);
   color: var(--o-t1);
-  background: #120e0c;
-  border: 2px solid var(--bc);
-  border-radius: 8px;
   padding: 4px 10px;
   width: max-content;
   translate: -50% calc(-100% - 6px);
   transform-origin: 50% calc(100% + 6px);
   pointer-events: none;
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.45);
   animation: of-pop 0.42s cubic-bezier(0.34, 1.7, 0.5, 1) backwards;
   transition:
     opacity 0.6s ease,
@@ -465,15 +484,16 @@
 .of-overlay .bubble::after {
   content: "";
   position: absolute;
-  left: 50%;
-  bottom: -6px;
-  width: 8px;
-  height: 8px;
-  margin-left: -4px;
-  background: #120e0c;
-  border: solid var(--bc);
-  border-width: 0 2px 2px 0;
-  rotate: 45deg;
+  left: calc(50% + var(--tail, 0px));
+  bottom: -8px;
+  width: 10px;
+  height: 6px;
+  margin-left: -5px;
+  background:
+    linear-gradient(var(--bc) 0 0) 0 0 / 10px 2px,
+    linear-gradient(var(--bc) 0 0) 2px 2px / 6px 2px,
+    linear-gradient(var(--bc) 0 0) 4px 4px / 2px 2px;
+  background-repeat: no-repeat;
 }
 .of-overlay .bubble .bt {
   display: -webkit-box;
@@ -496,7 +516,6 @@
 .of-overlay .dots i {
   width: calc(1.5px * var(--s));
   height: calc(1.5px * var(--s));
-  border-radius: 50%;
   background: var(--who, #d5c8b8);
   opacity: 0.35;
   animation: of-think 1.4s ease-in-out infinite;
@@ -515,17 +534,14 @@
 }
 .of-overlay .bubble.claude {
   --bc: #b8a98f;
-  background: #1b1511;
-}
-.of-overlay .bubble.claude::after {
-  background: #1b1511;
+  --pfb: #1b1511;
 }
 .of-overlay .bubble.left {
   translate: 0 calc(-100% - 6px);
   transform-origin: 10px calc(100% + 6px);
 }
 .of-overlay .bubble.left::after {
-  left: 14px;
+  left: calc(14px + var(--tail, 0px));
 }
 @keyframes of-pop {
   from {
@@ -550,23 +566,27 @@
   max-width: 420px;
   padding: 10px 14px;
   --bc: var(--o-need);
-  background: #17120c;
+  --pf: var(--bc);
+  --pfb: #17120c;
   animation:
     of-pop 0.5s cubic-bezier(0.34, 1.7, 0.5, 1) backwards,
-    of-glow 2.4s ease-in-out 0.5s infinite;
+    of-glow 2.4s steps(2, end) 0.5s infinite;
 }
 .of-overlay .bubble.wait::after {
-  top: -6px;
+  top: -8px;
   bottom: auto;
   left: calc(50% + var(--tail, 0px));
-  rotate: 225deg;
-  background: #17120c;
+  background:
+    linear-gradient(var(--bc) 0 0) 4px 0 / 2px 2px,
+    linear-gradient(var(--bc) 0 0) 2px 2px / 6px 2px,
+    linear-gradient(var(--bc) 0 0) 0 4px / 10px 2px;
+  background-repeat: no-repeat;
 }
 @keyframes of-glow {
   50% {
     box-shadow:
-      0 3px 0 rgba(0, 0, 0, 0.45),
-      0 0 18px rgba(255, 191, 74, 0.35);
+      0 4px 0 rgba(0, 0, 0, 0.45),
+      0 0 0 4px rgba(255, 191, 74, 0.25);
   }
 }
 .of-overlay .bubble.wait small {
@@ -574,14 +594,14 @@
   color: var(--o-need);
 }
 .of-overlay .bang {
-  width: 32px;
-  height: 32px;
+  --bang: clamp(16px, calc(14px * var(--s)), 32px);
+  width: var(--bang);
+  height: var(--bang);
   transform: translate(-50%, -100%);
   background: var(--o-need);
   color: #2e2310;
-  font: 700 24px / 32px var(--o-ui);
+  font: 700 calc(var(--bang) * 0.75) / var(--bang) var(--o-ui);
   text-align: center;
-  border-radius: 4px;
   pointer-events: none;
   animation: of-pulse 2s ease-in-out infinite;
 }
@@ -593,7 +613,6 @@
 .of-overlay .hit {
   background: transparent;
   border: 0;
-  border-radius: 4px;
   padding: 0;
 }
 .of-overlay .hit:hover,
@@ -643,23 +662,21 @@
 .of-overlay .hit.note.ring {
   outline: 3px dashed rgba(28, 33, 40, 0.7);
 }
-/* 2x: most notes are too narrow for text (a wide one keeps one line); the rest steps down a size. */
-/* Two lines beside the sticky's square, so a title reads to its end more often. */
-.s2 .of-overlay .hit.note.wide .t {
+/* Under 3x a title takes the lines its box was laid out for (its own line clamp, at most two),
+   ending in an ellipsis at a word; a note too narrow for words is only its mark. */
+.s2 .of-overlay .hit.note .t {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  overflow-wrap: break-word;
   font-size: 11px;
   line-height: 12px;
   margin-top: 2px;
 }
-.s2 .of-overlay .hit.note:not(.wide) .t,
+.s2 .of-overlay .hit.note.mute .t,
 .s2 .of-overlay .hit.note .stage {
   display: none;
-}
-.s2 .of-overlay .more {
-  font-size: 11px;
 }
 .s2 .of-overlay .plate b,
 .s2 .of-overlay .plate span,
@@ -673,14 +690,13 @@
   font-size: 12px;
 }
 .s2 .of-overlay .spot-label {
-  font-size: 10px;
+  font-size: 12px;
 }
 /* One line at 2x, so a bubble never covers the plate of the desk above. */
 .s2 .of-overlay .bubble:not(.wait) {
   font-size: 13px;
   padding: 2px 7px;
-  border-width: 1px;
-  translate: -50% calc(-100% - 4px);
+  translate: -50% calc(-100% - 6px);
 }
 .s2 .of-overlay .bubble:not(.wait) .bt {
   display: block;
@@ -688,15 +704,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.s2 .of-overlay .bubble:not(.wait)::after {
-  width: 6px;
-  height: 6px;
-  margin-left: -3px;
-  bottom: -4px;
-  border-width: 0 1px 1px 0;
-}
 .s2 .of-overlay .bubble.left {
-  translate: 0 calc(-100% - 4px);
+  translate: 0 calc(-100% - 6px);
 }
 .s2 .of-overlay .bubble.wait {
   font-size: 15px;
@@ -706,117 +715,57 @@
 .s2 .of-overlay .bubble.wait small {
   font-size: 13px;
 }
-.s1 .of-overlay .plate {
+/* Under 1.5x a plate is its name alone, in a smaller face, never under 10 px; under 1x it goes. */
+.s1 .of-overlay .plate b {
+  font-size: max(10px, calc(8.5px * var(--s)));
+  line-height: 1.2;
+}
+.s0 .of-overlay .plate {
   display: none;
 }
+/* 1x: the shelf names run into each other, and the waiting bubble steps down. */
+.s1 .of-overlay .spot-label {
+  display: none;
+}
+.s1 .of-overlay .bubble.wait {
+  font-size: 13px;
+  max-width: 260px;
+  padding: 6px 10px;
+}
+.s1 .of-overlay .bubble.wait small {
+  font-size: 12px;
+}
+/* Under 2x a plate keeps only its name. */
+.s15 .of-overlay .plate span {
+  display: none;
+}
+/* Under 1x the room is a map: Claude, its words and the board's heads; the rest hides. */
+/* (A note under 1x is always mute: only its mark.) */
+.s0 .of-overlay .room-label,
+.s0 .of-overlay .more,
+.s0 .of-overlay .bubble.mate {
+  display: none;
+}
+.s0 .of-overlay .phase-h {
+  font-size: 10px;
+  padding: 0 2px;
+}
+.s0 .of-overlay .tag {
+  font-size: 11px;
+}
+.s0 .of-overlay .bubble.claude {
+  font-size: 12px;
+  padding: 1px 6px;
+}
+.s0 .of-overlay .bubble.wait {
+  font-size: 12px;
+  max-width: 220px;
+  padding: 4px 8px;
+}
+.s0 .of-overlay .bubble.wait small {
+  font-size: 11px;
+}
 
-/* The detail drawer: beside the room when it fits, else over it on the side away from what
-   was clicked. It holds the app's own views, so it keeps the app's look. */
-.of-dock {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(var(--of-dw, 480px), 100%);
-  z-index: 3;
-}
-.of-dock.left {
-  right: auto;
-  left: 0;
-}
-.of-stage.docked .of-dock {
-  position: relative;
-  width: auto;
-}
-.of-drawer {
-  height: 100%;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  grid-template-columns: minmax(0, 1fr);
-  background: var(--s2, #161512);
-  border-left: 1px solid var(--o-line);
-  box-shadow: -12px 0 24px rgba(0, 0, 0, 0.35);
-  color: var(--t1, #eeecea);
-  font: 15px / 1.5 var(--font-ui, var(--o-ui));
-}
-.of-dock.left .of-drawer {
-  border-left: 0;
-  border-right: 1px solid var(--o-line);
-  box-shadow: 12px 0 24px rgba(0, 0, 0, 0.35);
-}
-.of-drawer.docked {
-  box-shadow: none;
-}
-.of-dh {
-  padding: 14px 20px 0;
-  border-bottom: 1px solid var(--line, #34322e);
-}
-.of-dh-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-.of-dh-req {
-  flex: 1;
-  min-width: 0;
-  font-weight: 600;
-  font-size: 16px;
-  line-height: 1.35;
-  color: var(--t1, #eeecea);
-  text-decoration: none;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.of-dh-req:hover {
-  text-decoration: underline;
-  text-decoration-color: var(--line-2, #423f3b);
-  text-underline-offset: 3px;
-}
-.of-close {
-  background: #241d19;
-  border: 1px solid var(--o-line2);
-  border-radius: 6px;
-  padding: 3px 12px;
-  font-size: 14px;
-  color: var(--o-t2);
-  flex: none;
-}
-.of-tabs {
-  display: flex;
-  gap: 2px;
-  margin-top: 10px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.of-drawer .of-tabs button {
-  background: none;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  padding: 8px 10px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--t3, #a19e9a);
-  white-space: nowrap;
-}
-.of-drawer .of-tabs button:hover {
-  color: var(--t1, #eeecea);
-}
-.of-drawer .of-tabs button[aria-current="page"] {
-  color: var(--t1, #eeecea);
-  border-bottom-color: var(--t1, #eeecea);
-}
-.of-db {
-  overflow-y: auto;
-  padding: 18px 20px 40px;
-  min-width: 0;
-}
-.of-back {
-  display: inline-block;
-  margin-bottom: 12px;
-  font-size: 14px;
-}
 .of-card h2 {
   font-size: 20px;
   line-height: 1.3;
@@ -824,22 +773,18 @@
   font-weight: 600;
 }
 .of-card h3 {
-  font: 600 13px var(--font-ui, var(--o-ui));
-  color: var(--t3, #a19e9a);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font: 400 12px / 16px var(--pix);
+  color: var(--t3);
   margin: 22px 0 8px;
 }
 .of-card p {
   margin: 0 0 10px;
-  color: var(--t2, #d4d0cc);
+  color: var(--t2);
 }
 .of-kicker {
-  font: 600 13px var(--font-ui, var(--o-ui));
-  color: var(--t3, #a19e9a);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin: 0 0 6px;
+  font: 400 12px / 16px var(--pix);
+  color: var(--t3);
+  margin: 0 0 8px;
 }
 .of-chips {
   display: flex;
@@ -848,30 +793,24 @@
   align-items: center;
 }
 .of-chip {
-  font-size: 13px;
-  font-weight: 600;
-  padding: 2px 9px;
-  border-radius: 999px;
-  border: 1px solid currentColor;
-  color: var(--t2, #d4d0cc);
+  --tone: var(--t2);
 }
 .of-chip.now {
-  color: var(--now, #60aaf3);
+  --tone: var(--now);
 }
 .of-chip.done {
-  color: var(--done, #55c483);
+  --tone: var(--done);
 }
 .of-chip.warn {
-  color: var(--need, #e9b452);
+  --tone: var(--need);
 }
 .of-chip.bad {
-  color: var(--bad, #ef6661);
+  --tone: var(--bad);
 }
 .of-md {
-  color: var(--t2, #d4d0cc);
+  color: var(--t2);
   overflow-wrap: anywhere;
 }
-.of-files,
 .of-runs {
   list-style: none;
   margin: 0;
@@ -883,52 +822,34 @@
   display: flex;
   gap: 12px;
   align-items: baseline;
-  color: var(--t2, #d4d0cc);
+  color: var(--t2);
 }
 .of-when {
-  font: 13px var(--font-code, var(--o-mono));
-  color: var(--t3, #a19e9a);
+  font: 13px var(--font-code);
+  color: var(--t3);
   flex: none;
   min-width: 44px;
 }
-/* The app's views assume a page's width; in the drawer they take its width instead: the
-   request's brief stacks its cells when the drawer is narrow. */
+/* The app's views assume a page's width under a page's top bar; in the panel they take its
+   width, stick to its own top, and the request's brief stacks its cells when it is narrow. */
 .of-db {
   container-type: inline-size;
+  --top: 0px;
 }
 @container (max-width: 560px) {
   .of-db .rb {
     flex-direction: column;
   }
   .of-db .rb-cell + .rb-cell {
-    box-shadow: inset 0 1px 0 var(--s6);
+    box-shadow: inset 0 2px 0 var(--s6);
   }
-}
-.of-db .req-split {
-  display: block;
-}
-.of-db .tabs {
-  flex-wrap: wrap;
 }
 
 /* Replay bar */
-.of-replay {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 24px;
-  background: var(--o-bar);
-  border-top: 1px solid var(--o-line);
-  min-width: 0;
-}
 .of-play {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
-  border: 1px solid var(--o-line2);
-  background: #1d1714;
-  display: grid;
-  place-items: center;
+  padding: 0;
   flex: none;
 }
 .of-play-icon {
@@ -938,6 +859,7 @@
   border-top: 8px solid transparent;
   border-bottom: 8px solid transparent;
   margin-left: 3px;
+  image-rendering: pixelated;
 }
 .of-play.on .of-play-icon {
   width: 12px;
@@ -951,107 +873,71 @@
     var(--o-t1) 8px 12px
   );
 }
-.of-track {
-  position: relative;
-  flex: 1;
-  min-width: 120px;
-  padding-top: 14px;
-}
-.of-track input {
-  width: 100%;
-  accent-color: var(--o-now);
-  margin: 0;
-}
-.of-ticks {
-  cursor: pointer;
-  position: absolute;
-  top: 0;
-  left: 8px;
-  right: 8px;
-  height: 14px;
-}
-.of-track .of-ticks button {
-  pointer-events: none;
-  position: absolute;
-  transform: translateX(-50%);
-  width: 12px;
-  height: 14px;
-  background: none;
-  border: 0;
-  padding: 0;
-}
-.of-track .of-ticks button::after {
-  content: "";
-  position: absolute;
-  left: 5px;
-  top: 2px;
-  width: 2px;
-  height: 10px;
-  background: #6a5f55;
-}
-.of-track .of-ticks button:focus-visible::after,
-.of-track .of-ticks button.cur::after {
-  background: var(--o-t1);
-}
-/* Requests after the time shown. */
-.of-track .of-ticks button.later::after {
-  background: #3a332d;
-}
 .of-clock {
   font: 15px var(--o-mono);
   font-variant-numeric: tabular-nums;
   color: var(--o-t1);
   white-space: nowrap;
-  /* A fixed width: the track beside it never moves while you aim at a tick. */
-  width: 25ch;
+  /* One fixed width in every session, with a day or without: the controls beside it never
+     move, while the time runs or from one session to the next. */
+  width: 36ch;
   overflow: hidden;
-  text-align: right;
+  text-overflow: ellipsis;
+  text-align: left;
   flex: none;
 }
-.of-clock.days {
-  width: 36ch;
+/* The speed: a kit well with a pixel chevron, never the system's own arrow. */
+.of-speed {
+  position: relative;
+  display: inline-flex;
 }
 .of-speed select {
-  background: #1d1714;
-  border: 1px solid var(--o-line2);
-  border-radius: 6px;
-  padding: 6px 8px;
-  font-size: 14px;
+  appearance: none;
+  min-height: 32px;
+  padding: 4px 26px 4px 10px;
+  font: 13px var(--font-code);
+  cursor: pointer;
+}
+.of-speed::after {
+  content: "";
+  position: absolute;
+  top: calc(50% - 2px);
+  right: 10px;
+  width: 8px;
+  height: 4px;
+  pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 4' shape-rendering='crispEdges'%3E%3Cpath fill='%23d5c8b8' d='M0 0h8v1H0zM2 1h4v1H2zM3 2h2v2H3zM1 1h1v1H1zM6 1h1v1H6z'/%3E%3C/svg%3E")
+    center / 8px 4px no-repeat;
+  image-rendering: pixelated;
 }
 .of-live {
-  border: 1px solid var(--o-line2);
-  background: #1d1714;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 14px;
   color: var(--o-t2);
 }
 /* At the end of a session that is over: nothing further to go to. */
 .of-live.on {
+  --pf: var(--o-line2);
   color: var(--o-t3);
-  border-color: var(--o-line);
 }
-/* Following a live session: lit, with a breathing dot. */
+/* Following a live session: lit, with a blinking pixel. */
 .of-live.on.live {
+  --pf: var(--now-line);
+  --pfb: var(--o-now-bg);
   color: var(--o-now);
-  border-color: #2c4f78;
-  background: var(--o-now-bg);
 }
 .of-live.on.live::before {
   content: "";
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 7px;
-  border-radius: 50%;
+  flex: none;
+  width: 6px;
+  height: 6px;
   background: currentColor;
-  vertical-align: 1px;
-  animation: of-breathe 2s ease-in-out infinite;
+  animation: of-breathe 2s steps(1, end) infinite;
 }
+/* The key to the stickies: the same marks every view uses. */
 .of-legend {
   display: flex;
   gap: 14px;
-  font-size: 13px;
+  font: 400 12px / 16px var(--o-pix);
   color: var(--o-t2);
   white-space: nowrap;
 }
@@ -1061,27 +947,30 @@
   gap: 6px;
 }
 .of-legend .k {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
+  width: 12px;
+  height: 12px;
   display: inline-block;
+  background: var(--mark-todo) center / 12px 12px no-repeat;
 }
 .of-legend .k.now {
-  background: var(--o-now);
+  background-image: var(--mark-now);
 }
 .of-legend .k.done {
-  background: var(--o-done);
+  background-image: var(--mark-done);
 }
 .of-legend .k.blocked {
-  background: var(--o-need);
+  background-image: var(--mark-blocked);
 }
 .of-legend .k.failed {
-  background: var(--o-bad);
+  background-image: var(--mark-failed);
 }
-.of-legend .k.todo {
-  background: #8d939c;
+.of-legend .k.paused {
+  background-image: var(--mark-paused);
 }
-@media (max-width: 1440px) {
+.of-legend .k.open {
+  background-image: var(--mark-open);
+}
+@media (max-width: 1500px) {
   .of-legend {
     display: none;
   }
@@ -1093,177 +982,46 @@
     /* biome-ignore lint/complexity/noImportantStyles: reduced motion beats every animation in the room */
     animation: none !important;
   }
+  /* Not motion: the tab row's, the lists' and the switcher's edge fades follow their scroll. */
+  .office .of-rail .of-rl,
+  .office .of-db {
+    /* biome-ignore lint/complexity/noImportantStyles: beats the rule above */
+    animation: of-top-fade linear both !important;
+    animation-timeline: scroll(self block);
+  }
+  .office .of-switch .of-sess-list {
+    /* biome-ignore lint/complexity/noImportantStyles: beats the rule above */
+    animation: of-list-fade linear both !important;
+    animation-timeline: scroll(self block);
+  }
+  .office .of-tabs {
+    /* biome-ignore lint/complexity/noImportantStyles: beats the rule above */
+    animation: of-tabs-fade linear both !important;
+    animation-timeline: scroll(self inline);
+  }
 }
 
-/* Phone: a pannable strip of the room, the detail under it, the replay bar pinned below. */
-.office.phone {
-  position: static;
-  display: block;
-  min-height: 100dvh;
-  overflow: visible;
-}
-.phone .of-top {
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  padding: 10px 16px;
-}
-.phone .of-spacer,
-.phone .of-session,
-.phone .of-details {
-  display: none;
-}
-.phone .of-meta + .of-meta {
-  display: inline;
-}
-.phone .of-req {
-  order: 3;
-  width: 100%;
-  max-width: none;
-}
-.phone .of-stage {
-  display: flex;
-  flex-direction: column;
-}
-.phone .of-ask {
-  display: block;
-  margin: 12px 16px 0;
-  border: 1px solid var(--o-need);
-  background: var(--o-need-bg);
-  border-radius: 8px;
-  padding: 12px 14px;
-  font-size: 16px;
-}
-.office.phone .of-mapwrap {
-  position: relative;
-  inset: auto;
-  display: block;
-  overflow: auto;
-  max-height: 46vh;
-  margin-top: 12px;
-  touch-action: pan-x pan-y;
-  scrollbar-width: none;
-}
-.office.phone .of-dock {
-  position: static;
-  width: auto;
-}
-.office.phone .of-drawer {
-  border: 0;
-  border-top: 1px solid var(--o-line);
-  box-shadow: none;
-  padding-bottom: 120px;
-}
-.phone .of-close {
-  display: none;
-}
-.phone .of-db {
-  overflow: visible;
-  padding: 16px;
-}
-.phone .of-replay {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  padding: 8px 16px 10px;
-  z-index: 4;
-}
-.phone .of-track {
-  order: 5;
-  flex-basis: 100%;
-}
-.phone .of-clock {
-  width: auto;
-  min-width: 0;
-  font-size: 14px;
-  flex: 1;
-  text-align: left;
-}
-.phone .of-live {
-  padding: 6px 10px;
-}
-/* The phone pins the question above the strip instead. */
-.office.phone .of-overlay .bubble.wait {
-  display: none;
-}
-.of-drawer:focus {
-  outline: none;
-}
 /* A phase brought into view from its header on the board. */
 .of-db .of-flash {
-  animation: of-flash 1.6s ease-out;
-  border-radius: 10px;
+  animation: of-flash 1.6s steps(4, end);
 }
 @keyframes of-flash {
   0%,
   30% {
-    box-shadow: 0 0 0 2px var(--now, #60aaf3);
+    outline: 2px solid var(--now);
+    outline-offset: 2px;
   }
-}
-/* The request list. */
-.of-reqs {
-  list-style: none;
-  margin: 8px 0 16px;
-  padding: 0;
-  display: grid;
-  gap: 6px;
-}
-.of-req-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  text-align: left;
-  background: var(--s3, #1e1c19);
-  border: 1px solid var(--s6, #34322e);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: var(--t1, #eeecea);
-}
-.of-req-row:hover {
-  border-color: var(--s8, #585550);
-}
-.of-req-row.cur {
-  border-color: var(--t2, #d4d0cc);
-}
-.of-req-num {
-  font: 500 13px var(--font-code, var(--o-mono));
-  color: var(--t3, #a19e9a);
-  min-width: 2ch;
-  text-align: right;
-  flex: none;
-}
-.of-req-main {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  font-size: 14px;
-}
-.of-req-t {
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.of-req-row .of-chip {
-  flex: none;
 }
 .of-asks {
   margin: 0 0 10px;
   padding-left: 20px;
   display: grid;
   gap: 8px;
-  color: var(--t1, #eeecea);
-}
-/* The phone's tab row scrolls: its edge fades to say so. */
-.phone .of-tabs {
-  mask-image: linear-gradient(90deg, #000 82%, transparent);
+  color: var(--t1);
 }
 /* An empty board says why it is empty. */
 .of-overlay .board-empty {
-  font: 500 max(14px, calc(5px * var(--s))) / 1.3 var(--o-ui);
+  font: 500 clamp(10px, calc(5px * var(--s)), 22px) / 1.3 var(--o-ui);
   color: rgba(28, 33, 40, 0.6);
   text-align: center;
   pointer-events: none;
@@ -1279,38 +1037,35 @@
   background: none;
   border: 0;
   padding: 0;
-  color: var(--t1, #eeecea);
+  color: var(--t1);
   font-weight: 500;
   text-decoration: underline;
-  text-decoration-color: var(--s8, #585550);
+  text-decoration-color: var(--s8);
   text-underline-offset: 3px;
 }
 .of-link:hover {
-  text-decoration-color: var(--t2, #d4d0cc);
+  text-decoration-color: var(--t2);
 }
 /* On a pinned floor: the way back to the one Claude is on. */
 .of-away {
+  --pf: var(--now-line);
+  --pfb: var(--o-now-bg);
   flex: none;
-  background: var(--o-now-bg);
   color: var(--o-now);
-  border: 1px solid #2c4f78;
-  border-radius: 999px;
-  padding: 3px 12px;
-  font-size: 14px;
-  font-weight: 600;
   white-space: nowrap;
 }
 .of-away:hover {
-  border-color: var(--o-now);
+  --pf: var(--o-now);
+  --pfb: var(--o-now-bg);
+  color: var(--o-now);
 }
 /* More helpers than desks: the sign that says so. */
 .of-overlay .off-sign {
   transform: translate(-50%, -50%);
-  font: max(9px, calc(3.5px * var(--s))) / 1 var(--o-pix);
+  font: clamp(9px, calc(5px * var(--s)), 15px) / 1 var(--o-pix);
   color: #2a211c;
   background: #eadfc6;
   border: 0;
-  border-radius: 2px;
   box-shadow: 0 calc(1px * var(--s)) 0 #8a7a62;
   padding: calc(1.5px * var(--s)) calc(2.5px * var(--s));
   white-space: nowrap;
@@ -1330,12 +1085,1078 @@
 .office.fast .of-overlay .dots {
   animation: none;
 }
-/* At 2x a left-open sticky keeps one line of title and says it was left open. */
-.s2 .of-overlay .hit.note.wide .stage.left {
+/* Under 3x a left-open sticky keeps one line of title and says it was left open. */
+.s2 .of-overlay .hit.note.says .stage.left {
   display: block;
   font-size: 10px;
-  line-height: 11px;
+  line-height: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.s2 .of-overlay .hit.note.wide:has(.stage.left) .t {
-  -webkit-line-clamp: 1;
+
+/* The first stop for the keyboard: straight to the panel, or to the room. */
+.of-skip {
+  position: absolute;
+  left: -9999px;
+  top: 8px;
+  z-index: 30;
+}
+.of-skip:focus {
+  left: 8px;
+}
+.of-stage:focus {
+  outline: none;
+}
+
+/* Popovers under a top-bar button: the session switcher, the request picker, the menu. */
+.of-pop-wrap {
+  position: relative;
+  min-width: 0;
+  display: flex;
+}
+.of-pop-btn {
+  color: var(--o-t1);
+  width: 100%;
+}
+.of-switch .of-pop-btn {
+  max-width: 280px;
+}
+.of-switch-t {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.of-picker {
+  flex: 0 1 auto;
+}
+.of-req-n {
+  flex: none;
+}
+.of-req-n.short {
+  display: none;
+}
+/* The top row never overflows: as it narrows, the brand keeps its mark, the request its
+   number, then the session switcher its caret (its title is in the button's label). */
+.of-top {
+  container: of-top / inline-size;
+}
+.of-top-row > .of-menu,
+.of-top-row > .of-details,
+.of-top-row > .of-tag,
+.of-top-row > .of-pill {
+  flex: none;
+}
+/* A phone stacks its bar instead (below). */
+@container of-top (max-width: 1100px) {
+  .office:not(.phone) .of-brand {
+    font-size: 0;
+    gap: 0;
+  }
+  .office:not(.phone) .of-req-n {
+    display: none;
+  }
+  .office:not(.phone) .of-req-n.short {
+    display: inline;
+  }
+}
+@container of-top (max-width: 720px) {
+  .office:not(.phone) .of-switch-t {
+    display: none;
+  }
+  .office:not(.phone) .of-switch .of-pop-btn::before {
+    content: "";
+    flex: none;
+    width: 14px;
+    height: 12px;
+    background:
+      linear-gradient(currentColor 0 0) 0 0 / 14px 2px,
+      linear-gradient(currentColor 0 0) 0 5px / 14px 2px,
+      linear-gradient(currentColor 0 0) 0 10px / 14px 2px;
+    background-repeat: no-repeat;
+  }
+}
+.of-menu .of-pop-btn {
+  padding: 8px;
+}
+.of-dots {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  shape-rendering: crispEdges;
+}
+.of-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 300px;
+  max-width: min(440px, calc(100vw - 32px));
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+  padding: 8px;
+  color: var(--o-t1);
+  animation: of-pop-in 160ms steps(4, end);
+}
+.of-menu .of-pop {
+  left: auto;
+  right: 0;
+  min-width: 240px;
+}
+@keyframes of-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.of-pop-k {
+  font: 12px / 16px var(--o-pix);
+  color: var(--o-t3);
+  margin: 4px 8px 8px;
+}
+.of-pop-note {
+  margin: 6px 8px;
+  font-size: 13px;
+  color: var(--o-t3);
+}
+.of-pop-note.error {
+  color: var(--o-bad);
+}
+.of-pop-foot {
+  display: block;
+  margin: 6px 0 0;
+  padding: 8px;
+  box-shadow: inset 0 2px 0 var(--o-line);
+  color: var(--o-t2);
+  font-size: 14px;
+  text-decoration: none;
+}
+.of-pop-foot:hover {
+  color: var(--o-t1);
+}
+.of-sess-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.of-sess-row {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  color: var(--o-t1);
+  text-decoration: none;
+}
+.of-sess-row:hover,
+.of-sess-row:focus-visible {
+  background: var(--s5);
+  text-decoration: none;
+}
+.of-sess-row[aria-current] {
+  background: var(--s5);
+  box-shadow: inset 2px 0 0 var(--o-t1);
+}
+.of-sess-t {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Its facts read whole: they wrap under the title rather than cut. */
+.of-sess-m {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--o-t3);
+}
+/* A short window: the list scrolls inside the menu, its foot fading while more is below,
+   and the way to all sessions stays in sight under it. */
+.of-switch .of-pop {
+  width: min(520px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.of-switch .of-pop > nav {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.of-switch .of-sess-list {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--o-line2) transparent;
+  mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - var(--of-fb)),
+    transparent
+  );
+  animation: of-list-fade linear both;
+  animation-timeline: scroll(self block);
+}
+@property --of-fb {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes of-list-fade {
+  from {
+    --of-fb: 40px;
+  }
+  95% {
+    --of-fb: 40px;
+  }
+  to {
+    --of-fb: 0px;
+  }
+}
+.of-switch .of-pop-foot {
+  flex: none;
+}
+/* Its state: a kit tag (theme.css) in its tone. */
+.of-sess-st {
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+.of-sess-st.live {
+  --tone: var(--o-now);
+}
+.of-sess-st.waiting {
+  --tone: var(--o-need);
+}
+.of-sess-st.quiet {
+  --tone: var(--o-t2);
+}
+.of-sess-st.ended {
+  --tone: var(--o-t3);
+}
+.of-menu-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 10px;
+  color: var(--o-t3);
+  font-size: 13px;
+}
+.of-menu-who img {
+  width: 20px;
+  height: 20px;
+}
+.of-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px;
+  background: none;
+  border: 0;
+  color: var(--o-t1);
+  font-size: 14px;
+  text-decoration: none;
+}
+.of-menu-item:hover,
+.of-menu-item:focus-visible {
+  background: var(--s5);
+  color: var(--o-t1);
+  text-decoration: none;
+}
+.of-menu-item.danger {
+  color: var(--o-bad);
+  box-shadow: inset 0 2px 0 var(--o-line);
+  margin-top: 4px;
+}
+.of-menu-item.danger.armed {
+  background: var(--o-bad-bg);
+}
+.of-tag.pinned {
+  --tone: var(--o-t2);
+}
+.of-tag.pinned::before {
+  width: 4px;
+  height: 8px;
+}
+
+/* The now line: what Claude is doing, its why one click away. */
+.of-now {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.of-now-k {
+  font: 12px / 16px var(--o-pix);
+  color: var(--o-t3);
+  flex: none;
+}
+.of-now-t {
+  color: var(--o-t1);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.of-now-more {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: 12px / 16px var(--o-pix);
+  color: var(--o-t3);
+}
+.of-now-more:hover,
+.of-now-more[aria-expanded="true"] {
+  color: var(--o-t1);
+}
+.of-now-more .of-caret {
+  margin-top: 4px;
+}
+.of-now-pop {
+  left: auto;
+  right: 0;
+  max-width: min(560px, calc(100vw - 32px));
+  font-size: 14px;
+}
+.of-now-pop .now-full {
+  margin: 4px 4px 8px;
+  color: var(--o-t1);
+}
+.of-now-pop .now-why {
+  margin: 4px 4px 8px;
+  color: var(--o-t2);
+}
+
+/* The requests rail: every request by day, folded to a strip on demand. */
+.of-rail {
+  width: var(--of-rw);
+  transition: width 180ms ease-out;
+  overflow: hidden;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--o-bar);
+  box-shadow: inset -2px 0 0 var(--o-line);
+}
+.of-rail.shut {
+  width: 40px;
+}
+.of-rail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 14px;
+  box-shadow:
+    inset 0 -2px 0 var(--o-line),
+    inset -2px 0 0 var(--o-line);
+  min-width: 0;
+}
+.of-rail.shut .of-rail-head {
+  padding: 8px 4px;
+  justify-content: center;
+}
+/* The session's facts, whole: on two lines when the rail is too narrow for one. */
+.of-rail-k {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--o-t3);
+}
+.of-rail-btn {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-height: 28px;
+  padding: 0;
+}
+.of-rail-chev {
+  width: 6px;
+  height: 6px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateX(1px) rotate(45deg);
+}
+.of-rail.shut .of-rail-chev {
+  transform: translateX(-1px) rotate(-135deg);
+}
+.of-rail .of-rl {
+  overflow-y: auto;
+  padding: 4px 8px 16px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--o-line2) transparent;
+}
+/* A list scrolled down fades in under its head, so the row half out of sight is never a
+   line cut through its letters. */
+@property --of-ft {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --of-fe {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+.of-rail .of-rl,
+.of-db {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 var(--of-ft),
+    #000 calc(100% - var(--of-fe)),
+    transparent
+  );
+  animation: of-top-fade linear both;
+  animation-timeline: scroll(self block);
+}
+/* And its foot fades while more is below. */
+@keyframes of-top-fade {
+  from {
+    --of-ft: 0px;
+    --of-fe: 24px;
+  }
+  2% {
+    --of-ft: 28px;
+  }
+  98% {
+    --of-fe: 24px;
+  }
+  to {
+    --of-ft: 28px;
+    --of-fe: 0px;
+  }
+}
+.of-rl ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.of-rl-day {
+  font: 12px / 16px var(--o-pix);
+  color: var(--o-t3);
+  margin: 12px 8px 4px;
+}
+/* A row is a pixel frame (theme.css) that shows only on a hover or for the floor's request. */
+.of-rl-row {
+  --pf: transparent;
+  --pfb: transparent;
+  --phi: transparent;
+  --plo: transparent;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  color: var(--o-t2);
+  text-decoration: none;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.of-rl-row:hover,
+.of-rl-row:focus-visible {
+  --pfb: var(--s4);
+  color: var(--o-t1);
+  text-decoration: none;
+}
+.of-rl-row.cur {
+  --pf: var(--s7);
+  --pfb: var(--s5);
+  --phi: var(--px-hi);
+  --plo: var(--px-lo);
+  color: var(--o-t1);
+}
+.of-rl-row .mk {
+  margin-top: 2px;
+  flex: none;
+}
+.of-rl-txt {
+  display: grid;
+  min-width: 0;
+}
+.of-rl-t {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.of-rl-n {
+  font: 500 12px var(--o-mono);
+  color: var(--o-t3);
+  margin-right: 6px;
+}
+.of-rl-sub {
+  font-size: 12px;
+  color: var(--o-t3);
+}
+.of-rl-row.waiting .of-rl-sub {
+  color: var(--o-need);
+}
+.of-rl-row.running .of-rl-sub {
+  color: var(--o-now);
+}
+.of-pop .of-rl-day:first-child {
+  margin-top: 4px;
+}
+
+/* It holds the app's views, drawn in the same pixel kit as the room's chrome; its edge is
+   the kit's 2 px line with a bevel, on a hard drop over the room. */
+.of-panel {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--s2);
+  box-shadow:
+    inset 2px 0 0 var(--o-line2),
+    inset 3px 0 0 var(--px-hi),
+    -4px 0 0 var(--px-drop);
+  color: var(--t1);
+  font: 15px / 1.5 var(--font-ui);
+  animation: of-panel-in 160ms steps(4, end);
+}
+@keyframes of-panel-in {
+  from {
+    translate: 24px 0;
+    opacity: 0;
+  }
+}
+.of-panel:focus {
+  outline: none;
+}
+.of-ph {
+  padding: 10px 16px 0 18px;
+  background: var(--s2);
+}
+.of-ph-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+}
+.of-crumbs {
+  flex: 1;
+  min-width: 0;
+}
+.of-crumbs ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  font-size: 15px;
+}
+.of-crumbs li {
+  display: flex;
+  min-width: 0;
+  white-space: nowrap;
+  flex: none;
+}
+.of-crumbs li:last-child {
+  flex: 1 1 auto;
+}
+.of-crumbs li + li::before {
+  content: "›";
+  color: var(--o-t3);
+  margin: 0 8px;
+}
+.of-crumbs a {
+  color: var(--o-t2);
+  text-decoration: none;
+}
+.of-crumbs a:hover,
+.of-crumbs a:focus-visible {
+  color: var(--o-t1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.of-crumbs [aria-current] {
+  color: var(--o-t1);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Dock or Wide, and Close: kit buttons (theme.css). */
+.of-ph-btn {
+  flex: none;
+  min-height: 30px;
+  min-width: 30px;
+  padding: 0 10px;
+}
+.of-ph-btn[aria-pressed="true"] {
+  --pf: var(--t3);
+  --pfb: var(--s5);
+}
+.of-close {
+  padding: 0;
+}
+.of-close svg {
+  width: 10px;
+  height: 10px;
+  fill: currentColor;
+  shape-rendering: crispEdges;
+}
+/* Two rows of tabs: the session's and the request's; the row in use is lit. */
+.of-scope {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 6px;
+  box-shadow: inset 0 -2px 0 var(--s7);
+  opacity: 0.62;
+}
+.of-scope.on {
+  opacity: 1;
+}
+.of-scope:hover,
+.of-scope:focus-within {
+  opacity: 1;
+}
+.of-scope-k {
+  font: 12px / 16px var(--o-pix);
+  color: var(--o-t3);
+  flex: none;
+  width: 82px;
+  padding-bottom: 8px;
+  white-space: nowrap;
+}
+/* The tabs are the kit's (theme.css), on their row's rule. A row too long for its width
+   scrolls on one line, its edges fading where more tabs are out of sight. */
+@property --of-fl {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --of-fr {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+.of-tabrow {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+}
+/* A step to the tabs out of sight, over the faded end of the row. */
+.of-tabstep {
+  position: absolute;
+  top: 0;
+  bottom: 2px;
+  width: 20px;
+  padding: 0;
+  border: 0;
+  background: var(--s2);
+  color: var(--o-t2);
+  cursor: pointer;
+}
+.of-tabstep.l {
+  left: 0;
+}
+.of-tabstep.r {
+  right: 0;
+}
+.of-tabstep::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 6px;
+  height: 10px;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.of-tabstep.l::before {
+  clip-path: polygon(100% 0, 0 50%, 100% 100%);
+}
+.of-tabstep:hover {
+  color: var(--o-t1);
+}
+.of-tabs {
+  flex: 1;
+  min-width: 0;
+  box-shadow: none;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--of-fl),
+    #000 calc(100% - var(--of-fr)),
+    transparent
+  );
+  animation: of-tabs-fade linear both;
+  animation-timeline: scroll(self inline);
+}
+@keyframes of-tabs-fade {
+  from {
+    --of-fl: 0px;
+    --of-fr: 32px;
+  }
+  to {
+    --of-fl: 32px;
+    --of-fr: 0px;
+  }
+}
+/* Tighter than the kit's, so the request's five fit the docked width. */
+.of-tabs a {
+  flex: none;
+  padding-inline: 7px;
+}
+.of-db {
+  overflow-y: auto;
+  padding: 18px 20px 40px 22px;
+  min-width: 0;
+  background: var(--s1);
+}
+.of-db > * {
+  animation: of-rise 160ms ease-out;
+}
+@keyframes of-rise {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+.of-rh {
+  margin-bottom: 16px;
+}
+.of-rh .ask.live-title {
+  font-size: 20px;
+  line-height: 1.3;
+  margin: 6px 0 8px;
+}
+.of-db .of-rl {
+  margin: -8px -8px 0;
+}
+.of-checked {
+  margin-top: 24px;
+}
+
+/* Replay bar: the scrubber the whole width, the controls under it. */
+.of-replay {
+  background: var(--o-bar);
+  box-shadow: inset 0 2px 0 var(--o-line);
+  min-width: 0;
+  padding: 0 16px 8px;
+}
+.of-ctl {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.of-track {
+  position: relative;
+  padding-top: 30px;
+  margin-bottom: 6px;
+}
+/*
+ * The replay's range in the pixel kit: a sunk 2 px framed well filled blue as far as it
+ * has played (--p), and a square raised thumb on a hard drop, no rounding anywhere.
+ */
+.of-track input[type="range"] {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 20px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.of-track input[type="range"]::-webkit-slider-runnable-track {
+  box-sizing: border-box;
+  height: 10px;
+  border: 2px solid var(--s6);
+  background:
+    linear-gradient(var(--o-now) 0 0) 0 0 / var(--p, 0%) 100% no-repeat,
+    var(--sunk);
+  box-shadow:
+    inset 1px 1px 0 var(--px-lo),
+    inset -1px -1px 0 var(--px-hi);
+}
+.of-track input[type="range"]::-moz-range-track {
+  box-sizing: border-box;
+  height: 10px;
+  border: 2px solid var(--s6);
+  background: var(--sunk);
+}
+.of-track input[type="range"]::-moz-range-progress {
+  height: 6px;
+  background: var(--o-now);
+}
+.of-track input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  box-sizing: border-box;
+  width: 12px;
+  height: 20px;
+  margin-top: -7px;
+  border: 2px solid var(--s8);
+  border-radius: 0;
+  background: var(--s5);
+  box-shadow:
+    inset 1px 1px 0 var(--px-hi),
+    inset -1px -1px 0 var(--px-lo),
+    2px 2px 0 var(--px-drop);
+}
+.of-track input[type="range"]::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 12px;
+  height: 20px;
+  border: 2px solid var(--s8);
+  border-radius: 0;
+  background: var(--s5);
+  box-shadow: 2px 2px 0 var(--px-drop);
+}
+.of-track input[type="range"]:hover::-webkit-slider-thumb {
+  border-color: var(--o-t2);
+}
+/* The keyboard's place on the replay bar: a ring a pixel off its control. */
+.of-track input[type="range"]:focus-visible,
+.of-speed select:focus-visible {
+  outline: 2px solid var(--o-now);
+  outline-offset: 2px;
+}
+.of-track input[type="range"]:focus-visible::-webkit-slider-thumb {
+  border-color: var(--o-now);
+}
+.of-track input[type="range"]:focus-visible::-moz-range-thumb {
+  border-color: var(--o-now);
+}
+.of-ticks {
+  cursor: pointer;
+  position: absolute;
+  top: 0;
+  left: 8px;
+  right: 8px;
+  height: 30px;
+}
+.of-track .of-ticks button {
+  pointer-events: none;
+  position: absolute;
+  top: 14px;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 14px;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.of-track .of-ticks button::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 2px;
+  height: 10px;
+  background: #6a5f55;
+}
+.of-track .of-ticks button:focus {
+  outline: none;
+}
+.of-track .of-ticks button:focus-visible {
+  outline: 2px solid var(--o-now);
+  outline-offset: 0;
+}
+.of-track .of-ticks button:focus-visible::after,
+.of-track .of-ticks button.tip::after,
+.of-track .of-ticks button.cur::after {
+  background: var(--o-t1);
+}
+/* Each tick's number above it, as many as fit without touching. */
+.of-tick-num {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  font: 11px / 12px var(--o-mono);
+  color: var(--o-t3);
+  white-space: nowrap;
+}
+.of-ticks button.cur .of-tick-num,
+.of-ticks button.tip .of-tick-num {
+  color: var(--o-t1);
+}
+/* Requests after the time shown. */
+.of-track .of-ticks button.later::after {
+  background: #3a332d;
+}
+.of-track .of-ticks button.later.tip::after {
+  background: var(--o-t2);
+}
+.of-tick-tip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 6;
+  max-width: 420px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: var(--o-t1);
+}
+.of-tick-tip.start {
+  transform: translateX(-12px);
+}
+.of-tick-tip.end {
+  transform: translateX(calc(-100% + 12px));
+}
+.of-tick-n {
+  font: 500 12px var(--o-mono);
+  color: var(--o-t3);
+  margin-right: 4px;
+}
+.of-tick-when {
+  font: 12px var(--o-mono);
+  color: var(--o-t3);
+  margin-left: 6px;
+}
+
+/* Phone: a pannable strip of the room, the panel as a sheet under it, the replay bar below. */
+.office.phone {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  overflow: visible;
+  padding-bottom: 120px;
+}
+.phone .of-top-row {
+  flex-wrap: wrap;
+  height: auto;
+  padding: 8px 0;
+  gap: 8px 10px;
+}
+.phone .of-top-row.of-status {
+  gap: 4px 12px;
+}
+.phone .of-spacer {
+  display: none;
+}
+/* Its first row: the brand's mark, the session, Details and the menu; then the request, then
+   how it stands. */
+.phone .of-brand {
+  font-size: 0;
+  gap: 0;
+}
+.phone .of-switch {
+  flex: 1;
+}
+.phone .of-details,
+.phone .of-menu {
+  order: 1;
+}
+.phone .of-picker {
+  order: 3;
+  flex-basis: 100%;
+}
+.phone .of-tag,
+.phone .of-pill {
+  order: 4;
+}
+.phone .of-picker .of-pop-btn {
+  max-width: none;
+}
+.phone .of-pop {
+  position: fixed;
+  top: auto;
+  left: 8px;
+  right: 8px;
+  max-width: none;
+  min-width: 0;
+}
+.phone .of-now {
+  flex-basis: 100%;
+}
+.phone .of-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+}
+.phone .of-stage {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+}
+.phone .of-ask {
+  --pf: var(--o-need);
+  --pfb: var(--o-need-bg);
+  display: block;
+  margin: 12px 16px 0;
+  padding: 12px 14px;
+  font-size: 16px;
+}
+.office.phone .of-mapwrap {
+  position: static;
+  flex: none;
+  margin-top: 4px;
+}
+.office.phone .of-stage > .of-dock {
+  position: static;
+  width: auto;
+  scroll-margin-top: 0;
+}
+.office.phone .of-under {
+  flex: 1 0 auto;
+}
+.office.phone .of-panel {
+  height: auto;
+  display: block;
+  box-shadow: inset 0 2px 0 var(--o-line2);
+  animation: none;
+}
+.office.phone .of-ph {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--s2);
+}
+.phone .of-scope-k {
+  width: auto;
+  min-width: 62px;
+}
+/* The office has no sticky page bar: a sheet brought into view lands at the very top. */
+html:has(.office.phone) {
+  scroll-padding-top: 0;
+}
+.phone .of-db {
+  overflow: visible;
+  padding: 16px;
+}
+.phone .of-replay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0 16px 10px;
+  z-index: 4;
+}
+.phone .of-ctl {
+  gap: 10px;
+}
+.phone .of-clock {
+  width: auto;
+  min-width: 0;
+  font-size: 14px;
+  flex: 1;
+  text-align: left;
+}
+.phone .of-live {
+  padding: 6px 10px;
+}
+.phone .of-legend {
+  display: none;
+}
+/* The phone pins the question above the strip instead. */
+.office.phone .of-overlay .bubble.wait {
+  display: none;
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Machine } from "../api";
-import { ago } from "../format";
+import { ago, dayLabel } from "../format";
+import { clock } from "../story";
 import { WhatMurmurSends } from "./WhatMurmurSends";
 
 const CONFIRM = "delete my account";
@@ -114,7 +115,18 @@ export function Settings({ onSignedOut }: { onSignedOut: () => void }) {
           <div className="machine" key={m.machineId}>
             <div>
               <div>{m.machineName}</div>
-              <div className="muted">Last used {ago(m.lastUsedAt)}</div>
+              {/* A machine linked again keeps its name: when and which link tell them apart. */}
+              <div className="muted">
+                Linked{" "}
+                <time dateTime={m.createdAt}>
+                  {dayLabel(m.createdAt)}, {clock(m.createdAt)}
+                </time>
+                {" · "}last used {ago(m.lastUsedAt)}
+                {" · "}
+                <span className="num" title={m.machineId}>
+                  id …{m.machineId.slice(-6)}
+                </span>
+              </div>
             </div>
             <RevokeButton onRevoke={() => revoke(m.machineId)} />
           </div>

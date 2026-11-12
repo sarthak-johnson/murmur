@@ -8,9 +8,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { StateMark } from "../live/Rail";
+import { MINUS } from "../format";
+import { StateMark } from "../marks";
 import { follow, partPath } from "../router";
-import { clock } from "../story";
+import type { State } from "../state";
+import { clock, thousands } from "../story";
 import {
   bandLine,
   bandMark,
@@ -18,6 +20,7 @@ import {
   bandWord,
   cardFacts,
   cardLine,
+  cardTitle,
   layoutFlow,
   neighbour,
   partMark,
@@ -27,7 +30,6 @@ import {
 } from "./flow";
 import { RequestSteps } from "./Steps";
 
-const MINUS = "−";
 const NARROW = "(max-width: 899px)";
 
 /** Under 900 px bands stack and only the selection's links are drawn. */
@@ -121,7 +123,14 @@ function writePart(id: string | undefined) {
  * part one column right of what it reads. Selecting a part lights its links and opens its
  * detail below; `?part=` selects one on load.
  */
-export function FlowBoard(props: { sessionId: string; request: RequestView }) {
+export function FlowBoard(props: {
+  sessionId: string;
+  request: RequestView;
+  /** The request's state at the moment shown (state.ts). */
+  state?: State | undefined;
+  /** The moment shown (a replay's): the cards' running clocks stop there. */
+  at?: string | undefined;
+}) {
   const { sessionId, request: req } = props;
   const stacked = useStacked();
   const frame = useFrame(req.parts.length > 0);
@@ -187,10 +196,11 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
     els.current.get(to)?.focus();
   };
 
-  // No parts: a short line of steps, never an empty board.
-  if (!req.parts.length) return <RequestSteps request={req} />;
+  // No parts (or only the folders an inferred request's files fell in): a short line of
+  // steps, never an empty board.
+  if (!layout.cards.length) return <RequestSteps request={req} />;
 
-  const now = new Date().toISOString();
+  const now = props.at ?? new Date().toISOString();
   const touching = sel
     ? layout.links.filter((l) => l.from === sel.id || l.to === sel.id)
     : [];
@@ -208,8 +218,9 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
   const less = left > 1;
   const more = left + width < layout.width - 1;
   const scrollTo = (x: number) => frame.ref.current?.scrollTo({ left: x });
-  const pulse = layout.cards.find((c) => partMark(req, c.part) === "running")
-    ?.part.id;
+  const pulse = layout.cards.find(
+    (c) => partMark(req, c.part, props.state) === "running",
+  )?.part.id;
   const on = (l: { from: string; to: string }) =>
     !!sel && (l.from === sel.id || l.to === sel.id);
   // Lit links draw last, over the quiet ones; stacked, only they are drawn.
@@ -227,7 +238,7 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
       {!stacked && (less || more) && layout.bands.length > 1 && (
         <nav className="fb-index" aria-label="Phases">
           {layout.bands.map((b) => {
-            const mark = bandMark(req, b.band);
+            const mark = bandMark(req, b.band, props.state);
             const seen = b.x < left + width && b.x + b.w > left;
             return (
               <button
@@ -276,7 +287,7 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
           >
             {layout.bands.map((b, i) => {
               const prev = layout.bands[i - 1];
-              const mark = bandMark(req, b.band);
+              const mark = bandMark(req, b.band, props.state);
               const line = bandLine(
                 b.band,
                 mark === "running" || mark === "waiting",
@@ -302,11 +313,11 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
                     </h3>
                     <div
                       className="fb-line num"
-                      title={`${bandWord(req, b.band)} · ${line.join(" · ")}`}
+                      title={`${bandWord(req, b.band, props.state)} · ${line.join(" · ")}`}
                     >
                       <span className={`fb-word ${mark}`}>
                         <StateMark mark={mark} />
-                        {bandWord(req, b.band)}
+                        {bandWord(req, b.band, props.state)}
                       </span>
                       {/* Each piece shows whole or not at all: a narrow band drops the span, then the count. */}
                       {line.map((t, k) => (
@@ -355,8 +366,8 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
             </svg>
             {layout.cards.map((c) => {
               const p = c.part;
-              const mark = partMark(req, p);
-              const word = stateWord(req, p);
+              const mark = partMark(req, p, props.state);
+              const word = stateWord(req, p, false, props.state);
               const tag = tagOf(req, p);
               const picked = p.id === sel?.id;
               const label = rel.get(p.id);
@@ -377,14 +388,14 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
                   }${p.id === pulse ? " fc-pulse" : ""}`}
                   style={{ left: c.x, top: c.y, width: c.w, height: c.h }}
                   aria-pressed={picked}
-                  aria-label={`${p.title}, ${word}`}
+                  aria-label={`${cardTitle(req, p)}, ${word}`}
                   tabIndex={p.id === tabStop ? 0 : -1}
                   onClick={() => choose(picked ? undefined : p.id)}
                 >
                   {label && <span className="fc-rel">{label}</span>}
-                  <span className="fc-ttl" title={p.title}>
+                  <span className="fc-ttl" title={cardTitle(req, p)}>
                     {tag && <span className="fc-tag num">{tag}</span>}
-                    {p.title}
+                    {cardTitle(req, p)}
                   </span>
                   <span className="fc-st">
                     <StateMark mark={mark} />
@@ -405,7 +416,13 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
         </div>
       </div>
       {sel && (
-        <Detail key={sel.id} sessionId={sessionId} request={req} part={sel} />
+        <Detail
+          key={sel.id}
+          sessionId={sessionId}
+          request={req}
+          part={sel}
+          state={props.state}
+        />
       )}
       <div className="fb-legend">
         <span>
@@ -432,13 +449,17 @@ function Detail(props: {
   sessionId: string;
   request: RequestView;
   part: PartView;
+  state?: State | undefined;
 }) {
   const { sessionId, request: req, part: p } = props;
   const tag = tagOf(req, p);
   const name = taskName(tag);
   const path = partPath(sessionId, req.id, p.id);
-  const mark = partMark(req, p);
-  const titleOf = (id: string) => req.parts.find((o) => o.id === id)?.title;
+  const mark = partMark(req, p, props.state);
+  const titleOf = (id: string) => {
+    const o = req.parts.find((x) => x.id === id);
+    return o && cardTitle(req, o);
+  };
   const uses = [
     ...new Set(
       p.links.flatMap((l) => (l.to === p.id ? [] : (titleOf(l.to) ?? []))),
@@ -446,7 +467,7 @@ function Detail(props: {
   ];
   const usedBy = req.parts
     .filter((o) => o.id !== p.id && o.links.some((l) => l.to === p.id))
-    .map((o) => o.title);
+    .map((o) => cardTitle(req, o));
   const added = p.files.reduce((s, f) => s + f.added, 0);
   const removed = p.files.reduce((s, f) => s + f.removed, 0);
   // "Frame matches…" reads "Done when frame matches…"; an acronym keeps its capitals.
@@ -455,13 +476,13 @@ function Detail(props: {
     .replace(/\.$/, "")
     .replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase());
   return (
-    <section className="fd" aria-label="Selected part" data-morph={path}>
+    <section className="fd" aria-label="Selected part">
       <div className="fd-main">
         <h3 className="fd-ttl">
-          {tag ? `${p.title} · ${name}` : p.title}
+          {tag ? `${cardTitle(req, p)} · ${name}` : cardTitle(req, p)}
           <span className={`fd-word ${mark}`}>
             <StateMark mark={mark} />
-            {stateWord(req, p, true)}
+            {stateWord(req, p, true, props.state)}
           </span>
         </h3>
         {p.aim?.aim && (
@@ -483,10 +504,10 @@ function Detail(props: {
           </span>
           <span>
             <b>{p.files.length}</b> {p.files.length === 1 ? "file" : "files"}{" "}
-            <span className="fd-add">+{added}</span>{" "}
+            <span className="fd-add">+{thousands(added)}</span>{" "}
             <span className="fd-del">
               {MINUS}
-              {removed}
+              {thousands(removed)}
             </span>
           </span>
           {uses.length > 0 && (

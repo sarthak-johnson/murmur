@@ -739,6 +739,49 @@ describe("full cards for every part", () => {
     expect(hero?.aim?.doneWhen).toBe("Failed");
   });
 
+  test("a review whose verdict is fix first, or that says it does not pass, sent it back", () => {
+    for (const said of [
+      "My verdict is **fix first**: one Critical finding.",
+      "Task 2 does not pass review yet: the spec has issues.",
+      "Verdict: does not pass.",
+      "Verdict: doesn't pass",
+      "Verdict: FAIL",
+      "Status: FAIL\nThe hero overflows.",
+      "Verdict: not ready",
+      "Verdict: changes needed",
+      "Read the diff. The tests did not pass on a cold run.",
+    ]) {
+      const [r] = reduce([
+        prompt(0, "go"),
+        mapCall(1, LIT),
+        ...helper(10, "Implement Task 2: hero", "a1"),
+        ...helper(20, "Review Task 2", "a2", said),
+      ]).requests;
+      const hero = r?.parts.find((p) => p.id === "hero");
+      expect([said, hero?.steps.map((s) => s.text)]).toEqual([
+        said,
+        ["Built", "Sent back"],
+      ]);
+    }
+  });
+
+  test("a review that only says something else did not pass is no sending back", () => {
+    for (const said of [
+      "Approved. The helper did not pass the cwd, but the code takes it from the env.",
+      "Approved: no blocking issues.",
+      "Verdict: passes. The helper did not pass the cwd, but the env has it.",
+    ]) {
+      const [r] = reduce([
+        prompt(0, "go"),
+        mapCall(1, LIT),
+        ...helper(10, "Implement Task 2: hero", "a1"),
+        ...helper(20, "Review Task 2", "a2", said),
+      ]).requests;
+      const hero = r?.parts.find((p) => p.id === "hero");
+      expect(hero?.steps.map((s) => s.text)).toEqual(["Built", "Passed"]);
+    }
+  });
+
   test("span from the first to the last event", () => {
     expect(part("tokens")?.span).toEqual({ start: ts(11), end: ts(40) });
   });

@@ -7,26 +7,47 @@
 import {
   type Chapter,
   cutWords,
+  firstSentence,
+  isReply,
   type MurmurEvent,
   type Pause,
   type RequestView,
   type SessionView,
 } from "@murmur/core";
-import { type CSSProperties, useEffect, useRef } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { dayLabel, folderOf } from "../format";
+import { StateMark } from "../marks";
 import { follow, requestPath } from "../router";
-import { askOf, cleanPrompt, KIND, type Mark, requestMark } from "../session";
+import {
+  askOf,
+  cleanPrompt,
+  excerpt,
+  KIND,
+  type Mark,
+  requestShort,
+} from "../session";
+import {
+  requestNow,
+  type SessionNow,
+  type State,
+  sessionNow,
+  sessionSpan,
+  sessionTitle,
+  took,
+} from "../state";
 import { clock, duration, thousands } from "../story";
-import { dayLabel, StateMark, sessionSpan } from "./Rail";
 
 const DAY_MS = 86_400_000;
 const many = (n: number, one: string, more = `${one}s`) =>
   `${n} ${n === 1 ? one : more}`;
 /** "Mon 2 Nov 17:43". */
 const when = (iso: string) => `${dayLabel(iso)} ${clock(iso)}`;
-export const took = (from: string, to: string) => {
-  const d = duration(from, to);
-  return d === "under a minute" ? "<1 m" : d;
-};
 /** A gap in words: "3 days", "11 h 39 m". */
 export function gap(from: string, to: string): string {
   const ms = Date.parse(to) - Date.parse(from);
@@ -39,13 +60,28 @@ const sameDay = (a: string, b: string) =>
 export const live = (m: Mark | undefined) => m === "running" || m === "waiting";
 
 /** How the last request stands, after its number: "running 40 m", "done in 2 h 03 m". */
-const STANDS: Record<Mark, string> = {
+const STANDS: Record<State, string> = {
   running: "running",
   waiting: "waiting on you for",
+  paused: "paused after",
   done: "done in",
   open: "left open after",
   failed: "failed after",
+  todo: "not started",
 };
+
+/** Every request as it stands now (state.ts), by id, with the session's moment. */
+function useStands(
+  view: SessionView,
+  events: MurmurEvent[],
+  at: SessionNow | undefined,
+) {
+  const ses = at ?? sessionNow(view);
+  const stands = new Map(
+    view.requests.map((r) => [r.id, requestNow(view, r, events, ses)]),
+  );
+  return { ses, stands };
+}
 
 /** Stations rise in turn on load, the first ten at most; one arriving live rises alone. */
 const STAGGER = 10;
@@ -59,18 +95,22 @@ const risen = new Set<string>();
 export function SessionHead(props: {
   view: SessionView;
   events: MurmurEvent[];
+  /** The session at the moment shown (state.ts); else live, now. */
+  ses?: SessionNow | undefined;
 }) {
   const { view, events } = props;
   const reqs = view.requests;
   const start = reqs[0];
-  const folder = view.cwd.split("/").filter(Boolean).pop();
+  const folder = folderOf(view.cwd);
   const firstDay = start ? dayLabel(start.startedAt) : "";
   const lastDay = dayLabel(view.lastEventAt);
-  const marks = reqs.map((r) => requestMark(view, r, events).mark);
-  const running = marks.filter((m) => m === "running").length;
-  const waiting = marks.filter((m) => m === "waiting").length;
+  const { ses, stands } = useStands(view, events, props.ses);
+  const states = [...stands.values()].map((s) => s.state);
+  const running = states.filter((m) => m === "running").length;
+  const waiting = states.filter((m) => m === "waiting").length;
+  const paused = states.filter((m) => m === "paused").length;
   const chapters = view.journey?.chapters.length ?? 0;
-  const span = sessionSpan(view);
+  const span = sessionSpan(ses);
   const days = /^(\d+) (days?)$/.exec(span);
   return (
     <>
@@ -85,7 +125,7 @@ export function SessionHead(props: {
         className="jr-title"
         title={start ? cleanPrompt(start.prompt) : undefined}
       >
-        {view.title ? cleanPrompt(view.title) : "Untitled session"}
+        {cleanPrompt(sessionTitle(view.title)) || "Untitled session"}
       </h1>
       {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the facts */}
       <div className="asked" role="group" aria-label="Summary">
@@ -112,6 +152,11 @@ export function SessionHead(props: {
             <b className="num">{running}</b> running now
           </span>
         )}
+        {paused > 0 && (
+          <span>
+            <b className="num">{paused}</b> paused
+          </span>
+        )}
         {waiting > 0 && (
           <span className="jr-need">
             <b className="num">{waiting}</b> waiting on you
@@ -126,11 +171,14 @@ export function Journey(props: {
   sessionId: string;
   view: SessionView;
   events: MurmurEvent[];
+  /** The session at the moment shown (state.ts); else live, now. */
+  ses?: SessionNow | undefined;
+  /** Where the "files changed" tile goes: the session's every file. */
+  filesHref?: string | undefined;
 }) {
   const { sessionId, view, events } = props;
   const reqs = view.requests;
-  const now = new Date().toISOString();
-  const marks = new Map(reqs.map((r) => [r.id, requestMark(view, r, events)]));
+  const { ses, stands: marks } = useStands(view, events, props.ses);
   // The stations drawn first, with their place in the rise; null once this session's
   // journey has risen before.
   const first = useRef<{ rise: boolean; at: Map<string, number> }>(null);
@@ -151,8 +199,36 @@ export function Journey(props: {
   const start = reqs[0] as RequestView;
   const last = reqs.at(-1) as RequestView;
   const lastMark = marks.get(last.id);
+  const byIdOf = new Map(reqs.map((r) => [r.id, r]));
+  // A chapter named by its first request's words reads as that request's title does; one
+  // named by a bare reply ("Sure", "I like B though") takes a later request's name, else
+  // what came out of it.
   const chapters: Chapter[] = j?.chapters.length
-    ? j.chapters
+    ? j.chapters.map((c, ci) => {
+        const first = byIdOf.get(c.requestIds[0] ?? "");
+        if (!first || !c.title) return c;
+        if (rawTitle(c.title, first)) {
+          const named = c.requestIds
+            .slice(1)
+            .map((id) => byIdOf.get(id))
+            .find((r) => r && !rawTitle(requestShort(r), r));
+          const out =
+            first.outcome && cutWords(firstSentence(first.outcome), 48);
+          return {
+            ...c,
+            title: named
+              ? requestShort(named)
+              : out || `Chapter ${ci + 1}: more on the work`,
+          };
+        }
+        return {
+          ...c,
+          title: excerpt(
+            c.title,
+            [first.goal ?? "", first.prompt ?? ""].map(cleanPrompt),
+          ),
+        };
+      })
     : [
         {
           title: "",
@@ -164,12 +240,19 @@ export function Journey(props: {
   const decisions = j?.decisions ?? [];
   const busiest = Math.max(0, ...reqs.map((r) => r.tally.helpers));
   // One loop on screen: the newest running station.
-  const pulsing = reqs.findLast((r) => marks.get(r.id)?.mark === "running");
-  const endOf = (r: RequestView) =>
-    live(marks.get(r.id)?.mark) ? now : (marks.get(r.id)?.end ?? now);
+  const pulsing = reqs.findLast((r) => marks.get(r.id)?.state === "running");
+  // Where each request's clock stops, as every view times it (state.ts).
+  const endOf = (r: RequestView) => marks.get(r.id)?.to ?? ses.end;
   const firstDay = dayLabel(start.startedAt);
-  const span = sessionSpan(view);
-  const asked = lastMark?.mark === "waiting";
+  const span = sessionSpan(ses);
+  const asked = lastMark?.state === "waiting";
+  // The card says Claude's last words: waiting, its time is when they were said, not the
+  // session's last event (Claude Code's "waiting for your input" notice hours later).
+  const strip = useStrip(chapters.length);
+  const saidAt =
+    (asked
+      ? (last.messages?.at(-1)?.ts ?? lastMark?.waiting?.since)
+      : undefined) ?? endOf(last);
   const askedN = asked
     ? last.waiting?.length || lastMark?.waiting?.questions.length || 0
     : 0;
@@ -186,12 +269,18 @@ export function Journey(props: {
           className="jr-end from"
           href={path(start)}
           onClick={follow(path(start))}
-          data-morph=""
         >
           <span className="jr-k">
             Where it started · {firstDay}, {clock(start.startedAt)}
           </span>
-          <q className="jr-q">{cutWords(cleanPrompt(start.prompt), 220)}</q>
+          {ownWords(start.prompt) ? (
+            <q className="jr-q">
+              {cutWords(cleanPrompt(start.prompt).replace(LEAD_MARKS, ""), 220)}
+            </q>
+          ) : (
+            // Only an image or a paste: there are no words of yours to quote.
+            <span className="jr-q">{requestShort(start)}</span>
+          )}
           {(start.outcome || !start.kindInferred) && (
             <span className="jr-end-meta">
               {[
@@ -210,20 +299,19 @@ export function Journey(props: {
           className={`jr-end to ${lastMark?.mark ?? "done"}`}
           href={path(last)}
           onClick={follow(path(last))}
-          data-morph=""
         >
           <span className="jr-k">
-            {live(lastMark?.mark) ? "Where it is now" : "Where it ended"} ·{" "}
-            {dayLabel(endOf(last))}, {clock(endOf(last))}
+            {live(lastMark?.mark)
+              ? "Where it is now"
+              : lastMark?.state === "paused"
+                ? "Where it stopped"
+                : "Where it ended"}{" "}
+            · {dayLabel(saidAt)}, {clock(saidAt)}
           </span>
           <span className="jr-now">{last.outcome || askOf(last)}</span>
           <span className="jr-end-meta">
-            Request {num(last)}, {STANDS[lastMark?.mark ?? "done"]}{" "}
-            {took(
-              (asked && lastMark?.waiting?.since) || last.startedAt,
-              endOf(last),
-            )}
-            .
+            Request {num(last)}, {STANDS[lastMark?.state ?? "done"]}{" "}
+            {lastMark?.clock ?? took(last.startedAt, endOf(last))}.
             {askedN > 0 && (
               <>
                 {" "}
@@ -236,11 +324,18 @@ export function Journey(props: {
         </a>
       </div>
 
-      {j && <Totals totals={j.totals} pauses={pauses} rise={rise} />}
+      {j && (
+        <Totals
+          totals={j.totals}
+          pauses={pauses}
+          rise={rise}
+          filesHref={props.filesHref}
+        />
+      )}
 
       {chapters.length > 1 && (
         <nav className="jr-chapters" aria-label="Chapters">
-          <ol className="jr-segs">
+          <ol className="jr-segs" ref={strip.ref} onScroll={strip.read}>
             {chapters.map((c, i) => {
               const rs = c.requestIds.flatMap((id) => byId.get(id) ?? []);
               const a = rs[0] ? num(rs[0]) : 0;
@@ -290,6 +385,28 @@ export function Journey(props: {
               );
             })}
           </ol>
+          {strip.more && (
+            <button
+              type="button"
+              className="jr-more"
+              aria-label="More chapters"
+              title="More chapters"
+              onClick={() => strip.step(1)}
+            >
+              <span aria-hidden="true">›</span>
+            </button>
+          )}
+          {strip.less && (
+            <button
+              type="button"
+              className="jr-more less"
+              aria-label="Earlier chapters"
+              title="Earlier chapters"
+              onClick={() => strip.step(-1)}
+            >
+              <span aria-hidden="true">‹</span>
+            </button>
+          )}
         </nav>
       )}
 
@@ -314,7 +431,11 @@ export function Journey(props: {
                   <span className="jr-ch-meta num">
                     {[
                       many(rs.length, "request"),
-                      took(rs[0].startedAt, endOf(lastR)),
+                      // The last chapter runs to where the session's span does.
+                      took(
+                        rs[0].startedAt,
+                        lastR === last ? ses.end : endOf(lastR),
+                      ),
                       ...(helpers ? [many(helpers, "helper")] : []),
                     ].join(" · ")}
                   </span>
@@ -373,8 +494,9 @@ function Totals(props: {
   totals: NonNullable<SessionView["journey"]>["totals"];
   pauses: Pause[];
   rise: boolean;
+  filesHref?: string | undefined;
 }) {
-  const { totals: t, pauses, rise } = props;
+  const { totals: t, pauses, rise, filesHref } = props;
   const longest = pauses.reduce<Pause | undefined>(
     (a, p) =>
       !a ||
@@ -402,12 +524,30 @@ function Totals(props: {
   if (!shown.length) return null;
   return (
     <ul className={rise ? "jr-totals jr-in" : "jr-totals"} aria-label="Totals">
-      {shown.map(([n, label]) => (
-        <li key={label} className="jr-tot">
-          <b className="jr-tot-v num">{thousands(n)}</b>
-          <span className="jr-tot-l">{label}</span>
-        </li>
-      ))}
+      {shown.map(([n, label]) => {
+        const body = (
+          <>
+            <b className="jr-tot-v num">{thousands(n)}</b>
+            <span className="jr-tot-l">{label}</span>
+          </>
+        );
+        // The files tile opens every file the session changed, and who changed it.
+        return filesHref && label === "files changed" ? (
+          <li key={label} className="jr-tot link">
+            <a
+              className="jr-tot-a"
+              href={filesHref}
+              onClick={follow(filesHref)}
+            >
+              {body}
+            </a>
+          </li>
+        ) : (
+          <li key={label} className="jr-tot">
+            {body}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -441,6 +581,9 @@ function Station(props: {
   const tasks = r.phases.flatMap((p) => p.tasks);
   const done = tasks.filter((t) => t.status === "done").length;
   const going = live(mark);
+  // Its one title, as the rail and the Timeline name it; what it asked under it.
+  const short = requestShort(r);
+  const ask = askOf(r);
   const figs: [string, string][] = [
     [took(r.startedAt, end), going ? "so far" : "took"],
     [thousands(r.tally.helpers), "helpers"],
@@ -462,18 +605,14 @@ function Station(props: {
       <span className="jr-dot">
         <StateMark mark={mark} pulse={pulse} />
       </span>
-      <a
-        className={`jr-card ${mark}`}
-        href={path}
-        onClick={follow(path)}
-        data-morph=""
-      >
+      <a className={`jr-card ${mark}`} href={path} onClick={follow(path)}>
         <span className="jr-card-head">
           {!r.kindInferred && (
             <span className="label-chip">{KIND[r.kind]}</span>
           )}
-          <span className="jr-card-ttl">{askOf(r)}</span>
+          <span className="jr-card-ttl">{short}</span>
         </span>
+        {ask && ask !== short && <span className="jr-card-goal">{ask}</span>}
         {(r.outcome || going) && (
           <span className="jr-out">
             {going && (
@@ -515,5 +654,61 @@ function Station(props: {
       </a>
       <span className="sr-only">, {mark === "open" ? "left open" : mark}</span>
     </li>
+  );
+}
+
+/**
+ * A strip that scrolls sideways: whether more of it is past either edge, and a step by most
+ * of its width, so a cut chapter at the edge says there is more and gets you there.
+ */
+function useStrip(items: number) {
+  const ref = useRef<HTMLOListElement>(null);
+  const [edges, setEdges] = useState({ less: false, more: false });
+  const read = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const less = el.scrollLeft > 1;
+    const more = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+    setEdges((e) => (e.less === less && e.more === more ? e : { less, more }));
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read when the chapters change
+  useEffect(() => {
+    const el = ref.current;
+    read();
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [read, items]);
+  const step = (dir: number) => {
+    const el = ref.current;
+    el?.scrollBy?.({ left: dir * el.clientWidth * 0.8, behavior: "smooth" });
+  };
+  return { ref, read, step, ...edges };
+}
+
+/** Image and paste markers before a prompt's first word: nothing to quote. */
+const LEAD_MARKS = /^(?:\s*\((?:image|pasted text)\)\s*)+/;
+
+/** A prompt's own words: no "(image)" or "(pasted text)" markers. */
+const ownWords = (prompt: string) =>
+  cleanPrompt(prompt)
+    .replace(/\((?:image|pasted text)\)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/**
+ * A chapter title that is only its first request's typed reply ("Sure" from "Sure, please
+ * start"), or a fragment of a pasted label ("What it moved -- Clicking"): no name for it.
+ */
+function rawTitle(title: string, first: RequestView): boolean {
+  const said = ownWords(first.prompt).toLowerCase();
+  const t = title.replace(/[….\s]+$/, "").toLowerCase();
+  return (
+    / -- /.test(title) ||
+    (!!t &&
+      said.startsWith(t) &&
+      isReply(first.prompt) &&
+      ownWords(first.goal ?? "") === ownWords(first.prompt))
   );
 }

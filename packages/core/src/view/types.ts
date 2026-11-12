@@ -365,6 +365,12 @@ export interface AgentView {
   report?: AgentReport;
   /** Distinct paths it changed, first changed first. Unset when none. */
   files?: string[];
+  /**
+   * Its own changes to `files`, in that order: its lines added and removed (several
+   * helpers can share a file) and its own edits for the diff. A Bash diff's file is its
+   * own only by core's credit rule (files.ts `bashCredit`).
+   */
+  touches?: FileTouch[];
   /** Its latest tool call in plain words, as an inferred `NowView.text` reads. */
   doing?: { text: string; ts: string };
   /**

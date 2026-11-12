@@ -4,10 +4,10 @@ import {
   type MapInput,
   type MurmurEvent,
   NARRATE_TOOL,
+  type RequestView,
   reduce,
 } from "@murmur/core";
 import { describe, expect, it } from "vitest";
-import { drawerFor, toolWords } from "../src/office/drawerState";
 import { firstAfter, nextEventAfter } from "../src/office/feed";
 import {
   BOARD_INNER,
@@ -18,12 +18,17 @@ import {
   jobCards,
 } from "../src/office/map";
 import {
+  openFor,
+  readOpen,
+  roomKey,
+  toolWords,
+} from "../src/office/panelState";
+import {
   activeRequest,
   actOf,
   asDoing,
   cutWords,
   deriveScene,
-  helperName,
   latestAt,
   type MainEntry,
   type OfficeLogs,
@@ -31,6 +36,7 @@ import {
   shortOf,
   spotForTool,
 } from "../src/office/scene";
+import { helperName } from "../src/session";
 
 // Synthetic events, as core's own tests make them (packages/core/test/helpers.ts).
 const BASE = Date.parse("2026-11-06T00:00:00.000Z");
@@ -347,9 +353,10 @@ describe("deriveScene", () => {
     const titles = (events: MurmurEvent[]) =>
       sceneOf(events).columns.map((c) => c.title);
     expect(titles(working)).toEqual(["What Claude is doing"]);
-    expect(titles([...working, stop(5, "b1", "done")])).toEqual([
-      "What Claude did",
-    ]);
+    // Its helper done, the phase is done though Claude edits on: a folder is no task.
+    const helped = [...working, stop(5, "b1", "done")];
+    expect(titles(helped)).toEqual(["What Claude did"]);
+    expect(titles([...helped, at(6, "Stop")])).toEqual(["What Claude did"]);
   });
 
   it("puts Claude where its last own call was", () => {
@@ -474,12 +481,37 @@ describe("replay times", () => {
 
 describe("what a click in the room opens", () => {
   it("is the tab that tells its story, or a close-up", () => {
-    expect(drawerFor("phase:2")).toEqual({ tab: "tasks", phase: "2" });
-    expect(drawerFor("archive")).toEqual({ tab: "files" });
-    expect(drawerFor("jobs")).toEqual({ tab: "requests" });
-    expect(drawerFor("claude")).toEqual({ tab: "story", item: "claude" });
-    expect(drawerFor("agent:a1")).toEqual({ tab: "story", item: "agent:a1" });
-    expect(drawerFor("task:1.1")).toEqual({ tab: "story", item: "task:1.1" });
+    const req = {
+      phases: [
+        {
+          tasks: [
+            { id: "1.1", title: "Alert table", part: "db" },
+            { id: "1.2", title: "Alert rules" },
+          ],
+        },
+      ],
+      parts: [{ id: "db", title: "Alerts db" }],
+    } as unknown as RequestView;
+    expect(openFor("phase:2")).toBe("tasks");
+    expect(openFor("archive")).toBe("allfiles");
+    expect(openFor("jobs")).toBe("timeline");
+    expect(openFor("claude")).toBe("claude");
+    expect(openFor("agent:a1")).toBe("helper:a1");
+    // A sticky opens as its own task: several tasks can share one part.
+    expect(openFor("task:1.1")).toBe("task:1.1");
+    expect(openFor("task:1.2")).toBe("task:1.2");
+    // And the panel's close-up lights the same thing in the room, a part's by its first task.
+    expect(roomKey("task:1.1", req)).toBe("task:1.1");
+    expect(roomKey("task:db", req)).toBe("task:1.1");
+    expect(roomKey("helper:a1", req)).toBe("agent:a1");
+    expect(roomKey("story", req)).toBeNull();
+  });
+  it("reads only what the panel can show from the address", () => {
+    expect(readOpen("journey")).toBe("journey");
+    expect(readOpen("task:p:1")).toBe("task:p:1");
+    expect(readOpen("task:")).toBeNull();
+    expect(readOpen("nope")).toBeNull();
+    expect(readOpen(undefined)).toBeNull();
   });
   it("names a helper with nothing but a model note", () => {
     expect(helperName({ description: "(Opus)" })).toBe("A helper");

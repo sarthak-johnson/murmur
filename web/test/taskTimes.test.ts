@@ -1,0 +1,107 @@
+import type { RequestView } from "@murmur/core";
+import { describe, expect, it } from "vitest";
+import { phaseLine, phaseShown } from "../src/live/Track";
+import { ownAgents, phaseSpan, taskTimes } from "../src/session";
+
+const step = (ts: string, agentId?: string) => ({
+  ts,
+  text: "x",
+  status: "done" as const,
+  eventIds: [],
+  ...(agentId ? { agentId } : {}),
+});
+const agent = (id: string, startedAt: string, endedAt: string) => ({
+  id,
+  startedAt,
+  endedAt,
+});
+
+describe("a task's own span", () => {
+  // Three tasks in one part, 12:52 to 16:29; only the second has a helper of its own.
+  const tasks = [
+    { id: "t1", title: "Pick", part: "p", status: "done", agents: [] },
+    { id: "t2", title: "Run", part: "p", status: "done", agents: ["a2"] },
+    { id: "t3", title: "Fix", part: "p", status: "done", agents: [] },
+  ];
+  const req = {
+    phases: [{ id: "ph", title: "Agent tests", tasks }],
+    parts: [
+      {
+        id: "p",
+        agents: ["a2"],
+        steps: [step("2026-11-12T12:52:00Z"), step("2026-11-12T16:29:00Z")],
+        span: { start: "2026-11-12T12:52:00Z", end: "2026-11-12T16:29:00Z" },
+      },
+    ],
+    agents: [agent("a2", "2026-11-12T13:10:00Z", "2026-11-12T13:40:00Z")],
+    messages: [],
+  } as unknown as RequestView;
+
+  it("is not the part's span when the part is shared", () => {
+    expect(taskTimes(req, tasks[0] as never)).toEqual([]);
+    expect(taskTimes(req, tasks[1] as never)).toEqual([
+      "2026-11-12T13:10:00Z",
+      "2026-11-12T13:40:00Z",
+    ]);
+  });
+
+  it("leaves the phase its whole span", () => {
+    expect(phaseSpan(req, req.phases[0] as never)).toEqual({
+      from: "2026-11-12T12:52:00Z",
+      to: "2026-11-12T16:29:00Z",
+    });
+  });
+});
+
+describe("a shared part's build and review tasks", () => {
+  // Core gave the review task the builder too: the build task, given none, takes it.
+  const tasks = [
+    {
+      id: "b",
+      title: "Build the sheet",
+      part: "p",
+      status: "done",
+      agents: [],
+    },
+    {
+      id: "r",
+      title: "Review the sheet",
+      part: "p",
+      status: "done",
+      agents: ["a1", "a2"],
+    },
+  ];
+  const req = {
+    phases: [{ id: "ph", title: "Sheet", tasks }],
+    parts: [{ id: "p", agents: ["a1", "a2"], steps: [] }],
+    agents: [
+      {
+        ...agent("a1", "2026-11-12T10:00:00Z", "2026-11-12T10:07:00Z"),
+        role: "build",
+      },
+      {
+        ...agent("a2", "2026-11-12T10:20:00Z", "2026-11-12T10:30:00Z"),
+        role: "review",
+      },
+    ],
+    messages: [],
+  } as unknown as RequestView;
+
+  it("times each task by its own helpers, never the phase's span", () => {
+    expect(ownAgents(req, tasks[0] as never).map((a) => a.id)).toEqual(["a1"]);
+    expect(ownAgents(req, tasks[1] as never).map((a) => a.id)).toEqual(["a2"]);
+    expect(taskTimes(req, tasks[0] as never)[0]).toBe("2026-11-12T10:00:00Z");
+    expect(taskTimes(req, tasks[1] as never)[0]).toBe("2026-11-12T10:20:00Z");
+  });
+});
+
+describe("a paused request's phase track", () => {
+  it("reads the phase under way as paused, not running", () => {
+    const ph = { id: "ship", title: "Ship", status: "now", tasks: [] } as never;
+    expect(phaseShown(ph, false, ph)).toBe("now");
+    expect(phaseShown(ph, false, ph, true)).toBe("paused");
+    expect(
+      phaseLine({ phases: [], parts: [], agents: [] } as never, ph, "paused"),
+    ).toBe("0 of 0 done · paused");
+  });
+});

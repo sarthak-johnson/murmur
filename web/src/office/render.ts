@@ -1,4 +1,6 @@
 // Live canvas: board, cards, lights, desks and the people walking between spots.
+
+import { type State, TONE } from "../state";
 import { drawBackground, drawPlant, filler, SHELF_SLOTS } from "./background";
 import { deskTile, drawDesks, seatOf } from "./desks";
 import { createLife } from "./life";
@@ -16,6 +18,7 @@ import {
   DOOR,
   type Face,
   findPath,
+  H,
   jobCards,
   OUTSIDE,
   PLANTS,
@@ -26,6 +29,7 @@ import {
   spotTile,
   T,
   type Tile,
+  W,
 } from "./map";
 import type { Act, Note, Scene } from "./scene";
 import {
@@ -39,6 +43,7 @@ import {
   helperLook,
   LINEAGE,
   MARKS,
+  type Mark,
   type Pal,
   phaseColor,
   REQ_STATE,
@@ -59,12 +64,17 @@ const GLOW: Record<Act, string> = {
   run: "186,196,214",
 };
 
-// Note titles wrap in the DOM at 15 px; measure here so the canvas stickies line up with them.
-// Pure cache: one measuring context, made on first use.
+// Note titles wrap in the DOM at 15 px (11 px under 3x); measure here so the canvas stickies
+// line up with them. Pure cache: one measuring context, made on first use.
 let mctx: CanvasRenderingContext2D | undefined;
-function lineCount(text: string, width: number): number {
+function textWidth(text: string, px: number): number {
   mctx ??= context2d(document.createElement("canvas"));
-  mctx.font = "500 15px Geist, system-ui, sans-serif";
+  mctx.font = `500 ${px}px Geist, system-ui, sans-serif`;
+  return mctx.measureText(text).width;
+}
+function lineCount(text: string, width: number, px = 15): number {
+  mctx ??= context2d(document.createElement("canvas"));
+  mctx.font = `500 ${px}px Geist, system-ui, sans-serif`;
   let lines = 1;
   let cur = 0;
   for (const w of text.split(/\s+/)) {
@@ -77,6 +87,8 @@ function lineCount(text: string, width: number): number {
   return lines;
 }
 
+/** Under 3x a sticky narrower than this many CSS px for its title shows only its mark. */
+const SMALL_TEXT_MIN = 26;
 const SUB_W = 64; // a column wider than two of these flows its stickies into sub-columns
 
 /** A sticky where it sits on the board. Its hit box spans the sub-column (`slotW`) and its text (`rowH`). */
@@ -88,6 +100,10 @@ export interface PlacedNote extends Note {
   rowH: number;
   textW: number;
   slotW: number;
+  /** Under 3x: how many lines of its title it shows (0, only its mark: too narrow or small). */
+  lines: number;
+  /** Under 3x: a left-open note says so on a line of its own (it fits). */
+  leftLine: boolean;
 }
 /** A board column where it sits, with the stickies that fit and how many did not. */
 export interface PlacedColumn {
@@ -119,7 +135,11 @@ export function boardLayout(
   layouts.set(scene.columns, byScale);
   return made;
 }
-const layouts = new WeakMap<Scene["columns"], Map<number, PlacedColumn[]>>();
+let layouts = new WeakMap<Scene["columns"], Map<number, PlacedColumn[]>>();
+// Measured before the web font came in, every title's lines were the fallback's: measured again.
+document.fonts?.addEventListener?.("loadingdone", () => {
+  layouts = new WeakMap();
+});
 
 function layOut(scene: Pick<Scene, "columns">, s: number): PlacedColumn[] {
   const cols = boardColumns(scene.columns.length || 1);
@@ -127,12 +147,26 @@ function layOut(scene: Pick<Scene, "columns">, s: number): PlacedColumn[] {
   return scene.columns.flatMap((c, i) => {
     const col = cols[i];
     if (!col) return [];
+    /** Under 3x, the title's lines of 12 px (at most two) and a left-open note's word line. */
+    // A title shows only where its first word fits whole ("Buil…" says nothing), and a
+    // left-open note's word line only where it fits whole too.
+    const small = (n: Note, subW: number) => {
+      const tw = (subW - 20) * s - 4;
+      const first = n.title.split(/\s+/)[0] ?? "";
+      if (s < 1 || tw < SMALL_TEXT_MIN || textWidth(first, 11) > tw)
+        return { lines: 0, rows: 0, left: false };
+      const left =
+        !!n.stage &&
+        (n.status === "open" || n.status === "paused") &&
+        textWidth(n.stage, 10) <= tw;
+      const lines = left ? 1 : Math.min(2, lineCount(n.title, tw, 11));
+      return { lines, rows: lines + (left ? 1 : 0), left };
+    };
     const height = (n: Note, subW: number) => {
-      const lines = s >= 3 ? lineCount(n.title, (subW - 20) * s) : 0;
-      return Math.max(
-        12,
-        Math.ceil((lines * 19 + (s >= 3 && n.stage ? 18 : 0)) / s),
-      );
+      if (s < 3)
+        return Math.max(12, Math.ceil((small(n, subW).rows * 12 + 2) / s));
+      const lines = lineCount(n.title, (subW - 20) * s);
+      return Math.max(12, Math.ceil((lines * 19 + (n.stage ? 18 : 0)) / s));
     };
     const place = (list: Note[], subs: number, bottom = full) => {
       const subW = Math.floor(col.w / subs);
@@ -158,6 +192,8 @@ function layOut(scene: Pick<Scene, "columns">, s: number): PlacedColumn[] {
           rowH: h,
           textW: subW - 20,
           slotW: subW,
+          lines: s < 3 ? small(n, subW).lines : 0,
+          leftLine: s < 3 && small(n, subW).left,
         });
         y += h + 4;
       }
@@ -231,8 +267,11 @@ export interface RendererOptions {
 
 export interface Renderer {
   update(next: Scene, opts: { animate: boolean }): void;
-  /** One frame: `now` is performance time, `t` the ISO time shown, `s` the scale the overlay uses. */
-  draw(now: number, t: string, s: number): void;
+  /**
+   * One frame: `now` is performance time, `t` the ISO time shown, `s` the scale the overlay
+   * uses, `k` the whole number of device px per room pixel the canvas is drawn at.
+   */
+  draw(now: number, t: string, s: number, k?: number): void;
   claudePos(): ClaudePos | null;
   /** Walk faster: true for a drag (3x), a number for a playing replay, false for normal. */
   rush(on: boolean | number): void;
@@ -255,7 +294,13 @@ export function createRenderer(
   canvas: HTMLCanvasElement,
   opts: RendererOptions,
 ): Renderer {
-  const g = context2d(canvas);
+  // The room is painted at its own size, one canvas px a room pixel, then shown on the page's
+  // canvas blown up k times with no smoothing: crisp pixels the browser scales to the fit.
+  const art = document.createElement("canvas");
+  art.width = W;
+  art.height = H;
+  const g = context2d(art);
+  const out = context2d(canvas);
   const bg = drawBackground();
   const lights = createLights();
   const life = createLife(opts.reduced);
@@ -498,11 +543,16 @@ export function createRenderer(
     }
   }
 
-  const NOTE_MARK = {
+  // Each state's mark on its sticky, at its offset; running and not started carry none.
+  const NOTE_MARK: Partial<
+    Record<State, { mark: Mark; off: readonly [number, number] }>
+  > = {
     done: { mark: MARKS.tick, off: [2, 3] },
-    blocked: { mark: MARKS.bang, off: [4, 3] },
+    waiting: { mark: MARKS.bang, off: [4, 3] },
     failed: { mark: MARKS.cross, off: [3, 3] },
-  } as const;
+    open: { mark: MARKS.dash, off: [3, 5] },
+    paused: { mark: MARKS.bars, off: [3, 3] },
+  };
 
   function drawBoard(sc: Scene, s: number) {
     const cols = boardLayout(sc, s);
@@ -523,7 +573,7 @@ export function createRenderer(
       if (col.x > BOARD_INNER.x)
         r(col.x - 1, BOARD.px.y + 3, 1, BOARD.px.h - 6, "#a3abb4");
       for (const n of col.notes) {
-        const ns = STATUS[n.status];
+        const ns = STATUS[TONE[n.status]];
         const board = "#c4cad1";
         if (one) {
           const tc = phaseColor(
@@ -539,15 +589,10 @@ export function createRenderer(
         r(n.x + 10, n.y + 11, 2, 1, board);
         r(n.x + 11, n.y + 10, 1, 1, board);
         r(n.x + 10, n.y + 10, 1, 1, ns.dark);
-        if (
-          n.status === "done" ||
-          n.status === "blocked" ||
-          n.status === "failed"
-        ) {
-          const { mark, off } = NOTE_MARK[n.status];
-          for (const [mx, my] of mark)
-            r(n.x + off[0] + mx, n.y + off[1] + my, 1, 1, ns.dark);
-        }
+        const nm = NOTE_MARK[n.status];
+        if (nm)
+          for (const [mx, my] of nm.mark)
+            r(n.x + nm.off[0] + mx, n.y + nm.off[1] + my, 1, 1, ns.dark);
         // Head chips of the helpers on a running note.
         n.heads.slice(0, 2).forEach((id, k) => {
           const a = actors.get(id);
@@ -824,7 +869,18 @@ export function createRenderer(
     r(x + 7, y + 7, 2, 2, "#2a211c");
   }
 
-  function draw(now: number, t: string, s: number) {
+  function draw(now: number, t: string, s: number, k = 1) {
+    paint(now, t, s);
+    // Resized here, in the frame that draws it, so a new size never shows a blank canvas.
+    if (canvas.width !== W * k || canvas.height !== H * k) {
+      canvas.width = W * k;
+      canvas.height = H * k;
+    }
+    out.imageSmoothingEnabled = false;
+    out.drawImage(art, 0, 0, W * k, H * k);
+  }
+
+  function paint(now: number, t: string, s: number) {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     lastS = s;

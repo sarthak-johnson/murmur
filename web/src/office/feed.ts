@@ -9,6 +9,7 @@ import {
   type SessionView,
 } from "@murmur/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { eventsById } from "../format";
 import { modelOf } from "../session";
 import { latestAt, type MainEntry, type OfficeLogs } from "./scene";
 
@@ -70,13 +71,13 @@ export interface FileHit {
 
 /** Every edit and read of a file, oldest first: the archive's binders light up as they pass. */
 export function fileLogOf(view: SessionView, events: MurmurEvent[]): FileHit[] {
-  const tsById = new Map(events.map((e) => [e.id, e.ts]));
+  const byId = eventsById(events);
   const out: FileHit[] = [];
   for (const r of view.requests) {
     const touches = [...r.parts.flatMap((p) => p.files), ...r.looseFiles];
     for (const f of touches)
       for (const id of f.eventIds) {
-        const t = tsById.get(id);
+        const t = byId.get(id)?.ts;
         if (t)
           out.push({
             t,

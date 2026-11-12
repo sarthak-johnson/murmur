@@ -10,13 +10,29 @@ import {
   type TaskView,
 } from "@murmur/core";
 import { type ReactNode, useState } from "react";
-import { FileList, PathText, sharedFolder } from "../files";
-import { NeedIcon } from "../live/TopBar";
+import { FileList, sharedFolder } from "../files";
+import { MINUS } from "../format";
 import { Fold, inline, Markdown } from "../markdown";
-import { Glyph, PlanSource } from "../marks";
+import { Glyph, InfoIcon, NeedIcon, PlanSource } from "../marks";
 import { Pill } from "../Pill";
-import { follow, partPath, requestPath } from "../router";
-import { helperKind, rounds as roundsWord, shortTitle } from "../session";
+import { floorPath, follow, partPath, requestPath } from "../router";
+import {
+  besideOf,
+  helperKind,
+  type Place,
+  phaseName,
+  placeOf,
+  rounds as roundsWord,
+  taskTitle,
+} from "../session";
+import {
+  coreState,
+  helperNow,
+  isOver,
+  type State,
+  WORD,
+  workState,
+} from "../state";
 import {
   aboutWork,
   clock,
@@ -28,18 +44,22 @@ import {
   recapRounds,
   reportLine,
   type Tone,
+  thousands,
   verdictOf,
 } from "../story";
-import { DiffView, hunksOf } from "./Diff";
+import { DiffRow, useById } from "./Diff";
 import { EventData, EventView } from "./EventView";
 import { claudeSaid, helperLanes, MANY, Timeline } from "./Timeline";
 
-const MINUS = "−";
-
-const STATUS: Record<PartView["status"], [string, Tone]> = {
-  now: ["In progress", "now"],
-  done: ["Done", "done"],
-  todo: ["Not started", "plain"],
+/** A state's tone on the verdict beside the title. */
+const STATUS: Record<State, Tone> = {
+  running: "now",
+  done: "done",
+  failed: "bad",
+  waiting: "plain",
+  paused: "plain",
+  open: "plain",
+  todo: "plain",
 };
 
 const valid = (ts: string | undefined): ts is string =>
@@ -109,6 +129,8 @@ function StepCard(props: {
   words?: string | undefined;
   /** The step that closed a done task: it carries the Done badge. */
   last?: boolean;
+  /** The moment shown, for whether its helper is still at work. */
+  at?: string | undefined;
 }) {
   const { n, step, request, agent, events, byId, cwd } = props;
   const { timed = true, fallback, label = `step ${n}`, words } = props;
@@ -121,8 +143,13 @@ function StepCard(props: {
     (report && verdictOf(report)) ||
     (step.status === "failed"
       ? { label: "Failed", tone: "bad" as const }
-      : step.status === "running" || agent?.status === "running"
-        ? { label: "Running", tone: "now" as const }
+      : (
+            agent
+              ? helperNow(agent, props.at ?? new Date().toISOString()).state ===
+                "running"
+              : step.status === "running"
+          )
+        ? { label: WORD.running, tone: "now" as const }
         : result && (result.tone === "done" || result.tone === "bad")
           ? result
           : last
@@ -250,37 +277,6 @@ function StepCard(props: {
   );
 }
 
-function FileRow(props: {
-  file: FileTouch;
-  cwd: string;
-  strip: string;
-  byId: Map<string, MurmurEvent>;
-}) {
-  const { file, cwd, strip, byId } = props;
-  const [open, setOpen] = useState(false);
-  return (
-    <li className={open ? "file-row open" : "file-row"}>
-      <button
-        type="button"
-        className="pd-file"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        <PathText path={file.path} cwd={cwd} strip={strip} />
-        <span className={file.added ? "pd-add" : "pd-add zero"}>
-          +{file.added}
-        </span>
-        <span className={file.removed ? "pd-del" : "pd-del zero"}>
-          {MINUS}
-          {file.removed}
-        </span>
-        {file.isNew && <span className="pd-tag">new</span>}
-      </button>
-      {open && <DiffView hunks={hunksOf(file, byId)} />}
-    </li>
-  );
-}
-
 /** Keyed by part, so open panels never carry over to another part. */
 export function PartDetail(props: Parameters<typeof PartBody>[0]) {
   return <PartBody key={props.part.id} {...props} />;
@@ -290,22 +286,28 @@ function PartBody(props: {
   cwd?: string;
   /** For the links to the request, the flow board and the tasks either side. */
   sessionId?: string | undefined;
-  /** The request's place in the session, for the way back. */
-  requestNumber?: number | undefined;
   request: RequestView;
   /** The request is still running: a task not started then says what Claude is on. */
   running?: boolean | undefined;
+  /** The request's state at the moment shown (state.ts); else read from `running` and core. */
+  state?: State | undefined;
+  /** The plan task it was opened as: one part can carry several tasks. */
+  task?: string | undefined;
+  /** The moment shown (a replay's), for which helpers are still at work. */
+  at?: string | undefined;
   part: PartView;
   events: MurmurEvent[];
 }) {
-  const { cwd = "", sessionId, requestNumber, request, part, events } = props;
+  const { cwd = "", sessionId, request, part, events } = props;
   const { running = false } = props;
-  const byId = new Map(events.map((e) => [e.id, e]));
+  const reqState = props.state ?? (running ? "running" : coreState(request));
+  const now = props.at ?? new Date().toISOString();
+  const byId = useById(events);
   const problem = request.phases
     .flatMap((p) => p.tasks)
     .find((t) => t.part === part.id && t.problem)?.problem;
   const helpers = partAgents(request, part);
-  const lanes = helperLanes(part, helpers, events);
+  const lanes = helperLanes(part, helpers, events, now);
   const judged = new Map(
     lanes.flatMap((l) => {
       const run = l.runs.at(-1);
@@ -318,18 +320,32 @@ function PartBody(props: {
   const blocked = request.phases
     .flatMap((p) => p.tasks)
     .find((t) => t.part === part.id && t.status === "blocked");
+  // One number, title and phase for the task, as the board and the Tasks list say them.
+  const place = placeOf(request, { task: props.task, part: part.id });
+  const task = place?.task;
+  const phase = place?.phase;
+  // Named as the task it was opened as, or as its one task; a part of several, as itself.
+  const onPart = request.phases
+    .flatMap((p) => p.tasks)
+    .filter((t) => t.part === part.id).length;
+  const title =
+    task && place && (props.task || onPart === 1)
+      ? place.title
+      : taskTitle(part);
+  // The task's state when it was opened as one, else the part's, under the request's.
+  const own = workState(
+    props.task && task ? task.status : part.status,
+    reqState,
+  );
   // A later prompt moved on from what it asked: the task was left, nothing waits now.
-  const asking = !request.finished ? blocked : undefined;
+  const asking = blocked && !isOver(reqState) ? blocked : undefined;
   const [label, tone]: [string, Tone] = blocked
-    ? [asking ? "Waiting on you" : "Left open", "plain"]
+    ? [asking ? WORD.waiting : WORD.open, "plain"]
     : part.failures >= 3
       ? ["Stuck", "bad"]
-      : part.status === "done" && rounds
+      : own === "done" && rounds
         ? [`Done after ${roundsWord(rounds)}`, "done"]
-        : STATUS[part.status];
-  const tasks = request.phases.flatMap((p) => p.tasks);
-  const task = tasks.find((t) => t.part === part.id);
-  const phase = request.phases.find((p) => task && p.tasks.includes(task));
+        : [WORD[own], STATUS[own]];
   const number = (a: AgentView) => request.agents.indexOf(a) + 1;
   const reports = helpers.flatMap((a) => (a.report ? [a.report] : []));
 
@@ -364,10 +380,10 @@ function PartBody(props: {
       ? [
           <span key="files" className="fact num">
             <b>{part.files.length}</b> {plural(part.files.length, "file")},{" "}
-            <b className="pd-add">+{added}</b>{" "}
+            <b className="pd-add">+{thousands(added)}</b>{" "}
             <b className="pd-del">
               {MINUS}
-              {removed}
+              {thousands(removed)}
             </b>
           </span>,
         ]
@@ -438,7 +454,10 @@ function PartBody(props: {
         step={{
           ts: a.startedAt,
           text: helperTitle(a, number(a)),
-          status: a.status === "running" ? "running" : "done",
+          status:
+            helperNow(a, now, reqState).state === "running"
+              ? "running"
+              : "done",
           agentId: a.id,
           eventIds: call ? [call.id] : [],
         }}
@@ -489,27 +508,21 @@ function PartBody(props: {
     part.words.length > 0 ||
     !!part.io;
 
-  // The tasks either side, in the plan's order (else the map's), and the flow board.
-  const order = [
-    ...new Set(
-      tasks.flatMap((t) =>
-        t.part && request.parts.some((p) => p.id === t.part) ? [t.part] : [],
-      ),
-    ),
-  ];
-  const seq = order.includes(part.id) ? order : request.parts.map((p) => p.id);
-  const here = seq.indexOf(part.id);
-  const side = (id: string | undefined) => {
-    const p = request.parts.find((x) => x.id === id);
+  // The tasks either side, in the plan's order (else the map's), by the numbers the board
+  // and the Tasks list give them, and the flow board.
+  const beside = place ? besideOf(request, place) : {};
+  // A task with no part of the map still has its close-up: it is a step too.
+  const side = (p: Place | undefined) => {
     if (!p || !sessionId) return undefined;
-    const t = tasks.find((x) => x.part === p.id);
+    const st = workState(p.task?.status ?? p.part?.status ?? "todo", reqState);
     return {
-      path: partPath(sessionId, request.id, p.id),
-      text: `${t ? `Task ${tasks.indexOf(t) + 1} · ` : ""}${shortTitle(p.title)}${p.status === "now" ? " (running)" : ""}`,
+      key: p.key,
+      path: floorPath(sessionId, request.id, p.key),
+      text: `${p.task ? `Task ${p.n} · ` : ""}${p.title}${st === "running" ? " (running)" : ""}`,
     };
   };
-  const prev = side(seq[here - 1]);
-  const next = side(seq[here + 1]);
+  const prev = side(beside.prev);
+  const next = side(beside.next);
   const users = request.parts.filter(
     (p) => p.id !== part.id && p.links.some((l) => l.to === part.id),
   ).length;
@@ -519,25 +532,24 @@ function PartBody(props: {
     : users
       ? {
           text: `Flow: ${users} ${users === 1 ? "part uses" : "parts use"} this`,
-          path: `${requestPath(sessionId, request.id, "flow")}?part=${encodeURIComponent(part.id)}`,
+          path: `${requestPath(sessionId, request.id, "flow")}&part=${encodeURIComponent(part.id)}`,
         }
       : uses
         ? {
             text: `Flow: uses ${uses} ${uses === 1 ? "part" : "parts"}`,
-            path: `${requestPath(sessionId, request.id, "flow")}?part=${encodeURIComponent(part.id)}`,
+            path: `${requestPath(sessionId, request.id, "flow")}&part=${encodeURIComponent(part.id)}`,
           }
         : undefined;
-  const back =
-    sessionId && requestNumber ? requestPath(sessionId, request.id) : undefined;
   const link = (path: string, text: string, cls = "pd-btn") => (
     <a key={path} className={cls} href={path} onClick={follow(path)}>
       {text}
     </a>
   );
+  const step = (s: { path: string }, text: string) => link(s.path, text);
   const sides = (
     <span className="pd-nav-sides">
-      {prev && link(prev.path, `← Previous: ${prev.text}`)}
-      {next && link(next.path, `Next: ${next.text} →`)}
+      {prev && step(prev, `← Previous: ${prev.text}`)}
+      {next && step(next, `Next: ${next.text} →`)}
     </span>
   );
   // Claude's closing word on a done task, for its last step of its own when no card has it.
@@ -559,17 +571,21 @@ function PartBody(props: {
       {(task || phase || request.recap || request.planInferred) && (
         // biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around two chips
         <div className="pd-over" role="group" aria-label="Where it sits">
-          {task && (
+          {task && place && (
             <span className="label-chip">
-              Task {tasks.indexOf(task) + 1} of {tasks.length}
+              Task {place.n} of {place.of}
             </span>
           )}
-          {phase && <span className="label-chip">{phase.title}</span>}
+          {phase && (
+            <span className="label-chip">
+              {phaseName(phase, reqState === "running")}
+            </span>
+          )}
           <PlanSource request={request} />
         </div>
       )}
       <header className="tt">
-        <h1 className="pd-title">{shortTitle(part.title)}</h1>
+        <h1 className="pd-title">{title}</h1>
         <span className={`verdict ${asking ? "need" : tone}`}>
           <Glyph
             status={
@@ -579,13 +595,19 @@ function PartBody(props: {
                   ? "failed"
                   : tone === "plain"
                     ? "todo"
-                    : part.status
+                    : own === "running"
+                      ? "now"
+                      : "done"
             }
           />
           {label}
         </span>
         {problem && <Pill tone="bad">{problem}</Pill>}
       </header>
+      {/* One part can carry several tasks: the work below is the part's. */}
+      {taskTitle(part) !== title && (
+        <p className="pd-of">Part of {taskTitle(part)}</p>
+      )}
       {asking?.ask && (
         <section className="pd-ask" aria-label="Waiting on you">
           <h2 className="k">
@@ -638,7 +660,7 @@ function PartBody(props: {
       )}
       {part.inferred && (
         <p className="pd-read">
-          <Glyph status="todo" />
+          <InfoIcon />
           Claude hasn't described this task itself. This page is read from its
           helpers, files and messages.
         </p>
@@ -649,19 +671,19 @@ function PartBody(props: {
             request={request}
             task={task}
             phase={phase}
-            running={running}
+            running={reqState === "running"}
             path={(t) =>
               t.part && sessionId
-                ? partPath(sessionId, request.id, t.part)
+                ? partPath(sessionId, request.id, t.id)
                 : undefined
             }
           />
         ) : (
           <p className="muted">Claude has not described this part yet.</p>
         ))}
-      {(back || flow || prev || next) && (
+      {/* The breadcrumb above climbs back to the request: no second way here. */}
+      {(flow || prev || next) && (
         <nav className="pd-nav" aria-label="Tasks">
-          {back && link(back, `← Request ${requestNumber}`)}
           {flow && link(flow.path, flow.text)}
           {sides}
         </nav>
@@ -681,6 +703,7 @@ function PartBody(props: {
             helpers={helpers}
             events={events}
             named={named}
+            at={now}
           />
         </div>
       )}
@@ -886,7 +909,7 @@ function PartBody(props: {
                   events={events}
                   className="pd-files"
                   row={(f) => (
-                    <FileRow
+                    <DiffRow
                       key={f.path}
                       file={f}
                       cwd={cwd}
@@ -937,13 +960,14 @@ function Ahead(props: {
   const { request, task, phase, running, path } = props;
   const tasks = request.phases.flatMap((p) => p.tasks);
   const name = (t: TaskView) =>
-    `Task ${tasks.indexOf(t) + 1} · ${shortTitle(t.title)}`;
+    `Task ${tasks.indexOf(t) + 1} · ${taskTitle(t)}`;
   const j = phase.tasks.indexOf(task);
   const m = phase.tasks.length;
+  const ph = phaseName(phase, running);
   const place =
     m === 1
-      ? `The only task in ${phase.title}`
-      : `${j === m - 1 ? "Last" : (ORDINAL[j] ?? `Number ${j + 1}`)} of ${m} tasks in ${phase.title}`;
+      ? `The only task in ${ph}`
+      : `${j === m - 1 ? "Last" : (ORDINAL[j] ?? `Number ${j + 1}`)} of ${m} tasks in ${ph}`;
   const k = tasks.indexOf(task);
   const before = tasks[k - 1];
   const after = tasks[k + 1];

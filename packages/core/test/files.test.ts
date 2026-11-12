@@ -1,6 +1,7 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { reduce } from "../src/index.js";
 import {
+  at,
   edit,
   fixture,
   MAP,
@@ -282,4 +283,116 @@ test("a helper's change goes to the part it narrated, even when another part nam
     req?.parts.find((p) => p.id === id)?.files.map((f) => [f.path, f.added]);
   expect(files("db")).toEqual([["shared.ts", 1]]);
   expect(files("api")).toEqual([["shared.ts", 3]]);
+});
+
+describe("a Bash diff's files, the working tree's change while it ran", () => {
+  const agentCall = (n: number, description: string) =>
+    tool(n, "Agent", { description, prompt: description }, "PreToolUse");
+  const started = (n: number, id: string) =>
+    at(n, "SubagentStart", { agent_id: id, agent_type: "general-purpose" });
+  /** A helper's command open from `pre` to `post`, its diff listing `paths` (in the worktree). */
+  const sh = (
+    pre: number,
+    post: number,
+    id: string,
+    command: string,
+    paths: string[] = [],
+  ) => {
+    const call = {
+      agent_id: id,
+      tool_name: "Bash",
+      tool_use_id: `b${pre}`,
+      tool_input: { command: `cd /p/wt; ${command}` },
+    };
+    const hunks = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 1,
+        lines: ["-a", "+b"],
+      },
+    ];
+    return [
+      at(pre, "PreToolUse", call),
+      at(post, "PostToolUse", {
+        ...call,
+        tool_response: {
+          bashEditDiff: {
+            files: paths.map((p) => ({ filePath: `/p/wt/${p}`, hunks })),
+          },
+        },
+      }),
+    ];
+  };
+  // As session 0d11's request 9: two builders writing in one worktree at once.
+  const [req] = reduce([
+    prompt(0, "build the pages"),
+    agentCall(1, "Build Task 66 Portfolio capture"),
+    started(2, "a1"),
+    agentCall(3, "Build Task 101 Screener capture"),
+    started(4, "a2"),
+    // The screener builder's own change, named.
+    ...sh(10, 14, "a2", "python3 - <<'E'\np='contracts/screenerPage.js'\nE", [
+      "contracts/screenerPage.js",
+    ]),
+    // The portfolio builder's append lists every change made meanwhile.
+    ...sh(11, 13, "a1", "cat >> tests/portfolio.test.js <<'E'\nit()\nE", [
+      "tests/portfolio.test.js",
+      "contracts/screenerPage.js",
+      "frontend/useScreener.js",
+    ]),
+    // Alone, a formatter that names no file changes its own.
+    ...sh(20, 21, "a1", "npx biome format --write .", [
+      "contracts/portfolioPage.js",
+      "frontend/app.css",
+    ]),
+    // A common name in two folders says nothing; the other builder's is its own.
+    ...sh(29, 32, "a2", "node gen.js > server/index.ts", ["server/index.ts"]),
+    ...sh(30, 31, "a1", "cd frontend && sed -i '' s/a/b/ index.ts", [
+      "frontend/index.ts",
+      "server/index.ts",
+    ]),
+    // A file named alone, unique in its diff, is its own while another builder runs tests.
+    ...sh(39, 42, "a2", "npm test"),
+    ...sh(40, 41, "a1", "cd contracts; sed -i '' s/x/y/ portfolioPage.js", [
+      "contracts/portfolioPage.js",
+      "contracts/captured/thin.json",
+    ]),
+  ]).requests;
+  const inWt = (p: string) => p.replace(/^wt\//, "");
+  const files = (id: string) =>
+    req?.agents.find((a) => a.id === id)?.files?.map(inWt);
+
+  test("go to the helper that made them, never to whoever ran the command", () => {
+    expect(files("a1")).toEqual([
+      "tests/portfolio.test.js",
+      "contracts/portfolioPage.js",
+      "frontend/app.css",
+    ]);
+    expect(files("a2")).toEqual([
+      "contracts/screenerPage.js",
+      "server/index.ts",
+    ]);
+    // Its own counts and edits too, for its file list and diffs.
+    const a1 = req?.agents.find((a) => a.id === "a1");
+    expect(
+      a1?.touches?.find((t) => t.path === "wt/contracts/portfolioPage.js"),
+    ).toMatchObject({ added: 2, removed: 2, eventIds: ["e21", "e41"] });
+    expect(
+      req?.parts.map((p) => [p.id, p.files.map((f) => inWt(f.path))]),
+    ).toEqual([
+      ["task:66", files("a1")],
+      ["task:101", files("a2")],
+    ]);
+  });
+
+  test("and one nobody surely made stays the request's, never lost", () => {
+    expect(req?.looseFiles.map((f) => inWt(f.path))).toEqual([
+      "frontend/useScreener.js",
+      "frontend/index.ts",
+      "contracts/captured/thin.json",
+    ]);
+    expect(req?.tally.files).toBe(8);
+  });
 });

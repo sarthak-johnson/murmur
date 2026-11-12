@@ -9,5 +9,9 @@ export default defineConfig({
   // server; split routes with lazy imports if it grows past this.
   build: { chunkSizeWarningLimit: 700 },
   server: { proxy: { "/api": server, "/auth": server, "/healthz": server } },
-  test: { include: ["test/**/*.test.{ts,tsx}"], environment: "jsdom" },
+  test: {
+    include: ["test/**/*.test.{ts,tsx}"],
+    environment: "jsdom",
+    setupFiles: ["test/setup.ts"],
+  },
 });

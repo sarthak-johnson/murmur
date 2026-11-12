@@ -10,7 +10,11 @@ import type {
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Live as Page } from "../src/pages/Session";
+import { asCoreSays } from "./coreSays";
+import { Live as Page, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import {
   clock,
   commitsIn,
@@ -24,6 +28,7 @@ import {
   sentBack,
   verdictOf,
 } from "../src/story";
+import { clockAt } from "./clock";
 
 /** A request's own page: the newest request unless the test names one. */
 function Live(p: React.ComponentProps<typeof Page>) {
@@ -51,6 +56,8 @@ beforeEach(() => {
 
 const at = (min: number) =>
   new Date(Date.UTC(2026, 10, 6, 10, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(at(45));
 
 function part(p: Partial<PartView> & { id: string; title: string }): PartView {
   return {
@@ -202,7 +209,7 @@ function request(r: Partial<RequestView> = {}): RequestView {
 }
 
 function session(req: RequestView, s: Partial<SessionView> = {}): SessionView {
-  return {
+  return asCoreSays({
     sessionId: "s1",
     cwd: "/x/app",
     title: "app",
@@ -212,7 +219,7 @@ function session(req: RequestView, s: Partial<SessionView> = {}): SessionView {
     requests: [req],
     needsYou: null,
     ...s,
-  };
+  });
 }
 
 const ev = (min: number): MurmurEvent => ({
@@ -380,6 +387,27 @@ describe("story helpers", () => {
       label: "Approved",
       tone: "done",
     });
+    // Where a verdict went is no verdict.
+    expect(
+      verdictOf({
+        ...r(),
+        text: "Done. The verdict is written to `.sdd/task-56-review.md`.",
+      }),
+    ).toBeUndefined();
+    // Negatives first: these hold "approv" and "pass".
+    expect(verdictOf(r("Not approved"))?.tone).toBe("bad");
+    expect(verdictOf(r("Doesn't pass"))?.tone).toBe("bad");
+    expect(verdictOf(r("Not passed"))?.tone).toBe("bad");
+    for (const said of [
+      "does not pass",
+      "doesn't pass",
+      "did not pass",
+      "FAIL",
+      "not ready",
+      "changes needed",
+    ])
+      expect([said, verdictOf(r(said))?.tone]).toEqual([said, "bad"]);
+    expect(verdictOf(r("No blocking issues"))?.tone).toBe("done");
     expect(verdictOf(r(undefined, "failed"))).toEqual({
       label: "Failed",
       tone: "bad",
@@ -442,7 +470,9 @@ describe("request page, story first", () => {
 
   it("the facts say when it was asked, tasks, helpers and sent back; the track says how long", () => {
     show(session(request()), [ev(5), ev(30)]);
-    expect(within(screen.getByRole("banner")).getByText("Done")).toBeTruthy();
+    expect(
+      screen.getByRole("banner").querySelector(".of-pill")?.textContent,
+    ).toMatch(/^Done · /);
     expect(document.querySelector(".over")?.textContent).toContain(
       `asked Fri 6 Nov, ${clock(at(5))}`,
     );
@@ -453,6 +483,8 @@ describe("request page, story first", () => {
     expect(t).toContain("4 helpers");
     expect(t).toContain("3 files");
     expect(t).toContain("12 commands");
+    // A done request took from its ask to its last word (5 to 30), not to the session's
+    // last event (40).
     const track = screen.getByRole("region", { name: "Phase track" });
     expect(track.querySelector(".trk-foot")?.textContent).toContain(
       "Took: 25 m",
@@ -467,8 +499,9 @@ describe("request page, story first", () => {
       agents: [],
     });
     show(session(running));
-    const bar = () => within(screen.getByRole("banner"));
-    expect(bar().getByText("Running")).toBeTruthy();
+    const pill = () => screen.getByRole("banner").querySelector(".of-pill");
+    // Running, or paused once the session went quiet with the request still open.
+    expect(pill()?.textContent).toMatch(/^(Running · |Paused · ran )/);
     const band = screen.getByRole("group", { name: "Summary" });
     expect(band.textContent).not.toContain("helpers");
     expect(band.textContent).not.toContain("sent back");
@@ -478,8 +511,11 @@ describe("request page, story first", () => {
         needsYou: { reason: "permission", text: "Allow Bash?", since: at(9) },
       }),
     );
-    expect(document.querySelector(".state-pill")).toBeNull();
-    expect(bar().getByRole("link", { name: /Permission needed/ })).toBeTruthy();
+    // Waiting on you: the one amber pill, and the panel says what is asked.
+    expect(pill()?.textContent).toMatch(/^Waiting on you · /);
+    expect(
+      screen.getByRole("complementary", { name: "Details" }).textContent,
+    ).toContain("Allow Bash?");
   });
 
   it("the timeline runs oldest first once done, each task's messages in one row", () => {
@@ -498,7 +534,7 @@ describe("request page, story first", () => {
     ]);
   });
 
-  it("the live phase runs newest first while the request runs", () => {
+  it("the live phase runs oldest first too, its newest row marked for the panel", () => {
     const [phase] = request().phases;
     show(
       session(
@@ -509,12 +545,15 @@ describe("request page, story first", () => {
       ),
     );
     expect(storyTexts().map((t) => t.slice(0, 12))).toEqual([
-      "Task 1 is do",
-      "I also added",
-      "The review f",
-      "One builder ",
       "Approved, so",
+      "One builder ",
+      "The review f",
+      "I also added",
+      "Task 1 is do",
     ]);
+    expect(
+      story().querySelector("[data-newest] .story-text")?.textContent,
+    ).toMatch(/^Task 1 is do/);
   });
 
   it("each moment has its time, task chip and badge", async () => {
@@ -529,7 +568,7 @@ describe("request page, story first", () => {
       ),
     );
     const items = within(story()).getAllByRole("listitem");
-    const [done, plan, problem, decision] = items as HTMLElement[];
+    const [, decision, problem, plan, done] = items as HTMLElement[];
     expect(within(decision as HTMLElement).getByText("Decision")).toBeTruthy();
     expect(
       within(problem as HTMLElement).getByText("Problem found"),
@@ -546,7 +585,9 @@ describe("request page, story first", () => {
     expect(chip.title).toBe("Task 1: Lit plate tokens");
     expect(within(decision as HTMLElement).queryByRole("button")).toBeNull();
     await userEvent.click(chip);
-    expect(location.pathname).toBe("/s/s1/r/r1/p/task%3A1");
+    expect(location.pathname + location.search).toBe(
+      "/s/s1/r/r1?open=task:task:1",
+    );
   });
 
   it("folds consecutive messages about one task into one row that opens in place", async () => {
@@ -613,7 +654,7 @@ describe("request page, story first", () => {
     ).toBeTruthy();
   });
 
-  it("a run keeps its messages oldest first inside, while the live section runs newest first", async () => {
+  it("a run keeps its messages oldest first inside, as the live section does", async () => {
     const [phase] = request().phases;
     const run = [
       msg("m0", 6, "Starting."),
@@ -632,14 +673,15 @@ describe("request page, story first", () => {
       ),
     );
     const rows = [...story().querySelectorAll(".st-phase > ol > li")];
-    // The newest run is on top and open; "Waiting." carries on Task 1's run.
+    // The newest run is at the bottom and open; "Waiting." carries on Task 1's run.
+    expect(rows[0]?.textContent).toContain("Starting.");
     expect(
-      within(rows[0] as HTMLElement)
+      within(rows[1] as HTMLElement)
         .getAllByRole("button")[0]
         ?.getAttribute("aria-expanded"),
     ).toBe("true");
     const texts = [
-      ...(rows[0] as HTMLElement).querySelectorAll(".story-text"),
+      ...(rows[1] as HTMLElement).querySelectorAll(".story-text"),
     ].map((e) => e.textContent);
     expect(texts).toEqual([
       "Task 1 is being built.",
@@ -647,7 +689,6 @@ describe("request page, story first", () => {
       "Task 1 is done.",
       "Waiting.",
     ]);
-    expect(rows[1]?.textContent).toContain("Starting.");
   });
 
   it("renders Markdown in messages as formatted text", () => {
@@ -690,13 +731,13 @@ describe("request page, story first", () => {
     });
     expect(link.closest(".st")?.className).toBe("st done");
     expect(link.querySelector(".mk.done")).toBeTruthy();
-    expect(link.getAttribute("href")).toBe("/s/s1/r/r1/p/task%3A1");
+    expect(link.getAttribute("href")).toBe("/s/s1/r/r1?open=task:task:1");
   });
 
   it("the map is a tab beside the story, one click away", async () => {
     show(session(request()));
     const tabs = screen.getByRole("navigation", {
-      name: "Views of this request",
+      name: "This request",
     });
     expect(
       within(tabs)
@@ -705,7 +746,7 @@ describe("request page, story first", () => {
     ).toBe("page");
     expect(screen.queryByRole("region", { name: "Flow" })).toBeNull();
     await userEvent.click(within(tabs).getByRole("link", { name: "Flow" }));
-    expect(location.pathname).toMatch(/\/flow$/);
+    expect(location.search).toBe("?open=flow");
   });
 
   it("a request with no messages draws no story, and the flow stays on its tab", () => {
@@ -762,7 +803,7 @@ describe("request page, story first", () => {
     );
     const now = screen.getByRole("region", { name: "Now" });
     expect(within(now).getByText("Run the frontend suite")).toBeTruthy();
-    await userEvent.click(within(now).getByRole("button", { name: "Details" }));
+    await userEvent.click(within(now).getByRole("button", { name: "Source" }));
     expect(
       within(now).getByText("cd /x/app && pnpm test 2>&1 | tail -3"),
     ).toBeTruthy();
@@ -785,7 +826,8 @@ describe("request page, story first", () => {
         }),
       ),
     );
-    const now = screen.getByRole("region", { name: "Now" });
+    // Over, the line says what the request did in all.
+    const now = screen.getByRole("region", { name: "In all" });
     expect(within(now).queryByText(/Running tail/)).toBeNull();
     expect(now.textContent).toContain("4 helpers");
   });
@@ -935,10 +977,10 @@ describe("round 3", () => {
 
   it("the page's first stop skips to the content", () => {
     show(session(request()));
-    // The first link on the page, before the rail.
+    // The first link on the page, before the bars.
     const skip = screen.getAllByRole("link")[0] as HTMLElement;
     expect(skip.textContent).toBe("Skip to the content");
-    expect(skip.getAttribute("href")).toBe("#main");
+    expect(skip.getAttribute("href")).toBe("#panel");
     expect(document.getElementById("plan")).toBeNull();
     expect(within(story()).queryByRole("link", { name: /Skip/ })).toBeNull();
   });
@@ -955,7 +997,7 @@ describe("round 3", () => {
         lastLooked={null}
       />,
     );
-    expect(container.querySelector(".skeleton")).toBeTruthy();
+    expect(container.querySelector(".of-empty[aria-busy=true]")).toBeTruthy();
     expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
     // Once loaded, an unknown id falls back to the newest request.
     rerender(
@@ -984,8 +1026,8 @@ describe("round 3", () => {
       },
     });
     show(session(open), [ev(5), stop]);
-    const bar = () => within(screen.getByRole("banner"));
-    expect(bar().getByText("Done")).toBeTruthy();
+    const pill = () => screen.getByRole("banner").querySelector(".of-pill");
+    expect(pill()?.textContent).toMatch(/^Done · /);
     cleanup();
     show(
       session(
@@ -993,7 +1035,8 @@ describe("round 3", () => {
       ),
       [ev(5), stop],
     );
-    expect(bar().getByText("Running")).toBeTruthy();
+    // A helper still at work: running on (or paused, once the session went quiet).
+    expect(pill()?.textContent).toMatch(/^(Running|Paused) · /);
   });
 
   it("in a finished request, unfinished tasks read as left open, not running", () => {

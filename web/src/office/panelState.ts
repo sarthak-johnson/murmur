@@ -1,0 +1,118 @@
+// What the office's panel shows (the `?open=` of its URL), and what a click in the room opens.
+import type { RequestView } from "@murmur/core";
+import { type SessionTab, TABS, type Tab } from "../router";
+import { placeOf } from "../session";
+
+export const SESSION_VIEWS: readonly (readonly [SessionTab, string])[] = [
+  ["journey", "Journey"],
+  ["timeline", "Timeline"],
+  ["allfiles", "All files"],
+];
+export const REQUEST_VIEWS: readonly (readonly [Tab, string])[] = [
+  ["story", "Story"],
+  ["tasks", "Tasks"],
+  ["flow", "Flow"],
+  ["files", "Files"],
+  ["helpers", "Helpers"],
+];
+export type PanelTab = SessionTab | Tab;
+
+const SESSION_IDS: readonly string[] = SESSION_VIEWS.map(([t]) => t);
+const SPOTS = ["door", "terminal", "claude"];
+
+export const isSessionTab = (open: string): open is SessionTab =>
+  SESSION_IDS.includes(open);
+export const isTab = (open: string): open is PanelTab =>
+  isSessionTab(open) || (TABS as readonly string[]).includes(open);
+
+/** `open` as the panel can show it: a tab or a close-up; anything else is nothing. */
+export function readOpen(open: string | undefined): string | null {
+  if (!open) return null;
+  // The Requests list it once had only repeated the rail; its requests are on the Timeline.
+  if (open === "requests") return "timeline";
+  if (isTab(open) || SPOTS.includes(open)) return open;
+  const [kind, id] = open.split(/:(.*)/s);
+  return (kind === "task" || kind === "helper") && id ? open : null;
+}
+
+/** Views that need room: the panel takes its wide width for them when the reader chose it. */
+export const isWideView = (open: string) =>
+  open === "flow" ||
+  open === "timeline" ||
+  open === "journey" ||
+  open.startsWith("task:");
+
+/** A room's click target (overlay.ts) as the panel's `open`. */
+export function openFor(key: string): string {
+  const [kind, id = ""] = key.split(/:(.*)/s);
+  if (kind === "phase") return "tasks";
+  // The archive holds the whole session's files; the request's are on its Files tab.
+  if (kind === "archive") return "allfiles";
+  if (kind === "helpers") return "helpers";
+  if (kind === "jobs") return "timeline";
+  if (kind === "agent") return `helper:${id}`;
+  // A sticky is a task of the plan: its close-up keeps which task (several share a part).
+  return key;
+}
+
+/** A close-up's `task:<id>`: a plan task's id, else a part's (then its first task). */
+export const closeUpPlace = (req: RequestView, id: string) => {
+  const own = placeOf(req, { task: id });
+  return own?.task ? own : (placeOf(req, { part: id }) ?? own);
+};
+
+/** The panel's `open` as the room marks it selected: the overlay's own key for that thing. */
+export function roomKey(open: string | null, req: RequestView | undefined) {
+  if (!open) return null;
+  const [kind, id = ""] = open.split(/:(.*)/s);
+  if (kind === "helper") return `agent:${id}`;
+  // A task's own sticky, else (a part's close-up) the sticky of its first task.
+  if (kind === "task") return (req && closeUpPlace(req, id)?.key) ?? open;
+  return SPOTS.includes(open) ? open : null;
+}
+
+const TOOL_WORDS: Record<string, string> = {
+  ArtifactData: "Updated an artifact's data",
+  Artifact: "Published an artifact",
+  ToolSearch: "Looked up a tool",
+  TaskStop: "Stopped a background task",
+  TaskCreate: "Started a background task",
+  TodoWrite: "Updated its to-do list",
+  WebSearch: "Searched the web",
+  WebFetch: "Read a web page",
+  Skill: "Used a skill",
+  Grep: "Searched the code",
+  Glob: "Looked for files",
+  Read: "Read a file",
+  Edit: "Edited a file",
+  Write: "Wrote a file",
+  Bash: "Ran a command",
+  Monitor: "Watched a command",
+  AskUserQuestion: "Asked you a question",
+  ExitPlanMode: "Showed you its plan",
+  CronCreate: "Scheduled a task",
+  CronDelete: "Cancelled a scheduled task",
+  SendMessage: "Wrote to a helper",
+  NotebookEdit: "Edited a notebook",
+};
+
+/** A tool in words: its own, or the service an MCP tool belongs to ("Used Supabase"). */
+export function toolWords(tool: string): string {
+  const known = TOOL_WORDS[tool];
+  if (known) return known;
+  const mcp = /^mcp__([^_]+(?:_[^_]+)*?)__/.exec(tool);
+  if (mcp) {
+    const server = (mcp[1] ?? "")
+      .replace(/^(claude_ai_|plugin_[^_]+_)/, "")
+      .replace(/^claude-in-chrome$/, "the browser")
+      .replace(/^mcp[_-]?/i, "")
+      .replace(/[_-]+/g, " ")
+      .trim();
+    if (!server) return "Used a connected tool";
+    const named = server.startsWith("the ")
+      ? server
+      : server.replace(/\b\w/g, (c) => c.toUpperCase());
+    return `Used ${named}`;
+  }
+  return `Used ${tool.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()}`;
+}

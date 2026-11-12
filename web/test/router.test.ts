@@ -1,37 +1,34 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  closedHere,
+  floorPath,
+  helperPath,
   matchRoute,
   navigate,
-  officePath,
+  partPath,
+  redirectOf,
   requestPath,
   sessionPath,
 } from "../src/router";
 
 describe("matchRoute", () => {
-  it("parses the office, following the session or pinned to a request", () => {
-    expect(matchRoute("/s/abc/office")).toEqual({
-      name: "office",
+  it("reads a session address as a floor of the office and what its panel shows", () => {
+    expect(matchRoute("/s/abc")).toEqual({ name: "session", sessionId: "abc" });
+    expect(matchRoute("/s/abc?open=journey")).toEqual({
+      name: "session",
       sessionId: "abc",
+      open: "journey",
     });
-    expect(matchRoute("/s/abc/r/q/office")).toEqual({
-      name: "office",
+    expect(matchRoute("/s/abc/r/q?open=task:p%2F1")).toEqual({
+      name: "session",
       sessionId: "abc",
       requestId: "q",
+      open: "task:p/1",
     });
-    expect(officePath("a b")).toBe("/s/a%20b/office");
-    expect(officePath("a", "q")).toBe("/s/a/r/q/office");
-    expect(matchRoute(officePath("a", "q/1"))).toEqual({
-      name: "office",
-      sessionId: "a",
-      requestId: "q/1",
-    });
-  });
-  it("parses part route", () => {
-    expect(matchRoute("/s/abc/r/req1/p/part2")).toEqual({
-      name: "part",
+    expect(matchRoute("/s/abc/r/q")).toEqual({
+      name: "session",
       sessionId: "abc",
-      requestId: "req1",
-      partId: "part2",
+      requestId: "q",
     });
   });
   it("parses the other routes", () => {
@@ -41,66 +38,69 @@ describe("matchRoute", () => {
       code: "ABCD-1234",
     });
     expect(matchRoute("/settings")).toEqual({ name: "settings" });
-    expect(matchRoute("/s/abc")).toEqual({
-      name: "session",
-      sessionId: "abc",
-      tab: "journey",
-    });
-    expect(matchRoute("/s/abc/r/q")).toEqual({
-      name: "request",
-      sessionId: "abc",
-      requestId: "q",
-      tab: "story",
-    });
     expect(matchRoute("/nope")).toEqual({ name: "notFound" });
     expect(matchRoute("/s/%E0%A4/r/q")).toEqual({ name: "notFound" });
+    expect(matchRoute("/s/abc/r/q/x/y/z")).toEqual({ name: "notFound" });
   });
-  it("parses a request's tabs, and nothing else after it", () => {
-    for (const tab of ["tasks", "flow", "files", "helpers"] as const)
-      expect(matchRoute(`/s/abc/r/q/${tab}`)).toEqual({
-        name: "request",
-        sessionId: "abc",
-        requestId: "q",
-        tab,
-      });
-    // Story is the bare path, never a second URL for the same page.
-    expect(matchRoute("/s/abc/r/q/story")).toEqual({ name: "notFound" });
-    expect(matchRoute("/s/abc/r/q/map")).toEqual({ name: "notFound" });
-  });
-  it("parses the session's tabs: the journey is the bare path, the flow its own", () => {
-    expect(matchRoute("/s/abc/flow?r=q")).toEqual({
-      name: "session",
-      sessionId: "abc",
-      tab: "flow",
-    });
-    expect(matchRoute("/s/abc/journey")).toEqual({ name: "notFound" });
-    expect(matchRoute("/s/abc/flow/x")).toEqual({ name: "notFound" });
+});
+
+describe("the path helpers give office addresses", () => {
+  it("names the floor, then what the panel shows", () => {
     expect(sessionPath("a b")).toBe("/s/a%20b");
-    expect(sessionPath("a", "journey")).toBe("/s/a");
-    expect(sessionPath("a", "flow")).toBe("/s/a/flow");
+    expect(sessionPath("a", "timeline")).toBe("/s/a?open=timeline");
+    expect(requestPath("a", "q")).toBe("/s/a/r/q?open=story");
+    expect(requestPath("a", "q", "flow")).toBe("/s/a/r/q?open=flow");
+    expect(partPath("a", "q", "p 1")).toBe("/s/a/r/q?open=task:p%201");
+    expect(helperPath("a", "q", "x")).toBe("/s/a/r/q?open=helper:x");
+    expect(floorPath("a", undefined, null)).toBe("/s/a");
   });
-  it("builds a request's path per tab", () => {
-    expect(requestPath("a b", "q")).toBe("/s/a%20b/r/q");
-    expect(requestPath("a", "q", "story")).toBe("/s/a/r/q");
-    expect(requestPath("a", "q", "flow")).toBe("/s/a/r/q/flow");
-    expect(requestPath("a", "q", "tasks")).toBe("/s/a/r/q/tasks");
+  it("reads back what it wrote", () => {
+    expect(matchRoute(partPath("a", "q/1", "p:1"))).toEqual({
+      name: "session",
+      sessionId: "a",
+      requestId: "q/1",
+      open: "task:p:1",
+    });
+  });
+});
+
+describe("old addresses", () => {
+  it("land where they meant, in the office", () => {
+    expect(redirectOf("/s/a/flow?r=q")).toBe("/s/a?open=timeline&r=q");
+    expect(redirectOf("/s/a/office")).toBe("/s/a");
+    expect(redirectOf("/s/a/r/q/office")).toBe("/s/a/r/q");
+    expect(redirectOf("/s/a/r/q/files")).toBe("/s/a/r/q?open=files");
+    expect(redirectOf("/s/a/r/q/flow?part=p")).toBe(
+      "/s/a/r/q?open=flow&part=p",
+    );
+    expect(redirectOf("/s/a/r/q/p/p1#x")).toBe("/s/a/r/q?open=task:p1#x");
+  });
+  it("leaves a current address alone", () => {
+    expect(redirectOf("/s/a")).toBeNull();
+    expect(redirectOf("/s/a/r/q?open=story")).toBeNull();
+    expect(redirectOf("/settings")).toBeNull();
   });
 });
 
 describe("navigate", () => {
-  afterEach(() => {
-    delete (document as { startViewTransition?: unknown }).startViewTransition;
+  it("pushes an entry, so Back walks every move", () => {
+    const before = history.length;
+    navigate("/s/x?open=story");
+    navigate("/s/x?open=tasks");
+    expect(location.pathname + location.search).toBe("/s/x?open=tasks");
+    expect(history.length).toBe(before + 2);
   });
-  it("is instant without View Transitions", () => {
-    navigate("/s/x");
-    expect(location.pathname).toBe("/s/x");
+  it("does not push the address already shown", () => {
+    navigate("/s/x?open=helpers");
+    const before = history.length;
+    navigate("/s/x?open=helpers");
+    expect(history.length).toBe(before);
   });
-  it("runs the route change inside a view transition where there is one", () => {
-    const start = vi.fn((update: () => void) => update());
-    Object.assign(document, { startViewTransition: start });
-    navigate("/s/y/r/q/flow");
-    expect(start).toHaveBeenCalledTimes(1);
-    expect(location.pathname).toBe("/s/y/r/q/flow");
+  it("marks an entry whose panel was closed by hand", () => {
+    navigate("/s/x", { closed: true });
+    expect(closedHere()).toBe(true);
+    navigate("/s/x?open=story");
+    expect(closedHere()).toBe(false);
   });
   it("starts another page at its top, but not a move within the page", () => {
     navigate("/s/a/r/b");
@@ -108,8 +108,8 @@ describe("navigate", () => {
     navigate("/s/a/r/c");
     expect(top).toHaveBeenCalledTimes(1);
     expect(top).toHaveBeenCalledWith(0, 0);
+    navigate("/s/a/r/c?open=flow");
     navigate("/s/a/r/c#phase-p1");
-    navigate("/s/a/r/c");
     expect(top).toHaveBeenCalledTimes(1);
     top.mockRestore();
   });

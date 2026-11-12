@@ -1,3 +1,29 @@
+import type { RequestView } from "@murmur/core";
+
+const DAY = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+});
+/** "Mon 2 Nov". */
+export const dayLabel = (iso: string) =>
+  DAY.format(new Date(iso)).replace(",", "");
+const dayKey = (iso: string) => new Date(iso).toDateString();
+
+/** The requests by the day they were asked, oldest first, numbered from 1. */
+export function byDay(requests: RequestView[]) {
+  const days: { label: string; rows: { req: RequestView; n: number }[] }[] = [];
+  requests.forEach((req, i) => {
+    const last = days.at(-1);
+    const row = { req, n: i + 1 };
+    const prev = requests[i - 1];
+    if (last && prev && dayKey(prev.startedAt) === dayKey(req.startedAt))
+      last.rows.push(row);
+    else days.push({ label: dayLabel(req.startedAt), rows: [row] });
+  });
+  return days;
+}
+
 export function ago(iso: string | null, now = Date.now()): string {
   if (!iso) return "never";
   const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
@@ -32,4 +58,27 @@ export function cutWords(s: string, n: number): string {
   const head = s.slice(0, n);
   const space = head.lastIndexOf(" ");
   return `${(space > n / 3 ? head.slice(0, space) : head).replace(/[,;:]$/, "")}…`;
+}
+
+/** A working folder by its last name: "/Users/me/tradara" reads "tradara". */
+export const folderOf = (cwd: string) =>
+  cwd.split("/").filter(Boolean).pop() ?? cwd;
+
+/** A true minus sign, for a diff's removed lines and a "fewer" count. */
+export const MINUS = "−";
+
+const byIds = new WeakMap<readonly { id: string }[], Map<string, unknown>>();
+/**
+ * A session's events by id, made once per events array and kept while the array lives:
+ * every view that turns an event id into its event (or its time) reads this one map.
+ */
+export function eventsById<E extends { id: string }>(
+  events: readonly E[],
+): Map<string, E> {
+  let m = byIds.get(events) as Map<string, E> | undefined;
+  if (!m) {
+    m = new Map(events.map((e) => [e.id, e]));
+    byIds.set(events, m);
+  }
+  return m;
 }

@@ -6,6 +6,7 @@ import {
   ingestTokens,
   sessions,
 } from "../src/db/schema.js";
+import { backfillSummaries, settleSummaries } from "../src/summary.js";
 import { ev, ingest, linkMachine, sameOrigin, testApp } from "./helpers.js";
 
 let t: Awaited<ReturnType<typeof testApp>> | undefined;
@@ -73,6 +74,63 @@ test("sessions list is newest first and titled from the first prompt", async () 
   expect(
     (await get(cookie, "/api/sessions")).body.sessions[0]?.machineName,
   ).toBeNull();
+});
+
+test("the list names and counts a session as its page does, and says when it waits on you", async () => {
+  t = await testApp();
+  const { token, cookie } = await linkMachine(t, "ada");
+  const start = ev("s", "SessionStart");
+  const first = ev("s", "UserPromptSubmit", { payload: { prompt: "yes" } });
+  await ingest(t, token, [
+    start,
+    first,
+    ev("s", "UserPromptSubmit", {
+      payload: { prompt: "Rebuild the settings page in the new style" },
+    }),
+    ev("s", "PreToolUse", {
+      payload: { tool_name: "Agent", tool_input: { description: "Build it" } },
+    }),
+    ev("s", "PreToolUse", {
+      payload: { tool_name: "Agent", tool_input: { description: "Review it" } },
+    }),
+  ]);
+  const row = async () =>
+    (await get(cookie, "/api/sessions")).body.sessions[0] as unknown as {
+      title: string;
+      summary: Record<string, unknown>;
+    };
+  // The list never reduces a session itself: the summary is read a little after ingest.
+  expect((await row()).summary).toBeNull();
+  await settleSummaries();
+  // The row keeps the first prompt; the summary has the session's own title, which
+  // skips a reply, as its top bar does.
+  expect(await row()).toMatchObject({
+    title: "yes",
+    summary: {
+      title: "Rebuild the settings page in the new style",
+      requests: 2,
+      helpers: 2,
+      from: first.ts,
+      waitingSince: null,
+    },
+  });
+  // A later ingest is read again: Claude now waits on your permission.
+  const ask = ev("s", "Notification", {
+    payload: { notification_type: "permission_prompt", message: "Allow?" },
+  });
+  await ingest(t, token, [ask]);
+  await settleSummaries();
+  expect((await row()).summary).toMatchObject({ waitingSince: ask.ts });
+  // A list read twice with nothing new reads the stored summary.
+  const [stored] = await t.db.select().from(sessions);
+  await get(cookie, "/api/sessions");
+  const [again] = await t.db.select().from(sessions);
+  expect(again?.summaryOfVersion).toEqual(stored?.summaryOfVersion);
+  expect(again?.summaryOfVersion).toBe(again?.version);
+  // One lost (a restart mid-read, or a server from before summaries) is read at start.
+  await t.db.update(sessions).set({ summary: null, summaryOfVersion: null });
+  await backfillSummaries(t.db);
+  expect((await row()).summary).toMatchObject({ waitingSince: ask.ts });
 });
 
 test("a session names its own machine, never another user's", async () => {
@@ -268,4 +326,24 @@ test("ingest after delete recreates the session with only the new events", async
   expect((await get(cookie, "/api/sessions/s1/assumptions")).body).toEqual({
     decisions: [],
   });
+});
+
+test("a session's events and the list are gzipped; the live stream is not", async () => {
+  t = await testApp();
+  const { token, cookie } = await linkMachine(t, "ada", "ada-mbp");
+  const prompt = "make the board readable ".repeat(100);
+  await ingest(t, token, [
+    ev("s1", "SessionStart", { cwd: "/x" }),
+    ev("s1", "UserPromptSubmit", { payload: { prompt } }),
+  ]);
+  const headers = { Cookie: cookie, "Accept-Encoding": "gzip" };
+  for (const path of ["/api/sessions/s1/events", "/api/sessions"]) {
+    const res = await t.app.request(path, { headers });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-encoding")).toBe("gzip");
+  }
+  const live = await t.app.request("/api/sessions/s1/stream", { headers });
+  expect(live.headers.get("content-type")).toBe("text/event-stream");
+  expect(live.headers.get("content-encoding")).toBeNull();
+  await live.body?.cancel();
 });

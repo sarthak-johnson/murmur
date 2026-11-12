@@ -11,11 +11,14 @@ import {
   type PartView,
   type RequestView,
   type TaskView,
+  verdictOf,
 } from "@murmur/core";
 import { plainText } from "./markdown";
 
 // The badge rules live in core, so the request brief and the story read messages alike.
 export { firstSentence, type Moment, moment } from "@murmur/core";
+// One verdict reader, in core, so a review's step and its chip never disagree.
+export { verdictOf };
 export type Tone = "done" | "warn" | "bad" | "now" | "plain";
 
 export const MOMENT: Record<Moment, { label: string; tone: Tone }> = {
@@ -104,53 +107,20 @@ export function concernsIn(text: string): string[] {
 }
 
 const STATUS_LINE =
-  /^\s*[*_]*(status|verdict|commits?|branch|result)[*_]*\s*:/i;
+  /^\s*[*_]*(status|verdict|commits?|branch|result|tests?|report)[*_]*\s*:/i;
+/** A commit line ("`cdabad5ab` test(contracts): ..."): a record, not what was done. */
+const HASH_LINE = /^\s*(?:[-*+]\s+)?`?[0-9a-f]{7,40}\b/;
+/** A section's label ("What is captured:", "Concerns:") opens a list, not prose. */
+const LABEL = /^[*_]*[^\n.]{1,60}:[*_]*\s*(?:\n|$)/;
 
-/** A report's first paragraph of prose, without its status lines and headings. */
+/**
+ * A report's opening paragraph when it is prose: past its status, commit and test lines
+ * and headings. A report that opens with a list or a labelled section ("What is captured:")
+ * has no lead; `helperGist` then reads Claude's word on it.
+ */
 export function reportLead(text: string): string {
-  const paras = text
-    .split(/\n\s*\n/)
-    .map((p) =>
-      p
-        .split("\n")
-        .filter((l) => !STATUS_LINE.test(l) && !/^\s*#/.test(l))
-        .join("\n")
-        .trim(),
-    )
-    .filter(Boolean);
-  return paras[0] ?? "";
-}
-
-const VERDICT: Record<string, { label: string; tone: Tone }> = {
-  DONE: { label: "Done", tone: "done" },
-  DONE_WITH_CONCERNS: { label: "Done, with concerns", tone: "warn" },
-  BLOCKED: { label: "Blocked", tone: "bad" },
-  NEEDS_CONTEXT: { label: "Needs context", tone: "warn" },
-};
-
-/** A report's verdict line as a label and a tone; failed and stopped reports say so. */
-export function verdictOf(
-  report: AgentReport | undefined,
-): { label: string; tone: Tone } | undefined {
-  if (!report) return undefined;
-  const v = report.verdict?.trim();
-  if (v) {
-    const known = VERDICT[v.toUpperCase()];
-    if (known) return known;
-    const words = v.replace(/[_-]+/g, " ").toLowerCase();
-    const label = words.charAt(0).toUpperCase() + words.slice(1);
-    const tone: Tone = /approv|pass|\bok\b|done|complete|ready/.test(words)
-      ? "done"
-      : /fail|block|issue|change|reject|problem|broke/.test(words)
-        ? "bad"
-        : /concern|need|partial|warn/.test(words)
-          ? "warn"
-          : "plain";
-    return { label, tone };
-  }
-  if (report.status === "failed") return { label: "Failed", tone: "bad" };
-  if (report.status === "killed") return { label: "Stopped", tone: "bad" };
-  return undefined;
+  const [first] = paragraphs(text);
+  return first && isProse(first) ? first : "";
 }
 
 /**
@@ -166,17 +136,118 @@ export function aboutWork(brief: string | undefined): string | undefined {
 
 /**
  * What a helper is at, in a line: while it runs, its latest action and the files it has
- * changed so far; once finished, the first sentence of its report (else of its last
- * words). Empty when there is nothing to say.
+ * changed so far; once finished, the first sentence of its gist (`helperGist`). Empty when
+ * there is nothing to say.
  */
-export function helperLine(a: AgentView, running: boolean): string {
+export function helperLine(
+  a: AgentView,
+  running: boolean,
+  req?: RequestView,
+): string {
   const files = a.files?.length ?? 0;
   if (running)
     return [a.doing?.text, files ? `${nOf(files, "file")} so far` : ""]
       .filter(Boolean)
       .join(" · ");
-  const said = firstSentence(reportLine(a.report) || a.lastText || "");
-  return cutWords(said, 160);
+  return cutWords(firstSentence(helperGist(a, req)), 160);
+}
+
+/** Words about waiting on its own work: no gist of what a helper did. */
+const WAITING =
+  /\b(?:still (?:going|running|in progress|being)|in flight|in the background|(?:running|going) now|(?:i'?ll|i will|let me) wait|waiting (?:for|on)|wait(?:ing)? until|will (?:notify|report|ping)|once (?:it|they) (?:finish|finishes|end|ends|complete|completes)|when (?:it|they) (?:end|ends|finish|finishes|complete|completes))\b/i;
+
+const NO_NEWS = /^\s*(?:no change|nothing new|no news)\b/i;
+
+/** A text's paragraphs without status, commit or test lines and headings. */
+function paragraphs(text: string): string[] {
+  return text
+    .split(/\n\s*\n/)
+    .map((p) =>
+      p
+        .split("\n")
+        // "**Status:** Done. The page is in." keeps what follows its status word.
+        .map((l) => l.replace(STATUS_LEAD, ""))
+        .filter(
+          (l) =>
+            l.trim() &&
+            !STATUS_LINE.test(l) &&
+            !HASH_LINE.test(l) &&
+            !/^\s*#/.test(l),
+        )
+        .join("\n")
+        .trim(),
+    )
+    .filter(Boolean);
+}
+/** A status line's label and word when prose follows it on the same line. */
+const STATUS_LEAD =
+  /^\s*[*_]*(?:status|result)[*_]*\s*:\s*[*_]*\s*[\w-]+[.!]?[*_]*\s+(?=[*_]*[A-Z])/i;
+/** What a report's tests line says, when nothing else in it is prose. */
+const testsLine = (text: string) =>
+  /^\s*[*_]*tests?[*_]*\s*:[*_]*\s*(.+)$/im.exec(text)?.[1]?.trim() ?? "";
+const isProse = (p: string) =>
+  !/^\s*(?:[-*+]|\d+[.)])\s/.test(p) && !LABEL.test(p);
+
+/** A report's paragraphs of prose: no status, commit or test lines, headings, lists or labels. */
+const prose = (text: string) => paragraphs(text).filter(isProse);
+
+const COMMIT_SUBJECT =
+  /^\s*(?:[-*+]\s+)?(?:[*_]*commits?[*_]*\s*:\s*)?`?[0-9a-f]{7,40}`?\s+(.+)$/i;
+/**
+ * What its commits say it did, in words: "test(contracts): capture the screener reads
+ * [T101]" reads "Capture the screener reads"; several join with "; ".
+ */
+export function commitWords(text: string): string {
+  const s = text
+    .split("\n")
+    .flatMap((l) => {
+      const subject = COMMIT_SUBJECT.exec(l)?.[1]
+        ?.replace(/^[\w-]+(?:\([^)]*\))?!?:\s*/, "")
+        .replace(/\s*\[[A-Z]*\d+[a-z]?\]/g, "")
+        .trim();
+      return subject ? [subject] : [];
+    })
+    .join("; ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * What a finished helper did, in a few words: its report's lead. A final report with none
+ * (only lists and labelled sections) gives way to Claude's word on it, then to what its
+ * commits say, then to the rest of its prose; one that only says it is waiting on its own background work gives way to its
+ * other prose, then to Claude's word, then to its last words. A helper whose every word
+ * was about waiting says it stopped with its own work still running.
+ */
+export function helperGist(a: AgentView, req?: RequestView): string {
+  const r = a.report;
+  const lead = r ? reportLine(r) : "";
+  // A final report says what it did; only an interim one, or none, is read for waiting.
+  if (lead && !r?.interim) return lead;
+  const claude = (req?.messages ?? [])
+    .filter((m) => m.agent === a.id)
+    .map((m) => plainText(m.text.split(/\n\s*\n/)[0] ?? m.text));
+  const own = r ? prose(r.text) : [];
+  const commits = r ? commitWords(r.text) : "";
+  const tests = r ? testsLine(r.text) : "";
+  // Its own words first: Claude's word after a report is often about what comes next.
+  const said = [
+    ...(r && !r.interim
+      ? [
+          ...(commits ? [commits] : []),
+          ...own,
+          ...(tests ? [tests.charAt(0).toUpperCase() + tests.slice(1)] : []),
+          ...claude,
+        ]
+      : [...own, ...claude]),
+    ...(a.lastText ? prose(a.lastText) : []),
+    // A line about waiting ("No change yet. The builder is waiting...") is no gist.
+  ].find((p) => !WAITING.test(p.slice(0, 200)) && !NO_NEWS.test(p));
+  if (said) return said;
+  // A final report with no prose and no word of Claude's on it: nothing to add.
+  if (r && !r.interim) return "";
+  if (r?.interim || lead || a.lastText)
+    return "Stopped while its own checks were still running; no final report came.";
+  return "";
 }
 
 /** A report in a line: its lead paragraph, else its summary unless that only says it finished. */

@@ -9,12 +9,18 @@ import type {
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stacks } from "../src/live/Track";
-import { Live } from "../src/pages/Session";
+import { Live, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import type { Tab } from "../src/router";
 import { clock } from "../src/story";
+import { clockAt } from "./clock";
 
 const at = (min: number) =>
   new Date(Date.UTC(2026, 10, 9, 15, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(at(10));
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -193,7 +199,7 @@ const show = (req: RequestView, tab?: Tab, partId?: string) =>
 const tabs = () =>
   [
     ...screen
-      .getByRole("navigation", { name: "Views of this request" })
+      .getByRole("navigation", { name: "This request" })
       .querySelectorAll("a"),
   ].map((a) => a.textContent);
 const list = () => screen.getByRole("region", { name: "Tasks" });
@@ -203,22 +209,17 @@ const rows = () => [...list().querySelectorAll("a.tk-row")] as HTMLElement[];
 describe("the Tasks tab", () => {
   it("sits second, with its own URL, current when shown", () => {
     show(guide(), "tasks");
-    expect(tabs()).toEqual([
-      "Story",
-      "Tasks",
-      "Flow",
-      "Files",
-      "Helpers",
-      "Office",
-    ]);
+    expect(tabs()).toEqual(["Story", "Tasks", "Flow", "Files", "Helpers"]);
     const link = screen.getByRole("link", { name: "Tasks" });
-    expect(link.getAttribute("href")).toBe("/s/s1/r/r1/tasks");
+    // The only request is the floor Claude is on: the address follows the session.
+    expect(link.getAttribute("href")).toBe("/s/s1?open=tasks");
     expect(link.getAttribute("aria-current")).toBe("page");
   });
 
-  it("is not there for a request with no plan and no parts", () => {
-    show(guide({ phases: [], parts: [] }));
-    expect(tabs()).toEqual(["Story", "Flow", "Files", "Helpers", "Office"]);
+  it("says so for a request with no plan and no parts", () => {
+    show(guide({ phases: [], parts: [] }), "tasks");
+    expect(screen.getByText("This request has no tasks.")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Tasks" })).toBeNull();
   });
 
   it("lists the tasks by phase, in the plan's order, each numbered in the plan", () => {
@@ -259,7 +260,7 @@ describe("the Tasks tab", () => {
     expect(line(now)).toBe("How often each bed needs water");
     expect(facts(now)).toBe(`1 helper · started ${clock(at(6))}`);
     // Not started and never described: no line, no facts.
-    expect(todo?.querySelector(".mk")?.className).toContain("open");
+    expect(todo?.querySelector(".mk")?.className).toContain("todo");
     expect(todo?.querySelector(".tk-line")).toBeNull();
     expect(todo?.querySelector(".tk-facts")).toBeNull();
     expect(failed?.querySelector(".mk")?.className).toContain("failed");
@@ -278,10 +279,10 @@ describe("the Tasks tab", () => {
     show(guide(), "tasks");
     const name = (href: string) =>
       rows().find((r) => r.getAttribute("href") === href)?.textContent;
-    expect(name("/s/s1/r/r1/p/outline")).toContain(", done");
-    expect(name("/s/s1/r/r1/p/water")).toContain(", in progress");
-    expect(name("/s/s1/r/r1/p/photos")).toContain(", not started");
-    expect(name("/s/s1/r/r1/p/send")).toContain(", failed");
+    expect(name("/s/s1/r/r1?open=task:t1")).toContain(", done");
+    expect(name("/s/s1/r/r1?open=task:t2")).toContain(", running");
+    expect(name("/s/s1/r/r1?open=task:t3")).toContain(", not started");
+    expect(name("/s/s1/r/r1?open=task:t4")).toContain(", failed");
     const title = rows()[1]?.querySelector(".tk-t");
     expect(title?.querySelectorAll(".w").length).toBeGreaterThan(1);
     expect(title?.textContent).toBe("Write the watering section");
@@ -290,15 +291,15 @@ describe("the Tasks tab", () => {
   it("opens each task's page, rows in order as links, the running one the only pulse", () => {
     show(guide(), "tasks");
     expect(rows().map((r) => r.getAttribute("href"))).toEqual([
-      "/s/s1/r/r1/p/outline",
-      "/s/s1/r/r1/p/water",
-      "/s/s1/r/r1/p/photos",
-      "/s/s1/r/r1/p/send",
+      "/s/s1/r/r1?open=task:t1",
+      "/s/s1/r/r1?open=task:t2",
+      "/s/s1/r/r1?open=task:t3",
+      "/s/s1/r/r1?open=task:t4",
     ]);
     const pulses = document.querySelectorAll(".pulse");
     expect(pulses).toHaveLength(1);
     expect(pulses[0]?.closest("a.tk-row")?.getAttribute("href")).toBe(
-      "/s/s1/r/r1/p/water",
+      "/s/s1/r/r1?open=task:t2",
     );
   });
 
@@ -322,8 +323,18 @@ describe("the Tasks tab", () => {
       [...(last?.querySelectorAll(".tk-t") ?? [])].map((t) => t.textContent),
     ).toEqual(["Fix the margins"]);
     expect(last?.querySelector("a.tk-row")?.getAttribute("href")).toBe(
-      "/s/s1/r/r1/p/send",
+      "/s/s1/r/r1?open=task:send",
     );
+  });
+
+  it("leaves out work after the plan that has no helper of its own", () => {
+    show(
+      guide({ beyond: { since: at(7), agents: [], messages: [], rounds: 0 } }),
+      "tasks",
+    );
+    expect(
+      groups().map((g) => g.querySelector("h2")?.textContent),
+    ).not.toContain("Beyond the plan");
   });
 
   it("lists a request's parts as its tasks when it has no plan", () => {
@@ -377,15 +388,15 @@ describe("the phase track", () => {
   });
 
   describe("measured in the page", () => {
+    // The room's canvas (officeShell) measures 7 px a character.
+    let width: { mockRestore(): void } | undefined;
     const widthAt = (px: number) => {
-      vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(px);
-      // 8 px a character.
-      vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
-        measureText: (t: string) => ({ width: t.length * 8 }),
-      } as unknown as RenderingContext);
+      width = vi
+        .spyOn(HTMLElement.prototype, "clientWidth", "get")
+        .mockReturnValue(px);
     };
     afterEach(() => {
-      vi.restoreAllMocks();
+      width?.mockRestore();
     });
     const withTitle = (title: string) =>
       guide({
@@ -480,7 +491,7 @@ describe("a task's page", () => {
     const on = within(about).getByRole("link", {
       name: "Task 2 · Write the watering section",
     });
-    expect(on.getAttribute("href")).toBe("/s/s1/r/r1/p/water");
+    expect(on.getAttribute("href")).toBe("/s/s1/r/r1?open=task:t2");
     expect(about.textContent).toContain("Claude is on");
     expect(
       screen.queryByText("Claude has not described this part yet."),

@@ -9,6 +9,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { PartDetail } from "../src/part/PartDetail";
 import { clock } from "../src/story";
+import { clockAt } from "./clock";
 
 afterEach(cleanup);
 
@@ -137,6 +138,8 @@ function show(p: PartView, r = request([p])) {
 
 const at = (min: number) =>
   new Date(Date.UTC(2026, 10, 6, 10, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(at(20));
 
 /** Task 1 the way the inferred history builds it: three helper calls, with reports. */
 function task1(over: { agents?: Partial<AgentView>[] } = {}) {
@@ -268,9 +271,11 @@ const section = (name: string) => screen.getByRole("region", { name });
 describe("PartDetail", () => {
   it("shows aim and done-when as what it was for", () => {
     show(full);
+    // Named as its one task, as the board and the Tasks list name it; the part under it.
     expect(
-      screen.getByRole("heading", { level: 1, name: "Server endpoint" }),
+      screen.getByRole("heading", { level: 1, name: "Build endpoint" }),
     ).toBeTruthy();
+    expect(screen.getByText("Part of Server endpoint")).toBeTruthy();
     const why = section("What it was for");
     expect(within(why).getByText("Accept alert requests")).toBeTruthy();
     expect(why.textContent).toContain("Done when the test passes");
@@ -554,10 +559,11 @@ describe("PartDetail", () => {
     show(p);
     const cls = (path: string) =>
       [
-        ...(screen.getByRole("button", { name: new RegExp(path) }).children ??
-          []),
+        ...(screen
+          .getByRole("button", { name: new RegExp(path) })
+          .querySelector(".pd-facts")?.children ?? []),
       ]
-        .slice(1, 3)
+        .slice(0, 2)
         .map((c) => c.className);
     expect(cls("a\\.ts")).toEqual(["pd-add zero", "pd-del zero"]);
     expect(cls("b\\.ts")).toEqual(["pd-add", "pd-del"]);
@@ -951,13 +957,7 @@ describe("task page (reshape)", () => {
   }
   const showIt = (t = reshaped(), p = t.p) =>
     render(
-      <PartDetail
-        sessionId="s1"
-        requestNumber={7}
-        request={t.r}
-        part={p}
-        events={t.calls}
-      />,
+      <PartDetail sessionId="s1" request={t.r} part={p} events={t.calls} />,
     );
   const outcome = () =>
     (document.querySelector(".tt .verdict") as HTMLElement).textContent;
@@ -975,7 +975,7 @@ describe("task page (reshape)", () => {
     expect(outcome()).toBe("Done");
     cleanup();
     showIt(reshaped({ status: "now" }));
-    expect(outcome()).toBe("In progress");
+    expect(outcome()).toBe("Running");
   });
 
   it("the facts row reads the time span from core, with how long it took", () => {
@@ -1105,9 +1105,9 @@ describe("task page (reshape)", () => {
       name: /Next/,
     });
     expect(prev.textContent).toContain("Task 1 · Lit plate tokens");
-    expect(prev.getAttribute("href")).toBe("/s/s1/r/r1/p/task%3A1");
+    expect(prev.getAttribute("href")).toBe("/s/s1/r/r1?open=task:t1");
     expect(next.textContent).toContain("Task 3 · Dot field");
-    expect(next.getAttribute("href")).toBe("/s/s1/r/r1/p/plate");
+    expect(next.getAttribute("href")).toBe("/s/s1/r/r1?open=task:t3");
     cleanup();
     showIt();
     const [first] = screen.getAllByRole("navigation", { name: "Tasks" });
@@ -1116,15 +1116,16 @@ describe("task page (reshape)", () => {
     expect(f.getByRole("link", { name: /Next/ }).textContent).toContain(
       "Task 2 · HeroMoney (running)",
     );
-    expect(
-      f.getByRole("link", { name: "← Request 7" }).getAttribute("href"),
-    ).toBe("/s/s1/r/r1");
+    // The breadcrumb climbs back to the request: the close-up has no second way.
+    expect(f.queryByRole("link", { name: /← Request/ })).toBeNull();
   });
 
   it("the flow link says how many parts use this one and selects it on the flow board", () => {
     showIt();
     const flow = screen.getByRole("link", { name: "Flow: 2 parts use this" });
-    expect(flow.getAttribute("href")).toBe("/s/s1/r/r1/flow?part=task%3A1");
+    expect(flow.getAttribute("href")).toBe(
+      "/s/s1/r/r1?open=flow&part=task%3A1",
+    );
     cleanup();
     const t = reshaped();
     showIt(t, t.r.parts[1]);
