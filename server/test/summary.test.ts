@@ -6,6 +6,8 @@ import {
   type SessionSummary,
   type Summarizer,
   settleSummaries,
+  stopSummaries,
+  summarizeInWorker,
   useSummarizer,
 } from "../src/summary.js";
 import { ev, ingest, linkMachine, testApp } from "./helpers.js";
@@ -186,4 +188,37 @@ test("the worker reduces a session as core does", async () => {
   await t.db.delete(events);
   await refreshSummary(t.db, userId, "s");
   expect((await row())?.summaryOfVersion).toBeNull();
+});
+
+test("a worker that dies while a read's pages load fails that read, and the next read gets a new worker", async () => {
+  const prompt = (text: string) =>
+    ev("s", "UserPromptSubmit", { payload: { prompt: text } });
+  let more = () => {};
+  const gate = new Promise<void>((ok) => {
+    more = ok;
+  });
+  let sent = () => {};
+  const firstSent = new Promise<void>((ok) => {
+    sent = ok;
+  });
+  async function* slowPages() {
+    yield [prompt("Rebuild the settings page")];
+    sent();
+    // The database is slow; the worker dies meanwhile.
+    await gate;
+    yield [ev("s")];
+  }
+  const read = summarizeInWorker(slowPages());
+  await firstSent;
+  await stopSummaries();
+  // Long enough for Node to see a rejection nobody handles.
+  await new Promise((ok) => setTimeout(ok, 50));
+  more();
+  await expect(read).rejects.toThrow(/summary worker exited/);
+  async function* onePage() {
+    yield [prompt("Add a dark theme")];
+  }
+  expect(await summarizeInWorker(onePage())).toMatchObject({
+    title: "Add a dark theme",
+  });
 });

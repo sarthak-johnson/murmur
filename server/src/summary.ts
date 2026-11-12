@@ -104,14 +104,22 @@ function theWorker(): Worker {
   return w;
 }
 
-const inWorker: Summarizer = async (pages) => {
+/** Reduces a session in the worker (exported for tests). */
+export const summarizeInWorker: Summarizer = async (pages) => {
   const id = nextId++;
   const w = theWorker();
   const done = new Promise<SessionSummary | null>((ok, fail) =>
     waiting.set(id, { ok, fail }),
   );
+  // A worker lost while the pages load rejects `done` before it is returned: handled
+  // here, or Node exits on the unhandled rejection; the caller still sees it below.
+  done.catch(() => {});
   try {
-    for await (const events of pages) w.postMessage({ id, events });
+    for await (const events of pages) {
+      // Lost already: stop reading the session, `done` has failed.
+      if (!waiting.has(id)) return done;
+      w.postMessage({ id, events });
+    }
     w.postMessage({ id, end: true });
   } catch (e) {
     waiting.delete(id);
@@ -121,12 +129,12 @@ const inWorker: Summarizer = async (pages) => {
   return done;
 };
 
-let summarizer: Summarizer = inWorker;
+let summarizer: Summarizer = summarizeInWorker;
 /** Swaps what reduces a session (for tests); returns the way back. */
 export function useSummarizer(s: Summarizer): () => void {
   summarizer = s;
   return () => {
-    summarizer = inWorker;
+    summarizer = summarizeInWorker;
   };
 }
 
@@ -244,5 +252,8 @@ export async function backfillSummaries(db: Db): Promise<void> {
       ),
     )
     .orderBy(desc(sessions.lastEventAt));
+  if (!stale.length) return;
+  console.log(`summaries: reading ${stale.length} stale`);
   for (const s of stale) await run(db, s.userId, s.sessionId);
+  console.log(`summaries: read ${stale.length}`);
 }
