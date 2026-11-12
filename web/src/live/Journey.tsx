@@ -274,7 +274,9 @@ export function Journey(props: {
             Where it started · {firstDay}, {clock(start.startedAt)}
           </span>
           {ownWords(start.prompt) ? (
-            <q className="jr-q">{cutWords(ownWords(start.prompt), 220)}</q>
+            <q className="jr-q">
+              {cutWords(cleanPrompt(start.prompt).replace(LEAD_MARKS, ""), 220)}
+            </q>
           ) : (
             // Only an image or a paste: there are no words of yours to quote.
             <span className="jr-q">{requestShort(start)}</span>
@@ -684,6 +686,9 @@ function useStrip(items: number) {
   };
   return { ref, read, step, ...edges };
 }
+
+/** Image and paste markers before a prompt's first word: nothing to quote. */
+const LEAD_MARKS = /^(?:\s*\((?:image|pasted text)\)\s*)+/;
 
 /** A prompt's own words: no "(image)" or "(pasted text)" markers. */
 const ownWords = (prompt: string) =>
