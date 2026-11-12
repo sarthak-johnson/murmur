@@ -151,10 +151,13 @@ export function helperName(a: { description?: string | undefined }): string {
   const desc = (a.description ?? "")
     .replace(/\s*\((opus|sonnet|haiku)[^)]*\)\s*$/i, "")
     .trim();
-  const verbless = desc.replace(
-    /^(Build|Review|Re-?review|Recheck|Plan|Fix|Write|Implement|Research|Draft|Add|Create)\s+/i,
-    "",
-  );
+  const verbless = desc
+    .replace(
+      /^(Build|Review|Re-?review|Recheck|Plan|Fix|Write|Implement|Research|Draft|Add|Create)\s+/i,
+      "",
+    )
+    // "Fix round Task 142 News page": the round goes, its subject comes first.
+    .replace(/^(fix\s+)?rounds?(\s+\d+)?:?\s+(?=(Tasks?|Phases?|B)\s*\d)/i, "");
   const subject = /^(Tasks?\s+[\w-]+|Phases?\s+\d+|B\d+)/i.exec(verbless)?.[0];
   // What is left after the subject; "Task 38: capture chat reads" leaves a colon behind.
   const rest = verbless
@@ -536,6 +539,12 @@ export function deriveScene(
       });
     });
   }
+  // Two plates that would read the same (one built it, one reviewed it) say which is which.
+  const seen = new Map<string, number>();
+  for (const d of desks) seen.set(d.name, (seen.get(d.name) ?? 0) + 1);
+  for (const d of desks)
+    if ((seen.get(d.name) ?? 0) > 1)
+      d.name = `${d.name} · ${(d.roleWord || "Helper").toLowerCase()}`;
   // Names that all open the same way ("Lit plate: Portfolio", "Lit plate: Chat") lose the
   // shared opening, so a plate keeps the words that tell it apart.
   const opening = /^([^:]{2,24}):\s+/;

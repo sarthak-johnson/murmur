@@ -169,7 +169,7 @@ export function Office(props: {
   // Waiting on you is live however long the wait: that clock runs on.
   // Reconnecting changes only the tag: the session is as last heard until the line is back.
   const reconnecting = status === "reconnecting";
-  const live = open && (reconnecting || quietFor < QUIET_MS || !!view.needsYou);
+  const live = open && (quietFor < QUIET_MS || !!view.needsYou);
   const END = live ? Math.max(lastAt, wall) : lastAt;
 
   // Time: null follows the newest moment; a number is a moment of the replay.
@@ -428,7 +428,7 @@ export function Office(props: {
       // A pinned floor has no Claude on it: its board and desks are the story.
       const away = !sc.request.current;
       // Low enough that the first desks show under Claude's corner, the board's foot above.
-      const x = away ? 12 * T : sc.waiting ? 32 * T : (c?.x ?? 32 * T);
+      const x = away ? 6 * T : sc.waiting ? 32 * T : (c?.x ?? 32 * T);
       const y = away ? 7 * T : sc.waiting ? 4 * T : 8.5 * T;
       w.scrollTo({
         left: x * scale - w.clientWidth / 2,

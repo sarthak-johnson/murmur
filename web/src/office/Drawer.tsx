@@ -501,6 +501,9 @@ function stepWords(e: MainEntry): string {
     MultiEdit: "Edited",
   }[e.tool ?? ""];
   if (verb && e.label) return `${verb} ${e.label}`;
+  // A command's description is an order ("Find where X was used"): said as one it ran.
+  if ((e.tool === "Bash" || e.tool === "Monitor") && e.label)
+    return `Ran “${e.label}”`;
   return e.label ?? (e.tool ? toolWords(e.tool) : "A step");
 }
 

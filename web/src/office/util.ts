@@ -35,7 +35,6 @@ export const clockOf = (iso: string): string =>
     hourCycle: "h23",
   });
 
-/** "40 s", "35 m", "2 h 5 m". */
 /** "40 s", "7 m", "3 h 07 m": the app's own form (story.ts `duration`), minutes floored. */
 export function dur(ms: number): string {
   if (ms < 60000) return `${Math.max(1, Math.floor(ms / 1000))} s`;

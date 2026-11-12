@@ -48,6 +48,10 @@ const TOOL_WORDS: Record<string, string> = {
   Monitor: "Watched a command",
   AskUserQuestion: "Asked you a question",
   ExitPlanMode: "Showed you its plan",
+  CronCreate: "Scheduled a task",
+  CronDelete: "Cancelled a scheduled task",
+  SendMessage: "Wrote to a helper",
+  NotebookEdit: "Edited a notebook",
 };
 
 /** A tool in words: its own, or the service an MCP tool belongs to ("Used Supabase"). */

@@ -376,17 +376,16 @@ export function createOverlay(
         pc = LINEAGE;
         chipText = `Req ${d.fromRequest}`;
       }
-      // At 3x and up: role, model and time, dropping the model, then the role, so the time
-      // is never the part cut off. At 2x the room says the role.
+      // Role, model and time, dropping the model, then the role, so the time is never the
+      // part cut off. At 2x too: a reviewer seated on the work floor is told apart by it.
       const model = s >= 3 ? modelWord(d.model) : "";
-      const room = 78 * s - (chipText ? chipText.length * 7 + 14 : 0);
+      const room = 78 * s - (chipText ? chipText.length * 7 + 18 : 0) - 6;
       const parts = [
         model ? `${d.roleWord} · ${model} · ` : `${d.roleWord} · `,
         `${d.roleWord} · `,
         "",
       ];
-      const lead =
-        s >= 3 ? (parts.find((p) => fits(`${p}${when}`, room, 13)) ?? "") : "";
+      const lead = parts.find((p) => fits(`${p}${when}`, room, 13)) ?? "";
       const role = esc(lead);
       const sub = `${chipText ? `<i class="ph" style="--ph:${pc}">${esc(chipText)}</i>` : ""}${role}${esc(when)}`;
       const py = (tl.y + 1) * T + 1;

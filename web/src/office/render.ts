@@ -234,7 +234,6 @@ export interface Renderer {
   /** One frame: `now` is performance time, `t` the ISO time shown, `s` the scale the overlay uses. */
   draw(now: number, t: string, s: number): void;
   claudePos(): ClaudePos | null;
-  /** Walk faster while the replay bar is dragged. */
   /** Walk faster: true for a drag (3x), a number for a playing replay, false for normal. */
   rush(on: boolean | number): void;
   /** Light the cables of these helpers (pointed at, or selected); empty lights them all. */
@@ -261,7 +260,7 @@ export function createRenderer(
   const lights = createLights();
   const life = createLife(opts.reduced);
   let lastS = 4;
-  let rushing = 1; // walk speed multiplier while the replay bar is dragged
+  let rushing = 1; // walk speed multiplier: a drag, or a replay playing fast
   let focus = new Set<string>(); // helpers whose cables are lit (what the viewer points at)
   const r = filler(g);
   const actors = new Map<string, Actor>();

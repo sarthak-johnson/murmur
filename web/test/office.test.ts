@@ -511,7 +511,8 @@ describe("round 5", () => {
     expect(toolWords("mcp__claude_ai_Supabase__execute_sql")).toBe(
       "Used Supabase",
     );
-    expect(toolWords("NotebookEdit")).toBe("Used notebook edit");
+    expect(toolWords("NotebookEdit")).toBe("Edited a notebook");
+    expect(toolWords("ListAgents")).toBe("Used list agents");
   });
   it("seats a reviewer with no review desk free at a free work desk", () => {
     const evs: MurmurEvent[] = [prompt(1, "review everything")];
@@ -523,5 +524,13 @@ describe("round 5", () => {
     expect(scene.desks).toHaveLength(5);
     expect(scene.off).toHaveLength(0);
     expect(scene.desks.filter((d) => d.kind === "build")).toHaveLength(1);
+  });
+});
+
+describe("round 7", () => {
+  it("names a fix round by its task's subject", () => {
+    expect(helperName({ description: "Fix round Task 142 News page" })).toBe(
+      "News page",
+    );
   });
 });
