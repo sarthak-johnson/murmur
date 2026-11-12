@@ -126,12 +126,13 @@ const dayOf = (iso: string) =>
     month: "short",
   });
 
-/** "3h", "35m", "40s": short, so the replay bar keeps one width. */
+/** "3 h 12 m", "35 m", "40 s", "8 d 3 h": the app's own form, at most two parts. */
 function span(ms: number) {
   const m = Math.round(ms / 60000);
-  if (m >= 48 * 60) return `${Math.round(m / 1440)}d`;
-  if (m >= 60) return `${Math.round(m / 6) / 10}h`.replace(".0h", "h");
-  return m >= 1 ? `${m}m` : `${Math.max(1, Math.round(ms / 1000))}s`;
+  if (m >= 48 * 60)
+    return `${Math.floor(m / 1440)} d ${Math.floor((m % 1440) / 60)} h`;
+  if (m >= 60) return `${Math.floor(m / 60)} h ${m % 60} m`;
+  return m >= 1 ? `${m} m` : `${Math.max(1, Math.round(ms / 1000))} s`;
 }
 
 /** The helpers a pointed-at thing stands for: a desk, every helper on a sticky, or on a phase. */
@@ -175,7 +176,9 @@ export function Office(props: {
   const lastAt = Date.parse(view.lastEventAt);
   const quietFor = open ? Math.max(0, wall - lastAt) : 0;
   // Waiting on you is live however long the wait: that clock runs on.
-  const live = open && (quietFor < QUIET_MS || !!view.needsYou);
+  // Reconnecting, it is not quiet either: what is missing is the line to it, not the work.
+  const reconnecting = status === "reconnecting";
+  const live = open && (reconnecting || quietFor < QUIET_MS || !!view.needsYou);
   const END = live ? Math.max(lastAt, wall) : lastAt;
 
   // Time: null follows the newest moment; a number is a moment of the replay.
@@ -424,8 +427,10 @@ export function Office(props: {
       const sc = live$.current.scene;
       const c = engine.current?.r.claudePos();
       if (!w) return;
-      const x = sc.waiting ? 32 * T : (c?.x ?? 32 * T);
-      const y = sc.waiting ? 3 * T : (c?.y ?? 3 * T) - T;
+      // A pinned floor has no Claude on it: its board and desks are the story.
+      const away = !sc.request.current;
+      const x = away ? 12 * T : sc.waiting ? 32 * T : (c?.x ?? 32 * T);
+      const y = away ? 9 * T : sc.waiting ? 3 * T : (c?.y ?? 3 * T) - T;
       w.scrollTo({
         left: x * scale - w.clientWidth / 2,
         top: y * scale - w.clientHeight / 2,
@@ -537,7 +542,14 @@ export function Office(props: {
       <header className="of-top">
         <BackLink sessionId={sessionId} />
         <Brand />
-        {following && live ? (
+        {following && reconnecting ? (
+          <span
+            className="of-tag quiet"
+            title="The line to Murmur dropped; this shows the session as last heard, and catches up when it is back"
+          >
+            Reconnecting…
+          </span>
+        ) : following && live ? (
           <span
             className="of-tag live"
             title="Following the session as it happens"
@@ -554,7 +566,7 @@ export function Office(props: {
         ) : (
           <span
             className="of-tag replay"
-            title={`A replay of this session. It ${live ? "is still going" : "ended"} at ${clockOf(new Date(END).toISOString())}.`}
+            title={`A replay of this session. ${open ? "It is still open; its latest moment" : "It ended"} at ${clockOf(new Date(END).toISOString())}.`}
           >
             Replay
           </span>
@@ -572,6 +584,24 @@ export function Office(props: {
           <span className="of-caret" aria-hidden="true" />
         </button>
         {pill && <span className={`of-pill s-${pill[0]}`}>{pill[1]}</span>}
+        {!scene.request.current && (
+          // A pinned floor, not the one Claude is on: the way back, said in the bar.
+          <button
+            type="button"
+            className="of-away"
+            title={`This floor is how request ${scene.request.n} stands. ${
+              scene.activeN > scene.request.n
+                ? `Claude has moved on to request ${scene.activeN}.`
+                : `Claude is still at work on request ${scene.activeN}.`
+            }`}
+            onClick={() => {
+              const id = scene.jobs[scene.activeN - 1]?.id;
+              if (id) openKey(`req:${id}`);
+            }}
+          >
+            Claude is on request {scene.activeN} ›
+          </button>
+        )}
         <span className="of-meta">
           {scene.plan.total ? (
             <>
@@ -608,23 +638,6 @@ export function Office(props: {
         ref={stage}
         style={{ "--of-dw": `${dw}px` } as React.CSSProperties}
       >
-        {!scene.request.current && (
-          <div className="of-away" role="status">
-            {scene.activeN > scene.request.n
-              ? `Claude has moved on to request ${scene.activeN}.`
-              : `Claude is still at work on request ${scene.activeN}.`}{" "}
-            This floor is how request {scene.request.n} stands.
-            <button
-              type="button"
-              onClick={() => {
-                const id = scene.jobs[scene.activeN - 1]?.id;
-                if (id) openKey(`req:${id}`);
-              }}
-            >
-              Go to request {scene.activeN}
-            </button>
-          </div>
-        )}
         {scene.waiting && (
           <div className="of-ask" role="status">
             {/^claude is waiting/i.test(scene.waiting.text) ? (

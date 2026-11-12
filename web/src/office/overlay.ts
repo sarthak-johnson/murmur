@@ -559,9 +559,9 @@ export function createOverlay(
         button: true,
         cls: "off-sign",
         x: 26.9 * T,
-        y: 16.6 * T,
+        y: 12.9 * T,
         html: `+${scene.off.length} more`,
-        label: `${scene.off.length} more helpers than desks: see them all`,
+        label: `${scene.off.length} more helper${scene.off.length === 1 ? "" : "s"} than desks show: see them all`,
         open: "helpers",
       });
     return out;

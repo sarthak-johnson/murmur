@@ -106,11 +106,14 @@ const STAGE: Partial<Record<AgentRole, string>> = {
 };
 
 const STALE_MS = 60 * 60_000;
+/** Words that number a stretch of work: "Batch 2" chips as B2. */
+const NUMBERED =
+  /^(Batch|Round|Step|Stage|Wave|Part|Milestone|Sprint)\s+(\d+[a-z]?)\b/i;
 
 /** "bg needs your input" (a session's own label in a notification) reads as Claude's. */
 function waitWords(text: string): string {
-  return /^\S+ needs your (input|attention|permission)/i.test(text) &&
-    !/^claude\b/i.test(text)
+  // Only a lowercase label ("bg"), never a name like "Murmur" that means itself.
+  return /^[a-z][\w-]* needs your (input|attention|permission)/.test(text)
     ? text.replace(/^\S+/, "Claude")
     : text;
 }
@@ -217,7 +220,7 @@ export function shortOf(title: string): string {
   if (p) return `P${(p[1] ?? "").replace(/\s/g, "")}`;
   // "Batch 2 Library", "Round 3": a numbered word reads as its letter and number, so two
   // batches never share a chip.
-  const numbered = /^([A-Za-z]+)\s+(\d+[a-z]?)\b/.exec(title);
+  const numbered = NUMBERED.exec(title);
   if (numbered)
     return `${(numbered[1] ?? "").charAt(0).toUpperCase()}${numbered[2]}`;
   return (title.split(/[\s:]+/)[0] ?? "").slice(0, 8);
@@ -474,11 +477,14 @@ export function deriveScene(
   const desks: Desk[] = [];
   const off: Helper[] = [];
   const said = new Set<string>();
+  const rooms = {
+    build: Array.from({ length: DESKS.build }, (): Helper | null => null),
+    review: Array.from({ length: DESKS.review }, (): Helper | null => null),
+  };
+  // Helpers with no desk in their own room; a free desk in the other room takes them.
+  const unseated: Helper[] = [];
   for (const kind of ["build", "review"] as const) {
-    const slots = Array.from(
-      { length: DESKS[kind] },
-      (): Helper | null => null,
-    );
+    const slots = rooms[kind];
     for (const a of helpers.filter(
       (h) => (kind === "review") === REVIEW.has(h.role),
     )) {
@@ -489,14 +495,22 @@ export function deriveScene(
         );
       }
       if (s < 0) {
-        off.push(a);
+        unseated.push(a);
         continue;
       }
       const was = slots[s];
       if (was) off.push(was);
       slots[s] = a;
     }
-    slots.forEach((a, slot) => {
+  }
+  for (const a of unseated) {
+    const other = REVIEW.has(a.role) ? rooms.build : rooms.review;
+    const s = other.indexOf(null);
+    if (s < 0) off.push(a);
+    else other[s] = a;
+  }
+  for (const kind of ["build", "review"] as const) {
+    rooms[kind].forEach((a, slot) => {
       if (!a) return;
       desks.push({
         kind,
@@ -515,6 +529,15 @@ export function deriveScene(
       });
     });
   }
+  // Names that all open the same way ("Lit plate: Portfolio", "Lit plate: Chat") lose the
+  // shared opening, so a plate keeps the words that tell it apart.
+  const opening = /^([^:]{2,24}):\s+/;
+  const first = opening.exec(desks[0]?.name ?? "")?.[0];
+  if (first && desks.length > 1 && desks.every((d) => d.name.startsWith(first)))
+    for (const d of desks) {
+      const rest = d.name.slice(first.length);
+      d.name = rest.charAt(0).toUpperCase() + rest.slice(1);
+    }
   // Latest action as a bubble; never the same words on two desks (the later one shows just its screen).
   const atWork = desks
     .filter((k) => k.status === "running")

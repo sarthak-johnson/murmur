@@ -25,7 +25,7 @@ import {
   type Waiting,
 } from "../session";
 import { clock, duration, helperLine, verdictOf } from "../story";
-import { DRAWER_TABS, type DrawerState } from "./drawerState";
+import { DRAWER_TABS, type DrawerState, toolWords } from "./drawerState";
 import type { MainEntry } from "./scene";
 
 /** Redrawn only when what it shows changes: the room repaints far more often. */
@@ -411,7 +411,7 @@ function Terminal(props: Parameters<typeof DrawerBody>[0]) {
           {runs.slice(0, 60).map((e) => (
             <li key={e.t + (e.label ?? "")}>
               <span className="of-when">{clock(e.t)}</span>
-              <span>{e.label ?? `Ran ${e.tool ?? "a command"}`}</span>
+              <span>{e.label ?? toolWords(e.tool ?? "Bash")}</span>
             </li>
           ))}
         </ol>
@@ -493,7 +493,7 @@ function stepWords(e: MainEntry): string {
   if (e.tool === "murmur:narrate")
     return `Noted on the board: ${e.label ?? ""}`.trim();
   if (e.tool === "murmur:map") return "Drew up the plan";
-  return e.label ?? (e.tool ? `Used ${e.tool}` : "A step");
+  return e.label ?? (e.tool ? toolWords(e.tool) : "A step");
 }
 
 /** Claude itself: each of its own steps on this request, newest first. */

@@ -7,7 +7,7 @@ import {
   reduce,
 } from "@murmur/core";
 import { describe, expect, it } from "vitest";
-import { drawerFor } from "../src/office/drawerState";
+import { drawerFor, toolWords } from "../src/office/drawerState";
 import { firstAfter, nextEventAfter } from "../src/office/feed";
 import {
   BOARD_INNER,
@@ -491,5 +491,29 @@ describe("round 4", () => {
         ?.status;
     expect(at(ts(20))).toBe("running");
     expect(at(ts(2 * 3600))).toBe("done");
+  });
+});
+
+describe("round 5", () => {
+  it("says tools in words", () => {
+    expect(toolWords("ArtifactData")).toBe("Updated an artifact's data");
+    expect(toolWords("mcp__claude-in-chrome__browser_batch")).toBe(
+      "Used the browser",
+    );
+    expect(toolWords("mcp__claude_ai_Supabase__execute_sql")).toBe(
+      "Used Supabase",
+    );
+    expect(toolWords("NotebookEdit")).toBe("Used notebook edit");
+  });
+  it("seats a reviewer with no review desk free at a free work desk", () => {
+    const evs: MurmurEvent[] = [prompt(1, "review everything")];
+    for (let i = 0; i < 5; i++) {
+      evs.push(agentCall(2 + i * 2, `Review part ${i}`));
+      evs.push(start(3 + i * 2, `r${i}`));
+    }
+    const scene = sceneOf(evs);
+    expect(scene.desks).toHaveLength(5);
+    expect(scene.off).toHaveLength(0);
+    expect(scene.desks.filter((d) => d.kind === "build")).toHaveLength(1);
   });
 });

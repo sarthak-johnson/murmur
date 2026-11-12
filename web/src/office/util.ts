@@ -4,7 +4,10 @@
 export const phaseShort = (title: string): string => {
   const m = title.match(/^Phases?\s+(\d+(?:\s*[-–]\s*\d+)?)\s*:?\s*(.*)$/i);
   // "Batch 2: Library" reads "B2 Library", like a phase.
-  const numbered = /^([A-Za-z]+)\s+(\d+[a-z]?)\s*:?\s*(.*)$/.exec(title);
+  const numbered =
+    /^(Batch|Round|Step|Stage|Wave|Part|Milestone|Sprint)\s+(\d+[a-z]?)\s*:?\s*(.*)$/i.exec(
+      title,
+    );
   if (!m && numbered) {
     const rest = (numbered[3]?.split(/[\s/,]+/)[0] ?? "").replace(/:$/, "");
     return `${(numbered[1] ?? "").charAt(0).toUpperCase()}${numbered[2]}${rest ? ` ${rest}` : ""}`;

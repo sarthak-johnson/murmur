@@ -999,13 +999,13 @@
   color: var(--o-t1);
   white-space: nowrap;
   /* A fixed width: the track beside it never moves while you aim at a tick. */
-  width: 21ch;
+  width: 25ch;
   overflow: hidden;
   text-align: right;
   flex: none;
 }
 .of-clock.days {
-  width: 32ch;
+  width: 36ch;
 }
 .of-speed select {
   background: #1d1714;
@@ -1077,7 +1077,7 @@
 .of-legend .k.todo {
   background: #8d939c;
 }
-@media (max-width: 1600px) {
+@media (max-width: 1200px) {
   .of-legend {
     display: none;
   }
@@ -1134,7 +1134,7 @@
   inset: auto;
   display: block;
   overflow: auto;
-  max-height: 38vh;
+  max-height: 46vh;
   margin-top: 12px;
   touch-action: pan-x pan-y;
   scrollbar-width: none;
@@ -1284,56 +1284,35 @@
 .of-link:hover {
   text-decoration-color: var(--t2, #d4d0cc);
 }
-/* Over a pinned floor: whose floor this is, and the way back to the one Claude is on. */
+/* On a pinned floor: the way back to the one Claude is on. */
 .of-away {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  max-width: calc(100% - 32px);
-  background: #1a1512;
-  border: 1px solid var(--o-line2);
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-size: 14px;
-  color: var(--o-t2);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
-}
-.of-stage.docked .of-away {
-  left: calc((100% - var(--of-dw)) / 2);
-}
-.of-stage .of-away button {
   flex: none;
   background: var(--o-now-bg);
   color: var(--o-now);
-  border: 1px solid var(--o-now);
-  border-radius: 6px;
-  padding: 4px 10px;
+  border: 1px solid #2c4f78;
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
 }
-.office.phone .of-away {
-  position: static;
-  transform: none;
-  margin: 12px 16px 0;
-  max-width: none;
-  flex-wrap: wrap;
+.of-away:hover {
+  border-color: var(--o-now);
 }
 /* More helpers than desks: the sign that says so. */
 .of-overlay .off-sign {
   transform: translate(-50%, -50%);
-  font: 600 max(12px, calc(4px * var(--s))) / 1 var(--o-ui);
-  color: var(--o-t1);
-  background: #2a211c;
-  border: 1px solid var(--o-line2);
-  border-radius: 999px;
-  padding: 4px 10px;
+  font: max(9px, calc(3.5px * var(--s))) / 1 var(--o-pix);
+  color: #2a211c;
+  background: #eadfc6;
+  border: 0;
+  border-radius: 2px;
+  box-shadow: 0 calc(1px * var(--s)) 0 #8a7a62;
+  padding: calc(1.5px * var(--s)) calc(2.5px * var(--s));
   white-space: nowrap;
 }
 .of-overlay .off-sign:hover {
-  border-color: var(--o-t2);
+  background: #fff4dc;
 }
 /* The phone clock drops the date to keep its words whole. */
 .phone .of-day {
