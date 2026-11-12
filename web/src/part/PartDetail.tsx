@@ -317,8 +317,6 @@ function PartBody(props: {
   cwd?: string;
   /** For the links to the request, the flow board and the tasks either side. */
   sessionId?: string | undefined;
-  /** The request's place in the session, for the way back. */
-  requestNumber?: number | undefined;
   request: RequestView;
   /** The request is still running: a task not started then says what Claude is on. */
   running?: boolean | undefined;
@@ -328,12 +326,10 @@ function PartBody(props: {
   task?: string | undefined;
   /** The moment shown (a replay's), for which helpers are still at work. */
   at?: string | undefined;
-  /** Opens a task in place (a `Place.key`); without it the links go to the part's page. */
-  onTask?: ((key: string) => void) | undefined;
   part: PartView;
   events: MurmurEvent[];
 }) {
-  const { cwd = "", sessionId, requestNumber, request, part, events } = props;
+  const { cwd = "", sessionId, request, part, events } = props;
   const { running = false } = props;
   const reqState = props.state ?? (running ? "running" : coreState(request));
   const now = props.at ?? new Date().toISOString();
@@ -546,9 +542,9 @@ function PartBody(props: {
   // The tasks either side, in the plan's order (else the map's), by the numbers the board
   // and the Tasks list give them, and the flow board.
   const beside = place ? besideOf(request, place) : {};
+  // A task with no part of the map still has its close-up: it is a step too.
   const side = (p: Place | undefined) => {
-    const partId = p?.part?.id;
-    if (!p || !sessionId || !partId) return undefined;
+    if (!p || !sessionId) return undefined;
     const st = workState(p.task?.status ?? p.part?.status ?? "todo", reqState);
     return {
       key: p.key,
@@ -575,26 +571,12 @@ function PartBody(props: {
             path: `${requestPath(sessionId, request.id, "flow")}&part=${encodeURIComponent(part.id)}`,
           }
         : undefined;
-  const back =
-    sessionId && requestNumber ? requestPath(sessionId, request.id) : undefined;
   const link = (path: string, text: string, cls = "pd-btn") => (
     <a key={path} className={cls} href={path} onClick={follow(path)}>
       {text}
     </a>
   );
-  const step = (s: { key: string; path: string }, text: string) =>
-    props.onTask ? (
-      <button
-        key={s.key}
-        type="button"
-        className="pd-btn"
-        onClick={() => props.onTask?.(s.key)}
-      >
-        {text}
-      </button>
-    ) : (
-      link(s.path, text)
-    );
+  const step = (s: { path: string }, text: string) => link(s.path, text);
   const sides = (
     <span className="pd-nav-sides">
       {prev && step(prev, `← Previous: ${prev.text}`)}
@@ -730,9 +712,9 @@ function PartBody(props: {
         ) : (
           <p className="muted">Claude has not described this part yet.</p>
         ))}
-      {(back || flow || prev || next) && (
+      {/* The breadcrumb above climbs back to the request: no second way here. */}
+      {(flow || prev || next) && (
         <nav className="pd-nav" aria-label="Tasks">
-          {back && link(back, `← Request ${requestNumber}`)}
           {flow && link(flow.path, flow.text)}
           {sides}
         </nav>

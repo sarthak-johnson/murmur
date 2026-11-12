@@ -956,13 +956,7 @@ describe("task page (reshape)", () => {
   }
   const showIt = (t = reshaped(), p = t.p) =>
     render(
-      <PartDetail
-        sessionId="s1"
-        requestNumber={7}
-        request={t.r}
-        part={p}
-        events={t.calls}
-      />,
+      <PartDetail sessionId="s1" request={t.r} part={p} events={t.calls} />,
     );
   const outcome = () =>
     (document.querySelector(".tt .verdict") as HTMLElement).textContent;
@@ -1121,9 +1115,8 @@ describe("task page (reshape)", () => {
     expect(f.getByRole("link", { name: /Next/ }).textContent).toContain(
       "Task 2 · HeroMoney (running)",
     );
-    expect(
-      f.getByRole("link", { name: "← Request 7" }).getAttribute("href"),
-    ).toBe("/s/s1/r/r1?open=story");
+    // The breadcrumb climbs back to the request: the close-up has no second way.
+    expect(f.queryByRole("link", { name: /← Request/ })).toBeNull();
   });
 
   it("the flow link says how many parts use this one and selects it on the flow board", () => {

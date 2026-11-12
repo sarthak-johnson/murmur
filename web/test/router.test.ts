@@ -90,6 +90,12 @@ describe("navigate", () => {
     expect(location.pathname + location.search).toBe("/s/x?open=tasks");
     expect(history.length).toBe(before + 2);
   });
+  it("does not push the address already shown", () => {
+    navigate("/s/x?open=helpers");
+    const before = history.length;
+    navigate("/s/x?open=helpers");
+    expect(history.length).toBe(before);
+  });
   it("marks an entry whose panel was closed by hand", () => {
     navigate("/s/x", { closed: true });
     expect(closedHere()).toBe(true);

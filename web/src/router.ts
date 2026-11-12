@@ -136,7 +136,10 @@ export const closedHere = () => !!entry().closed;
  * entry whose panel was closed by hand. A move to another page starts at its top.
  */
 export function navigate(path: string, opts: { closed?: boolean } = {}): void {
-  const another = new URL(path, location.href).pathname !== location.pathname;
+  const to = new URL(path, location.href);
+  // Where you already are is not a step: Back must not walk through it twice.
+  if (to.href === location.href && !!opts.closed === closedHere()) return;
+  const another = to.pathname !== location.pathname;
   // Back lands where the reader was: the scroll stays with the entry it leaves.
   history.replaceState({ ...entry(), y: window.scrollY }, "");
   if (another) window.scrollTo(0, 0);
@@ -159,7 +162,17 @@ const here = () => location.pathname + location.search + location.hash;
 /** The route of the address shown, an old address first replaced by the one it meant. */
 function current(): Route {
   const to = redirectOf(here());
-  if (to) history.replaceState(history.state, "", to);
+  if (to) {
+    // The old office page had no panel: it lands with the panel closed, not the last one.
+    const bare =
+      location.pathname.endsWith("/office") &&
+      !new URL(to, location.href).searchParams.has("open");
+    history.replaceState(
+      bare ? { ...entry(), closed: true } : history.state,
+      "",
+      to,
+    );
+  }
   return matchRoute(here());
 }
 

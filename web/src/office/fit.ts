@@ -96,12 +96,9 @@ export function roomFit(o: {
   if (!o.panel) return a;
   const b = o.rail === "open" ? beside(false, true) : null;
   const comfort = comfortScale(o.dpr);
-  const fits = (f: RoomFit | null, min: number): f is RoomFit =>
-    !!f && !f.pans && f.scale >= min;
-  if (fits(a, comfort)) return a;
-  if (fits(b, comfort)) return b;
-  if (fits(a, 0)) return a;
-  if (fits(b, 0)) return b;
+  // A comfortable fit beside the panel, else any fit there, the rail kept where it can be.
+  for (const min of [comfort, 0])
+    for (const f of [a, b]) if (f && !f.pans && f.scale >= min) return f;
   const stage = o.w - railW(o.rail === "open" || o.rail === "insist");
   return {
     ...fitScale(stage, o.h, o.dpr),

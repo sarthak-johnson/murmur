@@ -11,6 +11,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -198,11 +199,8 @@ describe("the office page", () => {
         name: "Where you are",
       }).textContent,
     ).toContain("Session · ");
-    await act(async () => {
-      history.back();
-      await new Promise((r) => setTimeout(r, 30));
-    });
-    expect(here()).toBe("/s/s1?open=tasks");
+    history.back();
+    await waitFor(() => expect(here()).toBe("/s/s1?open=tasks"));
   });
 
   it("opens the panel from Details on the last tab, and closes it from its one close control", async () => {
@@ -290,6 +288,30 @@ describe("the office page", () => {
     expect(screen.getByRole("contentinfo").textContent).toContain(
       "2 Add alerts",
     );
+  });
+
+  it("a task's close-up keeps its request's pin on the floor Claude is on", async () => {
+    show(`/s/s1/r/${second?.id}?open=task:t1`);
+    await frames();
+    // Task ids repeat across requests: following would show another request's t1 later.
+    expect(here()).toBe(`/s/s1/r/${second?.id}?open=task:t1`);
+    // Not pinned away: Claude is on this request.
+    expect(document.querySelector(".of-top")?.textContent).not.toContain(
+      "Pinned",
+    );
+    // Its tabs follow the session again.
+    await userEvent.click(
+      within(details() as HTMLElement).getByRole("link", { name: "Files" }),
+    );
+    await waitFor(() => expect(here()).toBe("/s/s1?open=files"));
+  });
+
+  it("the old office address lands on the room with the panel closed", async () => {
+    localStorage.setItem("murmur:panel", "journey");
+    show("/s/s1/office");
+    await frames();
+    expect(here()).toBe("/s/s1");
+    expect(details()).toBeNull();
   });
 
   it("an old address lands on the office's own", async () => {

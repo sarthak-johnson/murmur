@@ -230,13 +230,7 @@ describe("waiting on you while helpers work", () => {
     const voice = req.parts.find((p) => p.id === "voice");
     if (!voice) throw new Error("no voice part");
     render(
-      <PartDetail
-        sessionId="s1"
-        requestNumber={1}
-        request={req}
-        part={voice}
-        events={events}
-      />,
+      <PartDetail sessionId="s1" request={req} part={voice} events={events} />,
     );
     const ask = screen.getByRole("region", { name: "Waiting on you" });
     expect(ask.textContent).toContain("Sign in to it");

@@ -270,9 +270,12 @@ export function Office(props: {
   const live = ses.ticking;
   const lastAt = Date.parse(ses.last);
   const END = live ? Math.max(lastAt, wall) : lastAt;
+  // A task's close-up keeps its request's pin even on the floor Claude is on: task ids
+  // repeat across requests, so following would show another request's task once Claude
+  // moves on.
   const pinnedId =
     props.pinnedId &&
-    props.pinnedId !== liveActiveId &&
+    (props.pinnedId !== liveActiveId || !!props.open?.startsWith("task:")) &&
     view.requests.some((r) => r.id === props.pinnedId)
       ? props.pinnedId
       : undefined;
@@ -383,10 +386,17 @@ export function Office(props: {
   // Every change of the panel is a step in the history: Back undoes it.
   const floor$ = useRef(pinnedId);
   floor$.current = pinnedId;
+  // A task's close-up names its request: its id means nothing on another floor.
   const go = useCallback(
     (o: string | null) =>
       navigate(
-        floorPath(sessionId, floor$.current, o),
+        floorPath(
+          sessionId,
+          o?.startsWith("task:")
+            ? (floor$.current ?? floorReq$.current?.id)
+            : floor$.current,
+          o,
+        ),
         o ? {} : { closed: true },
       ),
     [sessionId],
@@ -717,7 +727,8 @@ export function Office(props: {
   }, [go, pick, view.requests]);
 
   const following = at === null;
-  const pinnedNow = following && !!pinnedId;
+  // Pinned to another request than Claude's: the floor does not follow.
+  const pinnedNow = following && !!pinnedId && pinnedId !== liveActiveId;
   // A session over more than a day says the day with the time.
   const spansDays =
     dayOf(new Date(START).toISOString()) !== dayOf(new Date(END).toISOString());

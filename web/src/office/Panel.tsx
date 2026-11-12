@@ -142,7 +142,9 @@ function PanelBody(props: PanelProps) {
   const body = useRef<HTMLDivElement>(null);
   const aside = useRef<HTMLElement>(null);
   const opener = useRef<Element | null>(null);
-  const at = (o: string) => floorPath(sessionId, floorId, o);
+  // A task's close-up names its request: task ids repeat across requests.
+  const at = (o: string) =>
+    floorPath(sessionId, o.startsWith("task:") ? req.id : floorId, o);
   const sessionScope = isSessionTab(open);
   const closeUp = !isTab(open);
 
@@ -486,7 +488,6 @@ function Checked({ request: req }: { request: RequestView }) {
 function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
   const { sessionId, view, events, request: req, open } = props;
   const [kind, id = ""] = open.split(/:(.*)/s);
-  const n = view.requests.indexOf(req) + 1;
   const running = props.state === "running";
   if (kind === "helper") {
     const a = view.requests.flatMap((r) => r.agents).find((x) => x.id === id);
@@ -512,13 +513,11 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
         <PartDetail
           cwd={view.cwd}
           sessionId={sessionId}
-          requestNumber={n}
           request={req}
           running={running}
           state={props.stands.state}
           task={task?.id}
           at={props.t}
-          onTask={(key) => navigate(floorPath(sessionId, props.floorId, key))}
           part={part}
           events={events}
         />
