@@ -38,8 +38,8 @@ import {
   touchersOf,
   useViewAt,
 } from "./feed";
-import { RAIL_W, roomFit } from "./fit";
-import { H, T, W } from "./map";
+import { backing, FIT_PAD, fitScale, isCrisp, layout, RAIL_W } from "./fit";
+import { H, W } from "./map";
 import { createOverlay, type Overlay } from "./overlay";
 import { Panel } from "./Panel";
 import {
@@ -157,8 +157,6 @@ const LEAD_MS = 5_000;
 const PHONE = 760;
 /** Under this width the rail folds into the request picker. */
 const RAIL_MIN = 1200;
-/** The top and replay bars' height, for guessing the body's before it is measured. */
-const BARS_H = 200;
 
 /** A remembered choice of this viewer's; storage can be off, then it is the default. */
 function stored(key: string): string | null {
@@ -179,7 +177,8 @@ const RAIL_KEY = "murmur:rail";
 
 /**
  * What the panel shows on a fresh load with no `open`: a request's old address reads its
- * story; else the reader's last choice, or the story when the room still fits beside it.
+ * story; else the reader's last choice, or the story where the room keeps its place beside
+ * or above it (not on a phone, where the sheet would push the room off the screen).
  */
 function defaultOpen(pinned: boolean): string | null {
   if (closedHere()) return null;
@@ -187,18 +186,7 @@ function defaultOpen(pinned: boolean): string | null {
   const last = stored(PANEL_KEY);
   if (last === "closed") return null;
   if (last && isTab(last)) return last;
-  const vw = window.innerWidth;
-  const fit = roomFit({
-    w: vw,
-    h: window.innerHeight - BARS_H,
-    vw,
-    dpr: window.devicePixelRatio || 1,
-    rail:
-      vw < RAIL_MIN ? "none" : stored(RAIL_KEY) === "shut" ? "shut" : "open",
-    panel: true,
-    wide: false,
-  });
-  return vw > PHONE && !fit.over ? "story" : null;
+  return window.innerWidth > PHONE ? "story" : null;
 }
 
 const dayOf = (iso: string) =>
@@ -490,6 +478,7 @@ export function Office(props: {
   }, []);
   const phone = box.vw > 0 && box.vw <= PHONE;
   const railOn = box.vw >= RAIL_MIN;
+  // The viewer's own choice for the rail; the panel folds it to its strip without touching it.
   const [railOpen, setRailOpen] = useState(() => stored(RAIL_KEY) !== "shut");
   // Opening the rail while it was folded for the panel keeps it open until the panel closes.
   const [railInsist, setRailInsist] = useState(false);
@@ -507,30 +496,43 @@ export function Office(props: {
       }),
     [],
   );
-  const fit = roomFit({
-    w: box.w,
-    h: box.h,
-    vw: box.vw,
-    dpr: box.dpr,
-    rail: railOn
-      ? railOpen
-        ? railInsist
-          ? "insist"
-          : "open"
-        : "shut"
-      : "none",
-    panel: !!panel && !phone,
-    wide: wideNow,
-  });
-  const railShown = railOpen && !fit.railFolded;
-  const pw = fit.pw;
-  const scale = phone ? 2 : fit.scale;
+  const lay = phone
+    ? // A phone's page scrolls: the room takes its width, the sheet or the requests under it.
+      {
+        ...fitScale(box.w, Number.POSITIVE_INFINITY, box.dpr),
+        rail: "none" as const,
+        railFolded: false,
+        pw: 0,
+        below: panel ? ("panel" as const) : ("list" as const),
+        rh: 0,
+      }
+    : layout({
+        w: box.w,
+        h: box.h,
+        vw: box.vw,
+        dpr: box.dpr,
+        rail: railOn
+          ? railOpen
+            ? railInsist
+              ? "insist"
+              : "open"
+            : "shut"
+          : "none",
+        panel: !!panel,
+        wide: wideNow,
+      });
+  const railShown = lay.rail === "open";
+  const pw = lay.pw;
+  // The scale the room settles at; each frame draws the scale its box has on the way there.
+  const scale = lay.scale;
   const selected = roomKey(panel, req);
 
   // The engine: one renderer and overlay per mount, painted every frame from refs.
   const engine = useRef<{ r: Renderer; o: Overlay } | null>(null);
-  const live$ = useRef({ scene, iso, scale, hover, item: selected });
-  live$.current = { scene, iso, scale, hover, item: selected };
+  const live$ = useRef({ scene, iso, scale, hover, item: selected, phone });
+  live$.current = { scene, iso, scale, hover, item: selected, phone };
+  // The room's box, kept by an observer: a frame reads it without asking for a layout.
+  const wrapBox = useRef({ w: 0, h: 0, x: 0, y: 0 });
   const eventMs = useMemo(() => events.map((e) => Date.parse(e.ts)), [events]);
   const play$ = useRef({ playing, speed, t: tNow, START, END, ms: eventMs });
   play$.current = {
@@ -569,6 +571,55 @@ export function Office(props: {
       (k) => setHover(k),
     );
     engine.current = { r, o };
+    const wrap = mapWrap.current;
+    const map = wrap?.firstElementChild as HTMLElement | null;
+    const measure = () => {
+      if (!wrap) return;
+      const b = wrap.getBoundingClientRect();
+      wrapBox.current = {
+        w: wrap.clientWidth,
+        h: wrap.clientHeight,
+        x: b.left,
+        y: b.top,
+      };
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (wrap) ro.observe(wrap);
+    // The scale as drawn: it follows the box frame by frame, so a panel opening or a rail
+    // folding (their widths slide) grows or shrinks the room smoothly, never a jump.
+    let shown = { s: 0, d: 0, ml: -1, mt: -1 };
+    const fitFrame = () => {
+      const s = live$.current;
+      const z = wrapBox.current;
+      const d = window.devicePixelRatio || 1;
+      const bh = s.phone ? Number.POSITIVE_INFINITY : z.h;
+      const to = z.w ? fitScale(z.w, bh, d).scale : s.scale;
+      // Eased toward it, so a snap to a crisp step glides too; never past what the box holds.
+      const most = z.w
+        ? Math.max(to, Math.min((z.w - FIT_PAD) / W, (bh - FIT_PAD) / H))
+        : to;
+      const eased = shown.s + (to - shown.s) * 0.35;
+      const sc =
+        !shown.s || reduced?.matches || Math.abs(to - shown.s) < 0.004
+          ? to
+          : Math.min(most, eased);
+      // Centred, on whole device px: a room half a px off would smooth every pixel.
+      const snap = (at: number, room: number, box: number) =>
+        Math.max(0, Math.round((at + (box - room) / 2) * d) / d - at);
+      const ml = snap(z.x, W * sc, z.w);
+      const mt = s.phone ? FIT_PAD / 2 : snap(z.y, H * sc, z.h);
+      if (sc !== shown.s || d !== shown.d) {
+        o.setScale(sc);
+        cv.classList.toggle("crisp", isCrisp(sc, d));
+      }
+      if (map && (ml !== shown.ml || mt !== shown.mt)) {
+        map.style.marginLeft = `${ml}px`;
+        map.style.marginTop = map.style.marginBottom = `${mt}px`;
+      }
+      shown = { s: sc, d, ml, mt };
+      return { sc, k: backing(sc, d) };
+    };
     let raf = 0;
     let last = performance.now();
     let pushed = 0;
@@ -590,22 +641,20 @@ export function Office(props: {
         }
       }
       const s = live$.current;
+      const f = fitFrame();
       r.focusOn(pointedAgents(s.hover ?? s.item, s.scene));
-      r.draw(now, s.iso, s.scale);
+      r.draw(now, s.iso, f.sc, f.k);
       o.render(s.scene, r.claudePos(), r.walkers(), s.item, s.hover, s.iso);
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     return () => {
       cancelAnimationFrame(raf);
+      ro.disconnect();
       o.destroy?.();
       engine.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    engine.current?.o.setScale(scale);
-  }, [scale]);
 
   // Playing fast, people walk fast too, or a replay leaves them crowding the corridors.
   useEffect(() => {
@@ -658,42 +707,13 @@ export function Office(props: {
     animate$.current = true;
   }, [scene, reqId, tNow, fileLog, touchers, status]);
 
-  // On a phone the room is a strip: bring Claude into view when the request changes, once it
-  // has walked to its place (its first frames are still at the door), and again when it
-  // starts waiting on you, at the door.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: centre per request and on waiting
-  useEffect(() => {
-    if (!phone) return;
-    const centre = (smooth: boolean) => {
-      const w = mapWrap.current;
-      const sc = live$.current.scene;
-      const c = engine.current?.r.claudePos();
-      if (!w) return;
-      // A pinned floor has no Claude on it: its board and desks are the story.
-      const away = !sc.request.current;
-      // Low enough that the first desks show under Claude's corner, the board's foot above.
-      const x = away ? 6 * T : sc.waiting ? 32 * T : (c?.x ?? 32 * T);
-      const y = away ? 7 * T : sc.waiting ? 4 * T : 8.5 * T;
-      w.scrollTo?.({
-        left: x * scale - w.clientWidth / 2,
-        top: y * scale - w.clientHeight / 2,
-        behavior: smooth ? "smooth" : "auto",
-      });
-    };
-    const first = requestAnimationFrame(() => centre(false));
-    const settled = setTimeout(() => centre(true), 1400);
-    return () => {
-      cancelAnimationFrame(first);
-      clearTimeout(settled);
-    };
-  }, [reqId, phone, !!scene.waiting]);
-
-  // A room bigger than what shows of it (a panel over it, a small window) re-centres in what
-  // shows: on the thing the panel is about, else on Claude, or a pinned floor's board.
+  // A box too small for the room to read whole (under the floor) pans it: the camera centres
+  // on the thing the panel is about, else on Claude, or a pinned floor's board.
+  const pans = lay.pans;
   // biome-ignore lint/correctness/useExhaustiveDependencies: on the room's box, floor or selection changing
   useEffect(() => {
     const w = mapWrap.current;
-    if (!w || phone) return;
+    if (!w || !pans) return;
     const raf = requestAnimationFrame(() => {
       const map = w.firstElementChild?.getBoundingClientRect();
       if (!map) return;
@@ -713,15 +733,13 @@ export function Office(props: {
         : away
           ? [x0, y0 + map.height / 2]
           : [x0 + (c?.x ?? W / 2) * scale, y0 + (c?.y ?? H / 2) * scale];
-      // A panel over the room hides its right part: centre in the strip left of it.
-      const shows = w.clientWidth - (fit.over ? pw : 0);
       w.scrollTo?.({
-        left: away && !sel ? 0 : x - shows / 2,
+        left: away && !sel ? 0 : x - w.clientWidth / 2,
         top: y - w.clientHeight / 2,
       });
     });
     return () => cancelAnimationFrame(raf);
-  }, [pw, scale, box.w, box.h, phone, selected, reqId, fit.over]);
+  }, [pw, scale, box.w, box.h, pans, selected, reqId]);
 
   // On a phone the panel is a sheet under the room: whatever opens it (a tap, a link, an
   // address), it comes into view with its content, the same every way.
@@ -1033,16 +1051,18 @@ export function Office(props: {
                     : "Show the requests rail"
                 }
                 title={
-                  fit.railFolded
+                  lay.railFolded
                     ? "Folded to make room for the panel: show the requests"
                     : railShown
                       ? "Fold the rail"
                       : "Show the requests"
                 }
                 onClick={() => {
-                  if (fit.railFolded) return setRailInsist(true);
-                  keep(RAIL_KEY, railOpen ? "shut" : "open");
-                  setRailOpen(!railOpen);
+                  // The viewer's own choice; opened while the panel is up, it stays open
+                  // beside the panel until the panel closes.
+                  keep(RAIL_KEY, railShown ? "shut" : "open");
+                  setRailOpen(!railShown);
+                  setRailInsist(!railShown && !!panel);
                 }}
               >
                 <span className="of-rail-chev" aria-hidden="true" />
@@ -1054,14 +1074,19 @@ export function Office(props: {
         <main
           className={[
             "of-stage",
-            pw && !fit.over ? "with-panel" : "",
-            fit.over ? "over-panel" : "",
+            lay.below ? "below" : "",
+            lay.pans ? "pans" : "",
           ]
             .filter(Boolean)
             .join(" ")}
           id="main"
           tabIndex={-1}
-          style={{ "--of-pw": `${pw}px` } as React.CSSProperties}
+          style={
+            {
+              "--of-pw": `${pw}px`,
+              "--of-rh": lay.rh ? `${lay.rh}px` : "auto",
+            } as React.CSSProperties
+          }
         >
           {scene.waiting && (
             <div className="of-ask" role="status">
@@ -1079,8 +1104,6 @@ export function Office(props: {
               <canvas
                 ref={canvas}
                 className="of-cv"
-                width={W}
-                height={H}
                 role="img"
                 aria-label={`The office for request ${scene.request.n}: ${scene.request.short}`}
               />
@@ -1113,6 +1136,12 @@ export function Office(props: {
                 onPickRequest={pick}
                 onClose={closePanel}
               />
+            </div>
+          )}
+          {!panel && lay.below === "list" && (
+            // No rail beside the room and room to spare under it: the requests, not a band.
+            <div className="of-dock of-under">
+              <RequestList {...list} follow={!phone} />
             </div>
           )}
         </main>

@@ -183,6 +183,8 @@ export function RequestList(props: {
   keep: string | null;
   onPick(requestId: string): void;
   label?: string;
+  /** Bring the floor's row into view (not where the list is in the page's own flow). */
+  follow?: boolean;
 }) {
   const { sessionId, view, events, currentId, activeId, keep, onPick } = props;
   // Each request as every view reads it (state.ts): a quiet session's running one is paused.
@@ -196,6 +198,7 @@ export function RequestList(props: {
   // The floor's row comes into view when the floor changes, only if it is out of view.
   // biome-ignore lint/correctness/useExhaustiveDependencies: placed per floor
   useEffect(() => {
+    if (props.follow === false) return;
     const cur = box.current?.querySelector<HTMLElement>("[aria-current]");
     cur?.scrollIntoView?.({ block: "nearest" });
   }, [currentId]);
@@ -280,6 +283,10 @@ export function RequestPicker(
         <>
           <span className="of-req-n">
             Request {n} of {list.view.requests.length}
+          </span>
+          {/* A narrow bar's form of it. */}
+          <span className="of-req-n short" aria-hidden="true">
+            {n}/{list.view.requests.length}
           </span>
           <span className="of-req-title">{short}</span>
           <span className="of-caret" aria-hidden="true" />

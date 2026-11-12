@@ -6,7 +6,13 @@ import type {
   SessionView,
   TaskView,
 } from "@murmur/core";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { byDay } from "../src/format";
@@ -227,8 +233,14 @@ function show(
 }
 
 const rail = () => screen.getByRole("complementary", { name: "Requests rail" });
-const requests = () =>
-  within(rail()).getByRole("navigation", { name: "Requests" });
+/** The rail's list: an open panel folds the rail to its strip, so it is opened first. */
+const requests = () => {
+  const unfold = within(rail()).queryByRole("button", {
+    name: "Show the requests rail",
+  });
+  if (unfold) fireEvent.click(unfold);
+  return within(rail()).getByRole("navigation", { name: "Requests" });
+};
 const bar = () => document.querySelector("header.of-top") as HTMLElement;
 const crumbs = () =>
   screen
@@ -306,6 +318,7 @@ describe("the requests rail", () => {
 
   it("names the session with its facts, the title a switcher of sessions", () => {
     show(session());
+    requests();
     expect(
       within(rail()).getByText("4 requests · 5 helpers · 7 days"),
     ).toBeTruthy();
@@ -427,6 +440,7 @@ describe("the requests rail", () => {
 
   it("folds away, and remembers it", async () => {
     show(session());
+    requests();
     const fold = within(rail()).getByRole("button", {
       name: "Fold the requests rail",
     });
@@ -453,6 +467,7 @@ describe("the requests rail", () => {
         requestId: "r1",
       };
       const { rerender } = render(<Live {...props} view={view} />);
+      requests();
       const placed = into.mock.contexts.filter((el) =>
         requests().contains(el as Node),
       ).length;

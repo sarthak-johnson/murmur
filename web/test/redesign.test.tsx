@@ -12,7 +12,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cutWords, list } from "../src/format";
-import { Live as Page, roomInJsdom } from "./officeShell";
+import { Live as Page, roomInJsdom, unfoldRail } from "./officeShell";
 
 roomInJsdom();
 
@@ -438,6 +438,7 @@ describe("requests in the rail", () => {
     expect(document.querySelector(".over")?.textContent).toContain(
       "Request 2 of 2",
     );
+    unfoldRail();
     const rail = screen.getByRole("navigation", { name: "Requests" });
     const items = within(rail).getAllByRole("link");
     // Oldest first, the shown one marked.
@@ -1265,6 +1266,7 @@ describe("review fixes: stillness and order", () => {
     });
     const { rerender } = show(two, { requestId: "r2", tab: "flow" });
     expect(screen.getByRole("region", { name: "Flow" })).toBeTruthy();
+    unfoldRail();
     const rail = screen.getByRole("navigation", { name: "Requests" });
     expect(within(rail).getAllByRole("link")[0]?.getAttribute("href")).toBe(
       "/s/s1/r/r1?open=flow",

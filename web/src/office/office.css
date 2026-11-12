@@ -228,38 +228,69 @@
   grid-template-rows: minmax(0, 1fr);
   min-height: 0;
 }
+/* The stage: the room's box, and the panel beside it (or under it, on a tall stage). The
+   room fills its box at the largest scale that fits (fit.ts); each frame centres it on whole
+   device px. When the panel's width changes, the box slides to its new size and the room
+   grows or shrinks with it. */
 .of-stage {
+  /* The last column, with or without a rail before it. */
+  grid-column: -2;
   position: relative;
   min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-}
-.of-stage.with-panel {
-  grid-template-columns: minmax(0, 1fr) var(--of-pw);
-}
-.of-empty {
-  display: grid;
-  place-items: center;
-}
-/* "safe": a room wider than its column pans from its left edge instead of spilling past it. */
-.of-mapwrap {
-  position: relative;
-  display: grid;
-  place-items: safe center;
-  overflow: auto;
   min-width: 0;
+}
+.of-mapwrap {
+  position: absolute;
+  inset: 0 var(--of-pw, 0px) 0 0;
+  overflow: hidden;
+  transition: right 180ms ease-out;
+}
+/* Under the legible floor the room is bigger than its box: it pans, the camera on what matters. */
+.of-stage.pans .of-mapwrap {
+  overflow: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--o-line2) transparent;
 }
 .of-map {
   position: relative;
+  width: max-content;
 }
+/* Drawn at a whole number of device px per room pixel and scaled smoothly to the fit
+   ("sharp bilinear"); at a whole number on the screen too, nothing to smooth. */
 .of-cv {
   display: block;
-  image-rendering: pixelated;
   width: calc(624px * var(--s));
   height: calc(320px * var(--s));
+}
+.of-cv.crisp {
+  image-rendering: pixelated;
+}
+/* The panel: beside the room on the right, its width docked or wide. */
+.of-stage > .of-dock {
+  min-height: 0;
+  min-width: 0;
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: var(--of-pw);
+}
+.of-stage.below .of-mapwrap {
+  inset: 0 0 auto;
+  height: var(--of-rh);
+}
+.of-stage.below > .of-dock {
+  inset: var(--of-rh) 0 0;
+  width: auto;
+}
+/* The requests under a room with no rail beside it. */
+.of-under {
+  overflow-y: auto;
+  background: var(--o-bar);
+  box-shadow: inset 0 2px 0 var(--o-line);
+}
+.of-under .of-rl {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 4px 8px 16px;
 }
 .of-overlay {
   position: absolute;
@@ -280,7 +311,7 @@
 }
 
 .of-overlay .room-label {
-  font: max(12px, calc(6px * var(--s))) var(--o-pix);
+  font: max(10px, calc(6px * var(--s))) var(--o-pix);
   color: #9a938a;
   white-space: nowrap;
   pointer-events: none;
@@ -306,6 +337,7 @@
   color: var(--o-ink);
   white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
   text-align: left;
   background: none;
   border: 0;
@@ -679,15 +711,39 @@
 .s1 .of-overlay .bubble.wait small {
   font-size: 12px;
 }
-/* Under 2x: the door's plate is too small for its word, and a wide sticky has one line. */
-.s15 .of-overlay .you-plate {
-  visibility: hidden;
+/* Under 2x: the door's plate is too small for its word, and a plate keeps only its name. */
+.s15 .of-overlay .you-plate,
+.s15 .of-overlay .plate span {
+  display: none;
 }
-.s15 .of-overlay .hit.note.wide .t {
-  display: block;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  margin-top: 3px;
+/* Under 1x the room is a map: Claude, its words and the board's heads; the rest hides. */
+.s0 .of-overlay .room-label,
+.s0 .of-overlay .hit.note:not(.wide) .t,
+.s0 .of-overlay .hit.note.wide .t,
+.s0 .of-overlay .hit.note .stage,
+.s0 .of-overlay .hit.note.wide .stage.left,
+.s0 .of-overlay .more,
+.s0 .of-overlay .bubble.mate {
+  display: none;
+}
+.s0 .of-overlay .phase-h {
+  font-size: 10px;
+  padding: 0 2px;
+}
+.s0 .of-overlay .tag {
+  font-size: 11px;
+}
+.s0 .of-overlay .bubble.claude {
+  font-size: 12px;
+  padding: 1px 6px;
+}
+.s0 .of-overlay .bubble.wait {
+  font-size: 12px;
+  max-width: 220px;
+  padding: 4px 8px;
+}
+.s0 .of-overlay .bubble.wait small {
+  font-size: 11px;
 }
 
 .of-card h2 {
@@ -907,6 +963,12 @@
     /* biome-ignore lint/complexity/noImportantStyles: reduced motion beats every animation in the room */
     animation: none !important;
   }
+  /* Not motion: the tab row's edge fade follows its scroll. */
+  .office .of-tabs {
+    /* biome-ignore lint/complexity/noImportantStyles: beats the rule above */
+    animation: of-tabs-fade linear both !important;
+    animation-timeline: scroll(self inline);
+  }
 }
 
 /* A phase brought into view from its header on the board. */
@@ -1038,6 +1100,52 @@
 }
 .of-picker {
   flex: 0 1 auto;
+}
+.of-req-n {
+  flex: none;
+}
+.of-req-n.short {
+  display: none;
+}
+/* The top row never overflows: as it narrows, the brand keeps its mark, the request its
+   number, then the session switcher its caret (its title is in the button's label). */
+.of-top {
+  container: of-top / inline-size;
+}
+.of-top-row > .of-menu,
+.of-top-row > .of-details,
+.of-top-row > .of-tag,
+.of-top-row > .of-pill {
+  flex: none;
+}
+/* A phone stacks its bar instead (below). */
+@container of-top (max-width: 1100px) {
+  .office:not(.phone) .of-brand {
+    font-size: 0;
+    gap: 0;
+  }
+  .office:not(.phone) .of-req-n {
+    display: none;
+  }
+  .office:not(.phone) .of-req-n.short {
+    display: inline;
+  }
+}
+@container of-top (max-width: 720px) {
+  .office:not(.phone) .of-switch-t {
+    display: none;
+  }
+  .office:not(.phone) .of-switch .of-pop-btn::before {
+    content: "";
+    flex: none;
+    width: 14px;
+    height: 12px;
+    background:
+      linear-gradient(currentColor 0 0) 0 0 / 14px 2px,
+      linear-gradient(currentColor 0 0) 0 5px / 14px 2px,
+      linear-gradient(currentColor 0 0) 0 10px / 14px 2px;
+    background-repeat: no-repeat;
+  }
 }
 .of-menu .of-pop-btn {
   padding: 8px;
@@ -1251,6 +1359,8 @@
 /* The requests rail: every request by day, folded to a strip on demand. */
 .of-rail {
   width: var(--of-rw);
+  transition: width 180ms ease-out;
+  overflow: hidden;
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -1377,22 +1487,6 @@
   margin-top: 4px;
 }
 
-/* The panel: beside the room on the right, its width docked or wide. */
-.of-dock {
-  min-height: 0;
-  min-width: 0;
-}
-/* No room for the room beside the panel: the room keeps its size and the panel lies over its
-   right side; the room can scroll its right part out from under the panel. */
-.of-stage.over-panel > .of-dock {
-  position: absolute;
-  inset: 0 0 0 auto;
-  width: var(--of-pw);
-  z-index: 4;
-}
-.of-stage.over-panel .of-map {
-  margin-right: var(--of-pw);
-}
 /* It holds the app's views, drawn in the same pixel kit as the room's chrome; its edge is
    the kit's 2 px line with a bevel, on a hard drop over the room. */
 .of-panel {
@@ -1516,11 +1610,41 @@
   padding-bottom: 8px;
   white-space: nowrap;
 }
-/* The tabs are the kit's (theme.css), on their row's rule. */
+/* The tabs are the kit's (theme.css), on their row's rule. A row too long for its width
+   scrolls on one line, its edges fading where more tabs are out of sight. */
+@property --of-fl {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --of-fr {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
 .of-tabs {
   flex: 1;
   min-width: 0;
   box-shadow: none;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--of-fl),
+    #000 calc(100% - var(--of-fr)),
+    transparent
+  );
+  animation: of-tabs-fade linear both;
+  animation-timeline: scroll(self inline);
+}
+@keyframes of-tabs-fade {
+  from {
+    --of-fl: 0px;
+    --of-fr: 32px;
+  }
+  to {
+    --of-fl: 32px;
+    --of-fr: 0px;
+  }
 }
 /* Tighter than the kit's, so the request's five fit the docked width. */
 .of-tabs a {
@@ -1797,15 +1921,17 @@
   font-size: 16px;
 }
 .office.phone .of-mapwrap {
-  display: block;
+  position: static;
   flex: none;
-  max-height: 46vh;
-  margin-top: 12px;
-  touch-action: pan-x pan-y;
-  scrollbar-width: none;
+  margin-top: 4px;
 }
-.office.phone .of-dock {
+.office.phone .of-stage > .of-dock {
+  position: static;
+  width: auto;
   scroll-margin-top: 0;
+}
+.office.phone .of-under {
+  flex: 1 0 auto;
 }
 .office.phone .of-panel {
   height: auto;
@@ -1822,23 +1948,10 @@
 .phone .of-scope-k {
   width: auto;
   min-width: 62px;
-  align-self: flex-start;
-  padding: 10px 0 0;
 }
 /* The office has no sticky page bar: a sheet brought into view lands at the very top. */
 html:has(.office.phone) {
   scroll-padding-top: 0;
-}
-/* With the panel closed, the strip takes the screen down to the replay bar. */
-.office.phone .of-stage:not(:has(> .of-dock)) .of-mapwrap {
-  flex: 1 1 0;
-  min-height: 240px;
-  max-height: 640px;
-}
-/* Every tab in sight: a row that does not fit wraps, rather than hiding its last tabs. */
-.phone .of-tabs {
-  flex-wrap: wrap;
-  overflow: visible;
 }
 .phone .of-db {
   overflow: visible;

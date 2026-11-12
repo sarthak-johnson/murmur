@@ -16,7 +16,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { frames, Routed, roomInJsdom } from "./officeShell";
+import { frames, Routed, roomInJsdom, unfoldRail } from "./officeShell";
 
 roomInJsdom();
 beforeAll(() => {
@@ -202,6 +202,7 @@ describe("the office page", () => {
   });
 
   it("opens the panel from Details on the last tab, and closes it from its one close control", async () => {
+    localStorage.setItem("murmur:panel", "closed");
     show();
     await frames();
     expect(details()).toBeNull();
@@ -222,6 +223,7 @@ describe("the office page", () => {
   });
 
   it("moves focus into the panel it opens, back to Details on close, and not again on Back", async () => {
+    localStorage.setItem("murmur:panel", "closed");
     show();
     await frames();
     const btn = screen.getByRole("button", { name: "Details" });
@@ -305,6 +307,7 @@ describe("the office page", () => {
     });
     show("/s/s1?open=flow");
     await frames();
+    unfoldRail();
     const rail = screen.getByRole("complementary", { name: "Requests rail" });
     const rows = within(rail).getAllByRole("link");
     expect(rows.map((r) => r.textContent?.replace(/\s+/g, " ").trim())).toEqual(

@@ -2,7 +2,7 @@
 // draws into a context that takes every call, and `Live` names a view the way the old
 // request page's props did (a request's tab, a task, the session's journey or flow).
 import type { MurmurEvent, SessionView } from "@murmur/core";
-import { act, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { beforeAll, vi } from "vitest";
 import { Office, OfficeShell } from "../src/office/Office";
 import { useRoute } from "../src/router";
@@ -136,4 +136,12 @@ export async function frames() {
   await act(async () => {
     await new Promise((r) => setTimeout(r, 120));
   });
+}
+
+/** An open panel folds the requests rail to its strip: open it, as a reader would. */
+export function unfoldRail() {
+  const show = document.querySelector<HTMLButtonElement>(
+    'button[aria-label="Show the requests rail"]',
+  );
+  if (show) fireEvent.click(show);
 }

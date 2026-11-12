@@ -310,15 +310,16 @@ export function createOverlay(
             ? "No plan yet. Claude is working without one."
             : "No plan on this request: Claude did it in one go.",
       });
-    // One style for every column head: the longest form that fits them all.
-    const size = s >= 3 ? 15 : 13;
-    const pad = s >= 3 ? 12 : 8;
+    // One style for every column head: the longest form that fits them all, else none (the
+    // head still opens its phase, and says its name to a pointer and a screen reader).
+    const size = s >= 3 ? 15 : s >= 1 ? 13 : 10;
+    const pad = s >= 3 ? 12 : s >= 1 ? 8 : 4;
     const firstWord = (title: string) => phaseShort(title).split(" ")[0] ?? "";
     const forms = [(title: string) => title, phaseShort, firstWord];
     const form =
       forms.find((f) =>
         cols.every((c) => fits(f(c.title), (c.w - 1) * s - pad, size)),
-      ) ?? firstWord;
+      ) ?? (() => "");
     for (const col of cols) {
       out.push({
         key: `ph-${col.id}`,
@@ -584,7 +585,8 @@ export function createOverlay(
       const m = root.parentElement;
       if (!m) return;
       // Lesser words step down, then hide, as the room shrinks: s2 under 3x, s15 under 2x,
-      // s1 under 1.5x.
+      // s1 under 1.5x, s0 under 1x.
+      m.classList.toggle("s0", v < 1);
       m.classList.toggle("s1", v < 1.5);
       m.classList.toggle("s15", v < 2);
       m.classList.toggle("s2", v < 3);

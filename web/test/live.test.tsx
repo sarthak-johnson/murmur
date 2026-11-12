@@ -16,7 +16,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Live as Page, panel, roomInJsdom } from "./officeShell";
+import { Live as Page, panel, roomInJsdom, unfoldRail } from "./officeShell";
 
 roomInJsdom();
 
@@ -609,6 +609,7 @@ describe("live screen", () => {
     window.innerWidth = 1600;
     try {
       show(session());
+      unfoldRail();
       const rail = screen.getByRole("complementary", { name: "Requests rail" });
       const items = within(rail).getAllByRole("link");
       expect(items[0]?.textContent).toContain("Fix the login bug");

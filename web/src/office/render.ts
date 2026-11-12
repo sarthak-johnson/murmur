@@ -18,6 +18,7 @@ import {
   DOOR,
   type Face,
   findPath,
+  H,
   jobCards,
   OUTSIDE,
   PLANTS,
@@ -28,6 +29,7 @@ import {
   spotTile,
   T,
   type Tile,
+  W,
 } from "./map";
 import type { Act, Note, Scene } from "./scene";
 import {
@@ -62,12 +64,12 @@ const GLOW: Record<Act, string> = {
   run: "186,196,214",
 };
 
-// Note titles wrap in the DOM at 15 px; measure here so the canvas stickies line up with them.
-// Pure cache: one measuring context, made on first use.
+// Note titles wrap in the DOM at 15 px (11 px under 3x); measure here so the canvas stickies
+// line up with them. Pure cache: one measuring context, made on first use.
 let mctx: CanvasRenderingContext2D | undefined;
-function lineCount(text: string, width: number): number {
+function lineCount(text: string, width: number, px = 15): number {
   mctx ??= context2d(document.createElement("canvas"));
-  mctx.font = "500 15px Geist, system-ui, sans-serif";
+  mctx.font = `500 ${px}px Geist, system-ui, sans-serif`;
   let lines = 1;
   let cur = 0;
   for (const w of text.split(/\s+/)) {
@@ -131,6 +133,11 @@ function layOut(scene: Pick<Scene, "columns">, s: number): PlacedColumn[] {
     const col = cols[i];
     if (!col) return [];
     const height = (n: Note, subW: number) => {
+      // From 1.5x to 3x a wide sticky's title takes two lines of 12 px when it needs them.
+      if (s >= 1.5 && s < 3 && subW >= 60) {
+        const two = Math.min(2, lineCount(n.title, (subW - 20) * s - 4, 11));
+        return Math.max(12, Math.ceil((two * 12 + 2) / s));
+      }
       const lines = s >= 3 ? lineCount(n.title, (subW - 20) * s) : 0;
       return Math.max(
         12,
@@ -234,8 +241,11 @@ export interface RendererOptions {
 
 export interface Renderer {
   update(next: Scene, opts: { animate: boolean }): void;
-  /** One frame: `now` is performance time, `t` the ISO time shown, `s` the scale the overlay uses. */
-  draw(now: number, t: string, s: number): void;
+  /**
+   * One frame: `now` is performance time, `t` the ISO time shown, `s` the scale the overlay
+   * uses, `k` the whole number of device px per room pixel the canvas is drawn at.
+   */
+  draw(now: number, t: string, s: number, k?: number): void;
   claudePos(): ClaudePos | null;
   /** Walk faster: true for a drag (3x), a number for a playing replay, false for normal. */
   rush(on: boolean | number): void;
@@ -258,7 +268,13 @@ export function createRenderer(
   canvas: HTMLCanvasElement,
   opts: RendererOptions,
 ): Renderer {
-  const g = context2d(canvas);
+  // The room is painted at its own size, one canvas px a room pixel, then shown on the page's
+  // canvas blown up k times with no smoothing: crisp pixels the browser scales to the fit.
+  const art = document.createElement("canvas");
+  art.width = W;
+  art.height = H;
+  const g = context2d(art);
+  const out = context2d(canvas);
   const bg = drawBackground();
   const lights = createLights();
   const life = createLife(opts.reduced);
@@ -827,7 +843,18 @@ export function createRenderer(
     r(x + 7, y + 7, 2, 2, "#2a211c");
   }
 
-  function draw(now: number, t: string, s: number) {
+  function draw(now: number, t: string, s: number, k = 1) {
+    paint(now, t, s);
+    // Resized here, in the frame that draws it, so a new size never shows a blank canvas.
+    if (canvas.width !== W * k || canvas.height !== H * k) {
+      canvas.width = W * k;
+      canvas.height = H * k;
+    }
+    out.imageSmoothingEnabled = false;
+    out.drawImage(art, 0, 0, W * k, H * k);
+  }
+
+  function paint(now: number, t: string, s: number) {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     lastS = s;
