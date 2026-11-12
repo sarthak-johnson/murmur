@@ -238,6 +238,7 @@ code {
   .primary,
   .small-btn,
   .link-button,
+  .jr-more,
   .of-details,
   .of-close,
   .of-live,
@@ -302,6 +303,7 @@ code {
   .primary,
   .small-btn,
   .link-button,
+  .jr-more,
   .of-details,
   .of-close,
   .of-live,
@@ -335,6 +337,7 @@ code {
   .primary,
   .small-btn,
   .link-button,
+  .jr-more,
   .of-details,
   .of-close,
   .of-live,
@@ -358,6 +361,7 @@ code {
   .primary,
   .small-btn,
   .link-button,
+  .jr-more,
   .of-details,
   .of-close,
   .of-live,
@@ -3946,7 +3950,25 @@ code.nw {
 }
 /* Chapters: a segmented strip, each segment as wide as its requests, the live one lit */
 .jr-chapters {
+  position: relative;
   margin: 34px 0 10px;
+}
+/* The way to the chapters past the strip's edge: a pixel button over its fade. */
+.jr-more {
+  position: absolute;
+  top: 10px;
+  right: 0;
+  width: 32px;
+  height: 32px;
+  min-height: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font: 600 16px / 1 var(--font-ui);
+}
+.jr-more.less {
+  right: auto;
+  left: 0;
 }
 .jr-segs {
   display: flex;

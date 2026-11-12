@@ -12,7 +12,13 @@ import {
   type RequestView,
   type SessionView,
 } from "@murmur/core";
-import { type CSSProperties, useEffect, useRef } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { dayLabel, folderOf } from "../format";
 import { StateMark } from "../marks";
 import { follow, requestPath } from "../router";
@@ -222,6 +228,13 @@ export function Journey(props: {
   const firstDay = dayLabel(start.startedAt);
   const span = sessionSpan(ses);
   const asked = lastMark?.state === "waiting";
+  // The card says Claude's last words: waiting, its time is when they were said, not the
+  // session's last event (Claude Code's "waiting for your input" notice hours later).
+  const strip = useStrip(chapters.length);
+  const saidAt =
+    (asked
+      ? (last.messages?.at(-1)?.ts ?? lastMark?.waiting?.since)
+      : undefined) ?? endOf(last);
   const askedN = asked
     ? last.waiting?.length || lastMark?.waiting?.questions.length || 0
     : 0;
@@ -268,7 +281,7 @@ export function Journey(props: {
               : lastMark?.state === "paused"
                 ? "Where it stopped"
                 : "Where it ended"}{" "}
-            · {dayLabel(endOf(last))}, {clock(endOf(last))}
+            · {dayLabel(saidAt)}, {clock(saidAt)}
           </span>
           <span className="jr-now">{last.outcome || askOf(last)}</span>
           <span className="jr-end-meta">
@@ -297,7 +310,7 @@ export function Journey(props: {
 
       {chapters.length > 1 && (
         <nav className="jr-chapters" aria-label="Chapters">
-          <ol className="jr-segs">
+          <ol className="jr-segs" ref={strip.ref} onScroll={strip.read}>
             {chapters.map((c, i) => {
               const rs = c.requestIds.flatMap((id) => byId.get(id) ?? []);
               const a = rs[0] ? num(rs[0]) : 0;
@@ -347,6 +360,28 @@ export function Journey(props: {
               );
             })}
           </ol>
+          {strip.more && (
+            <button
+              type="button"
+              className="jr-more"
+              aria-label="More chapters"
+              title="More chapters"
+              onClick={() => strip.step(1)}
+            >
+              <span aria-hidden="true">›</span>
+            </button>
+          )}
+          {strip.less && (
+            <button
+              type="button"
+              className="jr-more less"
+              aria-label="Earlier chapters"
+              title="Earlier chapters"
+              onClick={() => strip.step(-1)}
+            >
+              <span aria-hidden="true">‹</span>
+            </button>
+          )}
         </nav>
       )}
 
@@ -595,4 +630,34 @@ function Station(props: {
       <span className="sr-only">, {mark === "open" ? "left open" : mark}</span>
     </li>
   );
+}
+
+/**
+ * A strip that scrolls sideways: whether more of it is past either edge, and a step by most
+ * of its width, so a cut chapter at the edge says there is more and gets you there.
+ */
+function useStrip(items: number) {
+  const ref = useRef<HTMLOListElement>(null);
+  const [edges, setEdges] = useState({ less: false, more: false });
+  const read = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const less = el.scrollLeft > 1;
+    const more = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+    setEdges((e) => (e.less === less && e.more === more ? e : { less, more }));
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read when the chapters change
+  useEffect(() => {
+    const el = ref.current;
+    read();
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [read, items]);
+  const step = (dir: number) => {
+    const el = ref.current;
+    el?.scrollBy?.({ left: dir * el.clientWidth * 0.8, behavior: "smooth" });
+  };
+  return { ref, read, step, ...edges };
 }

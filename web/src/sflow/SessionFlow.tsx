@@ -158,8 +158,7 @@ export function SessionFlow(props: {
   const inferred = threads.every((t) => t.inferred);
   const note = inferred && (
     <p className="sf-note">
-      Claude has not named this session's storylines yet, so its requests run in
-      one line.
+      {`Claude has not named this session's storylines yet, so its ${threads.length > 1 ? `${threads.length} chapters` : "requests"} run in one line, as on its Journey.`}
     </p>
   );
 

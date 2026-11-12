@@ -412,7 +412,7 @@ describe("the board", () => {
     show(unthreaded());
     expect(
       screen.getByText(
-        "Claude has not named this session's storylines yet, so its requests run in one line.",
+        /^Claude has not named this session's storylines yet, so its (requests|\d+ chapters) run in one line, as on its Journey\.$/,
       ),
     ).toBeTruthy();
     // One column needs no header naming it, and a click lights no storyline.
