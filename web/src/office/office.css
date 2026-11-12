@@ -986,7 +986,13 @@
     /* biome-ignore lint/complexity/noImportantStyles: reduced motion beats every animation in the room */
     animation: none !important;
   }
-  /* Not motion: the tab row's and the switcher's edge fades follow their scroll. */
+  /* Not motion: the tab row's, the lists' and the switcher's edge fades follow their scroll. */
+  .office .of-rail .of-rl,
+  .office .of-db {
+    /* biome-ignore lint/complexity/noImportantStyles: beats the rule above */
+    animation: of-top-fade linear both !important;
+    animation-timeline: scroll(self block);
+  }
   .office .of-switch .of-sess-list {
     /* biome-ignore lint/complexity/noImportantStyles: beats the rule above */
     animation: of-list-fade linear both !important;
@@ -1488,6 +1494,30 @@
   padding: 4px 8px 16px;
   scrollbar-width: thin;
   scrollbar-color: var(--o-line2) transparent;
+}
+/* A list scrolled down fades in under its head, so the row half out of sight is never a
+   line cut through its letters. */
+@property --of-ft {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+.of-rail .of-rl,
+.of-db {
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--of-ft));
+  animation: of-top-fade linear both;
+  animation-timeline: scroll(self block);
+}
+@keyframes of-top-fade {
+  from {
+    --of-ft: 0px;
+  }
+  2% {
+    --of-ft: 28px;
+  }
+  to {
+    --of-ft: 28px;
+  }
 }
 .of-rl ol {
   list-style: none;
