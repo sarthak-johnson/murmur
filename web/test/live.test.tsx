@@ -283,7 +283,7 @@ describe("live screen", () => {
     showTab(session(), "helpers");
     const helpers = panel().getByRole("list", { name: "Helpers" });
     expect(
-      within(helpers).getByText("writing tests for this endpoint"),
+      within(helpers).getByText("Writing tests for this endpoint"),
     ).toBeTruthy();
   });
 
@@ -582,7 +582,7 @@ describe("live screen", () => {
     const row = panel().getByRole("list", { name: "Helpers" })
       .firstElementChild as HTMLElement;
     expect(row.querySelector(".h-name")?.textContent).toBe(
-      "writing tests for this endpoint",
+      "Writing tests for this endpoint",
     );
     expect(row.querySelector(".mk.running")).toBeTruthy();
     cleanup();
@@ -699,7 +699,7 @@ describe("live screen", () => {
     cleanup();
     showTab(view, "helpers");
     const helpers = panel().getByRole("list", { name: "Helpers" });
-    expect(helpers.querySelector(".h-name")?.textContent).toBe("tests");
+    expect(helpers.querySelector(".h-name")?.textContent).toBe("Tests");
     expect(req.agents).toHaveLength(1);
   });
 

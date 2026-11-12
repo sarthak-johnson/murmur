@@ -29,7 +29,6 @@ import {
   asDoing,
   cutWords,
   deriveScene,
-  helperName,
   latestAt,
   type MainEntry,
   type OfficeLogs,
@@ -37,6 +36,7 @@ import {
   shortOf,
   spotForTool,
 } from "../src/office/scene";
+import { helperName } from "../src/session";
 
 // Synthetic events, as core's own tests make them (packages/core/test/helpers.ts).
 const BASE = Date.parse("2026-11-06T00:00:00.000Z");

@@ -26,6 +26,7 @@ import { floorPath, follow, navigate } from "../router";
 import {
   askOf,
   cleanPrompt,
+  helperName,
   KIND,
   type Mark,
   placeOf,
@@ -121,7 +122,7 @@ function closeUpLabel(view: SessionView, req: RequestView, open: string) {
   if (kind === "task") return taskLabel(req, id);
   if (kind === "helper") {
     const a = view.requests.flatMap((r) => r.agents).find((x) => x.id === id);
-    return `Helper · ${a?.description || "a helper"}`;
+    return a ? `Helper · ${helperName(a)}` : "Helper";
   }
   return (
     (
@@ -635,7 +636,10 @@ function HelperCloseUp(props: {
         {a.role && a.role !== "other" ? `Helper · ${ROLE[a.role]}` : "Helper"}
         {model && ` · ${model}`}
       </p>
-      <h2>{a.description || "A helper"}</h2>
+      <h2>{helperName(a)}</h2>
+      {a.description.trim() !== helperName(a) && (
+        <p className="muted">{a.description}</p>
+      )}
       <p className="of-chips">
         <span className={runningNow ? "of-chip now" : "of-chip done"}>
           {runningNow ? `${at.word} · ${took}` : `${at.word} · took ${took}`}
@@ -645,7 +649,7 @@ function HelperCloseUp(props: {
         )}
         <span className="muted">started {clock(a.startedAt)}</span>
       </p>
-      <p>{helperLine(a, runningNow)}</p>
+      <p>{helperLine(a, runningNow, req)}</p>
       {part && (
         <p>
           <button

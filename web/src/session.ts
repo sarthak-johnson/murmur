@@ -609,15 +609,36 @@ export function modelOf(a: AgentView, events: MurmurEvent[]): string {
   return m ? m.charAt(0).toUpperCase() + m.slice(1) : "";
 }
 
-/** A helper by what it works on: "Build demo scenes 3, 5" reads "Demo scenes 3, 5". */
-export function helperName(a: AgentView): string {
-  const d = a.description.trim();
-  const rest = d.replace(
-    /^(?:implement|build|write|add|draft|create|make|fix|review|re-?review|re-?check)\s+/i,
-    "",
-  );
-  const name = rest || d || "A helper";
-  return name.charAt(0).toUpperCase() + name.slice(1);
+/**
+ * A helper's one name, by what it works on, for its desk, the Helpers list and its
+ * close-up: "Build Task 67 Portfolio reads/styles" reads "Portfolio reads/styles".
+ */
+export function helperName(a: { description?: string | undefined }): string {
+  // A model note ("(Opus)") is on the plate already; it never names the work.
+  const desc = (a.description ?? "")
+    .replace(/\s*\((opus|sonnet|haiku)[^)]*\)\s*$/i, "")
+    .trim();
+  const verbless = desc
+    .replace(
+      /^(Build|Review|Re-?review|Recheck|Plan|Fix|Write|Implement|Research|Draft|Add|Create)\s+/i,
+      "",
+    )
+    // "Fix round Task 142 News page": the round goes, its subject comes first.
+    .replace(/^(fix\s+)?rounds?(\s+\d+)?:?\s+(?=(Tasks?|Phases?|B)\s*\d)/i, "");
+  const subject = /^(Tasks?\s+[\w-]+|Phases?\s+\d+|B\d+)/i.exec(verbless)?.[0];
+  // What is left after the subject; "Task 38: capture chat reads" leaves a colon behind.
+  const rest = verbless
+    .replace(/^(Tasks?\s+[\w-]+|Phases?\s+\d+|B\d+)\s*/i, "")
+    .replace(/^[\s:;,.\-–]+/, "");
+  let d = rest.replace(/^(fix rounds?(\s+\d+)?:?)\s*/i, "");
+  // A bare leftover ("round 2", "fix round 4") says nothing alone, so it keeps its subject.
+  if (
+    subject &&
+    /^((fix(es)?|rounds?(\s+\d+)?|review|recheck)[\s:]*)*$/i.test(d)
+  )
+    d = `${subject} ${rest}`.trim();
+  d = d || desc || "A helper";
+  return d.charAt(0).toUpperCase() + d.slice(1);
 }
 
 export type HelperKind = "build" | "review" | "recheck";

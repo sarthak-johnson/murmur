@@ -501,4 +501,27 @@ describe("what was asked and said", () => {
     });
     expect(helperGist(final)).toBe("Added a spinner while waiting for data.");
   });
+
+  it("a report of commit lines and lists reads as what its commits say, never the raw lines", () => {
+    const text = [
+      "Status: DONE_WITH_CONCERNS",
+      "Commits:\n- `cdabad5ab` test(contracts): point wire.js at the Screener capture [T101]\n- `b4dfefbcd` test(contracts): capture the screener reads [T101]",
+      "Tests: `tests/contracts` passes (486 passed).",
+      "What is captured:\n- Every set and member in the brief.",
+      "I did not run the playwright shell command.",
+    ].join("\n\n");
+    const a = agent({
+      id: "a",
+      report: {
+        status: "completed",
+        summary: 'Agent "X" finished',
+        text,
+        ts: t(H),
+        interim: false,
+      },
+    });
+    expect(helperGist(a)).toBe(
+      "Point wire.js at the Screener capture; capture the screener reads",
+    );
+  });
 });

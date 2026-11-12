@@ -1005,11 +1005,15 @@ describe("helpers, files and checks", () => {
   it("the Helpers tab lists every helper, the running one marked, each opening its close-up", () => {
     tab("helpers");
     const rows = [...panel().getByRole("list", { name: "Helpers" }).children];
+    // Each by its one name, as its desk says it; its brief's words under it.
     expect(rows.map((r) => r.querySelector(".h-name")?.textContent)).toEqual([
-      "Build Task 38: capture chat reads",
-      "Review Task 39 chat parts",
-      "Re-review Task 39 fix round",
+      "Capture chat reads",
+      "Chat parts",
+      "Task 39 fix round",
     ]);
+    expect(rows[1]?.querySelector(".h-meta")?.textContent).toContain(
+      "Review Task 39 chat parts",
+    );
     expect(rows[0]?.querySelector(".mk.running")).toBeTruthy();
     expect(rows[1]?.textContent).toContain("Changes requested");
     expect(rows[0]?.querySelector("a")?.getAttribute("href")).toBe(

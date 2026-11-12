@@ -156,16 +156,14 @@ describe("the office page", () => {
     expect(here()).toBe("/s/s1?open=helper:a1");
     const panel = details() as HTMLElement;
     expect(
-      within(panel).getByRole("heading", { name: "Build Task 1 alert table" }),
+      within(panel).getByRole("heading", { name: "Alert table" }),
     ).toBeTruthy();
     expect(panel.textContent).toContain("Builder · Sonnet");
     // The breadcrumb says where this is and climbs.
     const crumbs = within(panel).getByRole("navigation", {
       name: "Where you are",
     });
-    expect(crumbs.textContent).toBe(
-      "SessionRequest 2Helper · Build Task 1 alert table",
-    );
+    expect(crumbs.textContent).toBe("SessionRequest 2Helper · Alert table");
     // A close-up closes to the tab, then the panel closes.
     fireEvent.keyDown(window, { key: "Escape" });
     expect(here()).toBe("/s/s1?open=story");

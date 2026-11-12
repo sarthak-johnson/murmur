@@ -9,7 +9,13 @@ import type {
   RequestState,
   SessionView,
 } from "@murmur/core";
-import { phaseName, requestShort, taskTitle, youAsked } from "../session";
+import {
+  helperName,
+  phaseName,
+  requestShort,
+  taskTitle,
+  youAsked,
+} from "../session";
 import {
   coreState,
   helperNow,
@@ -148,35 +154,6 @@ export function cutWords(s: string | undefined, n: number): string | undefined {
   if (!s || s.length <= n) return s;
   const c = s.slice(0, n + 1).replace(/\s+\S*$/, "");
   return `${(c.length > n * 0.5 ? c : s.slice(0, n - 1)).replace(/[\s,;:·-]+$/, "")}…`;
-}
-
-/** "Build Task 67 Portfolio reads/styles" -> "Portfolio reads/styles". */
-export function helperName(a: { description?: string | undefined }): string {
-  // A model note ("(Opus)") is on the plate already; it never names the work.
-  const desc = (a.description ?? "")
-    .replace(/\s*\((opus|sonnet|haiku)[^)]*\)\s*$/i, "")
-    .trim();
-  const verbless = desc
-    .replace(
-      /^(Build|Review|Re-?review|Recheck|Plan|Fix|Write|Implement|Research|Draft|Add|Create)\s+/i,
-      "",
-    )
-    // "Fix round Task 142 News page": the round goes, its subject comes first.
-    .replace(/^(fix\s+)?rounds?(\s+\d+)?:?\s+(?=(Tasks?|Phases?|B)\s*\d)/i, "");
-  const subject = /^(Tasks?\s+[\w-]+|Phases?\s+\d+|B\d+)/i.exec(verbless)?.[0];
-  // What is left after the subject; "Task 38: capture chat reads" leaves a colon behind.
-  const rest = verbless
-    .replace(/^(Tasks?\s+[\w-]+|Phases?\s+\d+|B\d+)\s*/i, "")
-    .replace(/^[\s:;,.\-–]+/, "");
-  let d = rest.replace(/^(fix rounds?(\s+\d+)?:?)\s*/i, "");
-  // A bare leftover ("round 2", "fix round 4") says nothing alone, so it keeps its subject.
-  if (
-    subject &&
-    /^((fix(es)?|rounds?(\s+\d+)?|review|recheck)[\s:]*)*$/i.test(d)
-  )
-    d = `${subject} ${rest}`.trim();
-  d = d || desc || "A helper";
-  return cutWords(d.charAt(0).toUpperCase() + d.slice(1), 24);
 }
 
 // Imperative first words of Bash descriptions, said as what the helper is doing ("Read X" -> "Reading X").
@@ -547,7 +524,8 @@ export function deriveScene(
         description: a.description,
         subject: a.subject,
         role: a.role,
-        name: helperName(a),
+        // The helper's one name (session.ts), cut to fit its plate.
+        name: cutWords(helperName(a), 24),
         roleWord: (a.role && ROLE_WORD[a.role]) ?? "Helper",
         startedAt: a.startedAt,
         endedAt: a.endedAt,

@@ -9,7 +9,7 @@ import { FileList, PathText } from "../files";
 import { StateMark } from "../marks";
 import { Pill } from "../Pill";
 import { follow, helperPath } from "../router";
-import { modelOf, taskTitle } from "../session";
+import { helperName, modelOf, taskTitle } from "../session";
 import { coreState, helperNow, type State } from "../state";
 import {
   clock,
@@ -130,15 +130,16 @@ export function HelpersTab(props: {
         const path = helperPath(sessionId, request.id, a.id);
         const time = duration(h.from, h.to);
         const line = helperLine(a, h.state === "running", request);
+        // Its one name, as its desk says it; its brief's own words under it.
+        const name = helperName(a);
+        const said = a.description.trim();
         const body = (
           <>
             <StateMark mark={mark} />
             <span className="h-main">
-              <span className="h-name">
-                {a.description || `Agent ${i + 1}`}
-              </span>
+              <span className="h-name">{name}</span>
               <span className="h-meta">
-                <span>Agent {i + 1}</span>
+                <span>{said && said !== name ? said : `Agent ${i + 1}`}</span>
                 {model && <span>{model}</span>}
                 <span>{word}</span>
                 <span className="num">
