@@ -213,10 +213,6 @@ export function taskGroups(
   return groups;
 }
 
-/** Whether the list has a running row, which then carries the page's one pulse. */
-export const tasksPulse = (req: RequestView, done: boolean) =>
-  taskGroups(req, done).some((g) => g.rows.some((r) => r.shown === "now"));
-
 export function TasksTab(props: {
   sessionId: string;
   request: RequestView;

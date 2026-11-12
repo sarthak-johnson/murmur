@@ -268,8 +268,22 @@ describe("the office page", () => {
     expect(within(top).getByText("Request 1 of 2")).toBeTruthy();
     expect(within(top).getByText("Pinned")).toBeTruthy();
     expect(within(top).queryByText("Live")).toBeNull();
-    // The replay bar's clock does not call a pinned old floor "now".
-    expect(screen.getByRole("contentinfo").textContent).not.toContain("now");
+    // The replay bar's clock does not call a pinned old floor "now" or "latest", its
+    // slider says whose moment it shows, and its button is the way back to following.
+    const bar = screen.getByRole("contentinfo");
+    expect(bar.textContent).not.toContain("now");
+    expect(bar.textContent).not.toContain("latest");
+    expect(bar.textContent).toContain("request 1's last");
+    expect(
+      within(bar)
+        .getByRole("slider", { name: "Replay time" })
+        .getAttribute("aria-valuetext"),
+    ).toContain("request 1 as it stands");
+    expect(
+      within(bar).getByRole("button", {
+        name: "Back to following Claude, on request 2",
+      }).textContent,
+    ).toBe("Follow");
     expect(
       within(top).getByRole("button", { name: /Claude is on request 2/ }),
     ).toBeTruthy();

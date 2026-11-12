@@ -360,10 +360,13 @@ export function Office(props: {
   // Before the first prompt of a replay there is no floor yet: the last one stays up.
   const lastScene = useRef<Scene | null>(null);
   if (derived) lastScene.current = derived;
-  const scene =
-    derived ??
-    lastScene.current ??
-    (deriveScene(view, view.requests.at(-1)?.id ?? "", iso, logs) as Scene);
+  const scene = derived ?? lastScene.current ?? newestScene();
+  /** The live session's newest floor: it has one, since the page draws no office without. */
+  function newestScene(): Scene {
+    const s = deriveScene(view, view.requests.at(-1)?.id ?? "", iso, logs);
+    if (!s) throw new Error("The office needs a session with a request.");
+    return s;
+  }
   // The panel reads one view: the moment's, or the live one when a stale moment lacks the request.
   const drawerView = req && viewT.requests.includes(req) ? viewT : view;
   const drawerEvents = drawerView === viewT ? eventsT : events;
@@ -759,6 +762,9 @@ export function Office(props: {
   const following = at === null;
   // Pinned to another request than Claude's: the floor does not follow.
   const pinnedNow = following && !!pinnedId && pinnedId !== liveActiveId;
+  // A pinned old floor shows its request as it last stood: the bar says that moment, not now.
+  const shownAt = pinnedNow && mark ? Math.min(END, Date.parse(mark.to)) : tNow;
+  const shownIso = new Date(shownAt).toISOString();
   // A session over more than a day says the day with the time.
   const spansDays =
     dayOf(new Date(START).toISOString()) !== dayOf(new Date(END).toISOString());
@@ -1129,8 +1135,15 @@ export function Office(props: {
             min={0}
             max={total}
             step={1}
-            value={Math.round((tNow - START) / 1000)}
+            value={Math.round((shownAt - START) / 1000)}
             aria-label="Replay time"
+            aria-valuetext={`${dayOf(new Date(shownAt).toISOString())} ${clockOf(new Date(shownAt).toISOString())}${
+              pinnedNow
+                ? `, request ${scene.request.n} as it stands`
+                : following
+                  ? ", the latest moment"
+                  : `, ${dur(END - tNow)} before the latest`
+            }`}
             onChange={(e) => {
               setPlaying(false);
               const t = START + Number(e.target.value) * 1000;
@@ -1153,15 +1166,17 @@ export function Office(props: {
             <span className="of-play-icon" aria-hidden="true" />
           </button>
           <span className={spansDays ? "of-clock days" : "of-clock"}>
-            {spansDays && <span className="of-day">{dayOf(iso)} </span>}
-            {clockOf(iso)}
-            {following
-              ? live && !pinnedNow
-                ? " · now"
-                : open
-                  ? " · latest"
-                  : " · end"
-              : ` · ${dur(END - tNow)} earlier`}
+            {spansDays && <span className="of-day">{dayOf(shownIso)} </span>}
+            {clockOf(shownIso)}
+            {pinnedNow
+              ? ` · request ${scene.request.n}'s last`
+              : following
+                ? live
+                  ? " · now"
+                  : open
+                    ? " · latest"
+                    : " · end"
+                : ` · ${dur(END - tNow)} earlier`}
           </span>
           <label className="of-speed">
             <span className="sr-only">Replay speed</span>
@@ -1191,14 +1206,27 @@ export function Office(props: {
               follow$();
             }}
             aria-label={
-              ses.tag === "live"
-                ? "Follow the session live"
-                : open
-                  ? "Jump to the latest moment"
-                  : "Jump to the end"
+              pinnedNow
+                ? `Back to following Claude, on request ${scene.activeN}`
+                : ses.tag === "live"
+                  ? "Follow the session live"
+                  : open
+                    ? "Jump to the latest moment"
+                    : "Jump to the end"
+            }
+            title={
+              pinnedNow
+                ? `This floor is request ${scene.request.n}; Claude is on request ${scene.activeN}`
+                : undefined
             }
           >
-            {ses.tag === "live" ? "Live" : open ? "Latest" : "End"}
+            {pinnedNow
+              ? "Follow"
+              : ses.tag === "live"
+                ? "Live"
+                : open
+                  ? "Latest"
+                  : "End"}
           </button>
           <span className="of-spacer" />
           <div className="of-legend">

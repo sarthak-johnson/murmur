@@ -198,13 +198,6 @@ export function requestState(
   return { state: done ? "done" : "running", end };
 }
 
-/** "2 waiting on you", "Permission needed", "Waiting on you". */
-export function waitingLabel(w: Waiting): string {
-  const n = w.questions.length;
-  if (n) return `${n} waiting on you`;
-  return w.permission ? "Permission needed" : "Waiting on you";
-}
-
 /** How a request stands, as the rail marks it: each with its own shape and colour. */
 export type Mark = "done" | "running" | "waiting" | "open" | "failed";
 const MARKS: readonly string[] = [
@@ -567,12 +560,6 @@ export function livePhase(
     return running[0] ?? req.phases.find((p) => p.status !== "done");
   const last = (p: PhaseView) => phaseSpan(req, p).to ?? "";
   return running.reduce((a, b) => (last(b) > last(a) ? b : a));
-}
-
-/** "Phase 1 of 2": a phase's own number when its title has one, else its place. */
-export function phasePlace(req: RequestView, phase: PhaseView): string {
-  const own = /^phase\s+(\d+)\b/i.exec(phase.title)?.[1];
-  return `Phase ${own ?? req.phases.indexOf(phase) + 1} of ${req.phases.length}`;
 }
 
 /** A helper's model, from the Agent call that started it. */

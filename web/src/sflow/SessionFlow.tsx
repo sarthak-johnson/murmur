@@ -16,11 +16,11 @@ import {
 } from "react";
 import { useFrame, useStacked } from "../flow/FlowBoard";
 import { dayLabel } from "../format";
-import { gap, took } from "../live/Journey";
+import { gap } from "../live/Journey";
 import { StateMark } from "../marks";
 import { follow, navigate, requestPath } from "../router";
 import { type Mark, requestShort } from "../session";
-import { requestNow, type SessionNow, sessionNow } from "../state";
+import { requestNow, type SessionNow, sessionNow, took } from "../state";
 import { clock } from "../story";
 import {
   chainOf,

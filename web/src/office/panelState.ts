@@ -1,6 +1,7 @@
 // What the office's panel shows (the `?open=` of its URL), and what a click in the room opens.
 import type { RequestView } from "@murmur/core";
 import { type SessionTab, TABS, type Tab } from "../router";
+import { placeOf } from "../session";
 
 export const SESSION_VIEWS: readonly (readonly [SessionTab, string])[] = [
   ["journey", "Journey"],
@@ -54,18 +55,19 @@ export function openFor(key: string): string {
   return key;
 }
 
+/** A close-up's `task:<id>`: a plan task's id, else a part's (then its first task). */
+export const closeUpPlace = (req: RequestView, id: string) => {
+  const own = placeOf(req, { task: id });
+  return own?.task ? own : (placeOf(req, { part: id }) ?? own);
+};
+
 /** The panel's `open` as the room marks it selected: the overlay's own key for that thing. */
 export function roomKey(open: string | null, req: RequestView | undefined) {
   if (!open) return null;
   const [kind, id = ""] = open.split(/:(.*)/s);
   if (kind === "helper") return `agent:${id}`;
-  if (kind === "task") {
-    // A task's own sticky, else (a part's close-up) the sticky of its first task.
-    const tasks = req?.phases.flatMap((p) => p.tasks) ?? [];
-    const task =
-      tasks.find((t) => t.id === id) ?? tasks.find((t) => t.part === id);
-    return `task:${task?.id ?? id}`;
-  }
+  // A task's own sticky, else (a part's close-up) the sticky of its first task.
+  if (kind === "task") return (req && closeUpPlace(req, id)?.key) ?? open;
   return SPOTS.includes(open) ? open : null;
 }
 

@@ -69,7 +69,6 @@ function Pop(props: {
         type="button"
         className="of-pop-btn"
         aria-expanded={open}
-        aria-haspopup="true"
         aria-label={props.label}
         title={props.title ?? props.label}
         onClick={() => {

@@ -2,15 +2,6 @@
 import type { RequestView, TaskView } from "@murmur/core";
 import type { Mark } from "./session";
 
-/** A state's word, said beside its mark so colour and shape never carry it alone. */
-export const MARK_WORD: Record<Mark, string> = {
-  done: "Done",
-  running: "Running",
-  waiting: "Waiting on you",
-  open: "Left open",
-  failed: "Failed",
-};
-
 /**
  * A request's mark: a check for done, a blue dot for running (it pulses only where
  * `pulse` is set, the one loop on screen), an amber question mark for waiting on you,

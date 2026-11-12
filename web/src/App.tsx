@@ -5,7 +5,7 @@ import { Device } from "./pages/Device";
 import { Login } from "./pages/Login";
 import { Sessions } from "./pages/Sessions";
 import { Settings } from "./pages/Settings";
-import { navigate, useRoute } from "./router";
+import { follow, navigate, useRoute } from "./router";
 
 const PENDING = "murmur:pendingDevice";
 
@@ -20,14 +20,10 @@ function store(op: () => unknown): string | null {
 
 function Header(props: { me: Me; onSignOut: () => void }) {
   const { me, onSignOut } = props;
-  const go = (path: string) => (e: React.MouseEvent) => {
-    e.preventDefault();
-    navigate(path);
-  };
   return (
     <header className="header">
       <div className="header-in">
-        <a className="wordmark" href="/" onClick={go("/")}>
+        <a className="wordmark" href="/" onClick={follow("/")}>
           Murmur
         </a>
         <span className="user">
@@ -35,7 +31,7 @@ function Header(props: { me: Me; onSignOut: () => void }) {
           {me.login}
         </span>
         <nav>
-          <a href="/settings" onClick={go("/settings")}>
+          <a href="/settings" onClick={follow("/settings")}>
             Settings
           </a>
           <button type="button" className="link" onClick={onSignOut}>

@@ -35,7 +35,6 @@ import {
   cleanPrompt,
   KIND,
   type Mark,
-  placeOf,
   type RequestState,
   requestShort,
   taskTitle,
@@ -63,6 +62,7 @@ import {
 } from "../story";
 
 import {
+  closeUpPlace,
   isSessionTab,
   isTab,
   isWideView,
@@ -112,12 +112,6 @@ const waitEnd = (ses: SessionNow) => (ses.ticking ? ses.at : ses.last);
 
 /** Redrawn only when what it shows changes: the room repaints far more often. */
 export const Panel = memo(PanelBody);
-
-/** A close-up's `task:<id>`: a plan task's id, else a part's (then its first task). */
-const closeUpPlace = (req: RequestView, id: string) => {
-  const own = placeOf(req, { task: id });
-  return own?.task ? own : (placeOf(req, { part: id }) ?? own);
-};
 
 /** A task's place in its request's plan, as its breadcrumb says it: its one number and title. */
 function taskLabel(req: RequestView, id: string): string {
@@ -719,11 +713,15 @@ const ROLE: Record<NonNullable<AgentView["role"]>, string> = {
   other: "Helper",
 };
 
+const RUNS_SHOWN = 60;
+
 /** The terminal: the commands Claude itself ran for this request, newest first. */
 function Terminal(props: PanelProps) {
   const { request: req, view, mainLog, t } = props;
   const next = view.requests[view.requests.indexOf(req) + 1]?.startedAt;
+  // Each with its place in the log: two commands can share a second and a description.
   const runs = mainLog
+    .map((e, at) => ({ ...e, at }))
     .filter(
       (e) =>
         e.k === "tool" &&
@@ -740,8 +738,8 @@ function Terminal(props: PanelProps) {
       <h2>Commands Claude ran</h2>
       {runs.length ? (
         <ol className="of-runs">
-          {runs.slice(0, 60).map((e) => (
-            <li key={e.t + (e.label ?? "")}>
+          {runs.slice(0, RUNS_SHOWN).map((e) => (
+            <li key={e.at}>
               <span className="of-when">{clock(e.t)}</span>
               <span>{e.label ?? toolWords(e.tool ?? "Bash")}</span>
             </li>
@@ -749,6 +747,11 @@ function Terminal(props: PanelProps) {
         </ol>
       ) : (
         <p className="muted">No commands yet in this request.</p>
+      )}
+      {runs.length > RUNS_SHOWN && (
+        <p className="muted">
+          And {runs.length - RUNS_SHOWN} earlier commands.
+        </p>
       )}
     </section>
   );

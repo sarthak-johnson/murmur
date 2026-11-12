@@ -481,7 +481,15 @@ describe("replay times", () => {
 describe("what a click in the room opens", () => {
   it("is the tab that tells its story, or a close-up", () => {
     const req = {
-      phases: [{ tasks: [{ id: "1.1", part: "db" }, { id: "1.2" }] }],
+      phases: [
+        {
+          tasks: [
+            { id: "1.1", title: "Alert table", part: "db" },
+            { id: "1.2", title: "Alert rules" },
+          ],
+        },
+      ],
+      parts: [{ id: "db", title: "Alerts db" }],
     } as unknown as RequestView;
     expect(openFor("phase:2")).toBe("tasks");
     expect(openFor("archive")).toBe("allfiles");

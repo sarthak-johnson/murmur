@@ -23,6 +23,7 @@ import {
   type State,
   sessionNow,
   sessionSpan,
+  took,
 } from "../state";
 import { clock, duration, thousands } from "../story";
 
@@ -31,10 +32,6 @@ const many = (n: number, one: string, more = `${one}s`) =>
   `${n} ${n === 1 ? one : more}`;
 /** "Mon 2 Nov 17:43". */
 const when = (iso: string) => `${dayLabel(iso)} ${clock(iso)}`;
-export const took = (from: string, to: string) => {
-  const d = duration(from, to);
-  return d === "under a minute" ? "<1 m" : d;
-};
 /** A gap in words: "3 days", "11 h 39 m". */
 export function gap(from: string, to: string): string {
   const ms = Date.parse(to) - Date.parse(from);
