@@ -550,6 +550,47 @@ describe("what was asked and said", () => {
     expect(helperGist(final)).toBe("Added a spinner while waiting for data.");
   });
 
+  it("a report's gist is its own words: past its status word, before Claude's next step", () => {
+    const final = (id: string, text: string) =>
+      agent({
+        id,
+        report: {
+          status: "completed",
+          summary: 'Agent "X" finished',
+          text,
+          ts: t(H),
+          interim: false,
+        },
+      });
+    expect(
+      helperGist(
+        final(
+          "a",
+          "**Status:** Done. The New chat page is assembled.\n\n**Tests:** pass.",
+        ),
+      ),
+    ).toBe("The New chat page is assembled.");
+    const req = request({
+      id: "r",
+      messages: [
+        {
+          ts: t(H),
+          text: "The preview link rebuilds on every push.",
+          agent: "b",
+        },
+      ],
+    } as never);
+    expect(
+      helperGist(
+        final(
+          "b",
+          "Status: done.\n\nCommit: 83b909610\n\nTests: the act() warning count is 0.",
+        ),
+        req,
+      ),
+    ).toBe("The act() warning count is 0.");
+  });
+
   it("a report of commit lines and lists reads as what its commits say, never the raw lines", () => {
     const text = [
       "Status: DONE_WITH_CONCERNS",

@@ -156,6 +156,8 @@ export function helperLine(
 const WAITING =
   /\b(?:still (?:going|running|in progress|being)|in flight|in the background|(?:running|going) now|(?:i'?ll|i will|let me) wait|waiting (?:for|on)|wait(?:ing)? until|will (?:notify|report|ping)|once (?:it|they) (?:finish|finishes|end|ends|complete|completes)|when (?:it|they) (?:end|ends|finish|finishes|complete|completes))\b/i;
 
+const NO_NEWS = /^\s*(?:no change|nothing new|no news)\b/i;
+
 /** A text's paragraphs without status, commit or test lines and headings. */
 function paragraphs(text: string): string[] {
   return text
@@ -163,14 +165,26 @@ function paragraphs(text: string): string[] {
     .map((p) =>
       p
         .split("\n")
+        // "**Status:** Done. The page is in." keeps what follows its status word.
+        .map((l) => l.replace(STATUS_LEAD, ""))
         .filter(
-          (l) => !STATUS_LINE.test(l) && !HASH_LINE.test(l) && !/^\s*#/.test(l),
+          (l) =>
+            l.trim() &&
+            !STATUS_LINE.test(l) &&
+            !HASH_LINE.test(l) &&
+            !/^\s*#/.test(l),
         )
         .join("\n")
         .trim(),
     )
     .filter(Boolean);
 }
+/** A status line's label and word when prose follows it on the same line. */
+const STATUS_LEAD =
+  /^\s*[*_]*(?:status|result)[*_]*\s*:\s*[*_]*\s*[\w-]+[.!]?[*_]*\s+(?=[*_]*[A-Z])/i;
+/** What a report's tests line says, when nothing else in it is prose. */
+const testsLine = (text: string) =>
+  /^\s*[*_]*tests?[*_]*\s*:[*_]*\s*(.+)$/im.exec(text)?.[1]?.trim() ?? "";
 const isProse = (p: string) =>
   !/^\s*(?:[-*+]|\d+[.)])\s/.test(p) && !LABEL.test(p);
 
@@ -214,12 +228,20 @@ export function helperGist(a: AgentView, req?: RequestView): string {
     .map((m) => plainText(m.text.split(/\n\s*\n/)[0] ?? m.text));
   const own = r ? prose(r.text) : [];
   const commits = r ? commitWords(r.text) : "";
+  const tests = r ? testsLine(r.text) : "";
+  // Its own words first: Claude's word after a report is often about what comes next.
   const said = [
     ...(r && !r.interim
-      ? [...claude, ...(commits ? [commits] : []), ...own]
+      ? [
+          ...(commits ? [commits] : []),
+          ...own,
+          ...(tests ? [tests.charAt(0).toUpperCase() + tests.slice(1)] : []),
+          ...claude,
+        ]
       : [...own, ...claude]),
     ...(a.lastText ? prose(a.lastText) : []),
-  ].find((p) => !WAITING.test(firstSentence(p)));
+    // A line about waiting ("No change yet. The builder is waiting...") is no gist.
+  ].find((p) => !WAITING.test(p.slice(0, 200)) && !NO_NEWS.test(p));
   if (said) return said;
   // A final report with no prose and no word of Claude's on it: nothing to add.
   if (r && !r.interim) return "";
