@@ -76,7 +76,9 @@ describe("useSession", () => {
     expect(result.current.view).toBeNull();
     expect(result.current.status).toBe("loading");
     await flush();
-    expect(result.current.status).toBe("loading");
+    // Every page in: drawn at once, open while the stream subscribes.
+    expect(result.current.status).toBe("resuming");
+    expect(result.current.view).not.toBeNull();
     events.mockResolvedValueOnce({ events: [], hasMore: false });
     await ready(0);
     expect(result.current.status).toBe("live");

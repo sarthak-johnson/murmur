@@ -35,6 +35,17 @@ function keep(sessionId: string, events: MurmurEvent[]) {
   for (const k of kept.keys()) if (kept.size > KEEP) kept.delete(k);
 }
 
+/** A kept session's view, reduced once per events array: Back to it draws at once. */
+const views = new WeakMap<MurmurEvent[], SessionView>();
+function viewFor(events: MurmurEvent[]): SessionView {
+  let v = views.get(events);
+  if (!v) {
+    v = viewOf(events);
+    views.set(events, v);
+  }
+  return v;
+}
+
 /** Loads a session's events, follows them live and reduces them to a view. */
 export function useSession(sessionId: string): {
   view: SessionView | null;
@@ -121,6 +132,9 @@ export function useSession(sessionId: string): {
         return fail(e);
       }
       if (dead) return;
+      // Every page is in: the session is whole as of now and can be drawn while the stream
+      // subscribes (it only catches up what came meanwhile).
+      setStatus((st) => (st === "loading" ? "resuming" : st));
       const s = api.stream(sessionId);
       es = s;
       s.addEventListener("events", (m) => {
@@ -155,7 +169,13 @@ export function useSession(sessionId: string): {
   }, [sessionId]);
 
   // ponytail: full recompute per batch; make reduce incremental if sessions pass ~20k events
-  const view = useMemo(() => (events ? viewOf(events) : null), [events]);
+  // Not reduced while the first pages load: nothing draws it until the session is whole, and
+  // reducing every page of a big session doubled its first open.
+  const loading = status === "loading";
+  const view = useMemo(
+    () => (events && !loading ? viewFor(events) : null),
+    [events, loading],
+  );
 
   return { view, status, events: events ?? [] };
 }
