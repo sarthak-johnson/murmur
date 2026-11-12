@@ -127,11 +127,23 @@ export function OfficeShell(props: {
         </div>
       </header>
       <main className="of-body of-empty" aria-busy={status === "loading"}>
-        <p className="muted" role="status">
-          {status === "error"
-            ? "This session could not be loaded."
-            : (note ?? "Opening the office…")}
-        </p>
+        <div className="of-empty-card px">
+          <p className="of-kicker">
+            {status === "error"
+              ? "Not found"
+              : note
+                ? "Nothing yet"
+                : "Loading"}
+          </p>
+          <p role="status">
+            {status === "error"
+              ? "This session could not be loaded. It may have been deleted."
+              : (note ?? "Opening the office…")}
+          </p>
+          <a className="link-button" href="/" onClick={follow("/")}>
+            All sessions
+          </a>
+        </div>
       </main>
       <footer className="of-replay" />
     </div>
@@ -921,23 +933,25 @@ export function Office(props: {
             >
               Pinned
             </span>
-          ) : following && ses.tag === "live" ? (
+          ) : !following ? (
+            <span
+              className="of-tag replay"
+              title={`A replay of this session. ${open ? "It is still open; its latest moment" : "It ended"} at ${clockOf(new Date(END).toISOString())}.`}
+            >
+              Replay
+            </span>
+          ) : ses.tag === "live" ? (
             <span
               className="of-tag live"
               title="Following the session as it happens"
             >
               {ses.word}
             </span>
-          ) : following && ses.tag === "waiting" ? (
-            // Waiting on you is the pill's to say, with its clock: the tag says only that
-            // nothing is happening, so the bar has one word and one clock for each thing.
-            <span
-              className="of-tag quiet"
-              title={`Nothing has happened in this session for ${dur(quietFor)}: Claude is waiting on you.`}
-            >
-              Quiet
-            </span>
-          ) : following && open ? (
+          ) : // Quiet beside a pill that says waiting on you or paused, with its clock, is a
+          // second state word: the pill says it.
+          open &&
+            (mark?.state === "waiting" ||
+              mark?.state === "paused") ? null : open ? (
             <span
               className="of-tag quiet"
               title={`Nothing has happened in this session for ${dur(quietFor)}. It shows as it was left, and wakes up when Claude does.`}
@@ -945,11 +959,12 @@ export function Office(props: {
               Quiet · {dur(quietFor)}
             </span>
           ) : (
+            // As the lobby says it: an ended session at its end is ended, not a replay.
             <span
-              className="of-tag replay"
-              title={`A replay of this session. ${open ? "It is still open; its latest moment" : "It ended"} at ${clockOf(new Date(END).toISOString())}.`}
+              className={`of-tag ${ses.tag === "ended" ? "ended" : "replay"}`}
+              title={`This session ${ses.tag === "ended" ? "ended" : "was last heard"} at ${clockOf(new Date(END).toISOString())}. The replay bar goes back to any moment of it.`}
             >
-              Replay
+              {ses.tag === "ended" ? ses.word : "Replay"}
             </span>
           )}
           {pill && (

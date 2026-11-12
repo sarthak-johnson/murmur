@@ -6,6 +6,7 @@ import { Login } from "./pages/Login";
 import { Sessions } from "./pages/Sessions";
 import { Settings } from "./pages/Settings";
 import { follow, navigate, useRoute } from "./router";
+import { forgetSessions } from "./useSession";
 
 const PENDING = "murmur:pendingDevice";
 
@@ -75,7 +76,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const out = () => setMe(null);
+    const out = () => {
+      forgetSessions();
+      setMe(null);
+    };
     window.addEventListener(UNAUTHORIZED, out);
     return () => window.removeEventListener(UNAUTHORIZED, out);
   }, []);
@@ -120,6 +124,7 @@ export function App() {
 
   async function signOut() {
     await api.logout().catch(() => {});
+    forgetSessions();
     setMe(null);
     navigate("/");
   }

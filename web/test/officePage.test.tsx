@@ -131,9 +131,10 @@ describe("the office page", () => {
     vi.setSystemTime(BASE + 3 * 3600_000 + 10_000);
     show();
     await frames();
-    expect(
-      within(screen.getByRole("banner")).getByText("Quiet · 3 h 00 m"),
-    ).toBeTruthy();
+    // Its running request reads paused, and the pill says so: no second state word.
+    const bar = screen.getByRole("banner");
+    expect(bar.querySelector(".of-pill")?.textContent).toMatch(/^Paused/);
+    expect(bar.querySelector(".of-tag")).toBeNull();
     expect(
       screen.getByRole("button", { name: "Jump to the latest moment" }),
     ).toBeTruthy();

@@ -108,6 +108,9 @@
 .of-tag.quiet::before {
   opacity: 0.6;
 }
+.of-tag.ended {
+  --tone: var(--o-t3);
+}
 .of-tag.replay {
   --tone: #f2b8a0;
 }
@@ -280,6 +283,23 @@
 .of-stage.below > .of-dock {
   inset: var(--of-rh) 0 0;
   width: auto;
+}
+/* Before the room: what is happening, centred in a card, with the way back to the lobby. */
+.of-body.of-empty {
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  padding: 24px 16px;
+}
+.of-empty-card {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  width: min(440px, 100%);
+  padding: 20px 24px 24px;
+}
+.of-empty-card p[role="status"] {
+  margin: 0 0 14px;
+  color: var(--o-t1);
 }
 /* The requests under a room with no rail beside it. */
 .of-under {
@@ -858,14 +878,13 @@
   font-variant-numeric: tabular-nums;
   color: var(--o-t1);
   white-space: nowrap;
-  /* A fixed width: the controls beside it never move while the time runs. */
-  width: 24ch;
+  /* One fixed width in every session, with a day or without: the controls beside it never
+     move, while the time runs or from one session to the next. */
+  width: 36ch;
   overflow: hidden;
+  text-overflow: ellipsis;
   text-align: left;
   flex: none;
-}
-.of-clock.days {
-  width: 36ch;
 }
 /* The speed: a kit well with a pixel chevron, never the system's own arrow. */
 .of-speed {
@@ -1233,12 +1252,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Its facts read whole: they wrap under the title rather than cut. */
 .of-sess-m {
   font-size: 12px;
+  line-height: 18px;
   color: var(--o-t3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+.of-switch .of-pop {
+  width: min(520px, calc(100vw - 32px));
 }
 /* Its state: a kit tag (theme.css) in its tone. */
 .of-sess-st {
@@ -1762,8 +1783,11 @@
 .of-track input[type="range"]:hover::-webkit-slider-thumb {
   border-color: var(--o-t2);
 }
-.of-track input[type="range"]:focus-visible {
-  outline: none;
+/* The keyboard's place on the replay bar: a ring a pixel off its control. */
+.of-track input[type="range"]:focus-visible,
+.of-speed select:focus-visible {
+  outline: 2px solid var(--o-now);
+  outline-offset: 2px;
 }
 .of-track input[type="range"]:focus-visible::-webkit-slider-thumb {
   border-color: var(--o-now);
@@ -1799,9 +1823,12 @@
   height: 10px;
   background: #6a5f55;
 }
-.of-track .of-ticks button:focus-visible,
 .of-track .of-ticks button:focus {
   outline: none;
+}
+.of-track .of-ticks button:focus-visible {
+  outline: 2px solid var(--o-now);
+  outline-offset: 0;
 }
 .of-track .of-ticks button:focus-visible::after,
 .of-track .of-ticks button.tip::after,

@@ -2,7 +2,7 @@ import type { MurmurEvent } from "@murmur/core";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, api } from "../src/api";
-import { useSession } from "../src/useSession";
+import { forgetSessions, useSession } from "../src/useSession";
 
 class FakeES {
   static all: FakeES[] = [];
@@ -45,6 +45,7 @@ const C = ev("c", "2026-01-01T00:00:03.000Z");
 
 let events: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
+  forgetSessions();
   vi.useFakeTimers();
   FakeES.all = [];
   vi.spyOn(api, "stream").mockImplementation(
