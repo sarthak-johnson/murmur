@@ -293,7 +293,8 @@ describe("deriveScene", () => {
       slot: 0,
       status: "running",
       roleWord: "Builder",
-      name: "Alerts table",
+      // A reviewer on the same table: each plate says which one it is.
+      name: "Alerts table · builder",
       act: "read",
       bubble: "Reading the schema docs",
       model: "opus",
@@ -369,7 +370,7 @@ describe("deriveScene", () => {
     expect(spot({ tool: "Agent", desc: "Build alerts table" })).toMatchObject({
       spot: "helper",
       helper: "a1",
-      bubble: "Briefing: Alerts table",
+      bubble: "Briefing: Alerts table · builder",
     });
     // Before any call of its own in this request, Claude watches from its desk.
     expect(sceneOf(EVENTS).claude).toMatchObject({
