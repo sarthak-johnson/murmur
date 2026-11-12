@@ -13,6 +13,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Live as Page } from "../src/pages/Session";
 import { clock } from "../src/story";
+import { clockAt } from "./clock";
 
 /** A request's own page: the newest request unless the test names one. */
 function Live(p: React.ComponentProps<typeof Page>) {
@@ -21,6 +22,8 @@ function Live(p: React.ComponentProps<typeof Page>) {
 
 const at = (min: number) =>
   new Date(Date.UTC(2026, 10, 9, 15, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(at(20));
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -483,7 +486,7 @@ describe("the phase track", () => {
     );
     expect(words).toEqual([
       "st done: , done",
-      "st now: , in progress",
+      "st now: , running",
       "st failed: , failed",
       "st todo: , not started",
       "st todo: , not started",
@@ -623,15 +626,16 @@ describe("the story", () => {
       "Task 1 note: the builder is recording.",
     ]);
     expect(texts(p2 as Element)).toEqual(["The new tracker is live."]);
-    // The live section reads newest first, under a now row for helpers not reported yet.
+    // The live section reads oldest first too, ending with a now row for helpers not
+    // reported yet.
     const rows = texts(beyond as Element);
-    expect(rows[0]).toMatch(
+    expect(rows[0]).toBe("Task 39 is done after two rounds of fixes.");
+    expect(rows[1]).toMatch(
       /^Build Task 38: capture chat reads, running for [\dhm ]+\. No report yet\.$/,
     );
-    expect(rows[1]).toBe("Task 39 is done after two rounds of fixes.");
   });
 
-  it("a live phase reads newest first, a finished one oldest first", () => {
+  it("a live phase reads oldest first, as a finished one does, its newest row marked", () => {
     const req = running({
       beyond: undefined,
       agents: [],
@@ -659,9 +663,9 @@ describe("the story", () => {
     show(session(req));
     const [one, two] = [...story().querySelectorAll(".st-phase")];
     expect(texts(one as Element)).toEqual(["First.", "Second."]);
-    expect(texts(two as Element)).toEqual(["Fourth.", "Third."]);
-    expect(two?.querySelector(".st-meta")?.textContent).toContain(
-      "newest first",
+    expect(texts(two as Element)).toEqual(["Third.", "Fourth."]);
+    expect(two?.querySelector("[data-newest]")?.textContent).toContain(
+      "Fourth.",
     );
     cleanup();
     show(session({ ...req, finished: true, state: "done" }));
@@ -843,7 +847,7 @@ describe("the story", () => {
     const runsNow = () => [
       ...story().querySelectorAll<HTMLElement>(".st-phase .st-run"),
     ];
-    const [newest, older] = runsNow();
+    const [older, newest] = runsNow();
     const toggle = (r?: HTMLElement) =>
       within(r as HTMLElement).getAllByRole("button")[0] as HTMLElement;
     expect(newest?.querySelector(".st-run-t")?.textContent).toBe(
@@ -866,7 +870,7 @@ describe("the story", () => {
       );
     // A message joins the open run: same row, still open, the older one still open.
     later([msg("m5", 5, "The review is still running.", { phase: "p1" })]);
-    expect(runsNow()[0]).toBe(newest);
+    expect(runsNow().at(-1)).toBe(newest);
     expect(toggle(newest).getAttribute("aria-expanded")).toBe("true");
     expect(newest?.querySelectorAll(".story-text")).toHaveLength(3);
     expect(toggle(older).getAttribute("aria-expanded")).toBe("true");
@@ -876,7 +880,7 @@ describe("the story", () => {
       msg("m5", 5, "The review is still running.", { phase: "p1" }),
       msg("m6", 6, "Task 2 passed.", { phase: "p1" }),
     ]);
-    expect(runsNow()[0]).toBe(newest);
+    expect(runsNow().at(-1)).toBe(newest);
     expect(toggle(newest).getAttribute("aria-expanded")).toBe("false");
   });
 

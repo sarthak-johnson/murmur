@@ -22,8 +22,17 @@ import {
   askOf,
   type RequestState,
   requestShort,
+  taskTitle,
   type Waiting,
 } from "../session";
+import {
+  coreState,
+  helperNow,
+  type RequestNow,
+  type State,
+  WORD,
+  workState,
+} from "../state";
 import { clock, duration, helperLine, verdictOf } from "../story";
 import { DRAWER_TABS, type DrawerState, toolWords } from "./drawerState";
 import type { MainEntry } from "./scene";
@@ -37,6 +46,8 @@ function DrawerBody(props: {
   events: MurmurEvent[];
   request: RequestView;
   state: RequestState;
+  /** How the request stands at the moment shown (state.ts), word, clock and all. */
+  stands: RequestNow;
   end: string;
   waiting: Waiting | null;
   mainLog: MainEntry[];
@@ -54,7 +65,7 @@ function DrawerBody(props: {
   onChange(d: DrawerState | null): void;
 }) {
   const { sessionId, view, events, request: req, drawer, onChange } = props;
-  const { state, end, waiting } = props;
+  const { state, waiting } = props;
   const done = state === "done";
   const n = view.requests.indexOf(req) + 1;
   const body = useRef<HTMLDivElement>(null);
@@ -154,9 +165,18 @@ function DrawerBody(props: {
             <CloseUp {...props} item={drawer.item} onOpenPart={openPart} />
           </>
         ) : drawer.tab === "tasks" ? (
-          <TasksTab sessionId={sessionId} request={req} done={done} />
+          <TasksTab
+            sessionId={sessionId}
+            request={req}
+            done={done}
+            state={props.stands.state}
+          />
         ) : drawer.tab === "flow" ? (
-          <FlowBoard sessionId={sessionId} request={req} />
+          <FlowBoard
+            sessionId={sessionId}
+            request={req}
+            state={props.stands.state}
+          />
         ) : drawer.tab === "files" ? (
           <FilesTab request={req} events={events} cwd={view.cwd} />
         ) : drawer.tab === "helpers" ? (
@@ -165,6 +185,7 @@ function DrawerBody(props: {
             request={req}
             events={events}
             now={props.t}
+            state={props.stands.state}
           />
         ) : drawer.tab === "requests" ? (
           <Requests
@@ -178,13 +199,19 @@ function DrawerBody(props: {
             <RequestBrief
               request={req}
               done={done}
-              stopped={state !== "running" || !props.following}
-              end={props.following ? end : props.t}
+              stopped
+              end={props.stands.to}
               waiting={waiting}
               lastLooked={null}
             />
             <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
-            <Story request={req} done={done} onOpenPart={openPart} />
+            <Story
+              request={req}
+              done={done}
+              state={props.stands.state}
+              at={props.t}
+              onOpenPart={openPart}
+            />
           </>
         )}
       </div>
@@ -212,6 +239,7 @@ function CloseUp(
           agent={a}
           t={props.t}
           model={props.models.get(a.id)}
+          floor={{ request: req, state: props.stands.state }}
           onOpenPart={props.onOpenPart}
         />
       );
@@ -228,6 +256,10 @@ function CloseUp(
           requestNumber={n}
           request={req}
           running={running}
+          state={props.stands.state}
+          task={task?.id}
+          at={props.t}
+          onTask={(key) => props.onChange({ tab: props.drawer.tab, item: key })}
           part={part}
           events={events}
         />
@@ -236,13 +268,9 @@ function CloseUp(
       return (
         <section className="of-card">
           <p className="of-kicker">Task</p>
-          <h2>{task.title}</h2>
+          <h2>{taskTitle(task)}</h2>
           <p className="muted">
-            {task.status === "done"
-              ? "Done."
-              : task.status === "now"
-                ? "Under way."
-                : "Not started yet."}
+            {WORD[workState(task.status, props.stands.state)]}.
           </p>
         </section>
       );
@@ -272,6 +300,12 @@ function CloseUp(
               ) : (
                 w.text && <p>{w.text}</p>
               )}
+              {w.said && (
+                <p>
+                  <span className="muted">Claude's last words: </span>
+                  {w.said}
+                </p>
+              )}
               <p className="muted">
                 Since {clock(w.since)}. Reply in Claude Code.
               </p>
@@ -289,8 +323,8 @@ function CloseUp(
         <RequestBrief
           request={req}
           done={props.state === "done"}
-          stopped={props.state !== "running" || !props.following}
-          end={props.following ? props.end : props.t}
+          stopped
+          end={props.stands.to}
           waiting={props.waiting}
           lastLooked={null}
         />
@@ -308,13 +342,21 @@ function HelperCloseUp(props: {
   agent: AgentView;
   t: string;
   model: string | undefined;
+  /** The floor's request and its state: its helpers stand as it does. */
+  floor: { request: RequestView; state: State };
   onOpenPart(partId: string): void;
 }) {
   const { view, agent: a, t, model } = props;
   const req = view.requests.find((r) => r.agents.includes(a));
   const part = req ? helperPart(req, a) : undefined;
-  const runningNow = a.status === "running";
-  const took = duration(a.startedAt, a.endedAt ?? a.report?.ts ?? t);
+  // As the room seats it: one silent for an hour is not at work.
+  const at = helperNow(
+    a,
+    t,
+    req === props.floor.request ? props.floor.state : req && coreState(req),
+  );
+  const runningNow = at.state === "running";
+  const took = duration(at.from, at.to);
   const verdict = verdictOf(a.report);
 
   return (
@@ -326,7 +368,7 @@ function HelperCloseUp(props: {
       <h2>{a.description || "A helper"}</h2>
       <p className="of-chips">
         <span className={runningNow ? "of-chip now" : "of-chip done"}>
-          {runningNow ? `Running · ${took}` : `Done · took ${took}`}
+          {runningNow ? `${at.word} · ${took}` : `${at.word} · took ${took}`}
         </span>
         {verdict && !/^done$/i.test(verdict.label) && (
           <span className={`of-chip ${verdict.tone}`}>{verdict.label}</span>

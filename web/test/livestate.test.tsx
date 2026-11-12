@@ -19,9 +19,12 @@ import { PhaseTrack } from "../src/live/Track";
 import { Live as Page } from "../src/pages/Session";
 import { PartDetail } from "../src/part/PartDetail";
 import { nowLine, requestMark } from "../src/session";
+import { clockAt } from "./clock";
 
 const at = (n: number) =>
   new Date(Date.UTC(2026, 10, 6, 0, 0, n)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(at(600));
 const ev = (
   n: number,
   hook: MurmurEvent["hook"],

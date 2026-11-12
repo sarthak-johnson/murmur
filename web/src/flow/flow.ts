@@ -4,7 +4,8 @@
  * the board lays out the same in tests as in a browser.
  */
 import type { PartView, PhaseView, RequestView, TaskView } from "@murmur/core";
-import { type Mark, rounds } from "../session";
+import { type Mark, partPhase, phaseName, rounds } from "../session";
+import { coreState, isOver, MARK, type State, WORD, workState } from "../state";
 import { clock, duration } from "../story";
 
 /** "same files" says two parts touched the same files, not that one reads the other. */
@@ -74,16 +75,19 @@ export interface Band {
   parts: PartView[];
 }
 
-/** One band per phase that has parts, in plan order; parts with no known phase last. */
-export function bands(req: RequestView): Band[] {
-  const known = new Set(req.phases.map((p) => p.id));
+/**
+ * One band per phase that has parts, in plan order, named as the Tasks list names it; a
+ * part sits in its own phase, else its plan task's (`partPhase`); parts with no phase last.
+ */
+export function bands(req: RequestView, running = !req.finished): Band[] {
+  const of = new Map(req.parts.map((p) => [p.id, partPhase(req, p)?.id]));
   const out: Band[] = req.phases.flatMap((phase) => {
-    const parts = req.parts.filter((p) => p.phase === phase.id);
+    const parts = req.parts.filter((p) => of.get(p.id) === phase.id);
     return parts.length
-      ? [{ id: phase.id, title: phase.title, phase, parts }]
+      ? [{ id: phase.id, title: phaseName(phase, running), phase, parts }]
       : [];
   });
-  const other = req.parts.filter((p) => !p.phase || !known.has(p.phase));
+  const other = req.parts.filter((p) => !of.get(p.id));
   if (other.length)
     out.push({ id: "(other)", title: "Other work", parts: other });
   return out;
@@ -159,33 +163,42 @@ export function taskName(tag: string | undefined): string {
  * A part's mark: failed when a plan task of it failed, waiting while one waits on you
  * (only in a request still going), open once the request is over.
  */
-export function partMark(req: RequestView, p: PartView): Mark {
+/** The request's state: the one handed down (state.ts), else core's; finished is over. */
+const reqOf = (req: RequestView, state?: State): State =>
+  state ?? (req.finished ? "done" : coreState(req));
+
+/** A part's state (state.ts), under its request's. */
+export function partState(req: RequestView, p: PartView, state?: State): State {
+  const s = reqOf(req, state);
   const has = (status: TaskView["status"]) =>
     req.phases.some((ph) =>
       ph.tasks.some((t) => t.part === p.id && t.status === status),
     );
   if (has("failed")) return "failed";
-  if (has("blocked") && !req.finished) return "waiting";
-  if (p.status === "done") return "done";
-  if (p.status === "now" && !req.finished) return "running";
-  return "open";
+  if (has("blocked") && !isOver(s)) return "waiting";
+  return workState(p.status, s);
 }
+
+export const partMark = (req: RequestView, p: PartView, state?: State): Mark =>
+  MARK[partState(req, p, state)];
 
 /** The card's state word: "Done, 2 rounds", "Running", "Left open", "Not started". */
-export function stateWord(req: RequestView, p: PartView, long = false): string {
-  const mark = partMark(req, p);
-  if (mark === "done") {
+export function stateWord(
+  req: RequestView,
+  p: PartView,
+  long = false,
+  state?: State,
+): string {
+  const s = partState(req, p, state);
+  if (s === "done") {
     const r = p.rounds ?? 0;
-    if (!r) return "Done";
+    if (!r) return WORD.done;
     return long ? `Done after ${rounds(r)}` : `Done, ${n(r, "round")}`;
   }
-  if (mark === "running") return "Running";
-  if (mark === "failed") return "Failed";
-  if (mark === "waiting") return "Waiting on you";
-  return req.finished ? "Left open" : "Not started";
+  return WORD[s];
 }
 
-export function bandMark(req: RequestView, b: Band): Mark {
+function bandState(req: RequestView, b: Band, state?: State): State {
   const status =
     b.phase?.status ??
     (b.parts.every((p) => p.status === "done")
@@ -193,28 +206,14 @@ export function bandMark(req: RequestView, b: Band): Mark {
       : b.parts.some((p) => p.status === "now")
         ? "now"
         : "todo");
-  if (status === "done") return "done";
-  if (req.finished) return "open";
-  return status === "blocked"
-    ? "waiting"
-    : status === "now"
-      ? "running"
-      : "open";
+  return workState(status, reqOf(req, state));
 }
 
-export const MARK_WORDS: Record<Mark, string> = {
-  done: "Done",
-  running: "Running",
-  waiting: "Waiting on you",
-  open: "Left open",
-  failed: "Failed",
-};
+export const bandMark = (req: RequestView, b: Band, state?: State): Mark =>
+  MARK[bandState(req, b, state)];
 
-export function bandWord(req: RequestView, b: Band): string {
-  const mark = bandMark(req, b);
-  if (mark !== "open") return MARK_WORDS[mark];
-  return req.finished ? "Left open" : "Not started";
-}
+export const bandWord = (req: RequestView, b: Band, state?: State): string =>
+  WORD[bandState(req, b, state)];
 
 /** ["6 of 6 done", "10:08 to 12:47"], ["0 of 2 done", "12:50 to now"]; no span before a start. */
 export function bandLine(b: Band, running: boolean): [string, string?] {

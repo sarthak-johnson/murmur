@@ -13,10 +13,13 @@ import { byDay } from "../src/live/Rail";
 import { Live } from "../src/pages/Session";
 import type { Tab } from "../src/router";
 import { nowLine, requestMark, requestShort, shortOf } from "../src/session";
+import { clockAt } from "./clock";
 
 /** Noon UTC on a November day, the same calendar day in any time zone a test runs in. */
 const day = (d: number, min = 0) =>
   new Date(Date.UTC(2026, 10, d, 12, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(day(9, 45));
 
 function part(p: Partial<PartView> & { id: string; title: string }): PartView {
   return {

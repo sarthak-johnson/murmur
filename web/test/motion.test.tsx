@@ -4,6 +4,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Live } from "../src/pages/Session";
 import { navigate, useRoute } from "../src/router";
+import { clockAt } from "./clock";
 
 const css = readFileSync("src/theme.css", "utf8");
 
@@ -27,6 +28,8 @@ function reducedRules(): string {
 
 const day = (d: number, min = 0) =>
   new Date(Date.UTC(2026, 10, d, 12, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(day(3, 5));
 
 function request(r: Partial<RequestView> & { id: string }): RequestView {
   return {

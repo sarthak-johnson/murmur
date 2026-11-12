@@ -10,7 +10,8 @@ import {
   type RequestView,
 } from "@murmur/core";
 import { few } from "../format";
-import { shortTitle, type Waiting } from "../session";
+import { Fold } from "../markdown";
+import { shortTitle, type Waiting, youAsked } from "../session";
 import {
   clock,
   duration,
@@ -180,9 +181,10 @@ function Waits(props: {
   risky: Flag[];
   /** The ask "Where it stands" already leads with, not said twice. */
   lead?: string | undefined;
+  /** Where the wait's clock stops: the brief's end. */
+  to: string;
 }) {
-  const { request, waiting, risky, lead } = props;
-  const now = new Date().toISOString();
+  const { request, waiting, risky, lead, to: now } = props;
   const items = waiting.questions.length
     ? waiting.questions.map((q) => ({ text: q.question, detail: q.detail }))
     : (request.waiting ?? []).map((text) => ({ text, detail: undefined }));
@@ -201,6 +203,11 @@ function Waits(props: {
       </h2>
       {!items.length && waiting.text && waiting.text !== lead && (
         <p className="rb-q">{waiting.text}</p>
+      )}
+      {waiting.said && (
+        <p className="rb-said">
+          <span className="lbl-inline">Claude's last words</span> {waiting.said}
+        </p>
       )}
       {(left.length > 0 || risky.length > 0) && (
         <ul className="rb-qs">
@@ -249,8 +256,16 @@ export function RequestBrief(props: {
   const ask = waiting?.asked
     ? (waiting.questions[0]?.question ?? waiting.text)
     : undefined;
+  const asked = youAsked(req);
   return (
     <section className="rb" aria-label="The brief">
+      {asked.words && (
+        <section className="rb-cell rb-asked" aria-label="You asked">
+          <h2 className="k">You asked</h2>
+          <Fold text={asked.words} lines={4} className="rb-words" />
+          {asked.summary && <p className="rb-sum">{asked.summary}</p>}
+        </section>
+      )}
       {(ask || outcome || edge) && (
         <section className="rb-cell rb-stands" aria-label={stands}>
           <h2 className="k">{stands}</h2>
@@ -308,7 +323,13 @@ export function RequestBrief(props: {
       )}
       <Numbers request={req} end={stopped ? end : now} done={done} />
       {waiting && (
-        <Waits request={req} waiting={waiting} risky={risky} lead={ask} />
+        <Waits
+          request={req}
+          waiting={waiting}
+          risky={risky}
+          lead={ask}
+          to={stopped ? end : now}
+        />
       )}
     </section>
   );

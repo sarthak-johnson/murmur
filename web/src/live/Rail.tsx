@@ -2,8 +2,15 @@ import type { MurmurEvent, RequestView, SessionView } from "@murmur/core";
 import { Fragment, useEffect, useMemo, useRef } from "react";
 import type { Me } from "../api";
 import { follow, requestPath, sessionPath } from "../router";
-import { type Mark, requestMark, requestShort } from "../session";
-import { duration } from "../story";
+import { type Mark, requestShort } from "../session";
+import {
+  sessionFacts as factsOf,
+  isOver,
+  type RequestNow,
+  requestNow,
+  sessionNow,
+  took,
+} from "../state";
 import type { SessionStatus } from "../useSession";
 
 /** A state's word, said beside its mark so colour and shape never carry it alone. */
@@ -90,26 +97,9 @@ export function byDay(requests: RequestView[]) {
   return days;
 }
 
-const many = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
-
-/** How long the session has run: "7 days", "3 h 07 m", "under a minute". */
-export function sessionSpan(view: SessionView): string {
-  const ms = Date.parse(view.lastEventAt) - Date.parse(view.startedAt);
-  return ms < 86_400_000
-    ? duration(view.startedAt, view.lastEventAt)
-    : many(Math.round(ms / 86_400_000), "day");
-}
-
-/** "13 requests · 136 helpers · 7 days". */
-export function sessionFacts(view: SessionView): string {
-  const helpers = view.requests.reduce((n, r) => n + r.tally.helpers, 0);
-  const span = sessionSpan(view);
-  return [
-    many(view.requests.length, "request"),
-    ...(helpers ? [many(helpers, "helper")] : []),
-    span === "under a minute" ? "just started" : span,
-  ].join(" · ");
-}
+/** "13 requests · 136 helpers · 7 days", timed as every view times it (state.ts). */
+export const sessionFacts = (view: SessionView): string =>
+  factsOf(view, sessionNow(view));
 
 function StatusLine(props: { status: SessionStatus; ended?: boolean }) {
   const { status, ended } = props;
@@ -203,11 +193,13 @@ export function Rail(props: {
   const { sessionId, view, events, currentId, onRequestPage } = props;
   const { status, me, open, onClose, onJourney, ownLoop } = props;
   const box = useRef<HTMLElement>(null);
-  const marks = useMemo(
-    () => new Map(view.requests.map((r) => [r, requestMark(view, r, events)])),
-    [view, events],
-  );
-  const now = new Date().toISOString();
+  // Each request as every view reads it (state.ts): a quiet session's running one is paused.
+  const marks = useMemo(() => {
+    const ses = sessionNow(view, status);
+    return new Map(
+      view.requests.map((r) => [r, requestNow(view, r, events, ses)]),
+    );
+  }, [view, events, status]);
   // One loop on screen: the newest running request's mark.
   const pulsing =
     onJourney || ownLoop
@@ -270,17 +262,14 @@ export function Rail(props: {
     return () => document.removeEventListener("keydown", key);
   }, [open, onClose]);
 
-  const sub = (req: RequestView, mark: Mark, end: string) => {
+  const sub = (req: RequestView, rn: RequestNow) => {
     const helpers = req.tally.helpers
-      ? [many(req.tally.helpers, "helper")]
+      ? [`${req.tally.helpers} helper${req.tally.helpers === 1 ? "" : "s"}`]
       : [];
-    const live = mark === "running" || mark === "waiting";
-    const took = duration(req.startedAt, live ? now : end);
-    return [
-      ...(live ? [MARK_WORD[mark]] : []),
-      took === "under a minute" ? "<1 m" : took,
-      ...helpers,
-    ].join(" · ");
+    const live = !isOver(rn.state);
+    return [...(live ? [rn.word] : []), took(rn.from, rn.to), ...helpers].join(
+      " · ",
+    );
   };
 
   return (
@@ -309,10 +298,8 @@ export function Rail(props: {
               <h3 className="day">{day.label}</h3>
               <ol>
                 {day.rows.map(({ req, n }) => {
-                  const { mark, end } = marks.get(req) ?? {
-                    mark: "done" as const,
-                    end: now,
-                  };
+                  const rn = marks.get(req);
+                  const mark = rn?.mark ?? "done";
                   const cur = req.id === currentId;
                   const short = requestShort(req);
                   const path = requestPath(sessionId, req.id);
@@ -339,7 +326,7 @@ export function Rail(props: {
                           </span>
                           {showSub && (
                             <span className="stop-sub">
-                              {sub(req, mark, end)}
+                              {rn && sub(req, rn)}
                             </span>
                           )}
                         </span>

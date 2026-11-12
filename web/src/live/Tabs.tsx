@@ -4,6 +4,7 @@ import type {
   MurmurEvent,
   RequestView,
 } from "@murmur/core";
+import { requestFiles } from "../fileIndex";
 import { FileList, PathText } from "../files";
 import { Pill } from "../Pill";
 import {
@@ -15,8 +16,16 @@ import {
   sessionPath,
   type Tab,
 } from "../router";
-import { modelOf, shortTitle } from "../session";
-import { clock, duration, helperLine, verdictOf } from "../story";
+import { modelOf, taskTitle } from "../session";
+import { coreState, helperNow, type State } from "../state";
+import {
+  clock,
+  duration,
+  helperLine,
+  nOf,
+  thousands,
+  verdictOf,
+} from "../story";
 import { StateMark } from "./Rail";
 
 const MINUS = "−";
@@ -123,32 +132,49 @@ export function FilesTab(props: {
   const groups = [
     ...request.parts
       .filter((p) => p.files.length > 0)
-      .map((p) => ({ key: p.id, title: shortTitle(p.title), files: p.files })),
+      .map((p) => ({ key: p.id, title: taskTitle(p), files: p.files })),
     ...(request.looseFiles.length
       ? [{ key: "", title: "Outside any task", files: request.looseFiles }]
       : []),
   ];
   if (!groups.length)
     return <p className="tab-empty">No files changed in this request yet.</p>;
+  // A file several tasks changed shows under each, and counts once in the total.
+  const all = requestFiles(request);
+  const shared = new Set(
+    all.filter((f) => f.changes.length > 1).map((f) => f.path),
+  );
+  const added = all.reduce((n, f) => n + f.added, 0);
+  const removed = all.reduce((n, f) => n + f.removed, 0);
   return (
     <div className="tab-files">
-      {groups.map((g) => (
-        <section key={g.key} className="file-group" aria-label={g.title}>
-          <div className="sect">
-            <h2>{g.title}</h2>
-            <span className="num">
-              {g.files.length} {g.files.length === 1 ? "file" : "files"}
-            </span>
-          </div>
-          <FileList
-            files={g.files}
-            events={events}
-            label={g.title}
-            className="loose-files"
-            row={fileRow(cwd)}
-          />
-        </section>
-      ))}
+      <p className="files-total num">
+        {nOf(all.length, "file")} changed, +{thousands(added)} {MINUS}
+        {thousands(removed)}
+        {shared.size > 0 &&
+          ` · ${nOf(shared.size, "file")} changed by more than one task`}
+      </p>
+      {groups.map((g) => {
+        const also = g.files.filter((f) => shared.has(f.path)).length;
+        return (
+          <section key={g.key} className="file-group" aria-label={g.title}>
+            <div className="sect">
+              <h2>{g.title}</h2>
+              <span className="num">
+                {nOf(g.files.length, "file")}
+                {also > 0 && `, ${also} also under another task`}
+              </span>
+            </div>
+            <FileList
+              files={g.files}
+              events={events}
+              label={g.title}
+              className="loose-files"
+              row={fileRow(cwd)}
+            />
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -169,25 +195,27 @@ export function HelpersTab(props: {
   events: MurmurEvent[];
   /** The time shown (a replay's moment), for how long running helpers have been at it. */
   now?: string;
+  /** The request's state at that moment (state.ts): its helpers stand as it does. */
+  state?: State | undefined;
 }) {
   const { sessionId, request, events } = props;
   const now = props.now ?? new Date().toISOString();
+  const reqState = props.state ?? coreState(request);
   if (!request.agents.length)
     return <p className="tab-empty">No helpers ran in this request.</p>;
   return (
     <ol className="helpers" aria-label="Helpers">
       {request.agents.map((a, i) => {
-        const failed = /fail|kill/i.test(a.report?.status ?? "");
-        const mark =
-          a.status === "running" ? "running" : failed ? "failed" : "done";
-        const word =
-          a.status === "running" ? "Running" : failed ? "Stopped" : "Done";
+        // As the room seats it: one silent for an hour is not at work.
+        const h = helperNow(a, now, reqState);
+        const mark = h.mark;
+        const word = h.state === "failed" ? "Stopped" : h.word;
         const model = modelOf(a, events);
         const verdict = verdictOf(a.report);
         const part = helperPart(request, a);
         const path = part ? partPath(sessionId, request.id, part) : undefined;
-        const time = duration(a.startedAt, a.endedAt ?? a.report?.ts ?? now);
-        const line = helperLine(a, a.status === "running");
+        const time = duration(h.from, h.to);
+        const line = helperLine(a, h.state === "running", request);
         const body = (
           <>
             <StateMark mark={mark} />

@@ -14,9 +14,11 @@ import {
 } from "@murmur/core";
 import { type CSSProperties, useEffect, useRef } from "react";
 import { follow, requestPath } from "../router";
-import { askOf, cleanPrompt, KIND, type Mark, requestMark } from "../session";
+import { askOf, cleanPrompt, KIND, type Mark } from "../session";
+import { requestNow, type State, sessionNow, sessionSpan } from "../state";
 import { clock, duration, thousands } from "../story";
-import { dayLabel, StateMark, sessionSpan } from "./Rail";
+import type { SessionStatus } from "../useSession";
+import { dayLabel, StateMark } from "./Rail";
 
 const DAY_MS = 86_400_000;
 const many = (n: number, one: string, more = `${one}s`) =>
@@ -39,13 +41,28 @@ const sameDay = (a: string, b: string) =>
 export const live = (m: Mark | undefined) => m === "running" || m === "waiting";
 
 /** How the last request stands, after its number: "running 40 m", "done in 2 h 03 m". */
-const STANDS: Record<Mark, string> = {
+const STANDS: Record<State, string> = {
   running: "running",
   waiting: "waiting on you for",
+  paused: "paused after",
   done: "done in",
   open: "left open after",
   failed: "failed after",
+  todo: "not started",
 };
+
+/** Every request as it stands now (state.ts), by id, with the session's moment. */
+function useStands(
+  view: SessionView,
+  events: MurmurEvent[],
+  status: SessionStatus,
+) {
+  const ses = sessionNow(view, status);
+  const stands = new Map(
+    view.requests.map((r) => [r.id, requestNow(view, r, events, ses)]),
+  );
+  return { ses, stands };
+}
 
 /** Stations rise in turn on load, the first ten at most; one arriving live rises alone. */
 const STAGGER = 10;
@@ -59,6 +76,8 @@ const risen = new Set<string>();
 export function SessionHead(props: {
   view: SessionView;
   events: MurmurEvent[];
+  /** The stream's status: with the clock, whether the session is live or quiet. */
+  status?: SessionStatus;
 }) {
   const { view, events } = props;
   const reqs = view.requests;
@@ -66,11 +85,13 @@ export function SessionHead(props: {
   const folder = view.cwd.split("/").filter(Boolean).pop();
   const firstDay = start ? dayLabel(start.startedAt) : "";
   const lastDay = dayLabel(view.lastEventAt);
-  const marks = reqs.map((r) => requestMark(view, r, events).mark);
-  const running = marks.filter((m) => m === "running").length;
-  const waiting = marks.filter((m) => m === "waiting").length;
+  const { ses, stands } = useStands(view, events, props.status ?? "live");
+  const states = [...stands.values()].map((s) => s.state);
+  const running = states.filter((m) => m === "running").length;
+  const waiting = states.filter((m) => m === "waiting").length;
+  const paused = states.filter((m) => m === "paused").length;
   const chapters = view.journey?.chapters.length ?? 0;
-  const span = sessionSpan(view);
+  const span = sessionSpan(ses);
   const days = /^(\d+) (days?)$/.exec(span);
   return (
     <>
@@ -112,6 +133,11 @@ export function SessionHead(props: {
             <b className="num">{running}</b> running now
           </span>
         )}
+        {paused > 0 && (
+          <span>
+            <b className="num">{paused}</b> paused
+          </span>
+        )}
         {waiting > 0 && (
           <span className="jr-need">
             <b className="num">{waiting}</b> waiting on you
@@ -126,11 +152,16 @@ export function Journey(props: {
   sessionId: string;
   view: SessionView;
   events: MurmurEvent[];
+  /** The stream's status: with the clock, whether the session is live or quiet. */
+  status?: SessionStatus;
 }) {
   const { sessionId, view, events } = props;
   const reqs = view.requests;
-  const now = new Date().toISOString();
-  const marks = new Map(reqs.map((r) => [r.id, requestMark(view, r, events)]));
+  const { ses, stands: marks } = useStands(
+    view,
+    events,
+    props.status ?? "live",
+  );
   // The stations drawn first, with their place in the rise; null once this session's
   // journey has risen before.
   const first = useRef<{ rise: boolean; at: Map<string, number> }>(null);
@@ -164,12 +195,12 @@ export function Journey(props: {
   const decisions = j?.decisions ?? [];
   const busiest = Math.max(0, ...reqs.map((r) => r.tally.helpers));
   // One loop on screen: the newest running station.
-  const pulsing = reqs.findLast((r) => marks.get(r.id)?.mark === "running");
-  const endOf = (r: RequestView) =>
-    live(marks.get(r.id)?.mark) ? now : (marks.get(r.id)?.end ?? now);
+  const pulsing = reqs.findLast((r) => marks.get(r.id)?.state === "running");
+  // Where each request's clock stops, as every view times it (state.ts).
+  const endOf = (r: RequestView) => marks.get(r.id)?.to ?? ses.end;
   const firstDay = dayLabel(start.startedAt);
-  const span = sessionSpan(view);
-  const asked = lastMark?.mark === "waiting";
+  const span = sessionSpan(ses);
+  const asked = lastMark?.state === "waiting";
   const askedN = asked
     ? last.waiting?.length || lastMark?.waiting?.questions.length || 0
     : 0;
@@ -213,17 +244,17 @@ export function Journey(props: {
           data-morph=""
         >
           <span className="jr-k">
-            {live(lastMark?.mark) ? "Where it is now" : "Where it ended"} ·{" "}
-            {dayLabel(endOf(last))}, {clock(endOf(last))}
+            {live(lastMark?.mark)
+              ? "Where it is now"
+              : lastMark?.state === "paused"
+                ? "Where it stopped"
+                : "Where it ended"}{" "}
+            · {dayLabel(endOf(last))}, {clock(endOf(last))}
           </span>
           <span className="jr-now">{last.outcome || askOf(last)}</span>
           <span className="jr-end-meta">
-            Request {num(last)}, {STANDS[lastMark?.mark ?? "done"]}{" "}
-            {took(
-              (asked && lastMark?.waiting?.since) || last.startedAt,
-              endOf(last),
-            )}
-            .
+            Request {num(last)}, {STANDS[lastMark?.state ?? "done"]}{" "}
+            {lastMark?.clock ?? took(last.startedAt, endOf(last))}.
             {askedN > 0 && (
               <>
                 {" "}
@@ -314,7 +345,11 @@ export function Journey(props: {
                   <span className="jr-ch-meta num">
                     {[
                       many(rs.length, "request"),
-                      took(rs[0].startedAt, endOf(lastR)),
+                      // The last chapter runs to where the session's span does.
+                      took(
+                        rs[0].startedAt,
+                        lastR === last ? ses.end : endOf(lastR),
+                      ),
                       ...(helpers ? [many(helpers, "helper")] : []),
                     ].join(" · ")}
                   </span>

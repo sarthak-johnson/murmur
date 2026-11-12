@@ -12,9 +12,12 @@ import { stacks } from "../src/live/Track";
 import { Live } from "../src/pages/Session";
 import type { Tab } from "../src/router";
 import { clock } from "../src/story";
+import { clockAt } from "./clock";
 
 const at = (min: number) =>
   new Date(Date.UTC(2026, 10, 9, 15, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(at(10));
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -279,7 +282,7 @@ describe("the Tasks tab", () => {
     const name = (href: string) =>
       rows().find((r) => r.getAttribute("href") === href)?.textContent;
     expect(name("/s/s1/r/r1/p/outline")).toContain(", done");
-    expect(name("/s/s1/r/r1/p/water")).toContain(", in progress");
+    expect(name("/s/s1/r/r1/p/water")).toContain(", running");
     expect(name("/s/s1/r/r1/p/photos")).toContain(", not started");
     expect(name("/s/s1/r/r1/p/send")).toContain(", failed");
     const title = rows()[1]?.querySelector(".tk-t");

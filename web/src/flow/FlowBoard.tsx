@@ -10,6 +10,8 @@ import {
 } from "react";
 import { StateMark } from "../live/Rail";
 import { follow, partPath } from "../router";
+import { taskTitle } from "../session";
+import type { State } from "../state";
 import { clock } from "../story";
 import {
   bandLine,
@@ -121,7 +123,12 @@ function writePart(id: string | undefined) {
  * part one column right of what it reads. Selecting a part lights its links and opens its
  * detail below; `?part=` selects one on load.
  */
-export function FlowBoard(props: { sessionId: string; request: RequestView }) {
+export function FlowBoard(props: {
+  sessionId: string;
+  request: RequestView;
+  /** The request's state at the moment shown (state.ts). */
+  state?: State | undefined;
+}) {
   const { sessionId, request: req } = props;
   const stacked = useStacked();
   const frame = useFrame(req.parts.length > 0);
@@ -208,8 +215,9 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
   const less = left > 1;
   const more = left + width < layout.width - 1;
   const scrollTo = (x: number) => frame.ref.current?.scrollTo({ left: x });
-  const pulse = layout.cards.find((c) => partMark(req, c.part) === "running")
-    ?.part.id;
+  const pulse = layout.cards.find(
+    (c) => partMark(req, c.part, props.state) === "running",
+  )?.part.id;
   const on = (l: { from: string; to: string }) =>
     !!sel && (l.from === sel.id || l.to === sel.id);
   // Lit links draw last, over the quiet ones; stacked, only they are drawn.
@@ -227,7 +235,7 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
       {!stacked && (less || more) && layout.bands.length > 1 && (
         <nav className="fb-index" aria-label="Phases">
           {layout.bands.map((b) => {
-            const mark = bandMark(req, b.band);
+            const mark = bandMark(req, b.band, props.state);
             const seen = b.x < left + width && b.x + b.w > left;
             return (
               <button
@@ -276,7 +284,7 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
           >
             {layout.bands.map((b, i) => {
               const prev = layout.bands[i - 1];
-              const mark = bandMark(req, b.band);
+              const mark = bandMark(req, b.band, props.state);
               const line = bandLine(
                 b.band,
                 mark === "running" || mark === "waiting",
@@ -302,11 +310,11 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
                     </h3>
                     <div
                       className="fb-line num"
-                      title={`${bandWord(req, b.band)} · ${line.join(" · ")}`}
+                      title={`${bandWord(req, b.band, props.state)} · ${line.join(" · ")}`}
                     >
                       <span className={`fb-word ${mark}`}>
                         <StateMark mark={mark} />
-                        {bandWord(req, b.band)}
+                        {bandWord(req, b.band, props.state)}
                       </span>
                       {/* Each piece shows whole or not at all: a narrow band drops the span, then the count. */}
                       {line.map((t, k) => (
@@ -355,8 +363,8 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
             </svg>
             {layout.cards.map((c) => {
               const p = c.part;
-              const mark = partMark(req, p);
-              const word = stateWord(req, p);
+              const mark = partMark(req, p, props.state);
+              const word = stateWord(req, p, false, props.state);
               const tag = tagOf(req, p);
               const picked = p.id === sel?.id;
               const label = rel.get(p.id);
@@ -377,14 +385,14 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
                   }${p.id === pulse ? " fc-pulse" : ""}`}
                   style={{ left: c.x, top: c.y, width: c.w, height: c.h }}
                   aria-pressed={picked}
-                  aria-label={`${p.title}, ${word}`}
+                  aria-label={`${taskTitle(p)}, ${word}`}
                   tabIndex={p.id === tabStop ? 0 : -1}
                   onClick={() => choose(picked ? undefined : p.id)}
                 >
                   {label && <span className="fc-rel">{label}</span>}
-                  <span className="fc-ttl" title={p.title}>
+                  <span className="fc-ttl" title={taskTitle(p)}>
                     {tag && <span className="fc-tag num">{tag}</span>}
-                    {p.title}
+                    {taskTitle(p)}
                   </span>
                   <span className="fc-st">
                     <StateMark mark={mark} />
@@ -405,7 +413,13 @@ export function FlowBoard(props: { sessionId: string; request: RequestView }) {
         </div>
       </div>
       {sel && (
-        <Detail key={sel.id} sessionId={sessionId} request={req} part={sel} />
+        <Detail
+          key={sel.id}
+          sessionId={sessionId}
+          request={req}
+          part={sel}
+          state={props.state}
+        />
       )}
       <div className="fb-legend">
         <span>
@@ -432,13 +446,17 @@ function Detail(props: {
   sessionId: string;
   request: RequestView;
   part: PartView;
+  state?: State | undefined;
 }) {
   const { sessionId, request: req, part: p } = props;
   const tag = tagOf(req, p);
   const name = taskName(tag);
   const path = partPath(sessionId, req.id, p.id);
-  const mark = partMark(req, p);
-  const titleOf = (id: string) => req.parts.find((o) => o.id === id)?.title;
+  const mark = partMark(req, p, props.state);
+  const titleOf = (id: string) => {
+    const o = req.parts.find((x) => x.id === id);
+    return o && taskTitle(o);
+  };
   const uses = [
     ...new Set(
       p.links.flatMap((l) => (l.to === p.id ? [] : (titleOf(l.to) ?? []))),
@@ -446,7 +464,7 @@ function Detail(props: {
   ];
   const usedBy = req.parts
     .filter((o) => o.id !== p.id && o.links.some((l) => l.to === p.id))
-    .map((o) => o.title);
+    .map((o) => taskTitle(o));
   const added = p.files.reduce((s, f) => s + f.added, 0);
   const removed = p.files.reduce((s, f) => s + f.removed, 0);
   // "Frame matches…" reads "Done when frame matches…"; an acronym keeps its capitals.
@@ -458,10 +476,10 @@ function Detail(props: {
     <section className="fd" aria-label="Selected part" data-morph={path}>
       <div className="fd-main">
         <h3 className="fd-ttl">
-          {tag ? `${p.title} · ${name}` : p.title}
+          {tag ? `${taskTitle(p)} · ${name}` : taskTitle(p)}
           <span className={`fd-word ${mark}`}>
             <StateMark mark={mark} />
-            {stateWord(req, p, true)}
+            {stateWord(req, p, true, props.state)}
           </span>
         </h3>
         {p.aim?.aim && (

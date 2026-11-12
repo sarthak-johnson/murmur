@@ -17,6 +17,7 @@ import { PartDetail } from "../src/part/PartDetail";
 import type { Tab } from "../src/router";
 import { questionsIn } from "../src/session";
 import { clock } from "../src/story";
+import { clockAt } from "./clock";
 
 /** A request's own page: the newest request unless the test names one. */
 function Live(p: React.ComponentProps<typeof Page>) {
@@ -44,6 +45,8 @@ beforeEach(() => {
 
 const at = (min: number) =>
   new Date(Date.UTC(2026, 10, 6, 9, min)).toISOString();
+// The fixture's moment: live, not quiet, whatever day the tests run.
+clockAt(at(45));
 
 function part(p: Partial<PartView> & { id: string; title: string }): PartView {
   return {
@@ -654,7 +657,7 @@ describe("waiting on you", () => {
 describe("story by phase", () => {
   const story = () => screen.getByRole("region", { name: "What happened" });
 
-  it("groups Claude's words under their phase, in plan order: the live one newest first", () => {
+  it("groups Claude's words under their phase, in plan order, every one oldest first", () => {
     show(session(request()));
     const groups = [...story().querySelectorAll(".st-phase")] as HTMLElement[];
     expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual([
@@ -662,8 +665,12 @@ describe("story by phase", () => {
       "Phase 2: the screen",
     ]);
     const [done, live] = groups;
-    expect(live?.querySelector(".st-meta")?.textContent).toContain(
+    expect(live?.querySelector(".st-meta")?.textContent).not.toContain(
       "newest first",
+    );
+    // The live section ends with what is at work now, marked for the panel to scroll to.
+    expect(live?.querySelector("[data-newest]")?.textContent).toMatch(
+      /Fix bug B1, running for/,
     );
     const texts = (g: HTMLElement) =>
       [...g.querySelectorAll(".story-text")].map((t) => t.textContent);

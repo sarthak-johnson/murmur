@@ -1,7 +1,8 @@
 /*
  * The story: Claude's messages under the phase core puts them in, then "Beyond the plan".
- * A finished section reads oldest first; the live one newest first, under a now row for
- * helpers that have not reported yet. A task's run of messages folds into one row.
+ * Every section reads oldest first, the room's panel and the page alike; the live one ends
+ * with a now row for helpers that have not reported yet, its newest row marked
+ * `data-newest` for the panel to scroll to. A task's run of messages folds into one row.
  */
 import type {
   AgentView,
@@ -13,7 +14,8 @@ import type {
 import { type ReactNode, useState } from "react";
 import { cutWords } from "../format";
 import { Fold } from "../markdown";
-import { livePhase, type Mark, shortTitle, taskAgents } from "../session";
+import { livePhase, phaseName, taskAgents, taskTitle } from "../session";
+import { coreState, helperNow, isOver, MARK, type State, WORD } from "../state";
 import {
   clock,
   duration,
@@ -24,6 +26,7 @@ import {
   taskNumber,
 } from "../story";
 import { StateMark } from "./Rail";
+import { shownOf } from "./Track";
 
 /** Lines a message shows before "Show more"; one that fits is never folded. */
 const FOLD_LINES = 8;
@@ -38,11 +41,11 @@ function TaskChip(props: { task: TaskView; onOpenPart(partId: string): void }) {
       title={task.title}
       onClick={() => onOpenPart(part)}
     >
-      {shortTitle(task.title)}
+      {taskTitle(task)}
     </button>
   ) : (
     <span className="chip task-chip" title={task.title}>
-      {shortTitle(task.title)}
+      {taskTitle(task)}
     </span>
   );
 }
@@ -59,12 +62,18 @@ function Badge({ text }: { text: string }) {
 function Message(props: {
   m: MessageView;
   task?: TaskView | undefined;
+  /** The live section's newest row. */
+  marked?: boolean;
   onOpenPart(partId: string): void;
 }) {
   const { m, task, onOpenPart } = props;
   const kind = moment(m.text);
   return (
-    <li id={`m-${m.id}`} className="st-msg st-in">
+    <li
+      id={`m-${m.id}`}
+      className="st-msg st-in"
+      data-newest={props.marked ? "" : undefined}
+    >
       <time className="st-t" dateTime={m.ts}>
         {clock(m.ts)}
       </time>
@@ -131,10 +140,12 @@ function Run(props: {
   ms: MessageView[];
   subject: Subject;
   request: RequestView;
-  /** In the live section, newest first. */
+  /** In the live section. */
   live: boolean;
   /** The live section's newest run. */
   newest: boolean;
+  /** The live section's newest row, for the panel to scroll to. */
+  marked?: boolean;
 }) {
   const { ms, subject, request, live } = props;
   // The live section's newest run opens and stays open while the section is live, so
@@ -149,11 +160,11 @@ function Run(props: {
   const num = one && subject.tasks.length === 1 && taskNumber(one.title);
   const title =
     subject.tasks.length === 1 && one
-      ? num && num !== shortTitle(one.title)
-        ? `${num} · ${shortTitle(one.title)}`
-        : shortTitle(one.title)
+      ? num && num !== taskTitle(one)
+        ? `${num} · ${taskTitle(one)}`
+        : taskTitle(one)
       : subject.tasks.length > 1
-        ? `${subject.label} · ${subject.tasks.map((t) => shortTitle(t.title)).join(", ")}`
+        ? `${subject.label} · ${subject.tasks.map((t) => taskTitle(t)).join(", ")}`
         : subject.label;
   const helpers = new Set([
     ...subject.tasks.flatMap((t) => taskAgents(request, t).map((a) => a.id)),
@@ -167,7 +178,7 @@ function Run(props: {
   ];
   const problem = ms.some((m) => moment(m.text) === "problem");
   return (
-    <li className="st-run st-in">
+    <li className="st-run st-in" data-newest={props.marked ? "" : undefined}>
       <time className="st-t" dateTime={first.ts}>
         {clock(first.ts)}
       </time>
@@ -337,48 +348,48 @@ function runs(request: RequestView, ms: MessageView[], gather: boolean) {
   return out;
 }
 
-/** One section's rows: runs fold, the rest stand alone; newest first when live. */
+/**
+ * One section's rows, oldest first everywhere: runs fold, the rest stand alone. Live, a
+ * row is a run of consecutive messages, so the newest reads at the bottom, under it what
+ * is at work now; that last row carries `data-newest` for the panel to scroll to.
+ */
 function Rows(props: {
   request: RequestView;
   ms: MessageView[];
-  newestFirst: boolean;
+  live: boolean;
   waiting: AgentView[];
   /** What Claude is on, for a live section with nothing else to say yet. */
   now?: string | undefined;
+  /** The moment shown, for how long helpers have been at it. */
+  at: string;
   onOpenPart(partId: string): void;
 }) {
-  const { request, ms, newestFirst, waiting, now: on, onOpenPart } = props;
-  const groups = runs(request, ms, !newestFirst);
-  if (newestFirst) groups.reverse();
-  const now = new Date().toISOString();
-  // What is at work now reads at the newest end of the section, whichever way it runs.
-  const helpersNow = waiting.map((a) => (
-    <li key={`now:${a.id}`} className="st-now">
+  const { request, ms, live, waiting, now: on, at, onOpenPart } = props;
+  const groups = runs(request, ms, !live);
+  const helpersNow = waiting.map((a, i) => (
+    <li
+      key={`now:${a.id}`}
+      className="st-now"
+      data-newest={live && !on && i === waiting.length - 1 ? "" : undefined}
+    >
       <span className="st-t">now</span>
       <span className="st-now-b">
         <StateMark mark="running" />
         <span>
           {a.description || "A helper"}, running for{" "}
-          <span className="num">{duration(a.startedAt, now)}</span>. No report
+          <span className="num">{duration(a.startedAt, at)}</span>. No report
           yet.
         </span>
       </span>
     </li>
   ));
+  const last = groups.length - 1;
+  const newestRow = live && !on && !helpersNow.length;
   return (
     <ol className="st-rows">
-      {on && (
-        <li className="st-now">
-          <span className="st-t">now</span>
-          <span className="st-now-b">
-            <StateMark mark="running" />
-            <span>{on}</span>
-          </span>
-        </li>
-      )}
-      {newestFirst && helpersNow}
       {groups.map((g, i) => {
         const head = g.ms[0] as MessageView;
+        const newest = newestRow && i === last ? "" : undefined;
         // Keyed by its oldest message, so a row stays put (and open) as newer ones join.
         return g.subject && g.ms.length > 1 ? (
           <Run
@@ -386,19 +397,30 @@ function Rows(props: {
             ms={g.ms}
             subject={g.subject}
             request={request}
-            live={newestFirst}
-            newest={newestFirst && i === 0}
+            live={live}
+            newest={live && i === last}
+            marked={newest !== undefined}
           />
         ) : (
           <Message
             key={head.id}
             m={head}
             task={g.subject?.tasks[0]}
+            marked={newest !== undefined}
             onOpenPart={onOpenPart}
           />
         );
       })}
-      {!newestFirst && helpersNow}
+      {helpersNow}
+      {on && (
+        <li className="st-now" data-newest={live ? "" : undefined}>
+          <span className="st-t">now</span>
+          <span className="st-now-b">
+            <StateMark mark="running" />
+            <span>{on}</span>
+          </span>
+        </li>
+      )}
     </ol>
   );
 }
@@ -421,17 +443,6 @@ function phaseOf(request: RequestView, ms: MessageView[]) {
   return out.map((p) => p ?? first);
 }
 
-const STATE: Record<
-  "done" | "now" | "blocked" | "todo" | "open",
-  { mark: Mark; word: string }
-> = {
-  done: { mark: "done", word: "Done" },
-  now: { mark: "running", word: "Running" },
-  blocked: { mark: "waiting", word: "Waiting on you" },
-  todo: { mark: "open", word: "Not started" },
-  open: { mark: "open", word: "Left open" },
-};
-
 /**
  * What Claude is on, said while a running request has no word in its live section yet:
  * its last narration, else the task under way, else the next one in the plan.
@@ -439,28 +450,27 @@ const STATE: Record<
 function onNow(request: RequestView, phase?: PhaseView): string {
   if (request.now?.text) return request.now.text;
   const doing = phase?.tasks.find((t) => t.status === "now");
-  if (doing) return `Working on ${shortTitle(doing.title)}.`;
+  if (doing) return `Working on ${taskTitle(doing)}.`;
   const next = phase?.tasks.find((t) => t.status === "todo");
-  if (next) return `Next in the plan: ${shortTitle(next.title)}.`;
+  if (next) return `Next in the plan: ${taskTitle(next)}.`;
   return "Claude has not written anything yet.";
 }
 
 function Section(props: {
   id: string;
   title: string;
-  shown: keyof typeof STATE;
+  shown: State;
   meta: string;
   children: ReactNode;
 }) {
   const { id, title, shown, meta, children } = props;
-  const { mark, word } = STATE[shown];
   return (
     <section id={id} className="st-phase" aria-label={title}>
       <div className="st-h">
         <h2>{title}</h2>
-        <span className={`st-word ${shown}`}>
-          <StateMark mark={mark} />
-          {word}
+        <span className={`st-word ${shownOf(shown)}`}>
+          <StateMark mark={MARK[shown]} />
+          {WORD[shown]}
         </span>
         <span className="st-meta num">{meta}</span>
       </div>
@@ -476,22 +486,30 @@ const when = (ms: MessageView[]) => {
   return clock(a) === clock(b) ? clock(a) : `${clock(a)} to ${clock(b)}`;
 };
 
-/** Claude's messages, by phase, then beyond the plan. */
+/** Claude's messages, by phase, then beyond the plan; every section oldest first. */
 export function Story(props: {
   request: RequestView;
-  /** Over or stopped: every section reads oldest first. */
+  /** Over: no section is live. */
   done: boolean;
+  /** The request's state at the moment shown (state.ts); else read from `done` and core. */
+  state?: State | undefined;
+  /** The moment shown, for which helpers are at work and for how long. */
+  at?: string | undefined;
   onOpenPart(partId: string): void;
 }) {
   const { request, done, onOpenPart } = props;
+  const at = props.at ?? new Date().toISOString();
+  const state = props.state ?? (done ? "done" : coreState(request));
   const ms = request.messages ?? [];
   const beyond = request.beyond;
   const beyondIds = new Set(beyond?.messages ?? []);
   const planned = ms.filter((m) => !beyondIds.has(m.id));
   const after = ms.filter((m) => beyondIds.has(m.id));
-  const over = done || request.finished;
+  const over = done || request.finished || isOver(state);
+  // Paused: nothing is at work, so no section says what is under way now.
+  const stopped = over || state === "paused";
   const waiting = request.agents.filter(
-    (a) => a.status === "running" && !a.report,
+    (a) => !a.report && helperNow(a, at, state).state === "running",
   );
   // The live section: beyond the plan when there is one, else the live phase.
   const live = over
@@ -500,16 +518,19 @@ export function Story(props: {
       ? "beyond"
       : livePhase(request, done)?.id;
   const of = phaseOf(request, planned);
-  const shownOf = (ph: PhaseView): keyof typeof STATE =>
+  const phaseState = (ph: PhaseView): State =>
     ph.status === "done"
       ? "done"
       : over
         ? "open"
         : ph.status === "blocked"
-          ? "blocked"
-          : ph.id === live
-            ? "now"
-            : ph.status;
+          ? "waiting"
+          : ph.id === live || ph.status === "now"
+            ? state === "paused"
+              ? "paused"
+              : "running"
+            : "todo";
+  const liveState: State = state === "paused" ? "paused" : "running";
   // A running helper reads under the phase of the task it is on, else the live one.
   const phaseOfHelper = (a: AgentView) =>
     request.phases.find((p) =>
@@ -531,15 +552,16 @@ export function Story(props: {
         <Section
           id="story-all"
           title="What happened"
-          shown={over ? "done" : "now"}
-          meta={over ? "oldest first" : "newest first"}
+          shown={over ? "done" : liveState}
+          meta={when(ms)}
         >
           <Rows
             request={request}
             ms={ms}
-            newestFirst={!over}
+            live={!over}
             waiting={over ? [] : waiting}
-            now={!over && !ms.length && quiet ? onNow(request) : undefined}
+            now={!stopped && !ms.length && quiet ? onNow(request) : undefined}
+            at={at}
             onOpenPart={onOpenPart}
           />
         </Section>
@@ -551,28 +573,30 @@ export function Story(props: {
           if (!mine.length && !here.length && !isLive) return null;
           const n = ph.tasks.filter((t) => t.status === "done").length;
           const meta = [
-            isLive ? "newest first" : when(mine),
+            when(mine),
             `${n} of ${ph.tasks.length}`,
             ...(mine.length > 3 ? [nOf(mine.length, "message")] : []),
           ].filter(Boolean);
+          const name = phaseName(ph, state === "running");
           return (
             <Section
               key={ph.id}
               id={`phase-${ph.id}`}
-              title={ph.title}
-              shown={shownOf(ph)}
+              title={name}
+              shown={phaseState(ph)}
               meta={meta.join(" · ")}
             >
               <Rows
                 request={request}
                 ms={mine}
-                newestFirst={isLive}
+                live={isLive}
                 waiting={here}
                 now={
-                  isLive && !mine.length && !here.length
+                  isLive && !stopped && !mine.length && !here.length
                     ? onNow(request, ph)
                     : undefined
                 }
+                at={at}
                 onOpenPart={onOpenPart}
               />
             </Section>
@@ -585,19 +609,20 @@ export function Story(props: {
           <Section
             id="phase-beyond"
             title="Beyond the plan"
-            shown={live === "beyond" ? "now" : "done"}
-            meta={`since ${clock(beyond.since)}${live === "beyond" ? " · newest first" : ""}`}
+            shown={live === "beyond" ? liveState : "done"}
+            meta={`since ${clock(beyond.since)}`}
           >
             <Rows
               request={request}
               ms={after}
-              newestFirst={live === "beyond"}
+              live={live === "beyond"}
               waiting={live === "beyond" ? waiting : []}
               now={
-                live === "beyond" && !after.length && quiet
+                live === "beyond" && !stopped && !after.length && quiet
                   ? onNow(request)
                   : undefined
               }
+              at={at}
               onOpenPart={onOpenPart}
             />
           </Section>

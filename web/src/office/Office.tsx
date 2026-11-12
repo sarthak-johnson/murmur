@@ -5,7 +5,8 @@
 import type { MurmurEvent, SessionView } from "@murmur/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { navigate, officePath, sessionPath } from "../router";
-import { type RequestState, requestMark } from "../session";
+import type { RequestState } from "../session";
+import { requestNow, sessionNow } from "../state";
 import { type SessionStatus, useSession } from "../useSession";
 import { Drawer } from "./Drawer";
 import { type DrawerState, drawerFor } from "./drawerState";
@@ -25,7 +26,7 @@ import {
 import { H, T, W } from "./map";
 import { createOverlay, type Overlay } from "./overlay";
 import { createRenderer, deskTile, type Renderer } from "./render";
-import { activeRequest, deriveScene, QUIET_MS, type Scene } from "./scene";
+import { activeRequest, deriveScene, type Scene } from "./scene";
 import { clockOf, dur } from "./util";
 import "./office.css";
 
@@ -151,25 +152,23 @@ export function Office(props: {
   status: SessionStatus;
 }) {
   const { sessionId, view, events, status } = props;
-  // Live: the stream is up, the session has not ended and something happened lately; the
-  // clock then runs with real time. Up but silent for a while, it is quiet: its clock stops
-  // at its last event, so nothing reads as running for a day.
-  // A reconnect is a blip, not the session stopping: it stays live meanwhile.
-  const open = (status === "live" || status === "reconnecting") && !view.ended;
+  // Live, waiting or quiet, as every view reads it (state.ts): while it ticks the clock
+  // runs with real time; quiet, it stops at the last event, so nothing reads as running
+  // for a day. Waiting on you ticks however long the wait.
   const [wall, setWall] = useState(() => Date.now());
+  const ses = sessionNow(view, status, wall);
+  const { open, quietFor } = ses;
   useEffect(() => {
     if (!open) return;
     const t = setInterval(() => setWall(Date.now()), 1000);
     return () => clearInterval(t);
   }, [open]);
   const first = view.requests[0];
-  const START = Date.parse(first?.startedAt ?? view.startedAt);
-  const lastAt = Date.parse(view.lastEventAt);
-  const quietFor = open ? Math.max(0, wall - lastAt) : 0;
-  // Waiting on you is live however long the wait: that clock runs on.
+  const START = Date.parse(ses.from);
   // Reconnecting changes only the tag: the session is as last heard until the line is back.
   const reconnecting = status === "reconnecting";
-  const live = open && (quietFor < QUIET_MS || !!view.needsYou);
+  const live = ses.ticking;
+  const lastAt = Date.parse(ses.last);
   const END = live ? Math.max(lastAt, wall) : lastAt;
 
   // Time: null follows the newest moment; a number is a moment of the replay.
@@ -224,12 +223,22 @@ export function Office(props: {
   // The drawer reads one view: the moment's, or the live one when a stale moment lacks the request.
   const drawerView = req && viewT.requests.includes(req) ? viewT : view;
   const drawerEvents = drawerView === viewT ? eventsT : events;
-  const mark = useMemo(
-    () => (req ? requestMark(drawerView, req, drawerEvents) : null),
-    [drawerView, req, drawerEvents],
-  );
   // Its clocks tick in 10 s steps, so a playing replay does not redraw it ten times a second.
   const drawerT = new Date(Math.floor(tNow / 10_000) * 10_000).toISOString();
+  // Following, the request stands as the session does now; a replay's moment reads its own.
+  const tick = Math.floor((at === null ? wall : tNow) / 10_000) * 10_000;
+  const mark = useMemo(
+    () =>
+      req
+        ? requestNow(
+            drawerView,
+            req,
+            drawerEvents,
+            sessionNow(drawerView, status, tick),
+          )
+        : null,
+    [drawerView, req, drawerEvents, status, tick],
+  );
 
   // The drawer: open beside the room on a wide screen, over it on a narrow one.
   const [drawer, setDrawer] = useState<DrawerState | null>(() =>
@@ -494,36 +503,16 @@ export function Office(props: {
   const total = Math.max(1, Math.round((END - START) / 1000));
   const working = scene.desks.filter((d) => d.status === "running");
   const carried = working.filter((d) => d.fromRequest);
-  // The request's own mark wins (core's state), so the bar, the room and the drawer agree.
+  // The request as state.ts reads it, so the bar, the room and the drawer agree. Paused is
+  // not over: the drawer reads it as stopped mid-work, not done.
   const state: RequestState = !mark
     ? "running"
-    : mark.mark === "running" || mark.mark === "waiting"
-      ? mark.mark
-      : "done";
-  const pill =
-    !req || !mark
-      ? null
-      : scene.waiting
-        ? ([
-            "blocked",
-            `Waiting on you · ${dur(tNow - Date.parse(scene.waiting.since))}`,
-          ] as const)
-        : state === "running" && following && open && !live
-          ? // Left mid-work: it ran this long, then nothing more came.
-            ([
-              "todo",
-              `Paused · ran ${dur(tNow - Date.parse(req.startedAt))}`,
-            ] as const)
-          : state === "running"
-            ? ([
-                "now",
-                `Running · ${dur(tNow - Date.parse(req.startedAt))}`,
-              ] as const)
-            : mark.mark === "failed"
-              ? (["failed", "Failed"] as const)
-              : mark.mark === "open"
-                ? (["todo", "Left open"] as const)
-                : (["done", "Done"] as const);
+    : mark.state === "running" || mark.state === "paused"
+      ? "running"
+      : mark.state === "waiting"
+        ? "waiting"
+        : "done";
+  const pill = !req || !mark ? null : ([mark.tone, mark.label] as const);
   const helperMeta = !working.length
     ? "No helpers at work"
     : !carried.length
@@ -556,12 +545,20 @@ export function Office(props: {
           >
             Reconnecting
           </span>
-        ) : following && live ? (
+        ) : following && ses.tag === "live" ? (
           <span
             className="of-tag live"
             title="Following the session as it happens"
           >
-            Live
+            {ses.word}
+          </span>
+        ) : following && ses.tag === "waiting" ? (
+          // Waiting on you ticks on, but nothing has happened: it is not live.
+          <span
+            className="of-tag quiet waiting"
+            title={`Claude is waiting on you; nothing else has happened in this session for ${dur(quietFor)}.`}
+          >
+            Waiting · {dur(quietFor)}
           </span>
         ) : following && open ? (
           <span
@@ -677,6 +674,7 @@ export function Office(props: {
               events={drawerEvents}
               request={req}
               state={state}
+              stands={mark}
               end={mark.end}
               waiting={mark.waiting}
               mainLog={mainLog}
@@ -792,21 +790,25 @@ export function Office(props: {
         <button
           type="button"
           className={
-            following ? (live ? "of-live on live" : "of-live on") : "of-live"
+            following
+              ? ses.tag === "live"
+                ? "of-live on live"
+                : "of-live on"
+              : "of-live"
           }
           onClick={() => {
             setPlaying(false);
             seek(END);
           }}
           aria-label={
-            live
+            ses.tag === "live"
               ? "Follow the session live"
               : open
                 ? "Jump to the latest moment"
                 : "Jump to the end"
           }
         >
-          {live ? "Live" : open ? "Latest" : "End"}
+          {ses.tag === "live" ? "Live" : open ? "Latest" : "End"}
         </button>
         <div className="of-legend">
           <span className="of-lg">

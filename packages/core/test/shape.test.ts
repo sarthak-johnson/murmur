@@ -739,6 +739,22 @@ describe("full cards for every part", () => {
     expect(hero?.aim?.doneWhen).toBe("Failed");
   });
 
+  test("a review whose verdict is fix first, or that says it does not pass, sent it back", () => {
+    for (const said of [
+      "My verdict is **fix first**: one Critical finding.",
+      "Task 2 does not pass review yet: the spec has issues.",
+    ]) {
+      const [r] = reduce([
+        prompt(0, "go"),
+        mapCall(1, LIT),
+        ...helper(10, "Implement Task 2: hero", "a1"),
+        ...helper(20, "Review Task 2", "a2", said),
+      ]).requests;
+      const hero = r?.parts.find((p) => p.id === "hero");
+      expect(hero?.steps.map((s) => s.text)).toEqual(["Built", "Sent back"]);
+    }
+  });
+
   test("span from the first to the last event", () => {
     expect(part("tokens")?.span).toEqual({ start: ts(11), end: ts(40) });
   });
