@@ -160,8 +160,10 @@ function Brand() {
 }
 
 const DRAG_STEP_MS = 10 * 60_000;
-/** The least room between two ticks of the replay strip, in px. */
-const TICK_GAP = 7;
+/** The least room between two ticks of the replay strip, in px: room for a number. */
+const TICK_GAP = 12;
+/** A tick's number shows when it is this far from the last number shown. */
+const TICK_LABEL_GAP = 22;
 /** Playing skips quiet stretches longer than this, landing a few seconds before the next event. */
 const IDLE_MS = 3 * 60_000;
 const LEAD_MS = 5_000;
@@ -869,6 +871,21 @@ export function Office(props: {
     [view.requests, START, END, stripW],
   );
   const tickAt = (i: number) => ((tickPx[i] ?? 0) / stripW) * 100;
+  // Numbers on the strip, as many as fit without touching, the last always.
+  const tickLabels = useMemo(() => {
+    const out = new Set<number>();
+    let last = Number.NEGATIVE_INFINITY;
+    const n = tickPx.length;
+    tickPx.forEach((p, i) => {
+      const room = i === n - 1 || (tickPx[n - 1] ?? 0) - p >= TICK_LABEL_GAP;
+      if (p - last >= TICK_LABEL_GAP && room) {
+        out.add(i);
+        last = p;
+      }
+    });
+    if (n) out.add(n - 1);
+    return out;
+  }, [tickPx]);
   /** The tick under a point of the strip: the nearest as drawn. */
   const nearest = (x: number, el: Element) => {
     const b = el.getBoundingClientRect();
@@ -1211,7 +1228,13 @@ export function Office(props: {
                   e.stopPropagation();
                   goTo(r.startedAt);
                 }}
-              />
+              >
+                {tickLabels.has(i) && (
+                  <span className="of-tick-num" aria-hidden="true">
+                    {i + 1}
+                  </span>
+                )}
+              </button>
             ))}
             {tipReq && tip !== null && (
               <span

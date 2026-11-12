@@ -1717,7 +1717,7 @@
 }
 .of-track {
   position: relative;
-  padding-top: 18px;
+  padding-top: 30px;
   margin-bottom: 6px;
 }
 /*
@@ -1801,12 +1801,12 @@
   top: 0;
   left: 8px;
   right: 8px;
-  height: 18px;
+  height: 30px;
 }
 .of-track .of-ticks button {
   pointer-events: none;
   position: absolute;
-  top: 2px;
+  top: 14px;
   transform: translateX(-50%);
   width: 12px;
   height: 14px;
@@ -1834,6 +1834,20 @@
 .of-track .of-ticks button.tip::after,
 .of-track .of-ticks button.cur::after {
   background: var(--o-t1);
+}
+/* Each tick's number above it, as many as fit without touching. */
+.of-tick-num {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  font: 11px / 12px var(--o-mono);
+  color: var(--o-t3);
+  white-space: nowrap;
+}
+.of-ticks button.cur .of-tick-num,
+.of-ticks button.tip .of-tick-num {
+  color: var(--o-t1);
 }
 /* Requests after the time shown. */
 .of-track .of-ticks button.later::after {
