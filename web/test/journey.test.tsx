@@ -180,12 +180,12 @@ describe("the session page is the journey", () => {
     );
     expect(ends()).toBeTruthy();
     expect(main().querySelector(".req-story")).toBeNull();
-    // The rail marks the session as the page, no request as current.
-    const rail = screen.getByRole("complementary", { name: "This session" });
-    expect(rail.querySelector(".rail-sess")?.getAttribute("aria-current")).toBe(
-      "page",
+    // The panel's breadcrumb says the session is where you are, no request.
+    const crumbs = screen.getByRole("navigation", { name: "Where you are" });
+    expect(crumbs.querySelector("[aria-current]")?.textContent).toContain(
+      "Session",
     );
-    expect(rail.querySelector(".stop.cur")).toBeNull();
+    expect(crumbs.querySelectorAll("li")).toHaveLength(1);
   });
 
   it("waits for every page of events before drawing the journey", () => {
@@ -200,7 +200,7 @@ describe("the session page is the journey", () => {
       />,
     );
     expect(container.querySelector(".jr")).toBeNull();
-    expect(container.querySelector(".skeleton")).toBeTruthy();
+    expect(container.querySelector(".of-empty[aria-busy=true]")).toBeTruthy();
     rerender(
       <Live sessionId="s1" view={session()} status="live" lastLooked={null} />,
     );
@@ -235,7 +235,7 @@ describe("from here to here", () => {
     expect(from.textContent).toContain(`${dayLabel(day(2))}, ${clock(day(2))}`);
     expect(from.textContent).toContain("Question");
     expect(from.textContent).toContain("Half agree, bro.");
-    expect(from.getAttribute("href")).toBe("/s/s1/r/r1");
+    expect(from.getAttribute("href")).toBe("/s/s1/r/r1?open=story");
   });
 
   it("ends at the live request's outcome, time and state, amber only when waiting", () => {
@@ -244,7 +244,7 @@ describe("from here to here", () => {
     expect(to.textContent).toContain("Task 39 passed after two fix rounds.");
     expect(to.textContent).toContain("Where it is now");
     expect(to.textContent).toMatch(/Request 4, running/);
-    expect(to.getAttribute("href")).toBe("/s/s1/r/r4");
+    expect(to.getAttribute("href")).toBe("/s/s1/r/r4?open=story");
     expect(to.querySelector(".jr-need")).toBeNull();
     expect(to.textContent).not.toMatch(/wait on you/);
   });
@@ -363,8 +363,7 @@ describe("the line", () => {
     show(session());
     const s = station(3);
     const card = s.querySelector("a.jr-card") as HTMLAnchorElement;
-    expect(card.getAttribute("href")).toBe("/s/s1/r/r3");
-    expect(card.hasAttribute("data-morph")).toBe(true);
+    expect(card.getAttribute("href")).toBe("/s/s1/r/r3?open=story");
     expect(card.querySelector(".label-chip")?.textContent).toBe("Feature");
     expect(card.querySelector(".jr-card-ttl")?.textContent).toBe(
       "Restyle the logged-in app to the Lit plate design, then speed up My Agents",

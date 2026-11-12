@@ -70,7 +70,9 @@ describe("old addresses", () => {
     expect(redirectOf("/s/a/office")).toBe("/s/a");
     expect(redirectOf("/s/a/r/q/office")).toBe("/s/a/r/q");
     expect(redirectOf("/s/a/r/q/files")).toBe("/s/a/r/q?open=files");
-    expect(redirectOf("/s/a/r/q/flow?part=p")).toBe("/s/a/r/q?open=flow&part=p");
+    expect(redirectOf("/s/a/r/q/flow?part=p")).toBe(
+      "/s/a/r/q?open=flow&part=p",
+    );
     expect(redirectOf("/s/a/r/q/p/p1#x")).toBe("/s/a/r/q?open=task:p1#x");
   });
   it("leaves a current address alone", () => {

@@ -445,7 +445,9 @@ describe("request page, story first", () => {
 
   it("the facts say when it was asked, tasks, helpers and sent back; the track says how long", () => {
     show(session(request()), [ev(5), ev(30)]);
-    expect(within(screen.getByRole("banner")).getByText("Done")).toBeTruthy();
+    expect(
+      screen.getByRole("banner").querySelector(".of-pill")?.textContent,
+    ).toMatch(/^Done · /);
     expect(document.querySelector(".over")?.textContent).toContain(
       `asked Fri 6 Nov, ${clock(at(5))}`,
     );
@@ -456,6 +458,8 @@ describe("request page, story first", () => {
     expect(t).toContain("4 helpers");
     expect(t).toContain("3 files");
     expect(t).toContain("12 commands");
+    // A done request took from its ask to its last word (5 to 30), not to the session's
+    // last event (40).
     const track = screen.getByRole("region", { name: "Phase track" });
     expect(track.querySelector(".trk-foot")?.textContent).toContain(
       "Took: 25 m",
@@ -470,8 +474,9 @@ describe("request page, story first", () => {
       agents: [],
     });
     show(session(running));
-    const bar = () => within(screen.getByRole("banner"));
-    expect(bar().getByText("Running")).toBeTruthy();
+    const pill = () => screen.getByRole("banner").querySelector(".of-pill");
+    // Running, or paused once the session went quiet with the request still open.
+    expect(pill()?.textContent).toMatch(/^(Running · |Paused · ran )/);
     const band = screen.getByRole("group", { name: "Summary" });
     expect(band.textContent).not.toContain("helpers");
     expect(band.textContent).not.toContain("sent back");
@@ -481,8 +486,11 @@ describe("request page, story first", () => {
         needsYou: { reason: "permission", text: "Allow Bash?", since: at(9) },
       }),
     );
-    expect(document.querySelector(".state-pill")).toBeNull();
-    expect(bar().getByRole("link", { name: /Permission needed/ })).toBeTruthy();
+    // Waiting on you: the one amber pill, and the panel says what is asked.
+    expect(pill()?.textContent).toMatch(/^Waiting on you · /);
+    expect(
+      screen.getByRole("complementary", { name: "Details" }).textContent,
+    ).toContain("Allow Bash?");
   });
 
   it("the timeline runs oldest first once done, each task's messages in one row", () => {
@@ -549,9 +557,7 @@ describe("request page, story first", () => {
     expect(chip.title).toBe("Task 1: Lit plate tokens");
     expect(within(decision as HTMLElement).queryByRole("button")).toBeNull();
     await userEvent.click(chip);
-    expect(location.pathname + location.search).toBe(
-      "/s/s1?open=task:task:1",
-    );
+    expect(location.pathname + location.search).toBe("/s/s1?open=task:task:1");
   });
 
   it("folds consecutive messages about one task into one row that opens in place", async () => {
@@ -701,7 +707,7 @@ describe("request page, story first", () => {
   it("the map is a tab beside the story, one click away", async () => {
     show(session(request()));
     const tabs = screen.getByRole("navigation", {
-      name: "Views of this request",
+      name: "This request",
     });
     expect(
       within(tabs)
@@ -710,7 +716,7 @@ describe("request page, story first", () => {
     ).toBe("page");
     expect(screen.queryByRole("region", { name: "Flow" })).toBeNull();
     await userEvent.click(within(tabs).getByRole("link", { name: "Flow" }));
-    expect(location.pathname).toMatch(/\/flow$/);
+    expect(location.search).toBe("?open=flow");
   });
 
   it("a request with no messages draws no story, and the flow stays on its tab", () => {
@@ -767,7 +773,7 @@ describe("request page, story first", () => {
     );
     const now = screen.getByRole("region", { name: "Now" });
     expect(within(now).getByText("Run the frontend suite")).toBeTruthy();
-    await userEvent.click(within(now).getByRole("button", { name: "Details" }));
+    await userEvent.click(within(now).getByRole("button", { name: "Source" }));
     expect(
       within(now).getByText("cd /x/app && pnpm test 2>&1 | tail -3"),
     ).toBeTruthy();
@@ -790,7 +796,8 @@ describe("request page, story first", () => {
         }),
       ),
     );
-    const now = screen.getByRole("region", { name: "Now" });
+    // Over, the line says what the request did in all.
+    const now = screen.getByRole("region", { name: "In all" });
     expect(within(now).queryByText(/Running tail/)).toBeNull();
     expect(now.textContent).toContain("4 helpers");
   });
@@ -940,10 +947,10 @@ describe("round 3", () => {
 
   it("the page's first stop skips to the content", () => {
     show(session(request()));
-    // The first link on the page, before the rail.
+    // The first link on the page, before the bars.
     const skip = screen.getAllByRole("link")[0] as HTMLElement;
     expect(skip.textContent).toBe("Skip to the content");
-    expect(skip.getAttribute("href")).toBe("#main");
+    expect(skip.getAttribute("href")).toBe("#panel");
     expect(document.getElementById("plan")).toBeNull();
     expect(within(story()).queryByRole("link", { name: /Skip/ })).toBeNull();
   });
@@ -960,7 +967,7 @@ describe("round 3", () => {
         lastLooked={null}
       />,
     );
-    expect(container.querySelector(".skeleton")).toBeTruthy();
+    expect(container.querySelector(".of-empty[aria-busy=true]")).toBeTruthy();
     expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
     // Once loaded, an unknown id falls back to the newest request.
     rerender(
@@ -989,8 +996,8 @@ describe("round 3", () => {
       },
     });
     show(session(open), [ev(5), stop]);
-    const bar = () => within(screen.getByRole("banner"));
-    expect(bar().getByText("Done")).toBeTruthy();
+    const pill = () => screen.getByRole("banner").querySelector(".of-pill");
+    expect(pill()?.textContent).toMatch(/^Done · /);
     cleanup();
     show(
       session(
@@ -998,7 +1005,8 @@ describe("round 3", () => {
       ),
       [ev(5), stop],
     );
-    expect(bar().getByText("Running")).toBeTruthy();
+    // A helper still at work: running on (or paused, once the session went quiet).
+    expect(pill()?.textContent).toMatch(/^(Running|Paused) · /);
   });
 
   it("in a finished request, unfinished tasks read as left open, not running", () => {

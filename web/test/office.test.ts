@@ -8,12 +8,6 @@ import {
   reduce,
 } from "@murmur/core";
 import { describe, expect, it } from "vitest";
-import {
-  openFor,
-  readOpen,
-  roomKey,
-  toolWords,
-} from "../src/office/panelState";
 import { firstAfter, nextEventAfter } from "../src/office/feed";
 import {
   BOARD_INNER,
@@ -23,6 +17,12 @@ import {
   JOB_BOARD,
   jobCards,
 } from "../src/office/map";
+import {
+  openFor,
+  readOpen,
+  roomKey,
+  toolWords,
+} from "../src/office/panelState";
 import {
   activeRequest,
   actOf,

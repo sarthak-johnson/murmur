@@ -711,7 +711,9 @@ describe("live screen", () => {
       agents: [],
     });
     show(view);
-    expect(within(screen.getByRole("banner")).getByText(/^Done · /)).toBeTruthy();
+    expect(
+      within(screen.getByRole("banner")).getByText(/^Done · /),
+    ).toBeTruthy();
     const now = screen.getByRole("region", { name: "In all" });
     expect(
       within(now).getByText("3 helpers, 19 files changed, 51 commands run"),
@@ -730,7 +732,9 @@ describe("live screen", () => {
       agents: [running("a1"), { ...running("a2"), status: "done" }],
     });
     show(view);
-    expect(within(screen.getByRole("banner")).getByText(/^Done · /)).toBeTruthy();
+    expect(
+      within(screen.getByRole("banner")).getByText(/^Done · /),
+    ).toBeTruthy();
     const now = screen.getByRole("region", { name: "In all" });
     expect(within(now).getByText("Nothing changed")).toBeTruthy();
     expect(now.textContent).not.toContain("still running");

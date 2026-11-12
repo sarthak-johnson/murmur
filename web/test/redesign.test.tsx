@@ -26,10 +26,22 @@ function Live(p: React.ComponentProps<typeof Page>) {
   return <Page {...p} requestId={p.requestId ?? p.view?.requests.at(-1)?.id} />;
 }
 
+const narrow = window.innerWidth;
+/** A window wide enough for the requests rail beside the room. */
+const wide = () =>
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: 1600,
+  });
+
 afterEach(() => {
   cleanup();
   localStorage.clear();
   vi.useRealTimers();
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: narrow,
+  });
 });
 beforeEach(() => {
   vi.stubGlobal(
@@ -275,12 +287,16 @@ function show(
 }
 
 const bar = () => screen.getByRole("banner");
+/** The state pill of the request on the floor. */
+const pill = () => bar().querySelector(".of-pill")?.textContent;
 
 describe("top bar", () => {
   it("while running: Running, the now line, and the phase track under the brief", () => {
+    // Moments after the last event: live, not a session gone quiet.
+    vi.useFakeTimers({ now: new Date(at(41)), toFake: ["Date"] });
     show(session(request()));
     const b = within(bar());
-    expect(b.getByText("Running")).toBeTruthy();
+    expect(pill()).toBe("Running · 41 m");
     expect(
       within(b.getByRole("region", { name: "Now" })).getByText(
         "Two builders are running their checks",
@@ -311,16 +327,15 @@ describe("top bar", () => {
     });
     show(session(done));
     const b = within(bar());
-    expect(b.getByText("Done")).toBeTruthy();
-    expect(b.queryByText("Running")).toBeNull();
-    const now = b.getByRole("region", { name: "Now" });
+    expect(pill()).toMatch(/^Done · /);
+    const now = b.getByRole("region", { name: "In all" });
     expect(now.textContent).toContain(
       "4 helpers, 6 files changed, 20 commands run",
     );
     expect(now.textContent).not.toContain("Editing notes.md");
   });
 
-  it("waiting on a question: the amber chip counts the questions and the wait", () => {
+  it("waiting on a question: the amber pill says the wait, the brief lists the questions", () => {
     vi.useFakeTimers({ now: new Date(at(61)), toFake: ["Date"] });
     const ask = ev("q1", 40, "PreToolUse", {
       tool_name: "AskUserQuestion",
@@ -341,10 +356,13 @@ describe("top bar", () => {
       },
     });
     show(session(request()), { events: [ask] });
-    const chip = within(bar()).getByRole("link", { name: /waiting on you/ });
-    expect(chip.textContent).toContain("2 waiting on you");
-    expect(chip.textContent).toContain("21 m");
-    expect(chip.className).toContain("need");
+    // The wait runs on in real time (21 m since the ask). Fails while the office stops its
+    // clock at the last event once quiet: it is only kept live by view.needsYou, not by an
+    // open AskUserQuestion read from the events.
+    expect(pill()).toBe("Waiting on you · 21 m · 2 questions");
+    expect(bar().querySelector(".of-pill")?.className).toContain("s-blocked");
+    const call = screen.getByRole("region", { name: "Waiting on you" });
+    expect(call.querySelectorAll("li")).toHaveLength(2);
   });
 
   it("a question already answered raises no chip", () => {
@@ -388,7 +406,7 @@ describe("now line", () => {
     const now = within(bar()).getByRole("region", { name: "Now" });
     expect(within(now).getByText("Running a command")).toBeTruthy();
     expect(now.textContent).not.toContain("pnpm");
-    await userEvent.click(within(now).getByRole("button", { name: "Details" }));
+    await userEvent.click(within(now).getByRole("button", { name: "Source" }));
     expect(
       screen.getByText("cd /x/garden && pnpm vitest run src/remind"),
     ).toBeTruthy();
@@ -412,6 +430,7 @@ describe("now line", () => {
 
 describe("requests in the rail", () => {
   it("names the request's place and switches to another", async () => {
+    wide();
     show(session(request()));
     expect(document.querySelector(".over")?.textContent).toContain(
       "Request 2 of 2",
@@ -424,8 +443,9 @@ describe("requests in the rail", () => {
       "Watering reminders for the garden planner",
     );
     expect(items[1]?.className).toContain("cur");
+    // A row pins that request's floor, the panel on its story.
     await userEvent.click(items[0] as HTMLElement);
-    expect(location.pathname).toBe("/s/s1/r/r1");
+    expect(location.pathname + location.search).toBe("/s/s1/r/r1?open=story");
   });
 });
 
@@ -468,22 +488,23 @@ describe("phase track", () => {
     ).toBe(true);
   });
 
-  it("shows the running helpers in the side with their model and time", () => {
+  it("the Helpers tab shows the running helpers with their model and time", () => {
     vi.useFakeTimers({ now: new Date(at(51)), toFake: ["Date"] });
     show(session(request()), {
+      tab: "helpers",
       events: [
         agentCall("c3", 30, "Brief for a3", "opus"),
         agentCall("c4", 31, "Brief for a4", "sonnet"),
       ],
     });
-    const helpers = screen.getByRole("region", { name: "Helpers" });
-    const running = [...helpers.querySelectorAll(".hl-row")].filter((r) =>
+    const helpers = screen.getByRole("list", { name: "Helpers" });
+    const running = [...helpers.querySelectorAll("li")].filter((r) =>
       r.querySelector(".mk.running"),
     );
-    expect(running.map((r) => r.querySelector(".hl-s")?.textContent)).toEqual([
-      "Opus · running 21 m · no report yet",
-      "Sonnet · running 20 m · no report yet",
-    ]);
+    const meta = running.map((r) => r.querySelector(".h-meta")?.textContent);
+    expect(meta).toHaveLength(2);
+    expect(meta[0]).toMatch(/Opus.*Running.*21 m/);
+    expect(meta[1]).toMatch(/Sonnet.*Running.*20 m/);
   });
 
   it("a finished request has no live phase; unfinished work reads as left open", () => {
@@ -503,9 +524,22 @@ describe("phase track", () => {
     expect(segs()[1]?.querySelector(".trk-s")?.textContent).toContain(
       "left open",
     );
+    cleanup();
+    show(
+      session(
+        request({
+          finished: true,
+          agents: request().agents.map((a) => ({
+            ...a,
+            status: "done" as const,
+          })),
+        }),
+      ),
+      { tab: "helpers" },
+    );
     expect(
       screen
-        .getByRole("region", { name: "Helpers" })
+        .getByRole("list", { name: "Helpers" })
         .querySelector(".mk.running"),
     ).toBeNull();
   });
@@ -528,7 +562,7 @@ describe("phase track", () => {
       agents: request().agents.map((a) => ({ ...a, status: "done" as const })),
     });
     show(session(req), { events: [ev("s", 45, "Stop")] });
-    expect(within(bar()).getByText("Done")).toBeTruthy();
+    expect(pill()).toMatch(/^Done · /);
     expect(track().querySelector(".st.now")).toBeNull();
     expect(track().querySelector(".trk-seg.open .trk-s")?.textContent).toBe(
       "0 of 3 done · left open",
@@ -541,11 +575,12 @@ describe("phase track", () => {
     await userEvent.click(
       within(track()).getByRole("link", { name: /Schedule maths/ }),
     );
-    expect(location.pathname).toBe("/s/s1/r/r2/p/maths");
+    // Its close-up in the office, on the floor Claude is on.
+    expect(location.search).toBe("?open=task:maths");
     cleanup();
     show(session(request()), { requestId: "r2", partId: "maths" });
     const here = within(
-      screen.getByRole("navigation", { name: "Breadcrumb" }),
+      screen.getByRole("navigation", { name: "Where you are" }),
     ).getByText(
       (_, e) =>
         e?.getAttribute("aria-current") === "page" &&
@@ -642,10 +677,7 @@ describe("waiting on you", () => {
       "Should I default snooze to ten minutes?",
       "And may I drop the old list view?",
     ]);
-    expect(bar().querySelector(".state-pill")).toBeNull();
-    expect(
-      within(bar()).getByRole("link", { name: /waiting on you/ }).textContent,
-    ).toContain("2 waiting on you");
+    expect(pill()).toMatch(/^Waiting on you/);
   });
 
   it("is not drawn when Claude waits on no one", () => {
@@ -684,14 +716,15 @@ describe("story by phase", () => {
   it("the map is one tab away", async () => {
     show(session(request()));
     expect(screen.queryByRole("region", { name: "Flow" })).toBeNull();
-    await userEvent.click(screen.getByRole("link", { name: "Flow" }));
-    expect(location.pathname).toBe("/s/s1/r/r2/flow");
+    const tabs = () => screen.getByRole("navigation", { name: "This request" });
+    await userEvent.click(within(tabs()).getByRole("link", { name: "Flow" }));
+    expect(location.pathname + location.search).toBe("/s/s1?open=flow");
     cleanup();
     show(session(request()), { requestId: "r2", tab: "flow" });
     expect(screen.getByRole("region", { name: "Flow" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "What happened" })).toBeNull();
-    await userEvent.click(screen.getByRole("link", { name: "Story" }));
-    expect(location.pathname).toBe("/s/s1/r/r2");
+    await userEvent.click(within(tabs()).getByRole("link", { name: "Story" }));
+    expect(location.pathname + location.search).toBe("/s/s1?open=story");
   });
 });
 
@@ -983,7 +1016,7 @@ describe("review fixes: questions", () => {
       ],
     });
     show(session(req), { events: [ev("s", 45, "Stop")] });
-    expect(within(bar()).getByText("Done")).toBeTruthy();
+    expect(pill()).toMatch(/^Done · /);
     expect(within(bar()).queryByText(/waiting on you/)).toBeNull();
     expect(
       screen.queryByRole("region", { name: "Needs your call" }),
@@ -1031,7 +1064,7 @@ describe("review fixes: words", () => {
         }),
       ),
     );
-    const now = within(bar()).getByRole("region", { name: "Now" });
+    const now = within(bar()).getByRole("region", { name: "In all" });
     expect(now.textContent).not.toContain("still running");
   });
 
@@ -1072,14 +1105,17 @@ describe("review fixes: words", () => {
       ),
     );
     const now = within(bar()).getByRole("region", { name: "Now" });
-    const details = within(now).getByRole("button", { name: "Details" });
+    const details = within(now).getByRole("button", { name: "Why now" });
+    const why = () => now.querySelector(".now-why")?.textContent;
     await userEvent.click(details);
-    expect(within(now).getByText(/Why now/)).toBeTruthy();
+    expect(why()).toBe("Why now: it is next");
+    // Escape closes the expander alone: the panel stays open.
     await userEvent.keyboard("{Escape}");
-    expect(within(now).queryByText(/Why now/)).toBeNull();
+    expect(why()).toBeUndefined();
+    expect(screen.getByRole("complementary", { name: "Details" })).toBeTruthy();
     await userEvent.click(details);
     await userEvent.click(screen.getByRole("heading", { level: 1 }));
-    expect(within(now).queryByText(/Why now/)).toBeNull();
+    expect(why()).toBeUndefined();
   });
 
   it("where to answer is a plain note, not a button that does nothing", () => {
@@ -1163,17 +1199,19 @@ describe("review fixes: stillness and order", () => {
     r.parts = r.parts.map((p) =>
       p.id === "list" ? { ...p, agents: [...p.agents, "a5"] } : p,
     );
-    render(live(r, "live"));
+    show(session(r), { tab: "helpers" });
     const rows = [
-      ...screen
-        .getByRole("region", { name: "Helpers" })
-        .querySelectorAll(".hl-row"),
+      ...screen.getByRole("list", { name: "Helpers" }).querySelectorAll("li"),
     ];
     const a5 = rows.find(
-      (r) => r.querySelector(".hl-n")?.textContent === "a5",
+      (r) => r.querySelector(".h-name")?.textContent === "a5",
     ) as HTMLElement;
-    expect(a5.querySelector(".hl-s")?.textContent).toBe(
-      "running under a minute · no report yet",
+    expect(a5.querySelector(".h-meta")?.textContent).toContain("Running");
+    expect(a5.querySelector(".h-meta")?.textContent).toMatch(/\d\d:\d\d, /);
+    expect(a5.querySelector(".mk.running")).toBeTruthy();
+    // Its row opens its own close-up in the office.
+    expect(a5.querySelector("a")?.getAttribute("href")).toBe(
+      "/s/s1/r/r2?open=helper:a5",
     );
   });
 
@@ -1181,8 +1219,9 @@ describe("review fixes: stillness and order", () => {
     show(session(request({ messages: [msg("m1", 1, "Starting.")] })));
     const skip = screen.getAllByRole("link")[0] as HTMLElement;
     expect(skip.textContent).toBe("Skip to the content");
-    expect(skip.getAttribute("href")).toBe("#main");
-    expect(document.getElementById("main")?.tagName).toBe("MAIN");
+    // To the panel while it is open.
+    expect(skip.getAttribute("href")).toBe("#panel");
+    expect(document.getElementById("panel")?.tagName).toBe("ASIDE");
     expect(screen.queryByRole("link", { name: "Skip to the plan" })).toBeNull();
   });
 
@@ -1195,7 +1234,8 @@ describe("review fixes: stillness and order", () => {
     expect(story.textContent).not.toContain("newest first");
   });
 
-  it("the tab lives in the URL: another request opens on its Story", () => {
+  it("the tab lives in the URL: the rail keeps a request's tab, a bare request opens on its Story", () => {
+    wide();
     const two = session(request(), {
       requests: [request({ id: "r1", goal: "Fix the login form" }), request()],
     });
@@ -1203,7 +1243,7 @@ describe("review fixes: stillness and order", () => {
     expect(screen.getByRole("region", { name: "Flow" })).toBeTruthy();
     const rail = screen.getByRole("navigation", { name: "Requests" });
     expect(within(rail).getAllByRole("link")[0]?.getAttribute("href")).toBe(
-      "/s/s1/r/r1",
+      "/s/s1/r/r1?open=flow",
     );
     rerender(
       <Live

@@ -256,11 +256,17 @@ export function Office(props: {
   // Waiting on you is live however long the wait: that clock runs on.
   // Reconnecting changes only the tag: the session is as last heard until the line is back.
   const reconnecting = status === "reconnecting";
-  const live = open && (quietFor < QUIET_MS || !!view.needsYou);
-  const END = live ? Math.max(lastAt, wall) : lastAt;
-
   // The floor Claude is on, now: pinned to it is following it, and the address says so.
-  const liveActiveId = activeRequest(view.requests)?.id;
+  const liveActive = activeRequest(view.requests);
+  const liveActiveId = liveActive?.id;
+  // A wait read from the events (a question in Claude's last message) is a wait too.
+  const asking = useMemo(
+    () =>
+      !!liveActive && requestMark(view, liveActive, events).mark === "waiting",
+    [view, liveActive, events],
+  );
+  const live = open && (quietFor < QUIET_MS || !!view.needsYou || asking);
+  const END = live ? Math.max(lastAt, wall) : lastAt;
   const pinnedId =
     props.pinnedId &&
     props.pinnedId !== liveActiveId &&

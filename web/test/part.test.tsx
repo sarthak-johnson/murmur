@@ -1124,7 +1124,9 @@ describe("task page (reshape)", () => {
   it("the flow link says how many parts use this one and selects it on the flow board", () => {
     showIt();
     const flow = screen.getByRole("link", { name: "Flow: 2 parts use this" });
-    expect(flow.getAttribute("href")).toBe("/s/s1/r/r1?open=flow&part=task%3A1");
+    expect(flow.getAttribute("href")).toBe(
+      "/s/s1/r/r1?open=flow&part=task%3A1",
+    );
     cleanup();
     const t = reshaped();
     showIt(t, t.r.parts[1]);
