@@ -7,12 +7,15 @@
  */
 import { Worker } from "node:worker_threads";
 import type { MurmurEvent } from "@murmur/core";
-import { and, asc, desc, eq, gt, isNull, lt, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { Db } from "./db/client.js";
 import { events, sessions } from "./db/schema.js";
-import type { SessionSummary } from "./summarize.js";
+import { READING, type SessionSummary } from "./summarize.js";
 
 export type { SessionSummary } from "./summarize.js";
+
+/** A stored summary read by an older `READING`: stale whatever its version. */
+const oldReading = sql`(${sessions.summary}->>'reading') is distinct from ${String(READING)}`;
 
 /** Events read per query. */
 const PAGE = 2000;
@@ -104,14 +107,22 @@ function theWorker(): Worker {
   return w;
 }
 
-const inWorker: Summarizer = async (pages) => {
+/** Reduces a session in the worker (exported for tests). */
+export const summarizeInWorker: Summarizer = async (pages) => {
   const id = nextId++;
   const w = theWorker();
   const done = new Promise<SessionSummary | null>((ok, fail) =>
     waiting.set(id, { ok, fail }),
   );
+  // A worker lost while the pages load rejects `done` before it is returned: handled
+  // here, or Node exits on the unhandled rejection; the caller still sees it below.
+  done.catch(() => {});
   try {
-    for await (const events of pages) w.postMessage({ id, events });
+    for await (const events of pages) {
+      // Lost already: stop reading the session, `done` has failed.
+      if (!waiting.has(id)) return done;
+      w.postMessage({ id, events });
+    }
     w.postMessage({ id, end: true });
   } catch (e) {
     waiting.delete(id);
@@ -121,12 +132,12 @@ const inWorker: Summarizer = async (pages) => {
   return done;
 };
 
-let summarizer: Summarizer = inWorker;
+let summarizer: Summarizer = summarizeInWorker;
 /** Swaps what reduces a session (for tests); returns the way back. */
 export function useSummarizer(s: Summarizer): () => void {
   summarizer = s;
   return () => {
-    summarizer = inWorker;
+    summarizer = summarizeInWorker;
   };
 }
 
@@ -151,10 +162,11 @@ export async function refreshSummary(
       machineId: sessions.machineId,
       version: sessions.version,
       summaryOfVersion: sessions.summaryOfVersion,
+      oldReading: sql<boolean>`${oldReading}`,
     })
     .from(sessions)
     .where(own);
-  if (!s || s.summaryOfVersion === s.version) return;
+  if (!s || (s.summaryOfVersion === s.version && !s.oldReading)) return;
   const summary = await read(pagesOf(db, userId, sessionId, s));
   if (!summary) return;
   await db
@@ -166,6 +178,7 @@ export async function refreshSummary(
         or(
           isNull(sessions.summaryOfVersion),
           lt(sessions.summaryOfVersion, s.version),
+          and(eq(sessions.summaryOfVersion, s.version), oldReading),
         ),
       ),
     );
@@ -230,8 +243,8 @@ export async function stopSummaries(): Promise<void> {
 }
 
 /**
- * Every session whose summary is missing or older than its last ingest, read again one at
- * a time: at server start, in the background, so the first lobby after it reads them.
+ * Every session whose summary is missing, older than its last ingest or of an older
+ * `READING`, read again one at a time: at server start, in the background, so the first lobby after it reads them.
  */
 export async function backfillSummaries(db: Db): Promise<void> {
   const stale = await db
@@ -241,8 +254,12 @@ export async function backfillSummaries(db: Db): Promise<void> {
       or(
         isNull(sessions.summaryOfVersion),
         ne(sessions.summaryOfVersion, sessions.version),
+        oldReading,
       ),
     )
     .orderBy(desc(sessions.lastEventAt));
+  if (!stale.length) return;
+  console.log(`summaries: reading ${stale.length} stale`);
   for (const s of stale) await run(db, s.userId, s.sessionId);
+  console.log(`summaries: read ${stale.length}`);
 }

@@ -12,17 +12,25 @@
  *   Both only ever turn true as events arrive, so a run never flips back. A part is
  *   `now` while a run runs, else `done`; its task is `failed` when its last run failed.
  * - Files: Edit, Write and Bash file changes (`touchesOf`) inside a run's subagent go to its part, even after the next
- *   prompt. Main-thread ones group by the folder of their display path (from the cwd of
+ *   prompt; a Bash diff's file only when `bashCredit` makes it the caller's (one it
+ *   cannot place stays loose, another's goes to its writer). Main-thread ones group by the folder of their display path (from the cwd of
  *   the request's prompt, the first event of its list); a one-file folder
  *   joins its nearest folder with a part; the 6 biggest folders become parts. Root files,
  *   the rest, and touches of subagents with no run stay in `looseFiles`.
  * - Parts are in start order; a part changing a file an earlier one changed links to it
- *   with "same files". With no TaskCreated plan, one "What Claude did" phase lists them,
- *   each task holding its part's helpers; every helper's `part` is the part that owns it.
+ *   with "same files". With no TaskCreated plan, one "What Claude did" phase lists the
+ *   helper parts, each task holding its part's helpers; a folder part is no task, and a
+ *   request with only folders has no plan. Every helper's `part` is the part that owns it.
  */
 import type { MurmurEvent } from "../events.js";
-import { addTouch, displayPath, touchesOf } from "./files.js";
-import { addOnce } from "./requests.js";
+import {
+  addTouch,
+  bashCredit,
+  type Credit,
+  displayPath,
+  touchesOf,
+} from "./files.js";
+import { addOnce, phaseStatus } from "./requests.js";
 import { itemOf } from "./rounds.js";
 import type {
   AgentView,
@@ -100,6 +108,7 @@ export function inferHistory(
   events: MurmurEvent[][],
   agents: Map<string, AgentView>,
   started: Map<string, string>,
+  credit: Credit = bashCredit(events.flat()),
 ): void {
   const all = events.flat();
   const { lastAt, over } = quiet(all);
@@ -179,11 +188,14 @@ export function inferHistory(
     const req = reqs[j] as RequestView;
     for (const e of list)
       for (const t of touchesOf(e)) {
+        // A Bash diff's file is the caller's only by core's rule (files.ts).
+        const c = credit(e, t.path);
+        if (c === "other") continue;
         const agentId = str(e.payload.agent_id);
-        const part = owner.get(agentId);
+        const part = c === "own" ? owner.get(agentId) : undefined;
         if (part) addTouch(part.files, t);
         else if (!req.planInferred) continue;
-        else if (agentId) addTouch(req.looseFiles, t);
+        else if (agentId || c === "loose") addTouch(req.looseFiles, t);
         else main[j]?.push({ touch: t, ts: e.ts });
       }
   });
@@ -207,23 +219,22 @@ export function inferHistory(
         if (a.files.some((f) => paths.has(f.path)))
           b.links.push({ to: a.id, label: "same files" });
     });
-    if (req.phases.length || !parts.length) return;
-    const tasks: TaskView[] = parts.map(({ part, lastFailed }) => ({
-      id: part.id,
-      title: part.title,
-      part: part.id,
-      status: lastFailed ? "failed" : part.status,
-      agents: [...part.agents], // its helpers, as `TaskView.agents` says
-    }));
+    // A folder is where files changed, not work to do: it stays a part, never a task.
+    if (req.phases.length || !helpers.length) return;
+    const tasks: TaskView[] = helpers
+      .sort(byStart)
+      .map(({ part, lastFailed }) => ({
+        id: part.id,
+        title: part.title,
+        part: part.id,
+        status: lastFailed ? "failed" : part.status,
+        agents: [...part.agents], // its helpers, as `TaskView.agents` says
+      }));
     req.phases = [
       {
         id: "did",
         title: "What Claude did",
-        status: tasks.some((t) => t.status === "now" || t.status === "failed")
-          ? "now"
-          : tasks.every((t) => t.status === "done")
-            ? "done"
-            : "todo",
+        status: phaseStatus(tasks),
         tasks,
       },
     ];

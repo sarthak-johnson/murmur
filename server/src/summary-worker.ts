@@ -9,6 +9,9 @@ import { summarize } from "./summarize.js";
 
 const port = parentPort;
 if (!port) throw new Error("summary-worker runs as a worker");
+// ponytail: a read holds its whole session in memory before reduce runs (reduce takes
+// the full list); a session of a few hundred thousand events is a few hundred MB here.
+// Fold pages into an incremental reduce if sessions ever grow that long.
 const reads = new Map<number, MurmurEvent[]>();
 port.on(
   "message",

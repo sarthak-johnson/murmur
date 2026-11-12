@@ -3,15 +3,7 @@
  * request's loose files), so one path can sit under several tasks of a request and under
  * several requests; totals count it once and add its lines up.
  */
-import {
-  type AgentView,
-  addTouch,
-  type FileTouch,
-  type MurmurEvent,
-  type RequestView,
-  type SessionView,
-  touchesOf,
-} from "@murmur/core";
+import type { FileTouch, RequestView, SessionView } from "@murmur/core";
 import { placeOf, taskTitle } from "./session";
 
 /** One request's (or task's) change to a file. */
@@ -108,38 +100,6 @@ export function fileIndex(view: SessionView): IndexedFile[] {
   return gather(view.requests.flatMap((r, i) => changesOf(r, i + 1))).sort(
     (a, b) =>
       b.changes.length - a.changes.length || a.path.localeCompare(b.path),
-  );
-}
-
-/**
- * A Bash command's diff is the whole working tree's change while it ran: helpers writing in
- * the same folder at the same time land in each other's. A file in it is the command's own
- * when the command names it (its path or its file name); an edit or a write is always its
- * own. ponytail: a script that writes files it never names is missed; core would need the
- * command's own writes to do better.
- */
-export function ownTouch(e: MurmurEvent, path: string): boolean {
-  if (e.payload.tool_name !== "Bash") return true;
-  const input = e.payload.tool_input as { command?: unknown } | undefined;
-  const cmd = typeof input?.command === "string" ? input.command : "";
-  const name = path.split("/").pop() ?? path;
-  return cmd.includes(path) || cmd.includes(name);
-}
-
-/**
- * The files a helper changed itself, from its own edits: its counts, not its request's
- * (several helpers can share a file), and its own edits for the diff.
- */
-export function helperFiles(a: AgentView, events: MurmurEvent[]): FileTouch[] {
-  if (!a.files?.length) return [];
-  const out: FileTouch[] = [];
-  for (const e of events)
-    if (e.payload.agent_id === a.id)
-      for (const t of touchesOf(e)) if (ownTouch(e, t.path)) addTouch(out, t);
-  // Its first change first, as core lists them.
-  const order = new Map(a.files.map((p, i) => [p, i]));
-  return out.sort(
-    (x, y) => (order.get(x.path) ?? 1e9) - (order.get(y.path) ?? 1e9),
   );
 }
 

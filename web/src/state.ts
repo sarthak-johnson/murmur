@@ -215,6 +215,7 @@ export interface Listed {
   /** The session's title, as its top bar says it. */
   title: string;
   tag: SessionTag;
+  /** Its tag's word, else "Paused" for a quiet one whose followed request still runs. */
   word: string;
   /** "Fri 6 Nov": the day its first request began, as its Journey says it. */
   day: string;
@@ -252,11 +253,14 @@ export function listedNow(row: SessionRow, at: number = Date.now()): Listed {
   );
   const tag: SessionTag =
     s?.waitingSince && ses.tag === "live" ? "waiting" : ses.tag;
+  // Quiet with the request the room follows still running reads paused, as the room's
+  // pill says it ("Paused · ran 33 h 53 m"); drawn in quiet's tone.
+  const paused = tag === "quiet" && s?.state === "running";
   return {
     title:
       sessionTitle(s?.title) || sessionTitle(row.title) || "Untitled session",
     tag,
-    word: SESSION_WORD[tag],
+    word: paused ? WORD.paused : SESSION_WORD[tag],
     day: dayLabel(ses.from),
     facts: s
       ? [

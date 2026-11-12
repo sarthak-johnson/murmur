@@ -1,4 +1,4 @@
-import type { MurmurEvent } from "@murmur/core";
+import type { MurmurEvent, RequestState } from "@murmur/core";
 
 export interface Me {
   id: string;
@@ -22,6 +22,8 @@ export interface SessionRow {
     helpers: number;
     from: string;
     waitingSince: string | null;
+    /** Core's state of the request the room follows; absent from older summaries. */
+    state?: RequestState | null;
   } | null;
 }
 export interface Machine {

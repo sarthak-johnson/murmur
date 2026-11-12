@@ -15,6 +15,9 @@
  *   `looseFiles`.
  * - One entry per path per part: counts add up, `isNew` if any touch created the file.
  * - Narrate's role-only entries take a touch's counts, and are dropped if none arrives.
+ * - A Bash diff is the whole working tree's change while the command ran, so a file in
+ *   it is the command's own only by `bashCredit`: another's goes to whoever claims it,
+ *   one nobody can be sure of goes to the request's `looseFiles`, never to a helper.
  */
 import type { MurmurEvent } from "../events.js";
 import { addOnce, relPath, type Trace } from "./requests.js";
@@ -27,6 +30,7 @@ export function applyFiles(
   events: MurmurEvent[],
   { before, narrated }: Trace,
   agents: Map<string, AgentView> = new Map(),
+  credit: Credit = bashCredit(events),
 ): void {
   const naming = new Map<string, Trace["narrated"]>();
   for (const x of narrated)
@@ -43,13 +47,19 @@ export function applyFiles(
   const near = (list: Trace["narrated"], i: number) =>
     list.findLast((x) => x.i < i) ?? list.find((x) => x.i > i);
   events.forEach((e, i) => {
-    for (const t of touchesOf(e)) addAt(t, i, String(e.payload.agent_id ?? ""));
+    for (const t of touchesOf(e)) {
+      const c = credit(e, t.path);
+      if (c === "loose") addTouch(req.looseFiles, t);
+      else if (c === "own") addAt(t, i, String(e.payload.agent_id ?? ""));
+    }
   });
   function addAt(t: Touch, i: number, agentId: string) {
     const agent = agentId ? agents.get(agentId) : undefined;
     if (agent) {
       agent.files ??= [];
       addOnce(agent.files, t.path);
+      agent.touches ??= [];
+      addTouch(agent.touches, t);
     }
     const said = () => near(naming.get(t.path) ?? [], i)?.part;
     // A helper's change never goes where the main thread happened to be.
@@ -60,6 +70,117 @@ export function applyFiles(
     addTouch(part ? part.files : req.looseFiles, t);
   }
   for (const p of req.parts) p.files = p.files.filter((f) => f.eventIds.length);
+}
+
+/**
+ * Whose a file in a call's change is: "own" (the caller's), "other" (another writer's,
+ * who has it from their own call) or "loose" (no one's for sure: the request's).
+ */
+export type Credit = (
+  e: MurmurEvent,
+  path: string,
+) => "own" | "other" | "loose";
+
+const WRITES = new Set(["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit"]);
+const NAME_CHAR = /[\w.-]/;
+/** `s` in `text` as a whole path piece: not inside a longer name (`page.js` in `page.json`). */
+function hasPiece(text: string, s: string): boolean {
+  for (let i = text.indexOf(s); i >= 0; i = text.indexOf(s, i + 1)) {
+    const after = text.slice(i + s.length, i + s.length + 2);
+    if (!NAME_CHAR.test(text[i - 1] ?? "") && !/^(?:[\w-]|\.\w)/.test(after))
+      return true;
+  }
+  return false;
+}
+/** The command names the file by a path of at least its folder and name. */
+const namesPath = (cmd: string, path: string) => {
+  const parts = path.split("/");
+  return parts.length > 1 && hasPiece(cmd, parts.slice(-2).join("/"));
+};
+const commandOf = (e: MurmurEvent) => {
+  const c = (e.payload.tool_input as { command?: unknown } | undefined)
+    ?.command;
+  return typeof c === "string" ? c : "";
+};
+
+/**
+ * Whose each file of a Bash diff is. Edit, Write and every other call change only their
+ * own files. A Bash diff is the working tree's change while the command ran, helpers'
+ * and the main thread's alike, so for each file in it, first match wins:
+ * 1. own: the command names it by folder and name (`contracts/screenerPage.js`);
+ * 2. own: no other writer (helper or the main thread) had an Edit, Write or Bash call
+ *    open meanwhile, so the change was the command's however it made it (`npm run
+ *    format`, `biome --write .`, `sed -i` on a glob, a codemod, `git checkout -- .`);
+ * 3. own: the caller surely changed it elsewhere: its own Edit or Write of it, or another
+ *    of its commands that named it as in 1 and changed it;
+ * 4. other: a writer open meanwhile surely changed it so (it has the file from that call);
+ * 5. own: the command names its file name alone (`cd contracts; sed -i x page.js`), and no
+ *    other file in the diff has that name (`index.ts` in two folders says nothing);
+ * 6. loose.
+ */
+export function bashCredit(events: MurmurEvent[]): Credit {
+  const who = (e: MurmurEvent) => String(e.payload.agent_id ?? "");
+  const opened = new Map<string, number>();
+  const calls: { who: string; from: number; to: number }[] = [];
+  // What each writer surely changed: its Edits and Writes, and the files its commands
+  // named whose diff had them. Naming alone (a `cat`, a test run) claims nothing.
+  const claims = new Map<string, Set<string>>();
+  for (const e of events) {
+    const tool = e.payload.tool_name;
+    if (typeof tool !== "string" || !WRITES.has(tool)) continue;
+    const w = who(e);
+    const use = String(e.payload.tool_use_id ?? e.id);
+    const ms = Date.parse(e.ts);
+    if (e.hook === "PreToolUse") opened.set(use, ms);
+    else if (e.hook === "PostToolUse" || e.hook === "PostToolUseFailure")
+      calls.push({ who: w, from: opened.get(use) ?? ms, to: ms });
+    const cmd = commandOf(e);
+    for (const t of touchesOf(e))
+      if (tool !== "Bash" || namesPath(cmd, t.path)) {
+        const c = claims.get(w) ?? new Set();
+        claims.set(w, c.add(t.path));
+      }
+  }
+  const claimed = (w: string, path: string) => !!claims.get(w)?.has(path);
+  // The other writers with a call open while `e` ran, once per event: calls by start,
+  // so only those starting within the longest call's length before it are looked at.
+  calls.sort((a, b) => a.from - b.from);
+  const longest = calls.reduce((m, c) => Math.max(m, c.to - c.from), 0);
+  const seen = new Map<string, Set<string>>();
+  const othersOf = (e: MurmurEvent): Set<string> => {
+    const known = seen.get(e.id);
+    if (known) return known;
+    const w = who(e);
+    const to = Date.parse(e.ts);
+    const from = opened.get(String(e.payload.tool_use_id ?? e.id)) ?? to;
+    let hi = calls.length;
+    for (let lo = 0; lo < hi; ) {
+      const mid = (lo + hi) >> 1;
+      if ((calls[mid] as (typeof calls)[number]).from <= to) lo = mid + 1;
+      else hi = mid;
+    }
+    const out = new Set<string>();
+    for (let k = hi - 1; k >= 0; k--) {
+      const c = calls[k] as (typeof calls)[number];
+      if (c.from < from - longest) break;
+      if (c.who !== w && c.to >= from) out.add(c.who);
+    }
+    seen.set(e.id, out);
+    return out;
+  };
+  return (e, path) => {
+    if (e.payload.tool_name !== "Bash") return "own";
+    const cmd = commandOf(e);
+    if (namesPath(cmd, path)) return "own";
+    const others = othersOf(e);
+    if (!others.size || claimed(who(e), path)) return "own";
+    if ([...others].some((o) => claimed(o, path))) return "other";
+    const name = path.split("/").pop() ?? path;
+    const same = touchesOf(e).filter(
+      (t) => t.path.endsWith(`/${name}`) || t.path === name,
+    );
+    return same.length === 1 && hasPiece(cmd, name) ? "own" : "loose";
+  };
 }
 
 /** Adds a touch to `files`, summing into the entry for the same path. */

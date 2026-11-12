@@ -343,15 +343,8 @@ describe("plan and map", () => {
         id: "did",
         title: "What Claude did",
         status: "now",
+        // A folder of changes is a part, not a task.
         tasks: [
-          {
-            // A folder of changes is under way while its request runs.
-            id: "dir:web/src",
-            title: "web/src",
-            part: "dir:web/src",
-            status: "now",
-            agents: [],
-          },
           {
             id: "task:1",
             title: "Task 1: tokens",
@@ -386,10 +379,12 @@ describe("plan and map", () => {
     ];
     const folder = (es: MurmurEvent[]) => {
       const [r] = reduce(es).requests;
-      return [r?.parts[0]?.status, r?.phases[0]?.tasks[0]?.status];
+      // Only folders: no plan, so no phase reads it running.
+      expect(r?.phases).toEqual([]);
+      return r?.parts[0]?.status;
     };
-    expect(folder(events)).toEqual(["now", "now"]);
-    expect(folder([...events, at(3, "Stop", {})])).toEqual(["done", "done"]);
+    expect(folder(events)).toBe("now");
+    expect(folder([...events, at(3, "Stop", {})])).toBe("done");
     // Waiting on you is no end of the work: the folder is still under way, its span open.
     const asked = [
       ...events,
@@ -397,8 +392,27 @@ describe("plan and map", () => {
     ];
     const [r] = reduce(asked).requests;
     expect(r?.state).toBe("waiting");
-    expect(folder(asked)).toEqual(["now", "now"]);
+    expect(folder(asked)).toBe("now");
     expect(r?.parts[0]?.span?.end).toBeUndefined();
+  });
+
+  test("a phase of helpers reads done once they are, beside a folder still under way", () => {
+    const [r] = reduce([
+      prompt(0, "go"),
+      ...run(1, "Implement Task 1: tokens", "a1"),
+      by(edit(3, "web/src/a.ts", ["+a"]), "a1"),
+      stop(4, "a1"),
+      edit(5, "server/app.ts", ["+a"]),
+      edit(6, "server/db.ts", ["+a"]),
+    ]).requests;
+    expect(r?.state).toBe("running");
+    expect(r?.parts.map((p) => [p.id, p.status])).toEqual([
+      ["task:1", "done"],
+      ["dir:server", "now"],
+    ]);
+    expect(r?.phases.map((p) => [p.status, p.tasks.map((t) => t.id)])).toEqual([
+      ["done", ["task:1"]],
+    ]);
   });
 
   test("TaskCreated inference still wins the plan, parts are still drawn", () => {

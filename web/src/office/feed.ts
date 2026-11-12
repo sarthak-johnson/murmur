@@ -4,12 +4,12 @@
 import {
   type AgentView,
   type MurmurEvent,
+  reduce,
   relPath,
   type SessionView,
 } from "@murmur/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { eventsById } from "../format";
-import { viewOf } from "../plan";
 import { modelOf } from "../session";
 import { latestAt, type MainEntry, type OfficeLogs } from "./scene";
 
@@ -431,7 +431,7 @@ export function useViewAt(
   }, [events, n, atEnd, show]);
 
   const inline = useMemo(
-    () => (failed && !atEnd ? viewOf(events.slice(0, n)) : null),
+    () => (failed && !atEnd ? reduce(events.slice(0, n)) : null),
     [failed, atEnd, events, n],
   );
 

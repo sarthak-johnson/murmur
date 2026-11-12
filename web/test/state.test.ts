@@ -656,6 +656,19 @@ describe("a session row's state", () => {
     );
     expect(listedNow(row(1, { ...w, ended: true }), NOW).tag).toBe("ended");
   });
+  it("reads paused, as the room does, when quiet with its request still running", () => {
+    const running = {
+      summary: { ...summary(null), state: "running" as const },
+    };
+    expect(listedNow(row(120, running), NOW)).toMatchObject({
+      tag: "quiet",
+      word: "Paused",
+    });
+    // Live, it is at work; done, it is only quiet.
+    expect(listedNow(row(5, running), NOW).word).toBe("Live");
+    const done = { summary: { ...summary(null), state: "done" as const } };
+    expect(listedNow(row(120, done), NOW).word).toBe("Quiet");
+  });
   it("names and counts a session by its summary, else its first prompt", () => {
     const l = listedNow(row(5, { summary: summary(null) }), NOW);
     expect(l.title).toBe("Named title");

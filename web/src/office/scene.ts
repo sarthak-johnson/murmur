@@ -123,28 +123,8 @@ const STAGE: Partial<Record<AgentRole, string>> = {
 const NUMBERED =
   /^(Batch|Round|Step|Stage|Wave|Part|Milestone|Sprint)\s+(\d+[a-z]?)\b/i;
 
-/**
- * The request Claude is on: the newest still at work or waiting on you, so a quick notice
- * answered while a long request runs on never hides that one; else the newest.
- */
-export function activeRequest<
-  R extends {
-    state?: string | undefined;
-    phases: readonly unknown[];
-    planInferred?: boolean | undefined;
-  },
->(reqs: readonly R[]): R | undefined {
-  const last = reqs.at(-1);
-  if (!last || last.state === "running" || last.state === "waiting")
-    return last;
-  // A newest request with its own plan is the floor even once over; only a quick one (no
-  // plan of its own: a notice, a question) gives way to an earlier one still at work, so
-  // the floor never swaps back and forth as states change.
-  if (last.phases.length && !last.planInferred) return last;
-  return (
-    reqs.findLast((r) => r.state === "running" || r.state === "waiting") ?? last
-  );
-}
+/** The request Claude is on (core's reading, which the lobby's summary shares). */
+export { activeRequest } from "@murmur/core";
 
 /** Cut at a word boundary within n characters. */
 export function cutWords(s: string, n: number): string;

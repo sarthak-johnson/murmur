@@ -1,7 +1,6 @@
-import type { MurmurEvent, SessionView } from "@murmur/core";
+import { type MurmurEvent, reduce, type SessionView } from "@murmur/core";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "./api";
-import { viewOf } from "./plan";
 
 /**
  * "resuming": a kept session shown as last heard while it catches up (Back or Forward to it):
@@ -40,7 +39,7 @@ const views = new WeakMap<MurmurEvent[], SessionView>();
 function viewFor(events: MurmurEvent[]): SessionView {
   let v = views.get(events);
   if (!v) {
-    v = viewOf(events);
+    v = reduce(events);
     views.set(events, v);
   }
   return v;
