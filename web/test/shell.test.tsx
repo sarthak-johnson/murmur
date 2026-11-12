@@ -576,7 +576,7 @@ describe("the top bar", () => {
       ),
     ).toBeTruthy();
     const pill = bar().querySelector(".of-pill");
-    expect(pill?.className).toBe("of-pill s-now");
+    expect(pill?.className).toBe("of-pill s-now m-running");
     expect(pill?.textContent).toBe("Running · 45 m");
     expect(b.queryByText(/waiting on you/i)).toBeNull();
   });
@@ -603,7 +603,7 @@ describe("the top bar", () => {
       ],
     });
     const pill = bar().querySelector(".of-pill");
-    expect(pill?.className).toBe("of-pill s-done");
+    expect(pill?.className).toBe("of-pill s-done m-done");
     expect(pill?.textContent).toBe("Done · 3 h 06 m");
     // The panel's clock for it stops at its own end, not the session's last event.
     expect(
@@ -631,7 +631,7 @@ describe("the top bar", () => {
     };
     show(view);
     const pill = bar().querySelector(".of-pill");
-    expect(pill?.className).toBe("of-pill s-blocked");
+    expect(pill?.className).toBe("of-pill s-blocked m-waiting");
     expect(pill?.textContent).toBe("Waiting on you · 4 m · 2 questions");
   });
 

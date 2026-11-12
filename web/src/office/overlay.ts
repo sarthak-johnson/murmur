@@ -12,6 +12,7 @@ import {
   T,
 } from "./map";
 import { boardLayout, type ClaudePos, deskTile } from "./render";
+import { WORD as STATE_WORD } from "../state";
 import { cutWords, type Scene } from "./scene";
 import { hash, helperLook, LINEAGE, phaseColor } from "./sprites";
 import { clockOf, context2d, dur, esc, phaseShort } from "./util";
@@ -343,8 +344,8 @@ export function createOverlay(
           w: n.slotW - 4,
           h: n.rowH + 2,
           ring: `task:${n.id}`,
-          html: `<span class="t">${esc(n.title)}</span>${n.stage ? `<span class="stage${n.status === "todo" ? " left" : ""}">${esc(n.stage)}</span>` : ""}`,
-          label: `Task: ${n.title}, ${n.stage ?? WORD[n.status] ?? n.status}`,
+          html: `<span class="t">${esc(n.title)}</span>${n.stage ? `<span class="stage${n.status === "open" || n.status === "paused" ? " left" : ""}">${esc(n.stage)}</span>` : ""}`,
+          label: `Task: ${n.title}, ${n.stage ?? STATE_WORD[n.status].toLowerCase()}`,
           open: `task:${n.id}`,
         });
       }

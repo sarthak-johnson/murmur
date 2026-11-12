@@ -8,29 +8,39 @@ import {
   type KeyMoment,
   keyMoments,
   type RequestView,
+  type TaskView,
 } from "@murmur/core";
 import { few } from "../format";
 import { Fold } from "../markdown";
 import { NeedIcon, StateMark } from "../marks";
-import { shortTitle, type Waiting, youAsked } from "../session";
+import {
+  placeOf,
+  shortTitle,
+  taskTitle,
+  type Waiting,
+  youAsked,
+} from "../session";
 import {
   clock,
   duration,
   fixRoundCount,
   nOf,
-  taskNumber,
   thousands,
 } from "../story";
 
 const MINUS = "−";
 
-/** A key moment's mark: its own shape and colour, its word for screen readers. */
+/**
+ * A key moment's mark, its word for screen readers. A moment is past, not a state: only
+ * an outcome (done, a problem) takes a state's mark; a fix round, a decision or a plan is
+ * a plain bullet, so nothing in the list reads as running or left open.
+ */
 const MOMENT_MARK: Record<KeyMoment["mark"], { cls: string; word: string }> = {
   done: { cls: "done", word: "Done" },
   problem: { cls: "failed", word: "Problem found" },
-  fixing: { cls: "waiting fix", word: "Fixing" },
-  decision: { cls: "open", word: "Decision" },
-  plan: { cls: "beyond", word: "Plan" },
+  fixing: { cls: "moment", word: "Fixing" },
+  decision: { cls: "moment", word: "Decision" },
+  plan: { cls: "moment", word: "Plan" },
 };
 
 export function MomentMark({ mark }: { mark: KeyMoment["mark"] }) {
@@ -40,18 +50,17 @@ export function MomentMark({ mark }: { mark: KeyMoment["mark"] }) {
       {mark === "done" || mark === "problem" ? (
         <StateMark mark={mark === "done" ? "done" : "failed"} />
       ) : (
-        <span className={`mk ${cls}`} aria-hidden="true">
-          {mark === "fixing" ? "!" : null}
-        </span>
+        <span className={`mk ${cls}`} aria-hidden="true" />
       )}
       <span className="sr-only">{word}</span>
     </>
   );
 }
 
-/** A task as a chip: its plan number when its title has one, else its short name. */
-export function chipLabel(title: string): string {
-  return taskNumber(title) ?? shortTitle(title);
+/** A task as a chip: its number in the plan, as the board and the Tasks list number it. */
+export function chipLabel(req: RequestView, task: TaskView): string {
+  const place = placeOf(req, { task: task.id });
+  return place ? `Task ${place.n}` : shortTitle(task.title);
 }
 
 /** "17 min" or "3 h 06 m", the number large and its unit small. */
@@ -309,8 +318,8 @@ export function RequestBrief(props: {
                       </>
                     )}
                     {t && (
-                      <span className="chip" title={t.title}>
-                        {chipLabel(t.title)}
+                      <span className="chip" title={taskTitle(t)}>
+                        {chipLabel(req, t)}
                       </span>
                     )}
                   </span>

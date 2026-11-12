@@ -53,15 +53,15 @@ export const WORD: Record<State, string> = {
   todo: "Not started",
 };
 
-/** The rail's and stickies' mark for a state: paused and left open both read as stopped. */
+/** The rail's and stickies' mark for a state: each state has its own. */
 export const MARK: Record<State, Mark> = {
   running: "running",
   waiting: "waiting",
-  paused: "open",
+  paused: "paused",
   done: "done",
   open: "open",
   failed: "failed",
-  todo: "open",
+  todo: "todo",
 };
 
 /** The status class a state is drawn with (the office's `s-*`, the part page's glyph). */

@@ -34,11 +34,11 @@ export const WORD: Record<Shown, string> = {
 export const MARK: Record<Shown, Mark> = {
   done: "done",
   now: "running",
-  todo: "open",
+  todo: "todo",
   failed: "failed",
   blocked: "waiting",
   open: "open",
-  paused: "open",
+  paused: "paused",
 };
 
 interface Station {

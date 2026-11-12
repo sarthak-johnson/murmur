@@ -358,7 +358,7 @@ describe("live screen", () => {
     expect(kids(".of-top-row")).toEqual(
       bar.map((c) =>
         c.startsWith("of-pill")
-          ? "of-pill s-blocked"
+          ? "of-pill s-blocked m-waiting"
           : c.startsWith("of-tag")
             ? "of-tag live"
             : c,
@@ -749,13 +749,13 @@ describe("live screen", () => {
     show(view);
     const bar = within(screen.getByRole("banner"));
     expect(bar.queryByText("Done")).toBeNull();
-    expect(bar.getByText(/^Left open/).className).toBe("of-pill s-todo");
+    expect(bar.getByText(/^Left open/).className).toBe("of-pill s-todo m-open");
     cleanup();
     view.requests[1] = request({ finished: true, state: "failed" });
     show(view);
     expect(
       within(screen.getByRole("banner")).getByText(/^Failed/).className,
-    ).toBe("of-pill s-failed");
+    ).toBe("of-pill s-failed m-failed");
   });
 
   it("the done line counts in plain words and skips zeros", () => {

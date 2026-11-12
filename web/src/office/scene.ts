@@ -11,7 +11,14 @@ import type {
   TaskView,
 } from "@murmur/core";
 import { phaseName, requestShort, taskTitle, youAsked } from "../session";
-import { coreState, helperNow, QUIET_MS } from "../state";
+import {
+  coreState,
+  helperNow,
+  isOver,
+  QUIET_MS,
+  type State,
+  workState,
+} from "../state";
 
 export { QUIET_MS };
 
@@ -300,7 +307,8 @@ export interface Desk {
 export interface Note {
   id: string;
   phase: string;
-  status: TaskView["status"];
+  /** Its state under its request's (state.ts `workState`), as the Tasks list reads it. */
+  status: State;
   title: string;
   agents: string[];
   /** The running helpers on it, for the head chips. */
@@ -448,7 +456,13 @@ export function deriveScene(
    * The floor Claude is on, when not the newest request (one still at work under a done
    * notice): whether this is it, and its number.
    */
-  opts: { onFloor?: boolean; activeN?: number; quiet?: boolean } = {},
+  opts: {
+    onFloor?: boolean;
+    activeN?: number;
+    quiet?: boolean;
+    /** The request's state at `t` as the bar reads it (state.ts `requestNow`); else core's. */
+    state?: State | undefined;
+  } = {},
 ): Scene | null {
   const reqs = view.requests;
   const idx = Math.max(
@@ -458,6 +472,7 @@ export function deriveScene(
   const req = reqs[idx];
   if (!req) return null;
   const current = opts.onFloor ?? idx === reqs.length - 1;
+  const reqState = opts.state ?? coreState(req);
 
   // Helpers: this request's, plus (on the current floor) any earlier request's still at work.
   // One with no sign of life for an hour is not at work, whatever its last word: a helper
@@ -479,7 +494,7 @@ export function deriveScene(
   // This request's own helper not at work as state.ts reads it (quiet for an hour, or
   // its request over) reads as stopped at its last sign, as the panel says it.
   const own: Helper[] = req.agents.map((a) => {
-    const h = helperNow(a, t, coreState(req));
+    const h = helperNow(a, t, reqState);
     return a.status === "running" && h.state !== "running"
       ? { ...a, status: "done", endedAt: h.sign }
       : a;
@@ -572,7 +587,7 @@ export function deriveScene(
     }
   }
 
-  const reqOver = req.state !== "running" && req.state !== "waiting";
+  const reqOver = isOver(reqState);
   // Board: one column per phase, one sticky note per task, with who is on it and at what stage.
   const running = new Map(
     desks.filter((d) => d.status === "running").map((d) => [d.agent, d]),
@@ -591,24 +606,23 @@ export function deriveScene(
           on.map((d) => (d.role ? STAGE[d.role] : undefined)).filter(Boolean),
         ),
       ];
+      // The Tasks list's reading: once the request is over, a task not done was left open.
+      const status = workState(task.status, reqState);
       return {
         id: task.id,
         phase: p.id,
-        // A request that is over (left open) has nothing under way: its unfinished tasks
-        // read as not started, not as running in blue.
-        status:
-          task.status === "now" && on.length === 0 && reqOver
-            ? "todo"
-            : task.status,
+        status,
         title: taskTitle(task),
         agents,
         heads: on.map((d) => d.agent),
         stage:
-          task.status === "now" && stages.length
+          status === "running" && stages.length
             ? stages.join(" + ")
-            : task.status === "now" && reqOver
+            : status === "open" && task.status === "now"
               ? "left open"
-              : undefined,
+              : status === "paused"
+                ? "paused"
+                : undefined,
       };
     }),
   }));

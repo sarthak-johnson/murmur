@@ -337,22 +337,6 @@ export function Office(props: {
   const reqId = req?.id ?? "";
   const activeId = active?.id;
   const activeN = active ? reqs.indexOf(active) + 1 : reqs.length;
-  const derived = useMemo(
-    () =>
-      deriveScene(viewT, reqId, iso, logs, {
-        onFloor: reqId === activeId,
-        activeN,
-        quiet: quietNow,
-      }),
-    [viewT, reqId, iso, logs, activeId, activeN, quietNow],
-  );
-  // Before the first prompt of a replay there is no floor yet: the last one stays up.
-  const lastScene = useRef<Scene | null>(null);
-  if (derived) lastScene.current = derived;
-  const scene =
-    derived ??
-    lastScene.current ??
-    (deriveScene(view, view.requests.at(-1)?.id ?? "", iso, logs) as Scene);
   // The panel reads one view: the moment's, or the live one when a stale moment lacks the request.
   const drawerView = req && viewT.requests.includes(req) ? viewT : view;
   const drawerEvents = drawerView === viewT ? eventsT : events;
@@ -374,6 +358,25 @@ export function Office(props: {
     () => (req ? requestNow(drawerView, req, drawerEvents, sesT) : null),
     [drawerView, req, drawerEvents, sesT],
   );
+  const floorState = drawerView === viewT ? mark?.state : undefined;
+  const derived = useMemo(
+    () =>
+      deriveScene(viewT, reqId, iso, logs, {
+        onFloor: reqId === activeId,
+        activeN,
+        quiet: quietNow,
+        // The room's stickies and desks read the request as the bar does.
+        state: floorState,
+      }),
+    [viewT, reqId, iso, logs, activeId, activeN, quietNow, floorState],
+  );
+  // Before the first prompt of a replay there is no floor yet: the last one stays up.
+  const lastScene = useRef<Scene | null>(null);
+  if (derived) lastScene.current = derived;
+  const scene =
+    derived ??
+    lastScene.current ??
+    (deriveScene(view, view.requests.at(-1)?.id ?? "", iso, logs) as Scene);
 
   // Every change of the panel is a step in the history: Back undoes it.
   const floor$ = useRef(pinnedId);
@@ -825,7 +828,11 @@ export function Office(props: {
               Replay
             </span>
           )}
-          {pill && <span className={`of-pill s-${pill[0]}`}>{pill[1]}</span>}
+          {pill && (
+            <span className={`of-pill s-${pill[0]} m-${mark?.mark}`}>
+              {pill[1]}
+            </span>
+          )}
           <span className="of-spacer" />
           <button
             type="button"
@@ -1138,6 +1145,14 @@ export function Office(props: {
             <span className="of-lg">
               <i className="k failed" />
               Failed
+            </span>
+            <span className="of-lg">
+              <i className="k paused" />
+              Paused
+            </span>
+            <span className="of-lg">
+              <i className="k open" />
+              Left open
             </span>
             <span className="of-lg">
               <i className="k todo" />

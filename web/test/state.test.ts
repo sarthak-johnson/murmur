@@ -156,7 +156,7 @@ describe("a request's state", () => {
     expect([now.state, now.word, now.mark, now.tone]).toEqual([
       "paused",
       "Paused",
-      "open",
+      "paused",
       "todo",
     ]);
     expect(now.label).toBe("Paused · ran 2 h 00 m");

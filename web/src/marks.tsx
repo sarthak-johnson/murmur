@@ -9,12 +9,15 @@ export const MARK_WORD: Record<Mark, string> = {
   waiting: "Waiting on you",
   open: "Left open",
   failed: "Failed",
+  paused: "Paused",
+  todo: "Not started",
 };
 
 /**
  * A request's mark: a check for done, a blue dot for running (it pulses only where
  * `pulse` is set, the one loop on screen), an amber question mark for waiting on you,
- * a hollow ring for left open, a red cross for failed.
+ * a grey dash for left open, grey bars for paused, plain grey for not started, a red
+ * cross for failed.
  */
 export function StateMark(props: { mark: Mark; pulse?: boolean }) {
   const { mark, pulse } = props;

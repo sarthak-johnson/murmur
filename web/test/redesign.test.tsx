@@ -1058,7 +1058,7 @@ describe("review fixes: words", () => {
     const moments = screen.getByRole("region", { name: "Key moments" });
     const row = [...moments.querySelectorAll(".km-row")].at(-1) as HTMLElement;
     expect(row.textContent).toContain("Fixing");
-    expect(row.querySelector(".mk.fix")).toBeTruthy();
+    expect(row.querySelector(".mk.moment")).toBeTruthy();
   });
 
   it("a finished request never says helpers are still running", () => {

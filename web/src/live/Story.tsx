@@ -15,7 +15,13 @@ import { type ReactNode, useState } from "react";
 import { cutWords } from "../format";
 import { Fold } from "../markdown";
 import { StateMark } from "../marks";
-import { livePhase, phaseName, taskAgents, taskTitle } from "../session";
+import {
+  livePhase,
+  phaseName,
+  placeOf,
+  taskAgents,
+  taskTitle,
+} from "../session";
 import { coreState, helperNow, isOver, MARK, type State, WORD } from "../state";
 import {
   clock,
@@ -156,7 +162,12 @@ function Run(props: {
   const first = ms[0] as MessageView;
   const last = ms.at(-1) as MessageView;
   const [one] = subject.tasks;
-  const num = one && subject.tasks.length === 1 && taskNumber(one.title);
+  // Its number in the plan, as the board, the Tasks list and its close-up say it.
+  const place =
+    one && subject.tasks.length === 1
+      ? placeOf(request, { task: one.id })
+      : undefined;
+  const num = place && `Task ${place.n}`;
   const title =
     subject.tasks.length === 1 && one
       ? num && num !== taskTitle(one)
@@ -525,11 +536,11 @@ export function Story(props: {
         : ph.status === "blocked"
           ? "waiting"
           : ph.id === live || ph.status === "now"
-            ? state === "paused"
-              ? "paused"
-              : "running"
+            ? liveState
             : "todo";
-  const liveState: State = state === "paused" ? "paused" : "running";
+  // Under way reads as the request does: paused, waiting on you, else running.
+  const liveState: State =
+    state === "paused" || state === "waiting" ? state : "running";
   // A running helper reads under the phase of the task it is on, else the live one.
   const phaseOfHelper = (a: AgentView) =>
     request.phases.find((p) =>

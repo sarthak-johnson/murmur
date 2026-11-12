@@ -324,9 +324,9 @@ describe("the brief", () => {
     expect(
       within(first).getByText("Done", { selector: ".sr-only" }),
     ).toBeTruthy();
-    expect(within(first).getByText("Fresh builder for Task 38")).toBeTruthy();
+    expect(within(first).getByText("Task 1", { selector: ".chip" })).toBeTruthy();
     expect(first.className).not.toContain("new");
-    expect(rows[1]?.querySelector(".mk.beyond")).toBeTruthy();
+    expect(rows[1]?.querySelector(".mk.moment")).toBeTruthy();
     const last = rows[2] as HTMLElement;
     expect(last.querySelector(".mk.failed")).toBeTruthy();
     expect(last.className).toContain("new");
@@ -711,7 +711,7 @@ describe("the story", () => {
     expect(run.className).toContain("st-run");
     const button = within(run).getByRole("button");
     expect(button.textContent).toBe(
-      "Task 2 · HeroMoneybuilt, passed6 m · 2 helpers · 4 messages",
+      "Task 1 · HeroMoneybuilt, passed6 m · 2 helpers · 4 messages",
     );
     expect(button.getAttribute("aria-expanded")).toBe("false");
     expect(run.querySelectorAll(".story-text")).toHaveLength(0);
@@ -1036,7 +1036,7 @@ describe("helpers, files and checks", () => {
     ).toEqual([
       "mk done|3,612 frontend tests pass, passed",
       "mk failed|Light theme contrast, failed",
-      "mk open|Task 38 recording, not yet checked",
+      "mk todo|Task 38 recording, not yet checked",
     ]);
   });
 

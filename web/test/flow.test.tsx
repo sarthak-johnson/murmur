@@ -303,16 +303,55 @@ describe("cards", () => {
     expect(cardFacts(b1, at(180))[2]).toBe("10 m");
   });
 
-  it("tags come from the plan's task numbers", () => {
+  it("tags number the tasks as the board and the Tasks list do", () => {
     const req = seven();
     const tag = (id: string) =>
       tagOf(req, req.parts.find((p) => p.id === id) as PartView);
-    expect(tag("frame")).toBe("T6");
-    expect(tag("basics")).toBe("T4-5");
-    expect(tag("b1")).toBe("B1");
+    expect(tag("frame")).toBe("Task 4");
+    expect(tag("basics")).toBe("Tasks 2-3");
+    expect(tag("b1")).toBe("Task 7");
     expect(tag("hero")).toBeUndefined();
     const own = part({ id: "x", tag: "Q2" });
     expect(tagOf(req, own)).toBe("Q2");
+  });
+
+  it("a part of several tasks counts and numbers them as the Tasks list does", () => {
+    // One part carries the phase's three tasks: the band says 3 of 3, not 1 of 1.
+    const req = request({
+      phases: [
+        phase({
+          id: "p0",
+          title: "Agent tests",
+          tasks: [
+            task("t1", "Pick the affected agent specs", "e2e"),
+            task("t2", "Run them against the shared database", "e2e"),
+            task("t3", "Fix anything that fails", "e2e"),
+          ],
+        }),
+        phase({
+          id: "p1",
+          title: "Merge",
+          tasks: [task("t4", "Merge to staging", "pr")],
+        }),
+      ],
+      parts: [
+        part({ id: "e2e", title: "Agent end-to-end tests", phase: "p0" }),
+        part({ id: "pr", title: "PR #1664 to staging", phase: "p1" }),
+      ],
+    });
+    render(<FlowBoard sessionId="s1" request={req} />);
+    const heads = [...document.querySelectorAll(".fb-head")].map(
+      (h) => h.textContent,
+    );
+    expect(heads[0]).toContain("3 of 3 done");
+    const titles = [...document.querySelectorAll(".fc-ttl")].map(
+      (t) => t.textContent,
+    );
+    // Its one task names a part of one; a part of three keeps its own name.
+    expect(titles).toEqual([
+      "Tasks 1-3Agent end-to-end tests",
+      "Task 4Merge to staging",
+    ]);
   });
 
   it("state words: rounds on done, running, left open once the request is over", () => {
@@ -455,7 +494,7 @@ describe("selection", () => {
     expect(location.search).toBe("?part=frame");
 
     const strip = screen.getByRole("region", { name: "Selected part" });
-    expect(strip.textContent).toContain("App frame · Task 6");
+    expect(strip.textContent).toContain("App frame · Task 4");
     expect(strip.textContent).toContain("Done after one fix round");
     expect(strip.textContent).toContain("Change the frame every page sits in.");
     expect(strip.textContent).toContain(
@@ -464,9 +503,9 @@ describe("selection", () => {
     expect(strip.textContent).toContain("2 files +412 −88");
     expect(strip.textContent).toContain("Uses Surfaces and controls");
     expect(strip.textContent).toContain(
-      "Used by The rail, Shell screenshot sweep",
+      "Used by The rail, Sweep",
     );
-    const open = within(strip).getByRole("link", { name: "Open Task 6 →" });
+    const open = within(strip).getByRole("link", { name: "Open Task 4 →" });
     expect(open.getAttribute("href")).toBe("/s/s1/r/r7?open=task:frame");
   });
 
@@ -495,7 +534,7 @@ describe("selection", () => {
     try {
       history.replaceState(null, "", "/s/s1/r/r7/flow?part=b1");
       render(<FlowBoard sessionId="s1" request={seven()} />);
-      expect(into.mock.contexts).toContain(card("Closed trades disagree"));
+      expect(into.mock.contexts).toContain(card("Closed trades"));
     } finally {
       delete (Element.prototype as Partial<Element>).scrollIntoView;
     }
@@ -680,7 +719,7 @@ describe("wide layout", () => {
         ).toBe(true);
     expect(box("Lit plate tokens").x).toBeLessThan(box("HeroMoney").x);
     expect(box("App frame").x).toBeLessThan(box("The rail").x);
-    expect(box("The rail").x).toBeLessThan(box("Closed trades disagree").x);
+    expect(box("The rail").x).toBeLessThan(box("Closed trades").x);
   });
 
   it("a live update keeps the selection", () => {

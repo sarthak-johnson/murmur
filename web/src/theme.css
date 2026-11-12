@@ -74,7 +74,9 @@
   --mark-blocked: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill='%23ffbf4a' d='M0 0h12v12H0z'/%3E%3Cpath fill='%23ffd685' d='M0 0h12v1H0z'/%3E%3Cpath fill='%236f5014' d='M5 3h1v1h-1zM5 4h1v1h-1zM5 5h1v1h-1zM5 6h1v1h-1zM5 8h1v1h-1zM6 3h1v1h-1zM6 4h1v1h-1zM6 5h1v1h-1zM6 6h1v1h-1zM6 8h1v1h-1z'/%3E%3C/svg%3E");
   --mark-failed: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill='%23ff6f61' d='M0 0h12v12H0z'/%3E%3Cpath fill='%23ff9b90' d='M0 0h12v1H0z'/%3E%3Cpath fill='%237a2a22' d='M3 3h1v1h-1zM4 4h1v1h-1zM5 5h1v1h-1zM6 6h1v1h-1zM7 7h1v1h-1zM7 3h1v1h-1zM6 4h1v1h-1zM4 6h1v1h-1zM3 7h1v1h-1z'/%3E%3C/svg%3E");
   --mark-todo: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill='%238d939c' d='M0 0h12v12H0z'/%3E%3Cpath fill='%23a9aeb5' d='M0 0h12v1H0z'/%3E%3C/svg%3E");
-  --mark-open: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill='%238d939c' fill-rule='evenodd' d='M0 0h12v12H0zM2 2v8h8V2z'/%3E%3C/svg%3E");
+  --mark-open: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill='%238d939c' d='M0 0h12v12H0z'/%3E%3Cpath fill='%23a9aeb5' d='M0 0h12v1H0z'/%3E%3Cpath fill='%23555b64' d='M3 5h6v2H3z'/%3E%3C/svg%3E");
+  --mark-paused: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill='%238d939c' d='M0 0h12v12H0z'/%3E%3Cpath fill='%23a9aeb5' d='M0 0h12v1H0z'/%3E%3Cpath fill='%23555b64' d='M3 3h2v6H3zM7 3h2v6H7z'/%3E%3C/svg%3E");
+  --mark-moment: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill='%23a8a29a' d='M4 4h4v4H4z'/%3E%3C/svg%3E");
   --mark-beyond: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill='%236db4ff' fill-rule='evenodd' d='M0 0h12v12H0zM2 2v8h8V2z'/%3E%3C/svg%3E");
   --top: 56px;
   --content: 1120px;
@@ -499,6 +501,9 @@ textarea:focus-visible {
 .px-mark.open,
 .px-mark.left-open {
   background-image: var(--mark-open);
+}
+.px-mark.paused {
+  background-image: var(--mark-paused);
 }
 /* Tabs: Silkscreen names on a 2 px rule; the one shown is a raised tab joined to the page. */
 :where(.px-tabs, .tabs, .of-tabs) {
@@ -1409,7 +1414,6 @@ time {
   background-image: var(--mark-done);
 }
 .mk.running,
-.mk.waiting.fix,
 .glyph.now {
   background-image: var(--mark-now);
 }
@@ -1423,12 +1427,18 @@ time {
   background-image: var(--mark-failed);
 }
 .mk.open,
-.glyph.open,
-.glyph.paused {
+.glyph.open {
   background-image: var(--mark-open);
+}
+.mk.paused,
+.glyph.paused {
+  background-image: var(--mark-paused);
 }
 .mk.beyond {
   background-image: var(--mark-beyond);
+}
+.mk.moment {
+  background-image: var(--mark-moment);
 }
 /* The one loop on screen: the running request's mark blinks in two steps, like the room. */
 .mk.pulse {

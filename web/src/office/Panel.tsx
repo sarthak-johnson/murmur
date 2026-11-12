@@ -446,7 +446,7 @@ const CHECK: Record<"pass" | "fail" | "untried", { mark: Mark; word: string }> =
   {
     pass: { mark: "done", word: "passed" },
     fail: { mark: "failed", word: "failed" },
-    untried: { mark: "open", word: "not yet checked" },
+    untried: { mark: "todo", word: "not yet checked" },
   };
 
 /** What the request's tasks checked, and how each check came out. */
@@ -455,17 +455,19 @@ function Checked({ request: req }: { request: RequestView }) {
     p.checks.map((c) => ({ ...c, key: `${p.id}:${c.check}` })),
   );
   if (!checks.length) return null;
+  // Every outcome counted, so the count never says all passed over a list with failures.
+  const count = (s: keyof typeof CHECK) =>
+    checks.filter((c) => c.status === s).length;
+  const tally = [
+    `${count("pass")} passed`,
+    ...(count("fail") ? [`${count("fail")} failed`] : []),
+    ...(count("untried") ? [`${count("untried")} not yet checked`] : []),
+  ].join(" · ");
   return (
     <section className="side-card of-checked" aria-label="Checked">
       <h2 className="k">
         Checked
-        <span className="cnt num">
-          {nOf(
-            checks.filter((c) => c.status === "pass").length,
-            "pass",
-            "pass",
-          )}
-        </span>
+        <span className="cnt num">{tally}</span>
       </h2>
       <ul className="ck">
         {checks.map((c) => (

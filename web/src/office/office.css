@@ -200,9 +200,12 @@
 .of-pill.s-todo {
   --tone: var(--o-todo);
 }
-/* A request is never "not started": grey on the bar means it was left open. */
+/* A request is never "not started": grey on the bar means it was left open, or paused. */
 .of-pill.s-todo::before {
   background-image: var(--mark-open);
+}
+.of-pill.m-paused::before {
+  background-image: var(--mark-paused);
 }
 .of-meta {
   color: var(--o-t2);
@@ -855,6 +858,12 @@
 }
 .of-legend .k.failed {
   background-image: var(--mark-failed);
+}
+.of-legend .k.paused {
+  background-image: var(--mark-paused);
+}
+.of-legend .k.open {
+  background-image: var(--mark-open);
 }
 @media (max-width: 1500px) {
   .of-legend {

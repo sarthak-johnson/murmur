@@ -192,8 +192,18 @@ export function waitingLabel(w: Waiting): string {
   return w.permission ? "Permission needed" : "Waiting on you";
 }
 
-/** How a request stands, as the rail marks it: each with its own shape and colour. */
-export type Mark = "done" | "running" | "waiting" | "open" | "failed";
+/**
+ * How a request (or a task, a helper) stands, as the rail marks it: each with its own
+ * shape and colour. Core never reads a request as paused or not started; state.ts can.
+ */
+export type Mark =
+  | "done"
+  | "running"
+  | "waiting"
+  | "open"
+  | "failed"
+  | "paused"
+  | "todo";
 const MARKS: readonly string[] = [
   "done",
   "running",
