@@ -356,7 +356,7 @@ export function createOverlay(
           button: true,
           // Under 3x a title shows as many lines as its box holds (never one cut through),
           // or none: a narrow note is only its mark.
-          cls: `hit note${n.status === "done" ? " done" : ""}${s < 3 && !n.lines ? " mute" : ""}${sel ? " sel" : ""}${ring ? " ring" : ""}`,
+          cls: `hit note${n.status === "done" ? " done" : ""}${s < 3 && !n.lines ? " mute" : ""}${s < 3 && n.leftLine ? " says" : ""}${sel ? " sel" : ""}${ring ? " ring" : ""}`,
           x: n.x - 1,
           y: n.y - 1,
           w: n.slotW - 4,

@@ -1086,7 +1086,7 @@
   animation: none;
 }
 /* Under 3x a left-open sticky keeps one line of title and says it was left open. */
-.s2 .of-overlay .hit.note:not(.mute) .stage.left {
+.s2 .of-overlay .hit.note.says .stage.left {
   display: block;
   font-size: 10px;
   line-height: 12px;

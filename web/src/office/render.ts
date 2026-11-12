@@ -67,6 +67,11 @@ const GLOW: Record<Act, string> = {
 // Note titles wrap in the DOM at 15 px (11 px under 3x); measure here so the canvas stickies
 // line up with them. Pure cache: one measuring context, made on first use.
 let mctx: CanvasRenderingContext2D | undefined;
+function textWidth(text: string, px: number): number {
+  mctx ??= context2d(document.createElement("canvas"));
+  mctx.font = `500 ${px}px Geist, system-ui, sans-serif`;
+  return mctx.measureText(text).width;
+}
 function lineCount(text: string, width: number, px = 15): number {
   mctx ??= context2d(document.createElement("canvas"));
   mctx.font = `500 ${px}px Geist, system-ui, sans-serif`;
@@ -97,6 +102,8 @@ export interface PlacedNote extends Note {
   slotW: number;
   /** Under 3x: how many lines of its title it shows (0, only its mark: too narrow or small). */
   lines: number;
+  /** Under 3x: a left-open note says so on a line of its own (it fits). */
+  leftLine: boolean;
 }
 /** A board column where it sits, with the stickies that fit and how many did not. */
 export interface PlacedColumn {
@@ -141,12 +148,19 @@ function layOut(scene: Pick<Scene, "columns">, s: number): PlacedColumn[] {
     const col = cols[i];
     if (!col) return [];
     /** Under 3x, the title's lines of 12 px (at most two) and a left-open note's word line. */
+    // A title shows only where its first word fits whole ("Buil…" says nothing), and a
+    // left-open note's word line only where it fits whole too.
     const small = (n: Note, subW: number) => {
       const tw = (subW - 20) * s - 4;
-      if (s < 1 || tw < SMALL_TEXT_MIN) return { lines: 0, rows: 0 };
-      const left = !!n.stage && (n.status === "open" || n.status === "paused");
+      const first = n.title.split(/\s+/)[0] ?? "";
+      if (s < 1 || tw < SMALL_TEXT_MIN || textWidth(first, 11) > tw)
+        return { lines: 0, rows: 0, left: false };
+      const left =
+        !!n.stage &&
+        (n.status === "open" || n.status === "paused") &&
+        textWidth(n.stage, 10) <= tw;
       const lines = left ? 1 : Math.min(2, lineCount(n.title, tw, 11));
-      return { lines, rows: lines + (left ? 1 : 0) };
+      return { lines, rows: lines + (left ? 1 : 0), left };
     };
     const height = (n: Note, subW: number) => {
       if (s < 3)
@@ -179,6 +193,7 @@ function layOut(scene: Pick<Scene, "columns">, s: number): PlacedColumn[] {
           textW: subW - 20,
           slotW: subW,
           lines: s < 3 ? small(n, subW).lines : 0,
+          leftLine: s < 3 && small(n, subW).left,
         });
         y += h + 4;
       }
