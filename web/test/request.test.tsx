@@ -640,6 +640,21 @@ describe("the story", () => {
     );
   });
 
+  it("while Claude waits on you, the live section says so, never Running", () => {
+    show(
+      session(running({ state: "waiting", agents: [] }), {
+        needsYou: { reason: "input", text: "Merge it?", since: at(16) },
+      }),
+    );
+    const beyond = [...story().querySelectorAll(".st-phase")].at(-1);
+    expect(beyond?.querySelector("h2, h3")?.textContent).toContain(
+      "Beyond the plan",
+    );
+    expect(beyond?.querySelector(".st-word")?.textContent).toMatch(
+      /Waiting on you$/,
+    );
+  });
+
   it("a live phase reads oldest first, as a finished one does, its newest row marked", () => {
     const req = running({
       beyond: undefined,
