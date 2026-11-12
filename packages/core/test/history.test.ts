@@ -345,10 +345,11 @@ describe("plan and map", () => {
         status: "now",
         tasks: [
           {
+            // A folder of changes is under way while its request runs.
             id: "dir:web/src",
             title: "web/src",
             part: "dir:web/src",
-            status: "done",
+            status: "now",
             agents: [],
           },
           {
@@ -375,6 +376,20 @@ describe("plan and map", () => {
       ["a1", "task:1"],
       ["a2", "task:2"],
     ]);
+  });
+
+  test("a folder of changes is under way while its request runs, done once its turn ends", () => {
+    const events = [
+      prompt(0, "go"),
+      edit(1, "web/src/a.ts", ["+a"]),
+      edit(2, "web/src/b.ts", ["+a"]),
+    ];
+    const folder = (es: MurmurEvent[]) => {
+      const [r] = reduce(es).requests;
+      return [r?.parts[0]?.status, r?.phases[0]?.tasks[0]?.status];
+    };
+    expect(folder(events)).toEqual(["now", "now"]);
+    expect(folder([...events, at(3, "Stop", {})])).toEqual(["done", "done"]);
   });
 
   test("TaskCreated inference still wins the plan, parts are still drawn", () => {

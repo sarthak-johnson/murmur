@@ -237,6 +237,31 @@ export function requestMark(
   return { mark: "done", ...at };
 }
 
+/**
+ * The session at a moment of its replay with its requests named as they are now: a
+ * request keeps one title (short and goal) through the replay, though Claude may have
+ * named it after that moment.
+ */
+export function namedAsNow(at: SessionView, now: SessionView): SessionView {
+  if (at === now) return at;
+  const named = new Map(now.requests.map((r) => [r.id, r]));
+  return {
+    ...at,
+    title: now.title,
+    requests: at.requests.map((r) => {
+      const n = named.get(r.id);
+      if (!n) return r;
+      const { short: _s, titledBy: _t, ...rest } = r;
+      return {
+        ...rest,
+        goal: n.goal,
+        ...(n.short !== undefined ? { short: n.short } : {}),
+        ...(n.titledBy ? { titledBy: n.titledBy } : {}),
+      };
+    }),
+  };
+}
+
 /** A request's kind, as its chip says it. */
 export const KIND: Record<RequestView["kind"], string> = {
   feature: "Feature",

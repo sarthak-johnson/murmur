@@ -22093,8 +22093,8 @@ function fillPart(req, part, at, starts, live2, ctx) {
   ].sort();
   const start = times[0];
   if (start) {
-    const underWay = helpers.some(ctx.live) || part.status === "now" && (req.state === "running" || req.state === "waiting");
-    part.span = underWay ? { start } : { start, end: times.at(-1) };
+    const underWay2 = helpers.some(ctx.live) || part.status === "now" && (req.state === "running" || req.state === "waiting");
+    part.span = underWay2 ? { start } : { start, end: times.at(-1) };
   }
 }
 function helperStep(a, after, starts, ctx) {
@@ -22152,6 +22152,17 @@ function groupOf(path4) {
 }
 
 // ../packages/core/src/view/reduce.ts
+function underWay(req) {
+  if (!req.planInferred || req.state !== "running") return;
+  const folder = (id2) => !!id2?.startsWith("dir:");
+  for (const p of req.parts)
+    if (folder(p.id) && p.status === "done") p.status = "now";
+  for (const ph of req.phases) {
+    for (const t of ph.tasks)
+      if (folder(t.part) && t.status === "done") t.status = "now";
+    if (ph.tasks.some((t) => t.status === "now")) ph.status = "now";
+  }
+}
 function reduce(events) {
   const every = sortEvents(events);
   const titles = titlesOf(every.filter(isTitles));
@@ -22192,6 +22203,7 @@ function reduce(events) {
       live: live2,
       title: said2[i]
     });
+    underWay(req);
   });
   requests.forEach((req, i) => {
     const t = said2[i];

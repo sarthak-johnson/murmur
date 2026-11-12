@@ -9,7 +9,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Me } from "../api";
 import { useLastLooked } from "../lastLooked";
 import { closedHere, floorPath, follow, navigate } from "../router";
-import { type RequestState, requestMark, requestShort } from "../session";
+import {
+  namedAsNow,
+  type RequestState,
+  requestMark,
+  requestShort,
+} from "../session";
 import { requestNow, sessionFacts, sessionNow } from "../state";
 import { clock } from "../story";
 import { type SessionStatus, useSession } from "../useSession";
@@ -313,7 +318,9 @@ export function Office(props: {
   const quietNow = at === null && open && !live;
   const iso = new Date(tNow).toISOString();
   const n = at === null ? events.length : countAt(events, iso);
-  const viewT = useViewAt(events, view, n) ?? view;
+  // A request keeps its one title through a replay: Claude often names it later.
+  const viewAt = useViewAt(events, view, n) ?? view;
+  const viewT = useMemo(() => namedAsNow(viewAt, view), [viewAt, view]);
   const eventsT = useMemo(
     () => (n >= events.length ? events : events.slice(0, n)),
     [events, n],
@@ -747,13 +754,15 @@ export function Office(props: {
   };
   const tipReq = tip === null ? undefined : view.requests[tip];
 
+  // The rail and the requests list rewind with the replay: the requests asked by then,
+  // each as it stood at that moment.
   const list = {
     sessionId,
-    view,
-    events,
+    view: at === null ? view : viewT,
+    events: at === null ? events : eventsT,
     currentId: reqId,
     activeId: liveActiveId,
-    ses: listSes,
+    ses: at === null ? listSes : sesT,
     keep: keepFor(panel),
     onPick: pick,
   };
@@ -909,8 +918,11 @@ export function Office(props: {
           >
             <div className="of-rail-head">
               {railOpen && (
-                <span className="of-rail-k" title={sessionFacts(view, ses)}>
-                  {sessionFacts(view, ses)}
+                <span
+                  className="of-rail-k"
+                  title={sessionFacts(list.view, list.ses)}
+                >
+                  {sessionFacts(list.view, list.ses)}
                 </span>
               )}
               <button
