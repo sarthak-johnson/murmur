@@ -13,8 +13,8 @@ export const FIT_PAD = 16;
 export const PAN_FLOOR = 0.5;
 /** A crisp scale at most this much under the fit is taken instead of the fit. */
 export const SNAP = 0.08;
-/** The most device px per room pixel the canvas is drawn at: 3744 x 1920, about 29 MB. */
-export const MAX_BACKING = 6;
+/** The most device px per room pixel the canvas is drawn at: 4992 x 2560, about 51 MB. */
+export const MAX_BACKING = 8;
 const EPS = 1e-6;
 
 export interface Fit {
@@ -33,7 +33,8 @@ export function fitScale(w: number, h: number, dpr: number): Fit {
   const d = dpr > 0 ? dpr : 1;
   const fit = Math.min((w - FIT_PAD) / W, (h - FIT_PAD) / H);
   if (!(fit >= PAN_FLOOR)) return { scale: PAN_FLOOR, pans: true };
-  const crisp = Math.floor(fit * d + EPS) / d;
+  // Crisp only where the canvas can be drawn that big: over the cap it would be stretched.
+  const crisp = Math.min(MAX_BACKING, Math.floor(fit * d + EPS)) / d;
   if (crisp > 0 && crisp >= fit * (1 - SNAP))
     return { scale: crisp, pans: false };
   return { scale: Math.floor(fit * d * 64 + EPS) / (64 * d), pans: false };
@@ -43,10 +44,13 @@ export function fitScale(w: number, h: number, dpr: number): Fit {
 export const backing = (scale: number, dpr: number) =>
   Math.min(MAX_BACKING, Math.max(1, Math.ceil(scale * (dpr || 1) - EPS)));
 
-/** Shown at a whole number of device px per room pixel: drawn 1:1, nothing to smooth. */
+/**
+ * Shown at a whole number of device px per room pixel, and drawn that big: 1:1, nothing to
+ * smooth. Over the backing's cap the canvas is stretched, and pixelated would double rows.
+ */
 export const isCrisp = (scale: number, dpr: number) => {
   const px = scale * (dpr || 1);
-  return Math.abs(px - Math.round(px)) < EPS;
+  return Math.abs(px - Math.round(px)) < EPS && px <= MAX_BACKING + EPS;
 };
 
 /** The requests rail, open and folded to its strip. */

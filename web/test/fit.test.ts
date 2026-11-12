@@ -82,9 +82,27 @@ describe("backing", () => {
     expect(backing(1.5, 2)).toBe(3);
     expect(backing(0.6, 3)).toBe(2);
     expect(backing(0.5, 1)).toBe(1);
-    expect(backing(3.4, 2)).toBe(MAX_BACKING);
+    expect(backing(4.4, 2)).toBe(MAX_BACKING);
     expect(isCrisp(1.5, 2)).toBe(true);
     expect(isCrisp(2.75, 1)).toBe(false);
+  });
+
+  it("never calls a scale crisp that the capped canvas would stretch (a 5K screen)", () => {
+    // 2560 x 1300 CSS px at 2x: the fit is 4, 8 device px per room pixel, drawn 1:1.
+    const { scale } = fitScale(2560, 1300, 2);
+    expect(scale).toBe(4);
+    expect(isCrisp(scale, 2)).toBe(true);
+    expect(backing(scale, 2)).toBe(8);
+    for (const dpr of DPRS)
+      for (let w = 400; w < 6000; w += 41) {
+        const s = fitScale(w, 1e9, dpr).scale;
+        if (isCrisp(s, dpr)) expect(backing(s, dpr)).toBe(Math.round(s * dpr));
+      }
+    expect(isCrisp(4.5, 2)).toBe(false);
+    // Past the cap a fit stays in between (smoothed), never pixelated over a stretch.
+    const big = fitScale(W * 4.6 + FIT_PAD, 1e9, 2).scale;
+    expect(big).toBeGreaterThan(4.5);
+    expect(isCrisp(big, 2)).toBe(false);
   });
 });
 

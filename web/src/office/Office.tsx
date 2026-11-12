@@ -483,11 +483,24 @@ export function Office(props: {
     on();
     const ro = new ResizeObserver(on);
     ro.observe(el);
-    // A zoom changes the device px per CSS px, and with it which scales are crisp.
+    // A zoom, or the window dragged to another screen, changes the device px per CSS px,
+    // and with it which scales are crisp: a resize may not come with it, so it is watched.
     window.addEventListener("resize", on);
+    let mq: MediaQueryList | undefined;
+    const onDpr = () => {
+      on();
+      watchDpr();
+    };
+    const watchDpr = () => {
+      mq?.removeEventListener("change", onDpr);
+      mq = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      mq?.addEventListener?.("change", onDpr);
+    };
+    watchDpr();
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", on);
+      mq?.removeEventListener?.("change", onDpr);
     };
   }, []);
   const phone = box.vw > 0 && box.vw <= PHONE;
@@ -499,7 +512,8 @@ export function Office(props: {
   useEffect(() => {
     if (!panel) setRailInsist(false);
   }, [panel]);
-  const [wide, setWide] = useState(() => stored(WIDE_KEY) !== "docked");
+  // Docked unless the viewer pressed Wide: opening a view never takes the room's width.
+  const [wide, setWide] = useState(() => stored(WIDE_KEY) === "wide");
   const wideNow = !!panel && wide && isWideView(panel);
   // Stable, so the memoised panel is not redrawn on every tick of the room.
   const toggleWide = useCallback(

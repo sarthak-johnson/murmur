@@ -12,6 +12,7 @@ import {
   ROOMS,
   SHELVES,
   T,
+  W,
 } from "./map";
 import { boardLayout, type ClaudePos, deskTile } from "./render";
 import { cutWords, type Scene } from "./scene";
@@ -76,6 +77,8 @@ interface Placed {
   label?: string;
   open?: string | undefined;
   ring?: string | undefined;
+  /** A bubble's size as last measured, and the scale and words it was measured for. */
+  box?: { w: number; h: number; s: number; html: string | undefined };
 }
 
 /** Someone on the floor, for keeping labels clear of them. */
@@ -170,13 +173,35 @@ export function createOverlay(
       p.open = it.open;
       p.ring = it.ring;
       const st = el.style;
-      st.left = `${it.x * s}px`;
-      st.top = `${it.y * s}px`;
       if (it.w !== undefined) st.width = `${it.w * s}px`;
       if (it.h !== undefined) st.height = `${it.h * s}px`;
       if (it.maxW) st.maxWidth = `${it.maxW}px`;
       if (it.who) st.setProperty("--who", it.who);
-      if (it.tail !== undefined) st.setProperty("--tail", `${it.tail}px`); // a shifted bubble still points at its speaker
+      let x = it.x * s;
+      let y = it.y * s;
+      let tail = it.tail ?? 0;
+      // A bubble keeps inside the room, whatever the scale: shifted along, its tail still
+      // points at its speaker. Measured once per words and scale, not every frame.
+      if (it.cls.startsWith("bubble")) {
+        if (p.box?.s !== s || p.box.html !== p.html)
+          p.box = { w: el.offsetWidth, h: el.offsetHeight, s, html: p.html };
+        const { w, h } = p.box;
+        const below = it.cls.includes("wait");
+        const left = it.cls.includes(" left");
+        const x0 = left ? x : x - w / 2;
+        const shift = Math.max(2, Math.min(W * s - w - 2, x0)) - x0;
+        x += shift;
+        // From the tail's own place (the middle, or 14 px in for a bubble to the right).
+        tail = left
+          ? Math.max(-6, Math.min(w - 22, tail - shift))
+          : Math.max(8 - w / 2, Math.min(w / 2 - 8, tail - shift));
+        // Above its speaker it never rises past the room's top.
+        if (!below) y = Math.max(y, h + 8);
+      }
+      st.left = `${x}px`;
+      st.top = `${y}px`;
+      if (it.tail !== undefined || it.cls.startsWith("bubble"))
+        st.setProperty("--tail", `${tail}px`);
       st.visibility = it.hidden ? "hidden" : "";
     }
     for (const [k, p] of els) {
@@ -340,13 +365,15 @@ export function createOverlay(
         out.push({
           key: `n-${n.id}`,
           button: true,
-          cls: `hit note${n.status === "done" ? " done" : ""}${n.slotW >= 60 ? " wide" : ""}${sel ? " sel" : ""}${ring ? " ring" : ""}`,
+          // Under 3x a title shows as many lines as its box holds (never one cut through),
+          // or none: a narrow note is only its mark.
+          cls: `hit note${n.status === "done" ? " done" : ""}${s < 3 && !n.lines ? " mute" : ""}${sel ? " sel" : ""}${ring ? " ring" : ""}`,
           x: n.x - 1,
           y: n.y - 1,
           w: n.slotW - 4,
           h: n.rowH + 2,
           ring: `task:${n.id}`,
-          html: `<span class="t">${esc(n.title)}</span>${n.stage ? `<span class="stage${n.status === "open" || n.status === "paused" ? " left" : ""}">${esc(n.stage)}</span>` : ""}`,
+          html: `<span class="t"${s < 3 && n.lines ? ` style="-webkit-line-clamp:${n.lines}"` : ""}>${esc(n.title)}</span>${n.stage ? `<span class="stage${n.status === "open" || n.status === "paused" ? " left" : ""}">${esc(n.stage)}</span>` : ""}`,
           label: `Task: ${n.title}, ${n.stage ?? STATE_WORD[n.status].toLowerCase()}`,
           open: `task:${n.id}`,
         });

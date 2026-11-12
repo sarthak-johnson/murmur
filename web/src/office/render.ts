@@ -82,6 +82,8 @@ function lineCount(text: string, width: number, px = 15): number {
   return lines;
 }
 
+/** Under 3x a sticky narrower than this many CSS px for its title shows only its mark. */
+const SMALL_TEXT_MIN = 26;
 const SUB_W = 64; // a column wider than two of these flows its stickies into sub-columns
 
 /** A sticky where it sits on the board. Its hit box spans the sub-column (`slotW`) and its text (`rowH`). */
@@ -93,6 +95,8 @@ export interface PlacedNote extends Note {
   rowH: number;
   textW: number;
   slotW: number;
+  /** Under 3x: how many lines of its title it shows (0, only its mark: too narrow or small). */
+  lines: number;
 }
 /** A board column where it sits, with the stickies that fit and how many did not. */
 export interface PlacedColumn {
@@ -124,7 +128,11 @@ export function boardLayout(
   layouts.set(scene.columns, byScale);
   return made;
 }
-const layouts = new WeakMap<Scene["columns"], Map<number, PlacedColumn[]>>();
+let layouts = new WeakMap<Scene["columns"], Map<number, PlacedColumn[]>>();
+// Measured before the web font came in, every title's lines were the fallback's: measured again.
+document.fonts?.addEventListener?.("loadingdone", () => {
+  layouts = new WeakMap();
+});
 
 function layOut(scene: Pick<Scene, "columns">, s: number): PlacedColumn[] {
   const cols = boardColumns(scene.columns.length || 1);
@@ -132,17 +140,22 @@ function layOut(scene: Pick<Scene, "columns">, s: number): PlacedColumn[] {
   return scene.columns.flatMap((c, i) => {
     const col = cols[i];
     if (!col) return [];
+    /** Under 3x, the title's lines of 12 px (at most two) and a left-open note's word line. */
+    const small = (n: Note, subW: number) => {
+      const tw = (subW - 20) * s - 4;
+      if (s < 1 || tw < SMALL_TEXT_MIN) return { lines: 0, rows: 0 };
+      const left = !!n.stage && (n.status === "open" || n.status === "paused");
+      const lines = left ? 1 : Math.min(2, lineCount(n.title, tw, 11));
+      return { lines, rows: lines + (left ? 1 : 0) };
+    };
     const height = (n: Note, subW: number) => {
-      // From 1.5x to 3x a wide sticky's title takes two lines of 12 px when it needs them.
-      if (s >= 1.5 && s < 3 && subW >= 60) {
-        const two = Math.min(2, lineCount(n.title, (subW - 20) * s - 4, 11));
-        return Math.max(12, Math.ceil((two * 12 + 2) / s));
-      }
-      const lines = s >= 3 ? lineCount(n.title, (subW - 20) * s) : 0;
-      return Math.max(
-        12,
-        Math.ceil((lines * 19 + (s >= 3 && n.stage ? 18 : 0)) / s),
-      );
+      if (s < 3)
+        return Math.max(
+          12,
+          Math.ceil((small(n, subW).rows * 12 + 2) / s),
+        );
+      const lines = lineCount(n.title, (subW - 20) * s);
+      return Math.max(12, Math.ceil((lines * 19 + (n.stage ? 18 : 0)) / s));
     };
     const place = (list: Note[], subs: number, bottom = full) => {
       const subW = Math.floor(col.w / subs);
@@ -168,6 +181,7 @@ function layOut(scene: Pick<Scene, "columns">, s: number): PlacedColumn[] {
           rowH: h,
           textW: subW - 20,
           slotW: subW,
+          lines: s < 3 ? small(n, subW).lines : 0,
         });
         y += h + 4;
       }

@@ -254,9 +254,11 @@
   scrollbar-width: thin;
   scrollbar-color: var(--o-line2) transparent;
 }
+/* Whatever is laid over the room stays in its box: nothing runs out under the panel. */
 .of-map {
   position: relative;
   width: max-content;
+  overflow: clip;
 }
 /* Drawn at a whole number of device px per room pixel and scaled smoothly to the fit
    ("sharp bilinear"); at a whole number on the screen too, nothing to smooth. */
@@ -368,7 +370,7 @@
 }
 
 .of-overlay .more {
-  font: 600 13px var(--o-ui);
+  font: 600 clamp(9px, calc(4.5px * var(--s)), 13px) var(--o-ui);
   color: var(--o-ink);
   pointer-events: none;
 }
@@ -484,7 +486,7 @@
 .of-overlay .bubble::after {
   content: "";
   position: absolute;
-  left: 50%;
+  left: calc(50% + var(--tail, 0px));
   bottom: -8px;
   width: 10px;
   height: 6px;
@@ -541,7 +543,7 @@
   transform-origin: 10px calc(100% + 6px);
 }
 .of-overlay .bubble.left::after {
-  left: 14px;
+  left: calc(14px + var(--tail, 0px));
 }
 @keyframes of-pop {
   from {
@@ -661,23 +663,21 @@
 .of-overlay .hit.note.ring {
   outline: 3px dashed rgba(28, 33, 40, 0.7);
 }
-/* 2x: most notes are too narrow for text (a wide one keeps one line); the rest steps down a size. */
-/* Two lines beside the sticky's square, so a title reads to its end more often. */
-.s2 .of-overlay .hit.note.wide .t {
+/* Under 3x a title takes the lines its box was laid out for (its own line clamp, at most two),
+   ending in an ellipsis at a word; a note too narrow for words is only its mark. */
+.s2 .of-overlay .hit.note .t {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  overflow-wrap: break-word;
   font-size: 11px;
   line-height: 12px;
   margin-top: 2px;
 }
-.s2 .of-overlay .hit.note:not(.wide) .t,
+.s2 .of-overlay .hit.note.mute .t,
 .s2 .of-overlay .hit.note .stage {
   display: none;
-}
-.s2 .of-overlay .more {
-  font-size: 11px;
 }
 .s2 .of-overlay .plate b,
 .s2 .of-overlay .plate span,
@@ -716,7 +716,12 @@
 .s2 .of-overlay .bubble.wait small {
   font-size: 13px;
 }
-.s1 .of-overlay .plate {
+/* Under 1.5x a plate is its name alone, in a smaller face, never under 10 px; under 1x it goes. */
+.s1 .of-overlay .plate b {
+  font-size: max(10px, calc(8.5px * var(--s)));
+  line-height: 1.2;
+}
+.s0 .of-overlay .plate {
   display: none;
 }
 /* 1x: the shelf names run into each other, and the waiting bubble steps down. */
@@ -738,10 +743,8 @@
 }
 /* Under 1x the room is a map: Claude, its words and the board's heads; the rest hides. */
 .s0 .of-overlay .room-label,
-.s0 .of-overlay .hit.note:not(.wide) .t,
-.s0 .of-overlay .hit.note.wide .t,
+.s0 .of-overlay .hit.note .t,
 .s0 .of-overlay .hit.note .stage,
-.s0 .of-overlay .hit.note.wide .stage.left,
 .s0 .of-overlay .more,
 .s0 .of-overlay .bubble.mate {
   display: none;
@@ -1010,7 +1013,7 @@
 }
 /* An empty board says why it is empty. */
 .of-overlay .board-empty {
-  font: 500 max(14px, calc(5px * var(--s))) / 1.3 var(--o-ui);
+  font: 500 clamp(10px, calc(5px * var(--s)), 22px) / 1.3 var(--o-ui);
   color: rgba(28, 33, 40, 0.6);
   text-align: center;
   pointer-events: none;
@@ -1051,7 +1054,7 @@
 /* More helpers than desks: the sign that says so. */
 .of-overlay .off-sign {
   transform: translate(-50%, -50%);
-  font: max(12px, calc(3.5px * var(--s))) / 1 var(--o-pix);
+  font: max(8px, calc(3.5px * var(--s))) / 1 var(--o-pix);
   color: #2a211c;
   background: #eadfc6;
   border: 0;
@@ -1074,14 +1077,14 @@
 .office.fast .of-overlay .dots {
   animation: none;
 }
-/* At 2x a left-open sticky keeps one line of title and says it was left open. */
-.s2 .of-overlay .hit.note.wide .stage.left {
+/* Under 3x a left-open sticky keeps one line of title and says it was left open. */
+.s2 .of-overlay .hit.note:not(.mute) .stage.left {
   display: block;
   font-size: 10px;
-  line-height: 11px;
-}
-.s2 .of-overlay .hit.note.wide:has(.stage.left) .t {
-  -webkit-line-clamp: 1;
+  line-height: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* The first stop for the keyboard: straight to the panel, or to the room. */
