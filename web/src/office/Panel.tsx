@@ -8,7 +8,7 @@ import type {
   RequestView,
   SessionView,
 } from "@murmur/core";
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { helperFiles } from "../fileIndex";
 import { FileList } from "../files";
 import { FlowBoard } from "../flow/FlowBoard";
@@ -292,15 +292,15 @@ function PanelBody(props: PanelProps) {
         </div>
         <div className={sessionScope ? "of-scope on" : "of-scope"}>
           <span className="of-scope-k">Session</span>
-          <nav className="of-tabs" aria-label="This session">
+          <TabRow label="This session">
             {SESSION_VIEWS.map(([t, label]) => tab(t, label))}
-          </nav>
+          </TabRow>
         </div>
         <div className={sessionScope ? "of-scope" : "of-scope on"}>
           <span className="of-scope-k">Request {n}</span>
-          <nav className="of-tabs" aria-label="This request">
+          <TabRow label="This request">
             {REQUEST_VIEWS.map(([t, label]) => tab(t, label))}
-          </nav>
+          </TabRow>
         </div>
       </div>
       <div className="of-db" ref={body}>
@@ -383,6 +383,76 @@ function PanelBody(props: PanelProps) {
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * A row of tabs on one line: too long for the panel, it scrolls, its edges fade, and a step
+ * button at each hidden end (and the wheel) brings the rest in, for a mouse with no
+ * sideways scroll. The current tab is scrolled into sight.
+ */
+function TabRow(props: { label: string; children: React.ReactNode }) {
+  const row = useRef<HTMLElement>(null);
+  const [ends, setEnds] = useState({ l: false, r: false });
+  useEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    const on = () =>
+      setEnds({
+        l: el.scrollLeft > 1,
+        r: el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+      });
+    el.querySelector<HTMLElement>("[aria-current]")?.scrollIntoView?.({
+      inline: "nearest",
+      block: "nearest",
+    });
+    on();
+    el.addEventListener("scroll", on, { passive: true });
+    const ro = new ResizeObserver(on);
+    ro.observe(el);
+    // A wheel turned over the row moves it sideways.
+    const wheel = (e: WheelEvent) => {
+      if (
+        el.scrollWidth <= el.clientWidth ||
+        Math.abs(e.deltaX) > Math.abs(e.deltaY)
+      )
+        return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener("wheel", wheel, { passive: false });
+    return () => {
+      el.removeEventListener("scroll", on);
+      el.removeEventListener("wheel", wheel);
+      ro.disconnect();
+    };
+  }, []);
+  const step = (d: number) =>
+    row.current?.scrollBy?.({ left: d * 96, behavior: "smooth" });
+  return (
+    <div className="of-tabrow">
+      <nav className="of-tabs" aria-label={props.label} ref={row}>
+        {props.children}
+      </nav>
+      {ends.l && (
+        <button
+          type="button"
+          className="of-tabstep l"
+          tabIndex={-1}
+          aria-hidden="true"
+          onClick={() => step(-1)}
+        />
+      )}
+      {ends.r && (
+        <button
+          type="button"
+          className="of-tabstep r"
+          tabIndex={-1}
+          aria-hidden="true"
+          onClick={() => step(1)}
+        />
+      )}
+    </div>
   );
 }
 

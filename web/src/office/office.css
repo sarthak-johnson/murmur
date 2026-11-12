@@ -742,9 +742,8 @@
   display: none;
 }
 /* Under 1x the room is a map: Claude, its words and the board's heads; the rest hides. */
+/* (A note under 1x is always mute: only its mark.) */
 .s0 .of-overlay .room-label,
-.s0 .of-overlay .hit.note .t,
-.s0 .of-overlay .hit.note .stage,
 .s0 .of-overlay .more,
 .s0 .of-overlay .bubble.mate {
   display: none;
@@ -985,7 +984,12 @@
     /* biome-ignore lint/complexity/noImportantStyles: reduced motion beats every animation in the room */
     animation: none !important;
   }
-  /* Not motion: the tab row's edge fade follows its scroll. */
+  /* Not motion: the tab row's and the switcher's edge fades follow their scroll. */
+  .office .of-switch .of-sess-list {
+    /* biome-ignore lint/complexity/noImportantStyles: beats the rule above */
+    animation: of-list-fade linear both !important;
+    animation-timeline: scroll(self block);
+  }
   .office .of-tabs {
     /* biome-ignore lint/complexity/noImportantStyles: beats the rule above */
     animation: of-tabs-fade linear both !important;
@@ -1261,8 +1265,50 @@
   line-height: 18px;
   color: var(--o-t3);
 }
+/* A short window: the list scrolls inside the menu, its foot fading while more is below,
+   and the way to all sessions stays in sight under it. */
 .of-switch .of-pop {
   width: min(520px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.of-switch .of-pop > nav {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.of-switch .of-sess-list {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--o-line2) transparent;
+  mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - var(--of-fb)),
+    transparent
+  );
+  animation: of-list-fade linear both;
+  animation-timeline: scroll(self block);
+}
+@property --of-fb {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes of-list-fade {
+  from {
+    --of-fb: 40px;
+  }
+  95% {
+    --of-fb: 40px;
+  }
+  to {
+    --of-fb: 0px;
+  }
+}
+.of-switch .of-pop-foot {
+  flex: none;
 }
 /* Its state: a kit tag (theme.css) in its tone. */
 .of-sess-st {
@@ -1645,6 +1691,46 @@
   syntax: "<length>";
   inherits: false;
   initial-value: 0px;
+}
+.of-tabrow {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+}
+/* A step to the tabs out of sight, over the faded end of the row. */
+.of-tabstep {
+  position: absolute;
+  top: 0;
+  bottom: 2px;
+  width: 20px;
+  padding: 0;
+  border: 0;
+  background: var(--s2);
+  color: var(--o-t2);
+  cursor: pointer;
+}
+.of-tabstep.l {
+  left: 0;
+}
+.of-tabstep.r {
+  right: 0;
+}
+.of-tabstep::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 6px;
+  height: 10px;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.of-tabstep.l::before {
+  clip-path: polygon(100% 0, 0 50%, 100% 100%);
+}
+.of-tabstep:hover {
+  color: var(--o-t1);
 }
 .of-tabs {
   flex: 1;
