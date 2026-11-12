@@ -563,7 +563,9 @@ describe("request page, story first", () => {
     expect(chip.title).toBe("Task 1: Lit plate tokens");
     expect(within(decision as HTMLElement).queryByRole("button")).toBeNull();
     await userEvent.click(chip);
-    expect(location.pathname + location.search).toBe("/s/s1?open=task:task:1");
+    expect(location.pathname + location.search).toBe(
+      "/s/s1/r/r1?open=task:task:1",
+    );
   });
 
   it("folds consecutive messages about one task into one row that opens in place", async () => {
