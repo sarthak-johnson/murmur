@@ -11,9 +11,8 @@ import {
 } from "@murmur/core";
 import { type ReactNode, useState } from "react";
 import { FileList, PathText, sharedFolder } from "../files";
-import { NeedIcon } from "../live/TopBar";
 import { Fold, inline, Markdown } from "../markdown";
-import { Glyph, PlanSource } from "../marks";
+import { Glyph, NeedIcon, PlanSource } from "../marks";
 import { Pill } from "../Pill";
 import { follow, partPath, requestPath } from "../router";
 import { helperKind, rounds as roundsWord, shortTitle } from "../session";
@@ -519,12 +518,12 @@ function PartBody(props: {
     : users
       ? {
           text: `Flow: ${users} ${users === 1 ? "part uses" : "parts use"} this`,
-          path: `${requestPath(sessionId, request.id, "flow")}?part=${encodeURIComponent(part.id)}`,
+          path: `${requestPath(sessionId, request.id, "flow")}&part=${encodeURIComponent(part.id)}`,
         }
       : uses
         ? {
             text: `Flow: uses ${uses} ${uses === 1 ? "part" : "parts"}`,
-            path: `${requestPath(sessionId, request.id, "flow")}?part=${encodeURIComponent(part.id)}`,
+            path: `${requestPath(sessionId, request.id, "flow")}&part=${encodeURIComponent(part.id)}`,
           }
         : undefined;
   const back =

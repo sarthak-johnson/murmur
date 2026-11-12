@@ -1,6 +1,7 @@
-// The office's detail drawer: everything the rest of the app shows about the request on the
-// floor (its story, tasks, flow, files, helpers, the session's journey), plus a close-up of
-// whatever was clicked in the room. The office is the map; this is where the detail lives.
+// The office's panel: everything about the session and the request on the floor, and a
+// close-up of whatever was clicked in the room. Its header says where you are and climbs
+// back up; its two rows of tabs are the session's views and the request's. What it shows
+// is the URL's `?open=`, so every change is a step Back undoes.
 import type {
   AgentView,
   MurmurEvent,
@@ -10,28 +11,51 @@ import type {
 import { memo, useEffect, useRef } from "react";
 import { PathText } from "../files";
 import { FlowBoard } from "../flow/FlowBoard";
+import { dayLabel } from "../format";
 import { Assumptions } from "../live/Assumptions";
 import { RequestBrief } from "../live/Brief";
+import { Journey, SessionHead } from "../live/Journey";
 import { Story } from "../live/Story";
 import { FilesTab, HelpersTab, helperPart } from "../live/Tabs";
 import { TasksTab } from "../live/Tasks";
+import { PhaseTrack } from "../live/Track";
 import { Markdown } from "../markdown";
+import { StateMark } from "../marks";
 import { PartDetail } from "../part/PartDetail";
-import { follow, requestPath, sessionPath } from "../router";
+import { floorPath, follow, navigate } from "../router";
 import {
   askOf,
+  cleanPrompt,
+  KIND,
+  type Mark,
   type RequestState,
   requestShort,
+  shortTitle,
   type Waiting,
 } from "../session";
-import { clock, duration, helperLine, verdictOf } from "../story";
-import { DRAWER_TABS, type DrawerState, toolWords } from "./drawerState";
+import { SessionFlow } from "../sflow/SessionFlow";
+import {
+  clock,
+  duration,
+  fixRoundCount,
+  helperLine,
+  nOf,
+  sentBack,
+  thousands,
+  verdictOf,
+} from "../story";
+import { RequestList } from "./Bar";
+import {
+  isSessionTab,
+  isTab,
+  isWideView,
+  REQUEST_VIEWS,
+  SESSION_VIEWS,
+  toolWords,
+} from "./panelState";
 import type { MainEntry } from "./scene";
 
-/** Redrawn only when what it shows changes: the room repaints far more often. */
-export const Drawer = memo(DrawerBody);
-
-function DrawerBody(props: {
+export interface PanelProps {
   sessionId: string;
   view: SessionView;
   events: MurmurEvent[];
@@ -39,27 +63,72 @@ function DrawerBody(props: {
   state: RequestState;
   end: string;
   waiting: Waiting | null;
+  lastLooked: string | null;
   mainLog: MainEntry[];
   /** The time shown, for durations of helpers still at work. */
   t: string;
   /** Following the newest moment; else a replay's moment, where clocks stop at `t`. */
   following: boolean;
   models: Map<string, string>;
-  drawer: DrawerState;
-  docked: boolean;
+  /** What it shows: a tab or a close-up, as `?open=` says it. */
+  open: string;
+  /** The floor's own address: the pinned request, or none when following. */
+  floorId: string | undefined;
+  activeId: string | undefined;
+  /** On the Tasks tab: the phase a click on the board asked for, and that click's count. */
+  phase?: { id: string; n: number } | undefined;
+  wide: boolean;
+  /** The wide toggle, where the window has room for it. */
+  onWide?: (() => void) | undefined;
   /** Shows a request's floor in the office. */
   onPickRequest(requestId: string): void;
-  /** Bumped each time a click opens it: focus then moves into it. */
+  onClose(): void;
+  /** Bumped each time a click in the room opens it: focus then moves into it. */
   focusKey: number;
-  onChange(d: DrawerState | null): void;
-}) {
-  const { sessionId, view, events, request: req, drawer, onChange } = props;
-  const { state, end, waiting } = props;
+}
+
+/** Redrawn only when what it shows changes: the room repaints far more often. */
+export const Panel = memo(PanelBody);
+
+/** A task's place in its request's plan, as its breadcrumb says it. */
+function taskLabel(req: RequestView, id: string): string {
+  const tasks = req.phases.flatMap((p) => p.tasks);
+  const part = req.parts.find((p) => p.id === id);
+  const task = tasks.find((t) => (part ? t.part === part.id : t.id === id));
+  const name = shortTitle(part?.title ?? task?.title ?? "Task");
+  return task ? `Task ${tasks.indexOf(task) + 1} · ${name}` : name;
+}
+
+/** The close-up's own level of the breadcrumb. */
+function closeUpLabel(view: SessionView, req: RequestView, open: string) {
+  const [kind, id = ""] = open.split(/:(.*)/s);
+  if (kind === "task") return taskLabel(req, id);
+  if (kind === "helper") {
+    const a = view.requests.flatMap((r) => r.agents).find((x) => x.id === id);
+    return `Helper · ${a?.description || "a helper"}`;
+  }
+  return (
+    (
+      { door: "Your door", terminal: "Terminal", claude: "Claude" } as Record<
+        string,
+        string
+      >
+    )[kind ?? ""] ?? ""
+  );
+}
+
+function PanelBody(props: PanelProps) {
+  const { sessionId, view, events, request: req, open } = props;
+  const { state, end, waiting, floorId } = props;
   const done = state === "done";
   const n = view.requests.indexOf(req) + 1;
   const body = useRef<HTMLDivElement>(null);
   const aside = useRef<HTMLElement>(null);
   const opener = useRef<Element | null>(null);
+  const at = (o: string) => floorPath(sessionId, floorId, o);
+  const sessionScope = isSessionTab(open);
+  const closeUp = !isTab(open);
+
   useEffect(() => {
     if (!props.focusKey) return;
     if (!aside.current?.contains(document.activeElement))
@@ -74,17 +143,21 @@ function DrawerBody(props: {
     },
     [],
   );
-  // A new thing or tab starts at its top.
+  // A new view starts at its top, or at the message or phase its link names.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on what is shown changing
   useEffect(() => {
-    body.current?.scrollTo?.({ top: 0 });
-  }, [drawer.tab, drawer.item]);
+    const id = decodeURIComponent(location.hash.slice(1));
+    const el = id ? document.getElementById(id) : null;
+    if (el && body.current?.contains(el))
+      el.scrollIntoView?.({ block: "start" });
+    else body.current?.scrollTo?.({ top: 0 });
+  }, [open, req.id]);
   // A phase header opens Tasks at that phase, marked for a moment: once per click, not on
   // every update of the request while it stays open.
-  const phaseTitle = req.phases.find((p) => p.id === drawer.phase)?.title;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new click (focusKey) on the same phase scrolls again
+  const phaseTitle = req.phases.find((p) => p.id === props.phase?.id)?.title;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new click on the same phase scrolls again
   useEffect(() => {
-    if (!phaseTitle || drawer.tab !== "tasks" || drawer.item) return;
+    if (!phaseTitle || open !== "tasks") return;
     const head = [...(body.current?.querySelectorAll("h2") ?? [])].find(
       (h) => h.textContent?.trim() === phaseTitle,
     );
@@ -96,95 +169,164 @@ function DrawerBody(props: {
       clearTimeout(t);
       group?.classList.remove("of-flash");
     };
-  }, [phaseTitle, drawer.tab, drawer.item, props.focusKey]);
-  const openPart = (p: string) =>
-    onChange({ tab: drawer.tab, item: `part:${p}` });
+  }, [phaseTitle, open, props.phase?.n]);
+  const openPart = (p: string) => navigate(at(`task:${p}`));
+  const sessionTitle = view.title ? cleanPrompt(view.title) : "Session";
+
+  const tab = (t: string, label: string) => (
+    <a
+      key={t}
+      href={at(t)}
+      aria-current={t === open ? "page" : undefined}
+      onClick={follow(at(t))}
+    >
+      {label}
+    </a>
+  );
 
   return (
     <aside
       ref={aside}
       tabIndex={-1}
-      className={props.docked ? "of-drawer docked" : "of-drawer"}
+      className={props.wide ? "of-panel wide" : "of-panel"}
       aria-label="Details"
     >
-      <header className="of-dh">
-        <div className="of-dh-row">
-          <a
-            className="of-dh-req"
-            href={requestPath(sessionId, req.id)}
-            onClick={follow(requestPath(sessionId, req.id))}
-            title="Open the request's page"
-          >
-            <span className="muted">Request {n}</span> {askOf(req)}
-          </a>
+      <header className="of-ph">
+        <div className="of-ph-row">
+          <nav className="of-crumbs" aria-label="Where you are">
+            <ol>
+              <li>
+                {sessionScope ? (
+                  <span aria-current="page" title={sessionTitle}>
+                    Session · {sessionTitle}
+                  </span>
+                ) : (
+                  <a
+                    href={at("journey")}
+                    onClick={follow(at("journey"))}
+                    title={sessionTitle}
+                  >
+                    Session
+                  </a>
+                )}
+              </li>
+              {!sessionScope && (
+                <li>
+                  {closeUp ? (
+                    <a
+                      href={at("story")}
+                      onClick={follow(at("story"))}
+                      title={askOf(req)}
+                    >
+                      Request {n}
+                    </a>
+                  ) : (
+                    <span aria-current="page" title={askOf(req)}>
+                      Request {n} · {requestShort(req)}
+                    </span>
+                  )}
+                </li>
+              )}
+              {closeUp && (
+                <li>
+                  <span aria-current="page">
+                    {closeUpLabel(view, req, open)}
+                  </span>
+                </li>
+              )}
+            </ol>
+          </nav>
+          {props.onWide && isWideView(open) && (
+            <button
+              type="button"
+              className="of-ph-btn"
+              aria-pressed={props.wide}
+              onClick={props.onWide}
+              title={props.wide ? "Back to the docked width" : "Make it wide"}
+            >
+              {props.wide ? "Dock" : "Wide"}
+            </button>
+          )}
           <button
             type="button"
-            className="of-close"
+            className="of-ph-btn of-close"
             aria-label="Close details"
-            onClick={() => onChange(null)}
+            title="Close (Esc)"
+            onClick={props.onClose}
           >
-            Close
+            <svg viewBox="0 0 10 10" aria-hidden="true">
+              <path d="M2 2h1v1H2zM3 3h1v1H3zM4 4h2v2H4zM6 3h1v1H6zM7 2h1v1H7zM3 6h1v1H3zM2 7h1v1H2zM6 6h1v1H6zM7 7h1v1H7z" />
+            </svg>
           </button>
         </div>
-        <nav className="of-tabs" aria-label="Details of this request">
-          {DRAWER_TABS.map(([t, label]) => (
-            <button
-              key={t}
-              type="button"
-              aria-current={
-                t === drawer.tab && !drawer.item ? "page" : undefined
-              }
-              onClick={() => onChange({ tab: t })}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
+        <div className={sessionScope ? "of-scope on" : "of-scope"}>
+          <span className="of-scope-k">Session</span>
+          <nav className="of-tabs" aria-label="This session">
+            {SESSION_VIEWS.map(([t, label]) => tab(t, label))}
+          </nav>
+        </div>
+        <div className={sessionScope ? "of-scope" : "of-scope on"}>
+          <span className="of-scope-k">Request {n}</span>
+          <nav className="of-tabs" aria-label="This request">
+            {REQUEST_VIEWS.map(([t, label]) => tab(t, label))}
+          </nav>
+        </div>
       </header>
       <div className="of-db" ref={body}>
-        {drawer.item ? (
+        {closeUp ? (
+          <CloseUp {...props} onOpenPart={openPart} />
+        ) : open === "journey" ? (
           <>
-            <button
-              type="button"
-              className="link of-back"
-              onClick={() => onChange({ tab: drawer.tab })}
-            >
-              ‹ {DRAWER_TABS.find(([t]) => t === drawer.tab)?.[1]}
-            </button>
-            <CloseUp {...props} item={drawer.item} onOpenPart={openPart} />
+            <SessionHead view={view} events={events} />
+            <Journey sessionId={sessionId} view={view} events={events} />
           </>
-        ) : drawer.tab === "tasks" ? (
+        ) : open === "timeline" ? (
+          <SessionFlow sessionId={sessionId} view={view} events={events} />
+        ) : open === "requests" ? (
+          <RequestList
+            sessionId={sessionId}
+            view={view}
+            events={events}
+            currentId={req.id}
+            activeId={props.activeId}
+            keep="story"
+            onPick={props.onPickRequest}
+            label="Every request"
+          />
+        ) : open === "tasks" ? (
           <TasksTab sessionId={sessionId} request={req} done={done} />
-        ) : drawer.tab === "flow" ? (
+        ) : open === "flow" ? (
           <FlowBoard sessionId={sessionId} request={req} />
-        ) : drawer.tab === "files" ? (
+        ) : open === "files" ? (
           <FilesTab request={req} events={events} cwd={view.cwd} />
-        ) : drawer.tab === "helpers" ? (
+        ) : open === "helpers" ? (
           <HelpersTab
             sessionId={sessionId}
             request={req}
             events={events}
             now={props.t}
           />
-        ) : drawer.tab === "requests" ? (
-          <Requests
-            sessionId={sessionId}
-            view={view}
-            current={req.id}
-            onPick={props.onPickRequest}
-          />
         ) : (
           <>
+            <RequestHead view={view} request={req} />
             <RequestBrief
               request={req}
               done={done}
               stopped={state !== "running" || !props.following}
               end={props.following ? end : props.t}
               waiting={waiting}
-              lastLooked={null}
+              lastLooked={props.lastLooked}
+            />
+            <PhaseTrack
+              sessionId={sessionId}
+              request={req}
+              done={done}
+              stopped={state !== "running" || !props.following}
+              end={props.following ? end : props.t}
             />
             <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
             <Story request={req} done={done} onOpenPart={openPart} />
+            <Checked request={req} />
           </>
         )}
       </div>
@@ -192,18 +334,115 @@ function DrawerBody(props: {
   );
 }
 
+const n_ = (n: number, one: string, many = `${one}s`) =>
+  n ? [`${n} ${n === 1 ? one : many}`] : [];
+
+/** Where the plan came from, said once in the line over the title. */
+const source = (req: RequestView) =>
+  req.recap
+    ? "recap by Claude"
+    : req.planInferred
+      ? "plan inferred"
+      : req.phases.length
+        ? "narrated live"
+        : "";
+
+/** The request's head, said once at the top of its story: what was asked and its facts. */
+function RequestHead(props: { view: SessionView; request: RequestView }) {
+  const { view, request: req } = props;
+  const tasks = req.phases.flatMap((p) => p.tasks);
+  const rounds = fixRoundCount(req);
+  const back = req.sentBack?.length ?? sentBack(req);
+  const facts = [
+    ...n_(tasks.length, "task"),
+    ...n_(req.tally.helpers, "helper"),
+    ...n_(req.tally.files, "file"),
+    ...(rounds
+      ? n_(rounds, "fix round")
+      : n_(back, "sent back after review", "sent back after review")),
+    ...n_(req.tally.commands, "command"),
+  ];
+  const from = source(req);
+  return (
+    <header className="of-rh">
+      <div className="over">
+        {/* A kind Murmur guessed is not worth a chip: "yes" is no feature. */}
+        {!req.kindInferred && (
+          <span className="label-chip">{KIND[req.kind]}</span>
+        )}
+        <span className="num">
+          Request {view.requests.indexOf(req) + 1} of {view.requests.length} ·
+          asked {dayLabel(req.startedAt)}, {clock(req.startedAt)}
+          {from && ` · ${from}`}
+        </span>
+      </div>
+      <h2 className="ask" title={cleanPrompt(req.prompt)}>
+        {askOf(req)}
+      </h2>
+      {facts.length > 0 && (
+        // biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the facts
+        <div className="asked" role="group" aria-label="Summary">
+          {facts.map((f) => {
+            const [num, ...rest] = f.split(" ");
+            return (
+              <span key={f}>
+                <b className="num">{thousands(Number(num))}</b> {rest.join(" ")}
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </header>
+  );
+}
+
+const CHECK: Record<"pass" | "fail" | "untried", { mark: Mark; word: string }> =
+  {
+    pass: { mark: "done", word: "passed" },
+    fail: { mark: "failed", word: "failed" },
+    untried: { mark: "open", word: "not yet checked" },
+  };
+
+/** What the request's tasks checked, and how each check came out. */
+function Checked({ request: req }: { request: RequestView }) {
+  const checks = req.parts.flatMap((p) =>
+    p.checks.map((c) => ({ ...c, key: `${p.id}:${c.check}` })),
+  );
+  if (!checks.length) return null;
+  return (
+    <section className="side-card of-checked" aria-label="Checked">
+      <h2 className="k">
+        Checked
+        <span className="cnt num">
+          {nOf(
+            checks.filter((c) => c.status === "pass").length,
+            "pass",
+            "pass",
+          )}
+        </span>
+      </h2>
+      <ul className="ck">
+        {checks.map((c) => (
+          <li key={c.key} className="ck-row">
+            <StateMark mark={CHECK[c.status].mark} />
+            <span>
+              {c.check}
+              <span className="sr-only">, {CHECK[c.status].word}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** A close-up of one thing in the room. */
-function CloseUp(
-  props: Parameters<typeof DrawerBody>[0] & {
-    item: string;
-    onOpenPart(partId: string): void;
-  },
-) {
-  const { sessionId, view, events, request: req, item } = props;
-  const [kind, id = ""] = item.split(/:(.*)/s);
+function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
+  const { sessionId, view, events, request: req, open } = props;
+  const [kind, id = ""] = open.split(/:(.*)/s);
   const n = view.requests.indexOf(req) + 1;
   const running = props.state === "running";
-  if (kind === "agent") {
+  if (kind === "helper") {
     const a = view.requests.flatMap((r) => r.agents).find((x) => x.id === id);
     if (a)
       return (
@@ -216,10 +455,12 @@ function CloseUp(
         />
       );
   }
-  if (kind === "task" || kind === "part") {
+  if (kind === "task") {
+    // A part's id, else a task of the plan (a sticky with no part of its own yet).
     const task = req.phases.flatMap((p) => p.tasks).find((x) => x.id === id);
-    const partId = kind === "part" ? id : task?.part;
-    const part = req.parts.find((p) => p.id === partId);
+    const part =
+      req.parts.find((p) => p.id === id) ??
+      req.parts.find((p) => p.id === task?.part);
     if (part)
       return (
         <PartDetail
@@ -292,14 +533,24 @@ function CloseUp(
           stopped={props.state !== "running" || !props.following}
           end={props.following ? props.end : props.t}
           waiting={props.waiting}
-          lastLooked={null}
+          lastLooked={props.lastLooked}
         />
       </>
     );
   }
   if (kind === "terminal") return <Terminal {...props} />;
   if (kind === "claude") return <ClaudeSteps {...props} />;
-  return <p className="muted">Nothing to show for this yet.</p>;
+  return (
+    <p className="muted">
+      This is not in the request yet.{" "}
+      <a
+        href={floorPath(sessionId, props.floorId, "story")}
+        onClick={follow(floorPath(sessionId, props.floorId, "story"))}
+      >
+        Back to its story
+      </a>
+    </p>
+  );
 }
 
 /** A helper at its desk: who briefed it for what, what it is on, and what it said back. */
@@ -388,7 +639,7 @@ const ROLE: Record<NonNullable<AgentView["role"]>, string> = {
 };
 
 /** The terminal: the commands Claude itself ran for this request, newest first. */
-function Terminal(props: Parameters<typeof DrawerBody>[0]) {
+function Terminal(props: PanelProps) {
   const { request: req, view, mainLog, t } = props;
   const next = view.requests[view.requests.indexOf(req) + 1]?.startedAt;
   const runs = mainLog
@@ -422,65 +673,6 @@ function Terminal(props: Parameters<typeof DrawerBody>[0]) {
   );
 }
 
-/** Every request of the session at the moment shown: pick one to see its floor. */
-function Requests(props: {
-  sessionId: string;
-  view: SessionView;
-  current: string;
-  onPick(requestId: string): void;
-}) {
-  const { sessionId, view, current, onPick } = props;
-  const path = sessionPath(sessionId);
-  return (
-    <section className="of-card">
-      <p className="of-kicker">
-        {view.requests.length} request{view.requests.length === 1 ? "" : "s"} in
-        this session
-      </p>
-      <ol className="of-reqs">
-        {view.requests.map((r, i) => {
-          const word = STATE_WORD[r.state ?? "done"] ?? "Done";
-          return (
-            <li key={r.id}>
-              <button
-                type="button"
-                className={r.id === current ? "of-req-row cur" : "of-req-row"}
-                aria-current={r.id === current ? "true" : undefined}
-                onClick={() => onPick(r.id)}
-              >
-                <span className="of-req-num">{i + 1}</span>
-                <span className="of-req-main">
-                  <span className="of-req-t">{requestShort(r)}</span>
-                  <span className="muted">
-                    {clock(r.startedAt)}
-                    {r.agents.length
-                      ? ` · ${r.agents.length} helper${r.agents.length === 1 ? "" : "s"}`
-                      : ""}
-                  </span>
-                </span>
-                <span className={`of-chip ${word[0]}`}>{word[1]}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-      <p>
-        <a className="link" href={path} onClick={follow(path)}>
-          The session's journey, on its own page
-        </a>
-      </p>
-    </section>
-  );
-}
-
-const STATE_WORD: Partial<Record<string, [string, string]>> = {
-  running: ["now", "Running"],
-  waiting: ["warn", "Waiting on you"],
-  done: ["done", "Done"],
-  "left-open": ["plain", "Left open"],
-  failed: ["bad", "Failed"],
-};
-
 /** What a main-log entry did, in words. */
 function stepWords(e: MainEntry): string {
   if (e.k === "prompt") return "Read your message";
@@ -508,7 +700,7 @@ function stepWords(e: MainEntry): string {
 }
 
 /** Claude itself: each of its own steps on this request, newest first. */
-function ClaudeSteps(props: Parameters<typeof DrawerBody>[0]) {
+function ClaudeSteps(props: PanelProps) {
   const { request: req, view, mainLog, t, following } = props;
   const next = view.requests[view.requests.indexOf(req) + 1]?.startedAt;
   const steps = mainLog

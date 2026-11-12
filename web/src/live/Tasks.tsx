@@ -5,6 +5,7 @@
  */
 import type { PartView, RequestView, TaskView } from "@murmur/core";
 import { cutWords } from "../format";
+import { StateMark, Words } from "../marks";
 import { follow, partPath } from "../router";
 import { livePhase, shortTitle, taskAgents, taskTimes } from "../session";
 import {
@@ -15,7 +16,6 @@ import {
   outcome,
   verdictOf,
 } from "../story";
-import { StateMark, Words } from "./Rail";
 import { agentShown, MARK, type Shown, span, taskShown, WORD } from "./Track";
 
 interface Row {
@@ -224,7 +224,7 @@ export function TasksTab(props: {
                   <span className="tk-n num">{r.n}</span>
                   <StateMark mark={MARK[r.shown]} pulse={r === pulse} />
                   <span className="tk-main">
-                    <span className="tk-t" data-morph={path}>
+                    <span className="tk-t">
                       <Words text={r.title} />
                     </span>
                     <span className="sr-only">, {WORD[r.shown]}</span>

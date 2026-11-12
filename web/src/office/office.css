@@ -26,12 +26,10 @@
   --o-ui: "Geist", system-ui, sans-serif;
   --o-mono: "Geist Mono", ui-monospace, monospace;
   --o-pix: "Silkscreen", "Geist Mono", monospace;
-  --o-top: 56px;
-  --o-foot: 72px;
   position: fixed;
   inset: 0;
   display: grid;
-  grid-template-rows: var(--o-top) minmax(0, 1fr) var(--o-foot);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-columns: minmax(0, 1fr);
   background: var(--o-bg);
   color: var(--o-t1);
@@ -57,31 +55,27 @@
 }
 
 /* Top bar */
+/* Two rows: where you are and what to do on the first, how the floor stands on the second. */
 .of-top {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 24px 0 12px;
   background: var(--o-bar);
   border-bottom: 1px solid var(--o-line);
   min-width: 0;
+  padding: 0 16px;
+  position: relative;
+  z-index: 5;
 }
-.of-back-link {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  color: var(--o-t2);
-  font-size: 22px;
-  line-height: 1;
-  text-decoration: none;
-  flex: none;
+.of-top-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  height: 52px;
 }
-.of-back-link:hover,
-.of-back-link:focus-visible {
-  background: #241d19;
-  color: var(--o-t1);
+.of-top-row.of-status {
+  height: 34px;
+  border-top: 1px solid var(--o-line);
+  gap: 16px;
+  font-size: 14px;
 }
 .of-brand {
   font: 700 16px var(--o-pix);
@@ -89,6 +83,10 @@
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+  color: var(--o-t1);
+  text-decoration: none;
+  padding: 6px 4px;
+  flex: none;
 }
 .of-brand-sub {
   color: var(--o-t3);
@@ -151,7 +149,7 @@
     opacity: 0.35;
   }
 }
-.of-req {
+.of-pop-btn {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -162,7 +160,8 @@
   border-radius: 6px;
   background: #1d1714;
 }
-.of-req:hover {
+.of-pop-btn:hover,
+.of-pop-btn[aria-expanded="true"] {
   border-color: #6a5446;
 }
 .of-req-n {
@@ -222,14 +221,6 @@
 .of-spacer {
   flex: 1;
 }
-.of-session {
-  color: var(--o-t3);
-  font-size: 15px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
 .of-details {
   border: 1px solid var(--o-line2);
   background: #1d1714;
@@ -242,42 +233,41 @@
 .of-details:hover {
   border-color: #6a5446;
 }
-@media (max-width: 1500px) {
-  .of-session {
-    display: none;
-  }
-}
-@media (max-width: 1180px) {
-  .of-meta + .of-meta {
-    display: none;
-  }
+.of-details[aria-expanded="true"] {
+  border-color: var(--o-t3);
+  background: #2a211c;
 }
 
-/* Stage and room */
+/* The body: the requests rail, then the stage (the room, the panel beside it). */
+.of-body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
 .of-stage {
   position: relative;
   min-height: 0;
-}
-.of-stage.docked {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--of-dw);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
+}
+.of-stage.with-panel {
+  grid-template-columns: minmax(0, 1fr) var(--of-pw);
 }
 .of-empty {
   display: grid;
   place-items: center;
 }
-/* "safe": a room wider than its window pans from its left edge instead of spilling past it. */
+/* "safe": a room wider than its column pans from its left edge instead of spilling past it. */
 .of-mapwrap {
-  position: absolute;
-  inset: 0;
+  position: relative;
   display: grid;
   place-items: safe center;
   overflow: auto;
-}
-.of-stage.docked .of-mapwrap {
-  position: relative;
-  inset: auto;
+  min-width: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--o-line2) transparent;
 }
 .of-map {
   position: relative;
@@ -710,113 +700,6 @@
   display: none;
 }
 
-/* The detail drawer: beside the room when it fits, else over it on the side away from what
-   was clicked. It holds the app's own views, so it keeps the app's look. */
-.of-dock {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(var(--of-dw, 480px), 100%);
-  z-index: 3;
-}
-.of-dock.left {
-  right: auto;
-  left: 0;
-}
-.of-stage.docked .of-dock {
-  position: relative;
-  width: auto;
-}
-.of-drawer {
-  height: 100%;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  grid-template-columns: minmax(0, 1fr);
-  background: var(--s2, #161512);
-  border-left: 1px solid var(--o-line);
-  box-shadow: -12px 0 24px rgba(0, 0, 0, 0.35);
-  color: var(--t1, #eeecea);
-  font: 15px / 1.5 var(--font-ui, var(--o-ui));
-}
-.of-dock.left .of-drawer {
-  border-left: 0;
-  border-right: 1px solid var(--o-line);
-  box-shadow: 12px 0 24px rgba(0, 0, 0, 0.35);
-}
-.of-drawer.docked {
-  box-shadow: none;
-}
-.of-dh {
-  padding: 14px 20px 0;
-  border-bottom: 1px solid var(--line, #34322e);
-}
-.of-dh-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-.of-dh-req {
-  flex: 1;
-  min-width: 0;
-  font-weight: 600;
-  font-size: 16px;
-  line-height: 1.35;
-  color: var(--t1, #eeecea);
-  text-decoration: none;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.of-dh-req:hover {
-  text-decoration: underline;
-  text-decoration-color: var(--line-2, #423f3b);
-  text-underline-offset: 3px;
-}
-.of-close {
-  background: #241d19;
-  border: 1px solid var(--o-line2);
-  border-radius: 6px;
-  padding: 3px 12px;
-  font-size: 14px;
-  color: var(--o-t2);
-  flex: none;
-}
-.of-tabs {
-  display: flex;
-  gap: 2px;
-  margin-top: 10px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.of-drawer .of-tabs button {
-  background: none;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  padding: 8px 10px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--t3, #a19e9a);
-  white-space: nowrap;
-}
-.of-drawer .of-tabs button:hover {
-  color: var(--t1, #eeecea);
-}
-.of-drawer .of-tabs button[aria-current="page"] {
-  color: var(--t1, #eeecea);
-  border-bottom-color: var(--t1, #eeecea);
-}
-.of-db {
-  overflow-y: auto;
-  padding: 18px 20px 40px;
-  min-width: 0;
-}
-.of-back {
-  display: inline-block;
-  margin-bottom: 12px;
-  font-size: 14px;
-}
 .of-card h2 {
   font-size: 20px;
   line-height: 1.3;
@@ -891,10 +774,11 @@
   flex: none;
   min-width: 44px;
 }
-/* The app's views assume a page's width; in the drawer they take its width instead: the
-   request's brief stacks its cells when the drawer is narrow. */
+/* The app's views assume a page's width under a page's top bar; in the panel they take its
+   width, stick to its own top, and the request's brief stacks its cells when it is narrow. */
 .of-db {
   container-type: inline-size;
+  --top: 0px;
 }
 @container (max-width: 560px) {
   .of-db .rb {
@@ -907,20 +791,8 @@
 .of-db .req-split {
   display: block;
 }
-.of-db .tabs {
-  flex-wrap: wrap;
-}
 
 /* Replay bar */
-.of-replay {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 24px;
-  background: var(--o-bar);
-  border-top: 1px solid var(--o-line);
-  min-width: 0;
-}
 .of-play {
   width: 40px;
   height: 40px;
@@ -951,61 +823,15 @@
     var(--o-t1) 8px 12px
   );
 }
-.of-track {
-  position: relative;
-  flex: 1;
-  min-width: 120px;
-  padding-top: 14px;
-}
-.of-track input {
-  width: 100%;
-  accent-color: var(--o-now);
-  margin: 0;
-}
-.of-ticks {
-  cursor: pointer;
-  position: absolute;
-  top: 0;
-  left: 8px;
-  right: 8px;
-  height: 14px;
-}
-.of-track .of-ticks button {
-  pointer-events: none;
-  position: absolute;
-  transform: translateX(-50%);
-  width: 12px;
-  height: 14px;
-  background: none;
-  border: 0;
-  padding: 0;
-}
-.of-track .of-ticks button::after {
-  content: "";
-  position: absolute;
-  left: 5px;
-  top: 2px;
-  width: 2px;
-  height: 10px;
-  background: #6a5f55;
-}
-.of-track .of-ticks button:focus-visible::after,
-.of-track .of-ticks button.cur::after {
-  background: var(--o-t1);
-}
-/* Requests after the time shown. */
-.of-track .of-ticks button.later::after {
-  background: #3a332d;
-}
 .of-clock {
   font: 15px var(--o-mono);
   font-variant-numeric: tabular-nums;
   color: var(--o-t1);
   white-space: nowrap;
-  /* A fixed width: the track beside it never moves while you aim at a tick. */
-  width: 25ch;
+  /* A fixed width: the controls beside it never move while the time runs. */
+  width: 24ch;
   overflow: hidden;
-  text-align: right;
+  text-align: left;
   flex: none;
 }
 .of-clock.days {
@@ -1095,102 +921,6 @@
   }
 }
 
-/* Phone: a pannable strip of the room, the detail under it, the replay bar pinned below. */
-.office.phone {
-  position: static;
-  display: block;
-  min-height: 100dvh;
-  overflow: visible;
-}
-.phone .of-top {
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  padding: 10px 16px;
-}
-.phone .of-spacer,
-.phone .of-session,
-.phone .of-details {
-  display: none;
-}
-.phone .of-meta + .of-meta {
-  display: inline;
-}
-.phone .of-req {
-  order: 3;
-  width: 100%;
-  max-width: none;
-}
-.phone .of-stage {
-  display: flex;
-  flex-direction: column;
-}
-.phone .of-ask {
-  display: block;
-  margin: 12px 16px 0;
-  border: 1px solid var(--o-need);
-  background: var(--o-need-bg);
-  border-radius: 8px;
-  padding: 12px 14px;
-  font-size: 16px;
-}
-.office.phone .of-mapwrap {
-  position: relative;
-  inset: auto;
-  display: block;
-  overflow: auto;
-  max-height: 46vh;
-  margin-top: 12px;
-  touch-action: pan-x pan-y;
-  scrollbar-width: none;
-}
-.office.phone .of-dock {
-  position: static;
-  width: auto;
-}
-.office.phone .of-drawer {
-  border: 0;
-  border-top: 1px solid var(--o-line);
-  box-shadow: none;
-  padding-bottom: 120px;
-}
-.phone .of-close {
-  display: none;
-}
-.phone .of-db {
-  overflow: visible;
-  padding: 16px;
-}
-.phone .of-replay {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  padding: 8px 16px 10px;
-  z-index: 4;
-}
-.phone .of-track {
-  order: 5;
-  flex-basis: 100%;
-}
-.phone .of-clock {
-  width: auto;
-  min-width: 0;
-  font-size: 14px;
-  flex: 1;
-  text-align: left;
-}
-.phone .of-live {
-  padding: 6px 10px;
-}
-/* The phone pins the question above the strip instead. */
-.office.phone .of-overlay .bubble.wait {
-  display: none;
-}
-.of-drawer:focus {
-  outline: none;
-}
 /* A phase brought into view from its header on the board. */
 .of-db .of-flash {
   animation: of-flash 1.6s ease-out;
@@ -1202,64 +932,12 @@
     box-shadow: 0 0 0 2px var(--now, #60aaf3);
   }
 }
-/* The request list. */
-.of-reqs {
-  list-style: none;
-  margin: 8px 0 16px;
-  padding: 0;
-  display: grid;
-  gap: 6px;
-}
-.of-req-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  text-align: left;
-  background: var(--s3, #1e1c19);
-  border: 1px solid var(--s6, #34322e);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: var(--t1, #eeecea);
-}
-.of-req-row:hover {
-  border-color: var(--s8, #585550);
-}
-.of-req-row.cur {
-  border-color: var(--t2, #d4d0cc);
-}
-.of-req-num {
-  font: 500 13px var(--font-code, var(--o-mono));
-  color: var(--t3, #a19e9a);
-  min-width: 2ch;
-  text-align: right;
-  flex: none;
-}
-.of-req-main {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  font-size: 14px;
-}
-.of-req-t {
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.of-req-row .of-chip {
-  flex: none;
-}
 .of-asks {
   margin: 0 0 10px;
   padding-left: 20px;
   display: grid;
   gap: 8px;
   color: var(--t1, #eeecea);
-}
-/* The phone's tab row scrolls: its edge fades to say so. */
-.phone .of-tabs {
-  mask-image: linear-gradient(90deg, #000 82%, transparent);
 }
 /* An empty board says why it is empty. */
 .of-overlay .board-empty {
@@ -1338,4 +1016,778 @@
 }
 .s2 .of-overlay .hit.note.wide:has(.stage.left) .t {
   -webkit-line-clamp: 1;
+}
+
+/* Popovers under a top-bar button: the session switcher, the request picker, the menu. */
+.of-pop-wrap {
+  position: relative;
+  min-width: 0;
+  display: flex;
+}
+.of-pop-btn {
+  color: var(--o-t1);
+  width: 100%;
+}
+.of-switch .of-pop-btn {
+  max-width: 280px;
+}
+.of-switch-t {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.of-picker {
+  flex: 0 1 auto;
+}
+.of-menu .of-pop-btn {
+  padding: 8px;
+}
+.of-dots {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  shape-rendering: crispEdges;
+}
+.of-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 300px;
+  max-width: min(440px, calc(100vw - 32px));
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+  background: var(--o-panel);
+  border: 1px solid var(--o-line2);
+  border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  padding: 8px;
+  color: var(--o-t1);
+  animation: of-pop-in 160ms ease-out;
+}
+.of-menu .of-pop {
+  left: auto;
+  right: 0;
+  min-width: 240px;
+}
+@keyframes of-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.of-pop-k {
+  font: 11px var(--o-pix);
+  letter-spacing: 0.04em;
+  color: var(--o-t3);
+  margin: 4px 8px 8px;
+  text-transform: uppercase;
+}
+.of-pop-note {
+  margin: 6px 8px;
+  font-size: 13px;
+  color: var(--o-t3);
+}
+.of-pop-note.error {
+  color: var(--o-bad);
+}
+.of-pop-foot {
+  display: block;
+  margin: 6px 0 0;
+  padding: 8px;
+  border-top: 1px solid var(--o-line);
+  color: var(--o-t2);
+  font-size: 14px;
+  text-decoration: none;
+}
+.of-pop-foot:hover {
+  color: var(--o-t1);
+}
+.of-sess-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.of-sess-row {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 4px;
+  color: var(--o-t1);
+  text-decoration: none;
+}
+.of-sess-row:hover,
+.of-sess-row:focus-visible {
+  background: #241d19;
+}
+.of-sess-row[aria-current] {
+  background: #2a211c;
+}
+.of-sess-t {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.of-sess-m {
+  font-size: 12px;
+  color: var(--o-t3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.of-sess-st {
+  font: 10px var(--o-pix);
+  margin-right: 8px;
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+}
+.of-sess-st.live {
+  color: var(--o-now);
+}
+.of-sess-st.quiet {
+  color: var(--o-t2);
+}
+.of-sess-st.ended {
+  color: var(--o-t3);
+}
+.of-menu-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 10px;
+  color: var(--o-t3);
+  font-size: 13px;
+}
+.of-menu-who img {
+  width: 20px;
+  height: 20px;
+}
+.of-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--o-t1);
+  font-size: 14px;
+  text-decoration: none;
+}
+.of-menu-item:hover,
+.of-menu-item:focus-visible {
+  background: #241d19;
+}
+.of-menu-item.danger {
+  color: var(--o-bad);
+  border-top: 1px solid var(--o-line);
+  border-radius: 0;
+  margin-top: 4px;
+}
+.of-menu-item.danger.armed {
+  background: var(--o-bad-bg);
+}
+.of-tag.pinned {
+  color: var(--o-t2);
+  border: 1px solid var(--o-line2);
+  background: #1d1714;
+}
+.of-tag.pinned::before {
+  width: 4px;
+  height: 8px;
+  vertical-align: 0;
+}
+
+/* The now line: what Claude is doing, its why one click away. */
+.of-now {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.of-now-k {
+  font: 11px var(--o-pix);
+  letter-spacing: 0.04em;
+  color: var(--o-t3);
+  text-transform: uppercase;
+  flex: none;
+}
+.of-now-t {
+  color: var(--o-t1);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.of-now-more {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: 11px var(--o-pix);
+  color: var(--o-t3);
+  text-transform: uppercase;
+}
+.of-now-more:hover,
+.of-now-more[aria-expanded="true"] {
+  color: var(--o-t1);
+}
+.of-now-more .of-caret {
+  margin-top: 4px;
+}
+.of-now-pop {
+  left: auto;
+  right: 0;
+  max-width: min(560px, calc(100vw - 32px));
+  font-size: 14px;
+}
+.of-now-pop .now-why {
+  margin: 4px 4px 8px;
+  color: var(--o-t2);
+}
+
+/* The requests rail: every request by day, folded to a strip on demand. */
+.of-rail {
+  width: var(--of-rw);
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--o-bar);
+  border-right: 1px solid var(--o-line);
+}
+.of-rail.shut {
+  width: 40px;
+}
+.of-rail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border-bottom: 1px solid var(--o-line);
+  min-width: 0;
+}
+.of-rail.shut .of-rail-head {
+  padding: 8px 4px;
+  justify-content: center;
+}
+.of-rail-k {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--o-t3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.of-rail-btn {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--o-t3);
+}
+.of-rail-btn:hover,
+.of-rail-btn:focus-visible {
+  border-color: var(--o-line2);
+  color: var(--o-t1);
+}
+.of-rail-chev {
+  width: 6px;
+  height: 6px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateX(1px) rotate(45deg);
+}
+.of-rail.shut .of-rail-chev {
+  transform: translateX(-1px) rotate(-135deg);
+}
+.of-rail .of-rl {
+  overflow-y: auto;
+  padding: 4px 8px 16px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--o-line2) transparent;
+}
+.of-rl ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.of-rl-day {
+  font: 11px var(--o-pix);
+  letter-spacing: 0.04em;
+  color: var(--o-t3);
+  text-transform: uppercase;
+  margin: 12px 8px 4px;
+}
+.of-rl-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  color: var(--o-t2);
+  text-decoration: none;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.of-rl-row:hover,
+.of-rl-row:focus-visible {
+  background: #1d1714;
+  color: var(--o-t1);
+}
+.of-rl-row.cur {
+  background: #2a211c;
+  color: var(--o-t1);
+  box-shadow: inset 2px 0 0 var(--o-t1);
+}
+.of-rl-row .mk {
+  margin-top: 2px;
+  flex: none;
+}
+.of-rl-txt {
+  display: grid;
+  min-width: 0;
+}
+.of-rl-t {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.of-rl-n {
+  font: 500 12px var(--o-mono);
+  color: var(--o-t3);
+  margin-right: 6px;
+}
+.of-rl-sub {
+  font-size: 12px;
+  color: var(--o-t3);
+}
+.of-rl-row.waiting .of-rl-sub {
+  color: var(--o-need);
+}
+.of-rl-row.running .of-rl-sub {
+  color: var(--o-now);
+}
+.of-pop .of-rl-day:first-child {
+  margin-top: 4px;
+}
+
+/* The panel: beside the room on the right, its width docked or wide. */
+.of-dock {
+  min-height: 0;
+  min-width: 0;
+}
+.of-panel {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--s2, #161512);
+  border-left: 1px solid var(--o-line);
+  color: var(--t1, #eeecea);
+  font: 15px / 1.5 var(--font-ui, var(--o-ui));
+  animation: of-panel-in 160ms ease-out;
+}
+@keyframes of-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+.of-panel:focus {
+  outline: none;
+}
+.of-ph {
+  padding: 10px 16px 0;
+  border-bottom: 1px solid var(--o-line);
+}
+.of-ph-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+}
+.of-crumbs {
+  flex: 1;
+  min-width: 0;
+}
+.of-crumbs ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  font-size: 15px;
+}
+.of-crumbs li {
+  display: flex;
+  min-width: 0;
+  white-space: nowrap;
+  flex: none;
+}
+.of-crumbs li:last-child {
+  flex: 1 1 auto;
+}
+.of-crumbs li + li::before {
+  content: "›";
+  color: var(--o-t3);
+  margin: 0 8px;
+}
+.of-crumbs a {
+  color: var(--o-t2);
+  text-decoration: none;
+}
+.of-crumbs a:hover,
+.of-crumbs a:focus-visible {
+  color: var(--o-t1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.of-crumbs [aria-current] {
+  color: var(--o-t1);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.of-ph-btn {
+  flex: none;
+  height: 30px;
+  min-width: 30px;
+  display: grid;
+  place-items: center;
+  background: #241d19;
+  border: 1px solid var(--o-line2);
+  border-radius: 4px;
+  padding: 0 10px;
+  font: 11px var(--o-pix);
+  color: var(--o-t2);
+}
+.of-ph-btn:hover,
+.of-ph-btn[aria-pressed="true"] {
+  color: var(--o-t1);
+  border-color: var(--o-t3);
+}
+.of-close {
+  padding: 0;
+}
+.of-close svg {
+  width: 10px;
+  height: 10px;
+  fill: currentColor;
+  shape-rendering: crispEdges;
+}
+/* Two rows of tabs: the session's and the request's; the row in use is lit. */
+.of-scope {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  opacity: 0.62;
+}
+.of-scope.on {
+  opacity: 1;
+}
+.of-scope:hover,
+.of-scope:focus-within {
+  opacity: 1;
+}
+.of-scope-k {
+  font: 10px var(--o-pix);
+  letter-spacing: 0.04em;
+  color: var(--o-t3);
+  text-transform: uppercase;
+  flex: none;
+  width: 76px;
+  white-space: nowrap;
+}
+.of-scope + .of-scope {
+  border-top: 1px dashed var(--o-line);
+}
+.of-tabs {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.of-tabs a {
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--t3, #a19e9a);
+  white-space: nowrap;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  flex: none;
+}
+.of-tabs a:hover {
+  color: var(--t1, #eeecea);
+}
+.of-tabs a[aria-current="page"] {
+  color: var(--t1, #eeecea);
+  border-bottom-color: var(--t1, #eeecea);
+}
+.of-db {
+  overflow-y: auto;
+  padding: 18px 20px 40px;
+  min-width: 0;
+}
+.of-db > * {
+  animation: of-rise 160ms ease-out;
+}
+@keyframes of-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.of-rh {
+  margin-bottom: 16px;
+}
+.of-rh .ask {
+  font-size: 20px;
+  line-height: 1.3;
+  margin: 6px 0 8px;
+}
+.of-db .of-rl {
+  margin: -8px -8px 0;
+}
+.of-checked {
+  margin-top: 24px;
+}
+
+/* Replay bar: the scrubber the whole width, the controls under it. */
+.of-replay {
+  background: var(--o-bar);
+  border-top: 1px solid var(--o-line);
+  min-width: 0;
+  padding: 0 16px 8px;
+}
+.of-ctl {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.of-track {
+  position: relative;
+  padding-top: 18px;
+  margin-bottom: 6px;
+}
+.of-track input {
+  width: 100%;
+  accent-color: var(--o-now);
+  margin: 0;
+  display: block;
+}
+.of-ticks {
+  cursor: pointer;
+  position: absolute;
+  top: 0;
+  left: 8px;
+  right: 8px;
+  height: 18px;
+}
+.of-track .of-ticks button {
+  pointer-events: none;
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 14px;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.of-track .of-ticks button::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 2px;
+  height: 10px;
+  background: #6a5f55;
+}
+.of-track .of-ticks button:focus-visible,
+.of-track .of-ticks button:focus {
+  outline: none;
+}
+.of-track .of-ticks button:focus-visible::after,
+.of-track .of-ticks button.tip::after,
+.of-track .of-ticks button.cur::after {
+  background: var(--o-t1);
+}
+/* Requests after the time shown. */
+.of-track .of-ticks button.later::after {
+  background: #3a332d;
+}
+.of-track .of-ticks button.later.tip::after {
+  background: var(--o-t2);
+}
+.of-tick-tip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 6;
+  max-width: 420px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--o-panel);
+  border: 1px solid var(--o-line2);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: var(--o-t1);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+.of-tick-tip.start {
+  transform: translateX(-12px);
+}
+.of-tick-tip.end {
+  transform: translateX(calc(-100% + 12px));
+}
+.of-tick-n {
+  font: 500 12px var(--o-mono);
+  color: var(--o-t3);
+  margin-right: 4px;
+}
+.of-tick-when {
+  font: 12px var(--o-mono);
+  color: var(--o-t3);
+  margin-left: 6px;
+}
+
+/* Phone: a pannable strip of the room, the panel as a sheet under it, the replay bar below. */
+.office.phone {
+  position: static;
+  display: block;
+  min-height: 100dvh;
+  overflow: visible;
+  padding-bottom: 120px;
+}
+.phone .of-top-row {
+  flex-wrap: wrap;
+  height: auto;
+  padding: 8px 0;
+  gap: 8px 10px;
+}
+.phone .of-top-row.of-status {
+  gap: 4px 12px;
+}
+.phone .of-spacer {
+  display: none;
+}
+.phone .of-switch {
+  flex: 1;
+}
+.phone .of-picker {
+  order: 3;
+  flex-basis: 100%;
+}
+.phone .of-picker .of-pop-btn {
+  max-width: none;
+}
+.phone .of-pop {
+  position: fixed;
+  top: auto;
+  left: 8px;
+  right: 8px;
+  max-width: none;
+  min-width: 0;
+}
+.phone .of-now {
+  flex-basis: 100%;
+}
+.phone .of-body {
+  display: block;
+}
+.phone .of-stage {
+  display: flex;
+  flex-direction: column;
+}
+.phone .of-ask {
+  display: block;
+  margin: 12px 16px 0;
+  border: 1px solid var(--o-need);
+  background: var(--o-need-bg);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 16px;
+}
+.office.phone .of-mapwrap {
+  display: block;
+  max-height: 46vh;
+  margin-top: 12px;
+  touch-action: pan-x pan-y;
+  scrollbar-width: none;
+}
+.office.phone .of-dock {
+  scroll-margin-top: 0;
+}
+.office.phone .of-panel {
+  height: auto;
+  display: block;
+  border: 0;
+  border-top: 1px solid var(--o-line);
+}
+.office.phone .of-ph {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--s2, #161512);
+}
+.phone .of-scope-k {
+  width: auto;
+  min-width: 62px;
+}
+.phone .of-tabs {
+  mask-image: linear-gradient(90deg, #000 85%, transparent);
+  padding-right: 24px;
+}
+.phone .of-db {
+  overflow: visible;
+  padding: 16px;
+}
+.phone .of-replay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0 16px 10px;
+  z-index: 4;
+}
+.phone .of-ctl {
+  gap: 10px;
+}
+.phone .of-clock {
+  width: auto;
+  min-width: 0;
+  font-size: 14px;
+  flex: 1;
+  text-align: left;
+}
+.phone .of-live {
+  padding: 6px 10px;
+}
+.phone .of-legend {
+  display: none;
+}
+/* The phone pins the question above the strip instead. */
+.office.phone .of-overlay .bubble.wait {
+  display: none;
 }

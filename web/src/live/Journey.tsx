@@ -13,10 +13,11 @@ import {
   type SessionView,
 } from "@murmur/core";
 import { type CSSProperties, useEffect, useRef } from "react";
+import { dayLabel, sessionSpan } from "../format";
+import { StateMark } from "../marks";
 import { follow, requestPath } from "../router";
 import { askOf, cleanPrompt, KIND, type Mark, requestMark } from "../session";
 import { clock, duration, thousands } from "../story";
-import { dayLabel, StateMark, sessionSpan } from "./Rail";
 
 const DAY_MS = 86_400_000;
 const many = (n: number, one: string, more = `${one}s`) =>
@@ -186,7 +187,6 @@ export function Journey(props: {
           className="jr-end from"
           href={path(start)}
           onClick={follow(path(start))}
-          data-morph=""
         >
           <span className="jr-k">
             Where it started · {firstDay}, {clock(start.startedAt)}
@@ -210,7 +210,6 @@ export function Journey(props: {
           className={`jr-end to ${lastMark?.mark ?? "done"}`}
           href={path(last)}
           onClick={follow(path(last))}
-          data-morph=""
         >
           <span className="jr-k">
             {live(lastMark?.mark) ? "Where it is now" : "Where it ended"} ·{" "}
@@ -462,12 +461,7 @@ function Station(props: {
       <span className="jr-dot">
         <StateMark mark={mark} pulse={pulse} />
       </span>
-      <a
-        className={`jr-card ${mark}`}
-        href={path}
-        onClick={follow(path)}
-        data-morph=""
-      >
+      <a className={`jr-card ${mark}`} href={path} onClick={follow(path)}>
         <span className="jr-card-head">
           {!r.kindInferred && (
             <span className="label-chip">{KIND[r.kind]}</span>

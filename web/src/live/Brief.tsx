@@ -10,6 +10,7 @@ import {
   type RequestView,
 } from "@murmur/core";
 import { few } from "../format";
+import { NeedIcon, StateMark } from "../marks";
 import { shortTitle, type Waiting } from "../session";
 import {
   clock,
@@ -19,8 +20,6 @@ import {
   taskNumber,
   thousands,
 } from "../story";
-import { StateMark } from "./Rail";
-import { NeedIcon } from "./TopBar";
 
 const MINUS = "−";
 

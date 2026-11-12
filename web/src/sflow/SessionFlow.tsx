@@ -2,9 +2,9 @@
  * The session flow: its storylines as swimlanes, time running down. A column per thread
  * with a sticky header, a card per request in its thread's column, a row each in time
  * order; a thread's lane line joins its requests, `follows` links cross between them, a
- * long pause is a dashed rule across the board. Selecting a card lights its thread and
- * its chain and dims the rest; Enter (or a second click) opens the request. Under 900 px
- * it is one list in time order.
+ * long pause is a dashed rule across the board. Pointing at a card (or moving to it with
+ * the arrow keys) lights its thread and its chain and dims the rest; a click or Enter
+ * opens the request. Under 900 px it is one list in time order.
  */
 import type { MurmurEvent, RequestView, SessionView } from "@murmur/core";
 import {
@@ -15,8 +15,9 @@ import {
   useState,
 } from "react";
 import { useFrame, useStacked } from "../flow/FlowBoard";
+import { dayLabel } from "../format";
 import { gap, live, took } from "../live/Journey";
-import { dayLabel, StateMark } from "../live/Rail";
+import { StateMark } from "../marks";
 import { follow, navigate, requestPath } from "../router";
 import { type Mark, requestMark, requestShort } from "../session";
 import { clock } from "../story";
@@ -212,8 +213,10 @@ function Board(props: CardProps) {
   const [picked, setPicked] = useState(
     () => new URLSearchParams(location.search).get("r") ?? undefined,
   );
+  // The card pointed at lights its chain for as long as the pointer stays on it.
+  const [pointed, setPointed] = useState<string>();
   const els = useRef(new Map<string, HTMLButtonElement>());
-  const sel = L.cards.find((c) => c.req.id === picked);
+  const sel = L.cards.find((c) => c.req.id === (pointed ?? picked));
   const chain = useMemo(
     () => (sel ? chainOf(view, sel.req.id) : new Set<string>()),
     [view, sel],
@@ -239,8 +242,7 @@ function Board(props: CardProps) {
     setPicked(id);
     writeR(id);
   };
-  const open = (id: string) =>
-    navigate(requestPath(sessionId, id), els.current.get(id));
+  const open = (id: string) => navigate(requestPath(sessionId, id));
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape" && sel) {
       e.preventDefault();
@@ -364,7 +366,6 @@ function Board(props: CardProps) {
             const r = c.req;
             const mark = markOf(r);
             const isSel = r.id === sel?.req.id;
-            const path = requestPath(sessionId, r.id);
             return (
               <button
                 key={r.id}
@@ -375,16 +376,15 @@ function Board(props: CardProps) {
                 type="button"
                 data-id={r.id}
                 data-n={c.n}
-                data-morph={path}
                 className={`sf-card ${mark}${isSel ? " sel" : ""}${lit(c) ? "" : " dim"}`}
                 style={{ left: c.x, top: c.y, width: c.w, height: c.h }}
                 aria-pressed={isSel}
                 tabIndex={r.id === tabStop ? 0 : -1}
-                onClick={(e) => {
-                  if (isSel) return open(r.id);
-                  // Safari does not focus a clicked button: the keys work after a click.
-                  e.currentTarget.focus({ preventScroll: true });
+                onPointerEnter={() => setPointed(r.id)}
+                onPointerLeave={() => setPointed(undefined)}
+                onClick={() => {
                   choose(r.id);
+                  open(r.id);
                 }}
               >
                 <CardBody
@@ -404,8 +404,8 @@ function Board(props: CardProps) {
       </div>
       <p className="sf-hint">
         {heads
-          ? "Click a request to light its storyline and what it picks up from; click it again or press Enter to open it."
-          : "Click a request to light what it picks up from; click it again or press Enter to open it."}
+          ? "Point at a request to light its storyline and what it picks up from; click it to open it."
+          : "Point at a request to light what it picks up from; click it to open it."}
       </p>
     </section>
   );
@@ -517,7 +517,6 @@ function PhoneList(
               className={`sf-card sf-lcard ${mark}`}
               href={path}
               onClick={follow(path)}
-              data-morph=""
               aria-current={wanted === r.id ? "true" : undefined}
             >
               <CardBody

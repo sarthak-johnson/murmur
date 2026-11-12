@@ -5,98 +5,13 @@ import type {
   RequestView,
 } from "@murmur/core";
 import { FileList, PathText } from "../files";
+import { StateMark } from "../marks";
 import { Pill } from "../Pill";
-import {
-  follow,
-  officePath,
-  partPath,
-  requestPath,
-  type SessionTab,
-  sessionPath,
-  type Tab,
-} from "../router";
+import { follow, helperPath } from "../router";
 import { modelOf, shortTitle } from "../session";
 import { clock, duration, helperLine, verdictOf } from "../story";
-import { StateMark } from "./Rail";
 
 const MINUS = "−";
-
-const LABEL: Record<Tab, string> = {
-  story: "Story",
-  tasks: "Tasks",
-  flow: "Flow",
-  files: "Files",
-  helpers: "Helpers",
-};
-
-/**
- * Story · Tasks · Flow · Files · Helpers: each a link with its own URL, so back and forward
- * work. Tasks only for a request with a plan or a map.
- */
-export function RequestTabs(props: {
-  sessionId: string;
-  requestId: string;
-  tab: Tab;
-  tasks: boolean;
-}) {
-  const { sessionId, requestId, tab, tasks } = props;
-  return (
-    <nav className="tabs" aria-label="Views of this request">
-      {(Object.keys(LABEL) as Tab[])
-        .filter((t) => tasks || t !== "tasks")
-        .map((t) => {
-          const path = requestPath(sessionId, requestId, t);
-          return (
-            <a
-              key={t}
-              href={path}
-              aria-current={t === tab ? "page" : undefined}
-              onClick={follow(path)}
-            >
-              {LABEL[t]}
-            </a>
-          );
-        })}
-      <OfficeLink path={officePath(sessionId, requestId)} />
-    </nav>
-  );
-}
-
-/** The office tab: the same request drawn as a pixel room, a page of its own. */
-function OfficeLink({ path }: { path: string }) {
-  return (
-    <a href={path} className="tab-office" onClick={follow(path)}>
-      Office
-    </a>
-  );
-}
-
-/** Journey · Flow · Office under the session's title, styled as the request's tabs. */
-export function SessionTabs(props: { sessionId: string; tab: SessionTab }) {
-  const { sessionId, tab } = props;
-  const tabs: [SessionTab, string][] = [
-    ["journey", "Journey"],
-    ["flow", "Flow"],
-  ];
-  return (
-    <nav className="tabs sess-tabs" aria-label="Views of this session">
-      {tabs.map(([t, label]) => {
-        const path = sessionPath(sessionId, t);
-        return (
-          <a
-            key={t}
-            href={path}
-            aria-current={t === tab ? "page" : undefined}
-            onClick={follow(path)}
-          >
-            {label}
-          </a>
-        );
-      })}
-      <OfficeLink path={officePath(sessionId)} />
-    </nav>
-  );
-}
 
 /** One changed file: its readable path, lines added and removed, and its role. */
 export function fileRow(cwd: string) {
@@ -184,8 +99,7 @@ export function HelpersTab(props: {
           a.status === "running" ? "Running" : failed ? "Stopped" : "Done";
         const model = modelOf(a, events);
         const verdict = verdictOf(a.report);
-        const part = helperPart(request, a);
-        const path = part ? partPath(sessionId, request.id, part) : undefined;
+        const path = helperPath(sessionId, request.id, a.id);
         const time = duration(a.startedAt, a.endedAt ?? a.report?.ts ?? now);
         const line = helperLine(a, a.status === "running");
         const body = (
@@ -214,13 +128,9 @@ export function HelpersTab(props: {
         );
         return (
           <li key={a.id}>
-            {path ? (
-              <a className="helper" href={path} onClick={follow(path)}>
-                {body}
-              </a>
-            ) : (
-              <div className="helper">{body}</div>
-            )}
+            <a className="helper" href={path} onClick={follow(path)}>
+              {body}
+            </a>
           </li>
         );
       })}

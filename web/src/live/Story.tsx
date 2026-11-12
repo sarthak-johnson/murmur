@@ -13,6 +13,7 @@ import type {
 import { type ReactNode, useState } from "react";
 import { cutWords } from "../format";
 import { Fold } from "../markdown";
+import { StateMark } from "../marks";
 import { livePhase, type Mark, shortTitle, taskAgents } from "../session";
 import {
   clock,
@@ -23,7 +24,6 @@ import {
   nOf,
   taskNumber,
 } from "../story";
-import { StateMark } from "./Rail";
 
 /** Lines a message shows before "Show more"; one that fits is never folded. */
 const FOLD_LINES = 8;
