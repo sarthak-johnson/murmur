@@ -8,8 +8,7 @@ import type {
   RequestView,
   SessionView,
 } from "@murmur/core";
-import { memo, useEffect, useMemo, useRef } from "react";
-import { helperFiles } from "../fileIndex";
+import { memo, useEffect, useRef } from "react";
 import { FileList } from "../files";
 import { FlowBoard } from "../flow/FlowBoard";
 import { dayLabel } from "../format";
@@ -705,7 +704,7 @@ function HelperFiles(props: {
   cwd: string;
 }) {
   const { agent: a, events, cwd } = props;
-  const files = useMemo(() => helperFiles(a, events), [a, events]);
+  const files = a.touches ?? [];
   const byId = useById(events);
   if (!files.length) return null;
   return (

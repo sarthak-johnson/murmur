@@ -1,6 +1,6 @@
 import type { MurmurEvent } from "../events.js";
 import { applyAgents } from "./agents.js";
-import { applyFiles } from "./files.js";
+import { applyFiles, bashCredit } from "./files.js";
 import { applyFlags, needsYou } from "./flags.js";
 import { inferHistory, quiet } from "./history.js";
 import { applyInference, inferNow } from "./infer.js";
@@ -28,6 +28,8 @@ export function reduce(events: MurmurEvent[]): SessionView {
   const started = new Map<string, string>();
   const ended = sorted.some((e) => e.hook === "SessionEnd");
   const split = splitRequests(sorted);
+  // Whose each file of a Bash diff is, from every writer's calls across the session.
+  const credit = bashCredit(sorted);
   const traces: Trace[] = [];
   const requests = split.map(({ start, rest }, i, all) => {
     const req = newRequest(start);
@@ -38,14 +40,14 @@ export function reduce(events: MurmurEvent[]): SessionView {
     // Helpers first: a helper's file changes go to the part it is tied to.
     for (const [use, id] of applyAgents(req, rest, trace, agents))
       started.set(use, id);
-    applyFiles(req, rest, trace, agents);
+    applyFiles(req, rest, trace, agents, credit);
     applyFlags(req, rest, trace, i < all.length - 1);
     // A resumed session goes on after its SessionEnd, so only a last one counts.
     req.finished = i < all.length - 1 || rest.at(-1)?.hook === "SessionEnd";
     return req;
   });
   const lists = split.map((s) => [s.start, ...s.rest]);
-  inferHistory(requests, lists, agents, started);
+  inferHistory(requests, lists, agents, started, credit);
   applyWords(requests, lists, agents, started);
   applyRounds(requests, agents, lists);
   const needs = needsYou(sorted);

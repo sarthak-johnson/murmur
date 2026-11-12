@@ -415,6 +415,8 @@ it("a file a helper changed in a worktree lands on its part as the server reads 
       tool_use_id: "toolu_sub",
       agent_id: "a1",
       cwd: wt,
+      // Named, so its own though the main thread's call is open meanwhile (core bashCredit).
+      tool_input: { command: "sed -i '' s/a/b/ frontend/x.css" },
       tool_response: {
         bashEditDiff: {
           files: [

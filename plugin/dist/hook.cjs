@@ -20044,7 +20044,7 @@ var TASK_STATUS = {
 };
 var WAITS_ON_A_THING = /\bwait(?:s|ing)\s+(?:for|on)\s+(?:the|a|an)\s+(?!user\b|author\b|owner\b)/i;
 var waitsOnYou = (now) => !WAITS_ON_A_THING.test(now);
-var isNotRequest = (prompt) => typeof prompt === "string" && /^\s*(\/murmur:\w+(\s|$)|<task-notification>|<cross-session-message\b|\[Cross-session delivery notice\])/.test(
+var isNotRequest = (prompt) => typeof prompt === "string" && /^\s*(\/murmur:\w+(\s|$)|<task-notification>|<(?:agent|teammate|cross-session)-message\b|\[Cross-session delivery notice\])/.test(
   prompt
 );
 function phaseStatus(tasks) {
@@ -20222,7 +20222,7 @@ function setStatuses(req, last) {
 }
 
 // ../packages/core/src/view/files.ts
-function applyFiles(req, events, { before, narrated }, agents = /* @__PURE__ */ new Map()) {
+function applyFiles(req, events, { before, narrated }, agents = /* @__PURE__ */ new Map(), credit = bashCredit(events)) {
   const naming = /* @__PURE__ */ new Map();
   for (const x of narrated)
     for (const f of x.n.files ?? []) {
@@ -20237,13 +20237,19 @@ function applyFiles(req, events, { before, narrated }, agents = /* @__PURE__ */ 
   }
   const near = (list2, i) => list2.findLast((x) => x.i < i) ?? list2.find((x) => x.i > i);
   events.forEach((e, i) => {
-    for (const t of touchesOf(e)) addAt(t, i, String(e.payload.agent_id ?? ""));
+    for (const t of touchesOf(e)) {
+      const c = credit(e, t.path);
+      if (c === "loose") addTouch(req.looseFiles, t);
+      else if (c === "own") addAt(t, i, String(e.payload.agent_id ?? ""));
+    }
   });
   function addAt(t, i, agentId) {
     const agent = agentId ? agents.get(agentId) : void 0;
     if (agent) {
       agent.files ??= [];
       addOnce(agent.files, t.path);
+      agent.touches ??= [];
+      addTouch(agent.touches, t);
     }
     const said2 = () => near(naming.get(t.path) ?? [], i)?.part;
     const partId = agentId ? near(helpers.get(agentId) ?? [], i)?.part ?? agent?.part ?? said2() : said2() ?? before[i]?.part;
@@ -20251,6 +20257,84 @@ function applyFiles(req, events, { before, narrated }, agents = /* @__PURE__ */ 
     addTouch(part ? part.files : req.looseFiles, t);
   }
   for (const p of req.parts) p.files = p.files.filter((f) => f.eventIds.length);
+}
+var WRITES = /* @__PURE__ */ new Set(["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit"]);
+var NAME_CHAR = /[\w.-]/;
+function hasPiece(text3, s) {
+  for (let i = text3.indexOf(s); i >= 0; i = text3.indexOf(s, i + 1)) {
+    const after = text3.slice(i + s.length, i + s.length + 2);
+    if (!NAME_CHAR.test(text3[i - 1] ?? "") && !/^(?:[\w-]|\.\w)/.test(after))
+      return true;
+  }
+  return false;
+}
+var namesPath = (cmd, path4) => {
+  const parts = path4.split("/");
+  return parts.length > 1 && hasPiece(cmd, parts.slice(-2).join("/"));
+};
+var commandOf = (e) => {
+  const c = e.payload.tool_input?.command;
+  return typeof c === "string" ? c : "";
+};
+function bashCredit(events) {
+  const who = (e) => String(e.payload.agent_id ?? "");
+  const opened = /* @__PURE__ */ new Map();
+  const calls = [];
+  const claims = /* @__PURE__ */ new Map();
+  for (const e of events) {
+    const tool = e.payload.tool_name;
+    if (typeof tool !== "string" || !WRITES.has(tool)) continue;
+    const w = who(e);
+    const use = String(e.payload.tool_use_id ?? e.id);
+    const ms = Date.parse(e.ts);
+    if (e.hook === "PreToolUse") opened.set(use, ms);
+    else if (e.hook === "PostToolUse" || e.hook === "PostToolUseFailure")
+      calls.push({ who: w, from: opened.get(use) ?? ms, to: ms });
+    const cmd = commandOf(e);
+    for (const t of touchesOf(e))
+      if (tool !== "Bash" || namesPath(cmd, t.path)) {
+        const c = claims.get(w) ?? /* @__PURE__ */ new Set();
+        claims.set(w, c.add(t.path));
+      }
+  }
+  const claimed = (w, path4) => !!claims.get(w)?.has(path4);
+  calls.sort((a, b) => a.from - b.from);
+  const longest = calls.reduce((m, c) => Math.max(m, c.to - c.from), 0);
+  const seen = /* @__PURE__ */ new Map();
+  const othersOf = (e) => {
+    const known = seen.get(e.id);
+    if (known) return known;
+    const w = who(e);
+    const to = Date.parse(e.ts);
+    const from = opened.get(String(e.payload.tool_use_id ?? e.id)) ?? to;
+    let hi = calls.length;
+    for (let lo = 0; lo < hi; ) {
+      const mid = lo + hi >> 1;
+      if (calls[mid].from <= to) lo = mid + 1;
+      else hi = mid;
+    }
+    const out = /* @__PURE__ */ new Set();
+    for (let k = hi - 1; k >= 0; k--) {
+      const c = calls[k];
+      if (c.from < from - longest) break;
+      if (c.who !== w && c.to >= from) out.add(c.who);
+    }
+    seen.set(e.id, out);
+    return out;
+  };
+  return (e, path4) => {
+    if (e.payload.tool_name !== "Bash") return "own";
+    const cmd = commandOf(e);
+    if (namesPath(cmd, path4)) return "own";
+    const others = othersOf(e);
+    if (!others.size || claimed(who(e), path4)) return "own";
+    if ([...others].some((o) => claimed(o, path4))) return "other";
+    const name = path4.split("/").pop() ?? path4;
+    const same = touchesOf(e).filter(
+      (t) => t.path.endsWith(`/${name}`) || t.path === name
+    );
+    return same.length === 1 && hasPiece(cmd, name) ? "own" : "loose";
+  };
 }
 function addTouch(files, t) {
   const file2 = files.find((f) => f.path === t.path);
@@ -21085,7 +21169,7 @@ function titleOf(description) {
   const t = description.replace(VERB, "") || description || "A helper";
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
-function inferHistory(reqs, events, agents, started) {
+function inferHistory(reqs, events, agents, started, credit = bashCredit(events.flat())) {
   const all = events.flat();
   const { lastAt, over } = quiet(all);
   const failed = /* @__PURE__ */ new Set();
@@ -21149,11 +21233,13 @@ function inferHistory(reqs, events, agents, started) {
     const req = reqs[j];
     for (const e of list2)
       for (const t of touchesOf(e)) {
+        const c = credit(e, t.path);
+        if (c === "other") continue;
         const agentId = str4(e.payload.agent_id);
-        const part = owner.get(agentId);
+        const part = c === "own" ? owner.get(agentId) : void 0;
         if (part) addTouch(part.files, t);
         else if (!req.planInferred) continue;
-        else if (agentId) addTouch(req.looseFiles, t);
+        else if (agentId || c === "loose") addTouch(req.looseFiles, t);
         else main2[j]?.push({ touch: t, ts: e.ts });
       }
   });
@@ -21173,8 +21259,8 @@ function inferHistory(reqs, events, agents, started) {
         if (a.files.some((f) => paths.has(f.path)))
           b.links.push({ to: a.id, label: "same files" });
     });
-    if (req.phases.length || !parts.length) return;
-    const tasks = parts.map(({ part, lastFailed }) => ({
+    if (req.phases.length || !helpers.length) return;
+    const tasks = helpers.sort(byStart).map(({ part, lastFailed }) => ({
       id: part.id,
       title: part.title,
       part: part.id,
@@ -21186,7 +21272,7 @@ function inferHistory(reqs, events, agents, started) {
       {
         id: "did",
         title: "What Claude did",
-        status: tasks.some((t) => t.status === "now" || t.status === "failed") ? "now" : tasks.every((t) => t.status === "done") ? "done" : "todo",
+        status: phaseStatus(tasks),
         tasks
       }
     ];
@@ -21786,14 +21872,8 @@ function applyShape(req, events, trace, ctx) {
 function underWay(req) {
   if (!req.planInferred || req.state !== "running" && req.state !== "waiting")
     return;
-  const folder = (id2) => !!id2?.startsWith("dir:");
   for (const p of req.parts)
-    if (folder(p.id) && p.status === "done") p.status = "now";
-  for (const ph of req.phases) {
-    for (const t of ph.tasks)
-      if (folder(t.part) && t.status === "done") t.status = "now";
-    if (ph.tasks.some((t) => t.status === "now")) ph.status = "now";
-  }
+    if (p.id.startsWith("dir:") && p.status === "done") p.status = "now";
 }
 function runTied(req, ctx) {
   const running = new Set(req.agents.filter(ctx.live).map((a) => a.id));
@@ -22209,6 +22289,7 @@ function reduce(events) {
   const started = /* @__PURE__ */ new Map();
   const ended = sorted.some((e) => e.hook === "SessionEnd");
   const split = splitRequests(sorted);
+  const credit = bashCredit(sorted);
   const traces = [];
   const requests = split.map(({ start, rest }, i, all) => {
     const req = newRequest(start);
@@ -22218,13 +22299,13 @@ function reduce(events) {
     inferNow(req, rest, trace);
     for (const [use, id2] of applyAgents(req, rest, trace, agents))
       started.set(use, id2);
-    applyFiles(req, rest, trace, agents);
+    applyFiles(req, rest, trace, agents, credit);
     applyFlags(req, rest, trace, i < all.length - 1);
     req.finished = i < all.length - 1 || rest.at(-1)?.hook === "SessionEnd";
     return req;
   });
   const lists = split.map((s) => [s.start, ...s.rest]);
-  inferHistory(requests, lists, agents, started);
+  inferHistory(requests, lists, agents, started, credit);
   applyWords(requests, lists, agents, started);
   applyRounds(requests, agents, lists);
   const needs = needsYou(sorted);
