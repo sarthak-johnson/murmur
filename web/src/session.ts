@@ -27,6 +27,18 @@ const str = (v: unknown) => (typeof v === "string" ? v : "");
 const obj = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 
+/** The index of the first event at or after `ts`: events come sorted by time (useSession). */
+function firstAt(events: MurmurEvent[], ts: string): number {
+  let lo = 0;
+  let hi = events.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((events[mid] as MurmurEvent).ts < ts) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 /** The events between a request's prompt and the next one's. */
 export function requestEvents(
   view: SessionView,
@@ -34,8 +46,9 @@ export function requestEvents(
   events: MurmurEvent[],
 ): MurmurEvent[] {
   const next = view.requests[view.requests.indexOf(req) + 1];
-  return events.filter(
-    (e) => e.ts >= req.startedAt && (!next || e.ts < next.startedAt),
+  return events.slice(
+    firstAt(events, req.startedAt),
+    next ? firstAt(events, next.startedAt) : events.length,
   );
 }
 

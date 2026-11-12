@@ -190,6 +190,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -445,6 +446,9 @@ describe("the board", () => {
   });
 
   it("the running request carries the one pulse on the page", () => {
+    // Its states are read at the session's moment (state.ts): a minute after its last event.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse(day(5, 81)));
     show();
     const pulses = document.querySelectorAll(".pulse");
     expect(pulses).toHaveLength(1);
@@ -552,6 +556,12 @@ describe("under 900 px", () => {
     );
     const a = items[0]?.querySelector("a");
     expect(a?.getAttribute("href")).toBe("/s/s1/r/r1?open=story");
+    // Read days after its last event, its running request is paused (state.ts): no pulse.
+    expect(document.querySelectorAll(".pulse")).toHaveLength(0);
+    cleanup();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse(day(5, 81)));
+    show();
     expect(document.querySelectorAll(".pulse")).toHaveLength(1);
   });
 

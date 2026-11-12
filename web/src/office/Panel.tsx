@@ -312,7 +312,12 @@ function PanelBody(props: PanelProps) {
             />
           </>
         ) : open === "timeline" ? (
-          <SessionFlow sessionId={sessionId} view={view} events={events} />
+          <SessionFlow
+            sessionId={sessionId}
+            view={view}
+            events={events}
+            ses={props.ses}
+          />
         ) : open === "requests" ? (
           <RequestList
             sessionId={sessionId}

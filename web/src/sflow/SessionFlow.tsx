@@ -16,10 +16,11 @@ import {
 } from "react";
 import { useFrame, useStacked } from "../flow/FlowBoard";
 import { dayLabel } from "../format";
-import { gap, live, took } from "../live/Journey";
+import { gap, took } from "../live/Journey";
 import { StateMark } from "../marks";
 import { follow, navigate, requestPath } from "../router";
-import { type Mark, requestMark, requestShort } from "../session";
+import { type Mark, requestShort } from "../session";
+import { requestNow, type SessionNow, sessionNow } from "../state";
 import { clock } from "../story";
 import {
   chainOf,
@@ -121,23 +122,27 @@ export function SessionFlow(props: {
   sessionId: string;
   view: SessionView;
   events: MurmurEvent[];
+  /** The session at the moment shown (state.ts): every request stands and times as there. */
+  ses?: SessionNow | undefined;
 }) {
   const { sessionId, view, events } = props;
   const stacked = useStacked();
   const threads = useMemo(() => threadsOf(view), [view]);
   const shown = useMemo(() => placed(view, threads), [view, threads]);
-  const now = new Date().toISOString();
-  const marks = new Map(
-    view.requests.map((r) => [r.id, requestMark(view, r, events)]),
-  );
+  const ses = props.ses;
+  const marks = useMemo(() => {
+    const at = ses ?? sessionNow(view);
+    return new Map(
+      view.requests.map((r) => [r.id, requestNow(view, r, events, at)]),
+    );
+  }, [view, events, ses]);
   const markOf = (r: RequestView) => marks.get(r.id)?.mark ?? "done";
   // One loop on the page: the newest running request.
   const pulsing = view.requests.findLast((r) => markOf(r) === "running")?.id;
   const facts = (r: RequestView) => {
     const m = marks.get(r.id);
-    const end = live(m?.mark) ? now : (m?.end ?? now);
     return [
-      took(r.startedAt, end),
+      took(r.startedAt, m?.to ?? r.startedAt),
       many(r.tally.helpers, "helper"),
       many(r.tally.files, "file"),
     ].join(" · ");
