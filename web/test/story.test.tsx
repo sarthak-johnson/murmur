@@ -397,6 +397,15 @@ describe("story helpers", () => {
     expect(verdictOf(r("Not approved"))?.tone).toBe("bad");
     expect(verdictOf(r("Doesn't pass"))?.tone).toBe("bad");
     expect(verdictOf(r("Not passed"))?.tone).toBe("bad");
+    for (const said of [
+      "does not pass",
+      "doesn't pass",
+      "did not pass",
+      "FAIL",
+      "not ready",
+      "changes needed",
+    ])
+      expect([said, verdictOf(r(said))?.tone]).toEqual([said, "bad"]);
     expect(verdictOf(r("No blocking issues"))?.tone).toBe("done");
     expect(verdictOf(r(undefined, "failed"))).toEqual({
       label: "Failed",

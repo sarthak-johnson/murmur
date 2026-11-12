@@ -25,6 +25,7 @@ import {
   titleClause,
 } from "./titles.js";
 import type {
+  AgentReport,
   AgentView,
   Beyond,
   MessageView,
@@ -34,6 +35,7 @@ import type {
   StepView,
   TaskView,
 } from "./types.js";
+import { verdictOf } from "./words.js";
 
 export interface ShapeContext {
   /** A later request exists. */
@@ -488,10 +490,10 @@ export function aimOf(brief: string): string | undefined {
     ? cutWords(rest.charAt(0).toUpperCase() + rest.slice(1), AIM_MAX)
     : undefined;
 }
-// A review report that asks for changes. "Does not pass" counts only of a review or a
-// test, so "the helper did not pass the cwd" is no verdict.
+// A review report with no verdict line that asks for changes in its words. "Does not
+// pass" counts only of a review or a test, so "the helper did not pass the cwd" is none.
 const SENT_BACK =
-  /\b(?:needs?[ _-]?fix(?:es)?|fix(?:es)?[ _-]first|changes[ _-]requested|not approved|rejected|(?<!\bno )blocking issues?|(?:does not|doesn't|did not) pass (?:the |its |this )?(?:review|re-?review|tests?|checks?|spec))\b/i;
+  /\b(?:needs?[ _-]?fix(?:es)?|fix(?:es)?[ _-]first|changes[ _-](?:requested|needed|required)|not approved|rejected|(?<!\bno )blocking issues?|(?:does not|doesn't|did not|didn't) pass (?:the |its |this )?(?:review|re-?review|tests?|checks?|spec)|(?:tests?|checks?|builds?|specs?) (?:do not|don't|does not|doesn't|did not|didn't) pass)\b/i;
 const NUMBER = [
   "no",
   "one",
@@ -618,6 +620,13 @@ function fillPart(
   }
 }
 
+/** A report asks for changes: its verdict reads bad, or with none its words ask. */
+function saysSentBack(r: AgentReport | undefined): boolean {
+  if (!r || /failed|killed/.test(r.status)) return false;
+  const v = verdictOf(r);
+  return v ? v.tone === "bad" : SENT_BACK.test(r.text.slice(0, 300));
+}
+
 /** One step for a helper: "Built", "Sent back", "Fixed", "Passed" and their kin. */
 function helperStep(
   a: AgentView,
@@ -634,7 +643,7 @@ function helperStep(
         b.subject === a.subject &&
         (b.round ?? 0) > (a.round ?? 0) &&
         (b.role === "fix" || b.role === "recheck"),
-    ) || SENT_BACK.test(`${r?.verdict ?? ""} ${r?.text.slice(0, 300) ?? ""}`);
+    ) || saysSentBack(r);
   const review = a.role === "review" || a.role === "recheck";
   const text = review
     ? running
