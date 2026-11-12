@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Me, UNAUTHORIZED } from "./api";
+import { OfficePage } from "./office/Office";
 import { Device } from "./pages/Device";
 import { Login } from "./pages/Login";
 import { LiveSkeleton, SessionPage } from "./pages/Session";
@@ -101,7 +102,8 @@ export function App() {
   const wide =
     route.name === "session" ||
     route.name === "request" ||
-    route.name === "part";
+    route.name === "part" ||
+    route.name === "office";
   const note = unreachable ? "Could not reach Murmur. Retrying…" : undefined;
   if (me === undefined)
     // The live frame brings its own bar, so nothing moves when the page loads.
@@ -150,6 +152,15 @@ export function App() {
         </main>
       );
       break;
+    case "office":
+      // The office is a room of its own: its own bars, the whole window.
+      return (
+        <OfficePage
+          key={route.sessionId}
+          sessionId={route.sessionId}
+          {...(route.requestId ? { requestId: route.requestId } : {})}
+        />
+      );
     case "session":
     case "request":
     case "part":

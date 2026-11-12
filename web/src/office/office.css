@@ -1,0 +1,1341 @@
+/*
+ * The office. Its own warm palette (--o-*), scoped to .office so the app's tokens stay as
+ * they are for the views in its drawer. The room is a canvas at a whole-number scale (--s)
+ * with a DOM overlay for words: labels, plates, bubbles, sticky-note text.
+ */
+.office {
+  --o-bg: #0d0b0a;
+  --o-bar: #15110f;
+  --o-panel: #1a1512;
+  --o-line: #33291f;
+  --o-line2: #4a3830;
+  --o-t1: #f3ebe0;
+  --o-t2: #d5c8b8;
+  --o-t3: #a8a29a;
+  --o-ink: #1c2128;
+  --o-now: #6db4ff;
+  --o-now-bg: #16263a;
+  --o-done: #74d394;
+  --o-done-bg: #15281d;
+  --o-need: #ffbf4a;
+  --o-need-bg: #2e2310;
+  --o-bad: #ff6f61;
+  --o-bad-bg: #2e1512;
+  --o-todo: #c0b6aa;
+  --o-todo-bg: #2a2420;
+  --o-ui: "Geist", system-ui, sans-serif;
+  --o-mono: "Geist Mono", ui-monospace, monospace;
+  --o-pix: "Silkscreen", "Geist Mono", monospace;
+  --o-top: 56px;
+  --o-foot: 72px;
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: var(--o-top) minmax(0, 1fr) var(--o-foot);
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--o-bg);
+  color: var(--o-t1);
+  font: 15px / 1.5 var(--o-ui);
+  overflow: hidden;
+}
+.office button,
+.office select,
+.office input {
+  font: inherit;
+  color: inherit;
+}
+.office button {
+  cursor: pointer;
+}
+.office .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Top bar */
+.of-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px 0 12px;
+  background: var(--o-bar);
+  border-bottom: 1px solid var(--o-line);
+  min-width: 0;
+}
+.of-back-link {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  color: var(--o-t2);
+  font-size: 22px;
+  line-height: 1;
+  text-decoration: none;
+  flex: none;
+}
+.of-back-link:hover,
+.of-back-link:focus-visible {
+  background: #241d19;
+  color: var(--o-t1);
+}
+.of-brand {
+  font: 700 16px var(--o-pix);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.of-brand-sub {
+  color: var(--o-t3);
+  font-weight: 400;
+}
+.of-brand-mark {
+  width: 14px;
+  height: 14px;
+  background:
+    linear-gradient(#ece2cf 0 0) 4px 0 / 6px 4px no-repeat,
+    linear-gradient(#e9c19a 0 0) 3px 4px / 8px 4px no-repeat,
+    linear-gradient(#ece2cf 0 0) 2px 8px / 10px 6px no-repeat;
+}
+/* Live or a replay, said once by the brand: a live session follows its newest moment. */
+.of-tag {
+  font: 700 11px var(--o-pix);
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+  padding: 3px 7px;
+  white-space: nowrap;
+  cursor: help;
+}
+.of-tag::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  vertical-align: 1px;
+  background: currentColor;
+}
+.of-tag.live {
+  color: var(--o-now);
+  border: 1px solid #2c4f78;
+  background: var(--o-now-bg);
+}
+.of-tag.live::before {
+  border-radius: 50%;
+  animation: of-breathe 2s ease-in-out infinite;
+}
+.of-tag.quiet {
+  color: var(--o-t2);
+  border: 1px solid var(--o-line2);
+  background: #1d1714;
+}
+.of-tag.quiet::before {
+  border-radius: 50%;
+  opacity: 0.6;
+}
+.of-tag.replay {
+  color: #f2b8a0;
+  border: 1px solid #6a3a2c;
+  background: #2a1712;
+}
+.of-tag.replay::before {
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+@keyframes of-breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+.of-req {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 620px;
+  padding: 6px 12px;
+  border: 1px solid var(--o-line2);
+  border-radius: 6px;
+  background: #1d1714;
+}
+.of-req:hover {
+  border-color: #6a5446;
+}
+.of-req-n {
+  font-size: 14px;
+  color: var(--o-t3);
+  white-space: nowrap;
+}
+.of-req-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.of-caret {
+  width: 0;
+  height: 0;
+  border: 5px solid transparent;
+  border-top-color: var(--o-t3);
+  margin-top: 5px;
+}
+.of-pill {
+  font-size: 14px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  border: 1px solid currentColor;
+}
+.office .s-now {
+  color: var(--o-now);
+  background: var(--o-now-bg);
+}
+.office .s-done {
+  color: var(--o-done);
+  background: var(--o-done-bg);
+}
+.office .s-blocked {
+  color: var(--o-need);
+  background: var(--o-need-bg);
+}
+.office .s-failed {
+  color: var(--o-bad);
+  background: var(--o-bad-bg);
+}
+.office .s-todo {
+  color: var(--o-todo);
+  background: var(--o-todo-bg);
+}
+.of-meta {
+  color: var(--o-t2);
+  white-space: nowrap;
+}
+.of-meta b {
+  color: var(--o-t1);
+  font-weight: 600;
+}
+.of-spacer {
+  flex: 1;
+}
+.of-session {
+  color: var(--o-t3);
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.of-details {
+  border: 1px solid var(--o-line2);
+  background: #1d1714;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 14px;
+  color: var(--o-t1);
+  flex: none;
+}
+.of-details:hover {
+  border-color: #6a5446;
+}
+@media (max-width: 1500px) {
+  .of-session {
+    display: none;
+  }
+}
+@media (max-width: 1180px) {
+  .of-meta + .of-meta {
+    display: none;
+  }
+}
+
+/* Stage and room */
+.of-stage {
+  position: relative;
+  min-height: 0;
+}
+.of-stage.docked {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--of-dw);
+  grid-template-rows: minmax(0, 1fr);
+}
+.of-empty {
+  display: grid;
+  place-items: center;
+}
+/* "safe": a room wider than its window pans from its left edge instead of spilling past it. */
+.of-mapwrap {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: safe center;
+  overflow: auto;
+}
+.of-stage.docked .of-mapwrap {
+  position: relative;
+  inset: auto;
+}
+.of-map {
+  position: relative;
+}
+.of-cv {
+  display: block;
+  image-rendering: pixelated;
+  width: calc(624px * var(--s));
+  height: calc(320px * var(--s));
+}
+.of-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.of-overlay > * {
+  position: absolute;
+  pointer-events: auto;
+}
+/* While Claude waits on you the room dims, but the plan stays readable. */
+.of-overlay.waitdim
+  > :not(.bang):not(.wait):not(.tag):not(.you-plate):not(.note):not(.phase-h) {
+  opacity: 0.55;
+}
+.of-ask {
+  display: none;
+}
+
+.of-overlay .room-label {
+  font: calc(6px * var(--s)) var(--o-pix);
+  color: #9a938a;
+  white-space: nowrap;
+  pointer-events: none;
+  line-height: 1;
+}
+/* The same pixel caps as the room names. */
+.of-overlay .spot-label {
+  font: calc(4px * var(--s)) / 1 var(--o-pix);
+  color: #9a938a;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.of-overlay .you-plate {
+  font: 700 calc(4px * var(--s)) / calc(8px * var(--s)) var(--o-pix);
+  color: #2a211c;
+  text-align: center;
+  pointer-events: none;
+}
+.of-overlay .phase-h {
+  font: 600 15px / 1 var(--o-ui);
+  color: var(--o-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0 6px;
+}
+.of-overlay .phase-h:hover {
+  text-decoration: underline;
+}
+.of-overlay .focus-col {
+  border: 3px solid var(--o-now);
+  border-radius: 3px;
+  pointer-events: none;
+}
+.of-overlay .more {
+  font: 600 13px var(--o-ui);
+  color: var(--o-ink);
+  pointer-events: none;
+}
+.of-overlay .ph,
+.office .ph {
+  font: 700 11px / 1 var(--o-ui);
+  font-style: normal;
+  color: #1c1720;
+  background: var(--ph);
+  border-radius: 3px;
+  padding: 2px 4px 1px;
+  margin-right: 6px;
+  vertical-align: 1px;
+  text-decoration: none;
+  display: inline-block;
+}
+.of-overlay .plate {
+  transform: translateX(-50%);
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  display: grid;
+  line-height: 1.25;
+}
+/* A plate keeps to its desk's width, so it never runs into the next one. */
+.of-overlay .plate {
+  max-width: calc(78px * var(--s));
+}
+.of-overlay .plate b,
+.of-overlay .plate span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.of-overlay .plate b {
+  font: 600 15px / 1.3 var(--o-ui);
+  color: var(--o-t1);
+}
+.of-overlay .plate span {
+  font: 13px / 1.3 var(--o-ui);
+  color: var(--o-t3);
+}
+.of-overlay .plate.done b {
+  color: var(--o-t2);
+}
+.of-overlay .plate .ph {
+  margin-right: 5px;
+}
+.of-overlay .plate.done .ph {
+  opacity: 0.6;
+}
+.s2 .of-overlay .plate .ph {
+  font-size: 10px;
+  padding: 1px 3px 0;
+  margin-right: 4px;
+}
+/* What you asked, written on the pinned request sheet. */
+.of-overlay .sheet {
+  font: 500 11px / 1.3 var(--o-ui);
+  color: #3a3128;
+  pointer-events: none;
+  padding: 0 2px;
+}
+.of-overlay .sheet span {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.of-overlay .sheet small {
+  display: block;
+  font: 700 8px / 1.4 var(--o-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8a7f70;
+}
+.of-overlay .card-n {
+  font: 700 calc(3px * var(--s)) / 1 var(--o-pix);
+  color: #6b6253;
+  text-align: center;
+  pointer-events: none;
+}
+.s2 .of-overlay .card-n,
+.s2 .of-overlay .sheet {
+  display: none;
+}
+.of-overlay .tag {
+  font: 600 13px var(--o-ui);
+  color: var(--o-t1);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+  text-shadow: 0 1px 0 #000;
+}
+/* Speech bubbles: pop in with a spring when the words change, a tail to the speaker, a border
+   in the speaker's shirt colour, and a gentle fade once they have been up a while. */
+.of-overlay .bubble {
+  --bc: var(--who, #4d3e34);
+  font: 500 15px / 1.3 var(--o-ui);
+  color: var(--o-t1);
+  background: #120e0c;
+  border: 2px solid var(--bc);
+  border-radius: 8px;
+  padding: 4px 10px;
+  width: max-content;
+  translate: -50% calc(-100% - 6px);
+  transform-origin: 50% calc(100% + 6px);
+  pointer-events: none;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
+  animation: of-pop 0.42s cubic-bezier(0.34, 1.7, 0.5, 1) backwards;
+  transition:
+    opacity 0.6s ease,
+    scale 0.6s ease;
+}
+.of-overlay .bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  background: #120e0c;
+  border: solid var(--bc);
+  border-width: 0 2px 2px 0;
+  rotate: 45deg;
+}
+.of-overlay .bubble .bt {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.of-overlay .bubble.gone {
+  opacity: 0;
+  scale: 0.8;
+}
+/* Thinking dots under a faded bubble: three beads in the speaker's colour, breathing in turn. */
+.of-overlay .dots {
+  display: flex;
+  gap: calc(1px * var(--s));
+  translate: -50% -100%;
+  pointer-events: none;
+  animation: of-pop 0.4s ease-out backwards 0.5s;
+}
+.of-overlay .dots i {
+  width: calc(1.5px * var(--s));
+  height: calc(1.5px * var(--s));
+  border-radius: 50%;
+  background: var(--who, #d5c8b8);
+  opacity: 0.35;
+  animation: of-think 1.4s ease-in-out infinite;
+}
+.of-overlay .dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.of-overlay .dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes of-think {
+  40% {
+    opacity: 0.95;
+    translate: 0 -2px;
+  }
+}
+.of-overlay .bubble.claude {
+  --bc: #b8a98f;
+  background: #1b1511;
+}
+.of-overlay .bubble.claude::after {
+  background: #1b1511;
+}
+.of-overlay .bubble.left {
+  translate: 0 calc(-100% - 6px);
+  transform-origin: 10px calc(100% + 6px);
+}
+.of-overlay .bubble.left::after {
+  left: 14px;
+}
+@keyframes of-pop {
+  from {
+    scale: 0.3;
+    opacity: 0;
+  }
+  60% {
+    opacity: 1;
+  }
+  to {
+    scale: 1;
+    opacity: 1;
+  }
+}
+.of-overlay .bubble.wait {
+  display: grid;
+  gap: 4px;
+  translate: -50% 8px;
+  transform-origin: 50% -8px;
+  font-size: 18px;
+  line-height: 1.35;
+  max-width: 420px;
+  padding: 10px 14px;
+  --bc: var(--o-need);
+  background: #17120c;
+  animation:
+    of-pop 0.5s cubic-bezier(0.34, 1.7, 0.5, 1) backwards,
+    of-glow 2.4s ease-in-out 0.5s infinite;
+}
+.of-overlay .bubble.wait::after {
+  top: -6px;
+  bottom: auto;
+  left: calc(50% + var(--tail, 0px));
+  rotate: 225deg;
+  background: #17120c;
+}
+@keyframes of-glow {
+  50% {
+    box-shadow:
+      0 3px 0 rgba(0, 0, 0, 0.45),
+      0 0 18px rgba(255, 191, 74, 0.35);
+  }
+}
+.of-overlay .bubble.wait small {
+  font: 600 14px var(--o-ui);
+  color: var(--o-need);
+}
+.of-overlay .bang {
+  width: 32px;
+  height: 32px;
+  transform: translate(-50%, -100%);
+  background: var(--o-need);
+  color: #2e2310;
+  font: 700 24px / 32px var(--o-ui);
+  text-align: center;
+  border-radius: 4px;
+  pointer-events: none;
+  animation: of-pulse 2s ease-in-out infinite;
+}
+@keyframes of-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+.of-overlay .hit {
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+}
+.of-overlay .hit:hover,
+.of-overlay .hit:focus-visible {
+  outline: 2px solid rgba(243, 235, 224, 0.6);
+  outline-offset: 1px;
+}
+.of-overlay .hit.sel {
+  outline: 3px solid var(--o-t1);
+  outline-offset: 2px;
+}
+.of-overlay .hit.ring {
+  outline: 3px dashed rgba(243, 235, 224, 0.8);
+  outline-offset: 0;
+}
+.of-overlay .hit.desk.sel {
+  outline-offset: 0;
+}
+.of-overlay .hit.note {
+  display: grid;
+  align-content: start;
+  text-align: left;
+  padding: 0 4px 0 calc(15px * var(--s));
+}
+.of-overlay .hit.note .t {
+  font: 500 15px / 19px var(--o-ui);
+  color: var(--o-ink);
+}
+.of-overlay .hit.note .stage {
+  font: 600 13px / 18px var(--o-ui);
+  color: #1d4f86;
+}
+/* Left open: the request ended with it unfinished. */
+.of-overlay .hit.note .stage.left {
+  color: rgba(28, 33, 40, 0.6);
+}
+.of-overlay .hit.note.done .t {
+  color: rgba(28, 33, 40, 0.72);
+}
+.of-overlay .hit.note:hover,
+.of-overlay .hit.note:focus-visible {
+  outline-color: rgba(28, 33, 40, 0.5);
+}
+.of-overlay .hit.note.sel {
+  outline: 3px solid var(--o-ink);
+}
+.of-overlay .hit.note.ring {
+  outline: 3px dashed rgba(28, 33, 40, 0.7);
+}
+/* 2x: most notes are too narrow for text (a wide one keeps one line); the rest steps down a size. */
+/* Two lines beside the sticky's square, so a title reads to its end more often. */
+.s2 .of-overlay .hit.note.wide .t {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 12px;
+  margin-top: 2px;
+}
+.s2 .of-overlay .hit.note:not(.wide) .t,
+.s2 .of-overlay .hit.note .stage {
+  display: none;
+}
+.s2 .of-overlay .more {
+  font-size: 11px;
+}
+.s2 .of-overlay .plate b,
+.s2 .of-overlay .plate span,
+.s2 .of-overlay .phase-h {
+  font-size: 13px;
+}
+.s2 .of-overlay .phase-h {
+  padding: 0 4px;
+}
+.s2 .of-overlay .tag {
+  font-size: 12px;
+}
+.s2 .of-overlay .spot-label {
+  font-size: 10px;
+}
+/* One line at 2x, so a bubble never covers the plate of the desk above. */
+.s2 .of-overlay .bubble:not(.wait) {
+  font-size: 13px;
+  padding: 2px 7px;
+  border-width: 1px;
+  translate: -50% calc(-100% - 4px);
+}
+.s2 .of-overlay .bubble:not(.wait) .bt {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.s2 .of-overlay .bubble:not(.wait)::after {
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  bottom: -4px;
+  border-width: 0 1px 1px 0;
+}
+.s2 .of-overlay .bubble.left {
+  translate: 0 calc(-100% - 4px);
+}
+.s2 .of-overlay .bubble.wait {
+  font-size: 15px;
+  max-width: 340px;
+  padding: 8px 12px;
+}
+.s2 .of-overlay .bubble.wait small {
+  font-size: 13px;
+}
+.s1 .of-overlay .plate {
+  display: none;
+}
+
+/* The detail drawer: beside the room when it fits, else over it on the side away from what
+   was clicked. It holds the app's own views, so it keeps the app's look. */
+.of-dock {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(var(--of-dw, 480px), 100%);
+  z-index: 3;
+}
+.of-dock.left {
+  right: auto;
+  left: 0;
+}
+.of-stage.docked .of-dock {
+  position: relative;
+  width: auto;
+}
+.of-drawer {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--s2, #161512);
+  border-left: 1px solid var(--o-line);
+  box-shadow: -12px 0 24px rgba(0, 0, 0, 0.35);
+  color: var(--t1, #eeecea);
+  font: 15px / 1.5 var(--font-ui, var(--o-ui));
+}
+.of-dock.left .of-drawer {
+  border-left: 0;
+  border-right: 1px solid var(--o-line);
+  box-shadow: 12px 0 24px rgba(0, 0, 0, 0.35);
+}
+.of-drawer.docked {
+  box-shadow: none;
+}
+.of-dh {
+  padding: 14px 20px 0;
+  border-bottom: 1px solid var(--line, #34322e);
+}
+.of-dh-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.of-dh-req {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1.35;
+  color: var(--t1, #eeecea);
+  text-decoration: none;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.of-dh-req:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--line-2, #423f3b);
+  text-underline-offset: 3px;
+}
+.of-close {
+  background: #241d19;
+  border: 1px solid var(--o-line2);
+  border-radius: 6px;
+  padding: 3px 12px;
+  font-size: 14px;
+  color: var(--o-t2);
+  flex: none;
+}
+.of-tabs {
+  display: flex;
+  gap: 2px;
+  margin-top: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.of-drawer .of-tabs button {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--t3, #a19e9a);
+  white-space: nowrap;
+}
+.of-drawer .of-tabs button:hover {
+  color: var(--t1, #eeecea);
+}
+.of-drawer .of-tabs button[aria-current="page"] {
+  color: var(--t1, #eeecea);
+  border-bottom-color: var(--t1, #eeecea);
+}
+.of-db {
+  overflow-y: auto;
+  padding: 18px 20px 40px;
+  min-width: 0;
+}
+.of-back {
+  display: inline-block;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.of-card h2 {
+  font-size: 20px;
+  line-height: 1.3;
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+.of-card h3 {
+  font: 600 13px var(--font-ui, var(--o-ui));
+  color: var(--t3, #a19e9a);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 22px 0 8px;
+}
+.of-card p {
+  margin: 0 0 10px;
+  color: var(--t2, #d4d0cc);
+}
+.of-kicker {
+  font: 600 13px var(--font-ui, var(--o-ui));
+  color: var(--t3, #a19e9a);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 6px;
+}
+.of-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.of-chip {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  color: var(--t2, #d4d0cc);
+}
+.of-chip.now {
+  color: var(--now, #60aaf3);
+}
+.of-chip.done {
+  color: var(--done, #55c483);
+}
+.of-chip.warn {
+  color: var(--need, #e9b452);
+}
+.of-chip.bad {
+  color: var(--bad, #ef6661);
+}
+.of-md {
+  color: var(--t2, #d4d0cc);
+  overflow-wrap: anywhere;
+}
+.of-files,
+.of-runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.of-runs li {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  color: var(--t2, #d4d0cc);
+}
+.of-when {
+  font: 13px var(--font-code, var(--o-mono));
+  color: var(--t3, #a19e9a);
+  flex: none;
+  min-width: 44px;
+}
+/* The app's views assume a page's width; in the drawer they take its width instead: the
+   request's brief stacks its cells when the drawer is narrow. */
+.of-db {
+  container-type: inline-size;
+}
+@container (max-width: 560px) {
+  .of-db .rb {
+    flex-direction: column;
+  }
+  .of-db .rb-cell + .rb-cell {
+    box-shadow: inset 0 1px 0 var(--s6);
+  }
+}
+.of-db .req-split {
+  display: block;
+}
+.of-db .tabs {
+  flex-wrap: wrap;
+}
+
+/* Replay bar */
+.of-replay {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+  background: var(--o-bar);
+  border-top: 1px solid var(--o-line);
+  min-width: 0;
+}
+.of-play {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--o-line2);
+  background: #1d1714;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.of-play-icon {
+  width: 0;
+  height: 0;
+  border-left: 12px solid var(--o-t1);
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  margin-left: 3px;
+}
+.of-play.on .of-play-icon {
+  width: 12px;
+  height: 14px;
+  border: 0;
+  margin: 0;
+  background: linear-gradient(
+    90deg,
+    var(--o-t1) 0 4px,
+    transparent 4px 8px,
+    var(--o-t1) 8px 12px
+  );
+}
+.of-track {
+  position: relative;
+  flex: 1;
+  min-width: 120px;
+  padding-top: 14px;
+}
+.of-track input {
+  width: 100%;
+  accent-color: var(--o-now);
+  margin: 0;
+}
+.of-ticks {
+  cursor: pointer;
+  position: absolute;
+  top: 0;
+  left: 8px;
+  right: 8px;
+  height: 14px;
+}
+.of-track .of-ticks button {
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 14px;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.of-track .of-ticks button::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 2px;
+  height: 10px;
+  background: #6a5f55;
+}
+.of-track .of-ticks button:focus-visible::after,
+.of-track .of-ticks button.cur::after {
+  background: var(--o-t1);
+}
+/* Requests after the time shown. */
+.of-track .of-ticks button.later::after {
+  background: #3a332d;
+}
+.of-clock {
+  font: 15px var(--o-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--o-t1);
+  white-space: nowrap;
+  /* A fixed width: the track beside it never moves while you aim at a tick. */
+  width: 25ch;
+  overflow: hidden;
+  text-align: right;
+  flex: none;
+}
+.of-clock.days {
+  width: 36ch;
+}
+.of-speed select {
+  background: #1d1714;
+  border: 1px solid var(--o-line2);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+.of-live {
+  border: 1px solid var(--o-line2);
+  background: #1d1714;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 14px;
+  color: var(--o-t2);
+}
+/* At the end of a session that is over: nothing further to go to. */
+.of-live.on {
+  color: var(--o-t3);
+  border-color: var(--o-line);
+}
+/* Following a live session: lit, with a breathing dot. */
+.of-live.on.live {
+  color: var(--o-now);
+  border-color: #2c4f78;
+  background: var(--o-now-bg);
+}
+.of-live.on.live::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
+  animation: of-breathe 2s ease-in-out infinite;
+}
+.of-legend {
+  display: flex;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--o-t2);
+  white-space: nowrap;
+}
+.of-legend .of-lg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.of-legend .k {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.of-legend .k.now {
+  background: var(--o-now);
+}
+.of-legend .k.done {
+  background: var(--o-done);
+}
+.of-legend .k.blocked {
+  background: var(--o-need);
+}
+.of-legend .k.failed {
+  background: var(--o-bad);
+}
+.of-legend .k.todo {
+  background: #8d939c;
+}
+@media (max-width: 1440px) {
+  .of-legend {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .office * {
+    /* biome-ignore lint/complexity/noImportantStyles: reduced motion beats every animation in the room */
+    transition: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced motion beats every animation in the room */
+    animation: none !important;
+  }
+}
+
+/* Phone: a pannable strip of the room, the detail under it, the replay bar pinned below. */
+.office.phone {
+  position: static;
+  display: block;
+  min-height: 100dvh;
+  overflow: visible;
+}
+.phone .of-top {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 16px;
+}
+.phone .of-spacer,
+.phone .of-session,
+.phone .of-details {
+  display: none;
+}
+.phone .of-meta + .of-meta {
+  display: inline;
+}
+.phone .of-req {
+  order: 3;
+  width: 100%;
+  max-width: none;
+}
+.phone .of-stage {
+  display: flex;
+  flex-direction: column;
+}
+.phone .of-ask {
+  display: block;
+  margin: 12px 16px 0;
+  border: 1px solid var(--o-need);
+  background: var(--o-need-bg);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 16px;
+}
+.office.phone .of-mapwrap {
+  position: relative;
+  inset: auto;
+  display: block;
+  overflow: auto;
+  max-height: 46vh;
+  margin-top: 12px;
+  touch-action: pan-x pan-y;
+  scrollbar-width: none;
+}
+.office.phone .of-dock {
+  position: static;
+  width: auto;
+}
+.office.phone .of-drawer {
+  border: 0;
+  border-top: 1px solid var(--o-line);
+  box-shadow: none;
+  padding-bottom: 120px;
+}
+.phone .of-close {
+  display: none;
+}
+.phone .of-db {
+  overflow: visible;
+  padding: 16px;
+}
+.phone .of-replay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 8px 16px 10px;
+  z-index: 4;
+}
+.phone .of-track {
+  order: 5;
+  flex-basis: 100%;
+}
+.phone .of-clock {
+  width: auto;
+  min-width: 0;
+  font-size: 14px;
+  flex: 1;
+  text-align: left;
+}
+.phone .of-live {
+  padding: 6px 10px;
+}
+/* The phone pins the question above the strip instead. */
+.office.phone .of-overlay .bubble.wait {
+  display: none;
+}
+.of-drawer:focus {
+  outline: none;
+}
+/* A phase brought into view from its header on the board. */
+.of-db .of-flash {
+  animation: of-flash 1.6s ease-out;
+  border-radius: 10px;
+}
+@keyframes of-flash {
+  0%,
+  30% {
+    box-shadow: 0 0 0 2px var(--now, #60aaf3);
+  }
+}
+/* The request list. */
+.of-reqs {
+  list-style: none;
+  margin: 8px 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.of-req-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: var(--s3, #1e1c19);
+  border: 1px solid var(--s6, #34322e);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--t1, #eeecea);
+}
+.of-req-row:hover {
+  border-color: var(--s8, #585550);
+}
+.of-req-row.cur {
+  border-color: var(--t2, #d4d0cc);
+}
+.of-req-num {
+  font: 500 13px var(--font-code, var(--o-mono));
+  color: var(--t3, #a19e9a);
+  min-width: 2ch;
+  text-align: right;
+  flex: none;
+}
+.of-req-main {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  font-size: 14px;
+}
+.of-req-t {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.of-req-row .of-chip {
+  flex: none;
+}
+.of-asks {
+  margin: 0 0 10px;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+  color: var(--t1, #eeecea);
+}
+/* The phone's tab row scrolls: its edge fades to say so. */
+.phone .of-tabs {
+  mask-image: linear-gradient(90deg, #000 82%, transparent);
+}
+/* An empty board says why it is empty. */
+.of-overlay .board-empty {
+  font: 500 max(14px, calc(5px * var(--s))) / 1.3 var(--o-ui);
+  color: rgba(28, 33, 40, 0.6);
+  text-align: center;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+}
+/* At 4x the request sheet has room for a fourth line. */
+.s4 .of-overlay .sheet span {
+  -webkit-line-clamp: 4;
+}
+/* A link inside the drawer that stays in the office. */
+.of-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--t1, #eeecea);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--s8, #585550);
+  text-underline-offset: 3px;
+}
+.of-link:hover {
+  text-decoration-color: var(--t2, #d4d0cc);
+}
+/* On a pinned floor: the way back to the one Claude is on. */
+.of-away {
+  flex: none;
+  background: var(--o-now-bg);
+  color: var(--o-now);
+  border: 1px solid #2c4f78;
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.of-away:hover {
+  border-color: var(--o-now);
+}
+/* More helpers than desks: the sign that says so. */
+.of-overlay .off-sign {
+  transform: translate(-50%, -50%);
+  font: max(9px, calc(3.5px * var(--s))) / 1 var(--o-pix);
+  color: #2a211c;
+  background: #eadfc6;
+  border: 0;
+  border-radius: 2px;
+  box-shadow: 0 calc(1px * var(--s)) 0 #8a7a62;
+  padding: calc(1.5px * var(--s)) calc(2.5px * var(--s));
+  white-space: nowrap;
+}
+.of-overlay .off-sign:hover {
+  background: #fff4dc;
+}
+/* The phone clock drops the date to keep its words whole. */
+.phone .of-day {
+  display: none;
+}
+.phone .of-clock {
+  overflow: visible;
+}
+/* Played fast, words change faster than a pop: they just appear. */
+.office.fast .of-overlay .bubble,
+.office.fast .of-overlay .dots {
+  animation: none;
+}
+/* At 2x a left-open sticky keeps one line of title and says it was left open. */
+.s2 .of-overlay .hit.note.wide .stage.left {
+  display: block;
+  font-size: 10px;
+  line-height: 11px;
+}
+.s2 .of-overlay .hit.note.wide:has(.stage.left) .t {
+  -webkit-line-clamp: 1;
+}

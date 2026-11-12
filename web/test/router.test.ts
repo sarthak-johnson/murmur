@@ -1,7 +1,31 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { matchRoute, navigate, requestPath, sessionPath } from "../src/router";
+import {
+  matchRoute,
+  navigate,
+  officePath,
+  requestPath,
+  sessionPath,
+} from "../src/router";
 
 describe("matchRoute", () => {
+  it("parses the office, following the session or pinned to a request", () => {
+    expect(matchRoute("/s/abc/office")).toEqual({
+      name: "office",
+      sessionId: "abc",
+    });
+    expect(matchRoute("/s/abc/r/q/office")).toEqual({
+      name: "office",
+      sessionId: "abc",
+      requestId: "q",
+    });
+    expect(officePath("a b")).toBe("/s/a%20b/office");
+    expect(officePath("a", "q")).toBe("/s/a/r/q/office");
+    expect(matchRoute(officePath("a", "q/1"))).toEqual({
+      name: "office",
+      sessionId: "a",
+      requestId: "q/1",
+    });
+  });
   it("parses part route", () => {
     expect(matchRoute("/s/abc/r/req1/p/part2")).toEqual({
       name: "part",

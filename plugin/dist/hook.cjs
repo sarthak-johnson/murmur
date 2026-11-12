@@ -20044,7 +20044,9 @@ var TASK_STATUS = {
 };
 var WAITS_ON_A_THING = /\bwait(?:s|ing)\s+(?:for|on)\s+(?:the|a|an)\s+(?!user\b|author\b|owner\b)/i;
 var waitsOnYou = (now) => !WAITS_ON_A_THING.test(now);
-var isNotRequest = (prompt) => typeof prompt === "string" && /^\s*(\/murmur:\w+(\s|$)|<task-notification>)/.test(prompt);
+var isNotRequest = (prompt) => typeof prompt === "string" && /^\s*(\/murmur:\w+(\s|$)|<task-notification>|<cross-session-message\b|\[Cross-session delivery notice\])/.test(
+  prompt
+);
 function phaseStatus(tasks) {
   if (tasks.some((t) => t.status === "blocked")) return "blocked";
   if (tasks.length && tasks.every((t) => t.status === "done")) return "done";
@@ -20483,12 +20485,16 @@ function needsYou(events) {
       }
     } else if (reason && out?.reason !== reason && !(ask2 && reason === "idle")) {
       const tool = str2(p.tool_name);
-      const text3 = e.hook === "PermissionRequest" ? `Claude needs your permission${tool ? ` to use ${tool}` : ""}` : str2(p.message) ?? "";
+      const text3 = e.hook === "PermissionRequest" ? `Claude needs your permission${tool ? ` to use ${tool}` : ""}` : claudeWords(str2(p.message) ?? "");
       out = { reason, text: text3, since: e.ts };
     }
   }
   return out ?? ask2;
 }
+var claudeWords = (message) => message.replace(
+  /^[a-z][\w-]*(?= needs your (input|attention|permission)\b)/,
+  "Claude"
+);
 function fnv1a(s) {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++)

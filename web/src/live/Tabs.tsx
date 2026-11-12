@@ -8,6 +8,7 @@ import { FileList, PathText } from "../files";
 import { Pill } from "../Pill";
 import {
   follow,
+  officePath,
   partPath,
   requestPath,
   type SessionTab,
@@ -56,11 +57,21 @@ export function RequestTabs(props: {
             </a>
           );
         })}
+      <OfficeLink path={officePath(sessionId, requestId)} />
     </nav>
   );
 }
 
-/** Journey · Flow under the session's title, styled as the request's tabs. */
+/** The office tab: the same request drawn as a pixel room, a page of its own. */
+function OfficeLink({ path }: { path: string }) {
+  return (
+    <a href={path} className="tab-office" onClick={follow(path)}>
+      Office
+    </a>
+  );
+}
+
+/** Journey · Flow · Office under the session's title, styled as the request's tabs. */
 export function SessionTabs(props: { sessionId: string; tab: SessionTab }) {
   const { sessionId, tab } = props;
   const tabs: [SessionTab, string][] = [
@@ -82,6 +93,7 @@ export function SessionTabs(props: { sessionId: string; tab: SessionTab }) {
           </a>
         );
       })}
+      <OfficeLink path={officePath(sessionId)} />
     </nav>
   );
 }
@@ -142,7 +154,7 @@ export function FilesTab(props: {
 }
 
 /** The part a helper worked on: its own, else the task that lists it. */
-function helperPart(req: RequestView, a: AgentView): string | undefined {
+export function helperPart(req: RequestView, a: AgentView): string | undefined {
   return (
     a.part ??
     req.phases.flatMap((p) => p.tasks).find((t) => t.agents.includes(a.id))
@@ -155,9 +167,11 @@ export function HelpersTab(props: {
   sessionId: string;
   request: RequestView;
   events: MurmurEvent[];
+  /** The time shown (a replay's moment), for how long running helpers have been at it. */
+  now?: string;
 }) {
   const { sessionId, request, events } = props;
-  const now = new Date().toISOString();
+  const now = props.now ?? new Date().toISOString();
   if (!request.agents.length)
     return <p className="tab-empty">No helpers ran in this request.</p>;
   return (
