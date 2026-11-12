@@ -140,12 +140,14 @@ export function phaseShown(
   ph: PhaseView,
   over: boolean,
   live: PhaseView | undefined,
+  /** Its request stopped mid-work (state.ts): the phase under way stands paused too. */
+  paused = false,
 ): Shown {
   if (ph.status === "done") return "done";
   if (over) return "open";
   // Waiting on you outranks running: it is the one thing the reader can do.
   if (ph.status === "blocked") return "blocked";
-  if (ph === live || ph.status === "now") return "now";
+  if (ph === live || ph.status === "now") return paused ? "paused" : "now";
   return ph.tasks.some((t) => t.status === "failed") ? "failed" : "todo";
 }
 
@@ -160,6 +162,7 @@ export function phaseLine(req: RequestView, ph: PhaseView, shown: Shown) {
   if (shown === "blocked") return `${count} · waiting on you`;
   if (shown === "now")
     return from ? `${count} · started ${clock(from)}` : count;
+  if (shown === "paused") return `${count} · paused`;
   return `${nOf(ph.tasks.length, "task")}, not started`;
 }
 
@@ -261,6 +264,8 @@ export function PhaseTrack(props: {
   done: boolean;
   /** Where its clock stops (state.ts `RequestNow.to`): never the wall clock in a replay. */
   end: string;
+  /** The request's state (state.ts), so a paused one's work reads paused, not running. */
+  state?: State | undefined;
 }) {
   const { sessionId, request: req, done, end } = props;
   const beyond = req.beyond;
@@ -304,7 +309,7 @@ export function PhaseTrack(props: {
     <section className={stacked ? "trk stack" : "trk"} aria-label="Phase track">
       <ol className="trk-segs" ref={ref}>
         {req.phases.map((ph) => {
-          const shown = phaseShown(ph, over, live);
+          const shown = phaseShown(ph, over, live, props.state === "paused");
           const fill = ph.tasks.length
             ? ph.tasks.filter((t) => t.status === "done").length /
               ph.tasks.length
@@ -337,7 +342,7 @@ export function PhaseTrack(props: {
                     : t.problem
                       ? `${t.title}: ${t.problem}`
                       : t.title,
-                  shown: taskShown(t, over),
+                  shown: taskShown(t, over ? true : (props.state ?? false)),
                   // Its close-up by the task's own id: several tasks share one part.
                   part: t.part && t.id,
                 }))}

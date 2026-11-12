@@ -367,6 +367,7 @@ function PanelBody(props: PanelProps) {
               request={req}
               done={done}
               end={props.stands.to}
+              state={props.stands.state}
             />
             <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
             <Story

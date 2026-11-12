@@ -1,5 +1,6 @@
 import type { RequestView } from "@murmur/core";
 import { describe, expect, it } from "vitest";
+import { phaseLine, phaseShown } from "../src/live/Track";
 import { phaseSpan, taskTimes } from "../src/session";
 
 const step = (ts: string, agentId?: string) => ({
@@ -49,5 +50,16 @@ describe("a task's own span", () => {
       from: "2026-11-12T12:52:00Z",
       to: "2026-11-12T16:29:00Z",
     });
+  });
+});
+
+describe("a paused request's phase track", () => {
+  it("reads the phase under way as paused, not running", () => {
+    const ph = { id: "ship", title: "Ship", status: "now", tasks: [] } as never;
+    expect(phaseShown(ph, false, ph)).toBe("now");
+    expect(phaseShown(ph, false, ph, true)).toBe("paused");
+    expect(
+      phaseLine({ phases: [], parts: [], agents: [] } as never, ph, "paused"),
+    ).toBe("0 of 0 done · paused");
   });
 });
