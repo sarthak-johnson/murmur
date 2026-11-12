@@ -1,4 +1,6 @@
 // Live canvas: board, cards, lights, desks and the people walking between spots.
+
+import { type State, TONE } from "../state";
 import { drawBackground, drawPlant, filler, SHELF_SLOTS } from "./background";
 import { deskTile, drawDesks, seatOf } from "./desks";
 import { createLife } from "./life";
@@ -27,7 +29,6 @@ import {
   T,
   type Tile,
 } from "./map";
-import { type State, TONE } from "../state";
 import type { Act, Note, Scene } from "./scene";
 import {
   blinking,

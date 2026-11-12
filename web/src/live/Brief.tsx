@@ -20,13 +20,7 @@ import {
   type Waiting,
   youAsked,
 } from "../session";
-import {
-  clock,
-  duration,
-  fixRoundCount,
-  nOf,
-  thousands,
-} from "../story";
+import { clock, duration, fixRoundCount, nOf, thousands } from "../story";
 
 const MINUS = "−";
 

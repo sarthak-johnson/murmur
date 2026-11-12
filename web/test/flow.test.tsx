@@ -502,9 +502,7 @@ describe("selection", () => {
     );
     expect(strip.textContent).toContain("2 files +412 −88");
     expect(strip.textContent).toContain("Uses Surfaces and controls");
-    expect(strip.textContent).toContain(
-      "Used by The rail, Sweep",
-    );
+    expect(strip.textContent).toContain("Used by The rail, Sweep");
     const open = within(strip).getByRole("link", { name: "Open Task 4 →" });
     expect(open.getAttribute("href")).toBe("/s/s1/r/r7?open=task:frame");
   });

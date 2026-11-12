@@ -324,7 +324,9 @@ describe("the brief", () => {
     expect(
       within(first).getByText("Done", { selector: ".sr-only" }),
     ).toBeTruthy();
-    expect(within(first).getByText("Task 1", { selector: ".chip" })).toBeTruthy();
+    expect(
+      within(first).getByText("Task 1", { selector: ".chip" }),
+    ).toBeTruthy();
     expect(first.className).not.toContain("new");
     expect(rows[1]?.querySelector(".mk.moment")).toBeTruthy();
     const last = rows[2] as HTMLElement;

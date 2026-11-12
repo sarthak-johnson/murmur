@@ -8,7 +8,6 @@ import type {
   PhaseView,
   RequestState,
   SessionView,
-  TaskView,
 } from "@murmur/core";
 import { phaseName, requestShort, taskTitle, youAsked } from "../session";
 import {

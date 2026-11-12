@@ -14,12 +14,12 @@ import type { State } from "../state";
 import { clock } from "../story";
 import {
   bandLine,
-  cardTitle,
   bandMark,
   bands,
   bandWord,
   cardFacts,
   cardLine,
+  cardTitle,
   layoutFlow,
   neighbour,
   partMark,

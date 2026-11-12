@@ -20,6 +20,8 @@ import type {
   SessionView,
   TaskView,
 } from "@murmur/core";
+import type { SessionRow } from "./api";
+import { dayLabel } from "./format";
 import {
   type Mark,
   QUIET_MS,
@@ -139,8 +141,10 @@ export interface SessionNow {
 export function sessionNow(
   view: Pick<
     SessionView,
-    "ended" | "lastEventAt" | "startedAt" | "needsYou" | "requests"
-  >,
+    "ended" | "lastEventAt" | "startedAt" | "needsYou"
+  > & {
+    requests: readonly { startedAt: string }[];
+  },
   stream: SessionStatus = "live",
   at: number = Date.now(),
   asking = false,
@@ -200,6 +204,52 @@ export function sessionFacts(view: SessionView, ses: SessionNow): string {
     ...(helpers ? [many(helpers, "helper")] : []),
     span === "under a minute" ? "just started" : span,
   ].join(" · ");
+}
+
+export interface Listed {
+  /** The session's title, as its top bar says it. */
+  title: string;
+  tag: SessionTag;
+  word: string;
+  /** "Fri 6 Nov": the day its first request began, as its Journey says it. */
+  day: string;
+  /** "14 requests · 219 helpers", when known. */
+  facts: string;
+}
+
+/**
+ * A session in the lobby and the switcher, from its row: named, counted and dated as its
+ * page reads it, live and quiet by `sessionNow`. Waiting on you comes first there: it is
+ * the one thing in the list the reader can do.
+ */
+export function listedNow(row: SessionRow, at: number = Date.now()): Listed {
+  const s = row.summary;
+  const ses = sessionNow(
+    {
+      ended: row.ended,
+      lastEventAt: row.lastEventAt,
+      startedAt: row.startedAt,
+      needsYou: null,
+      requests: s ? [{ startedAt: s.from }] : [],
+    },
+    "live",
+    at,
+    !!s?.waitingSince,
+  );
+  const tag: SessionTag =
+    s?.waitingSince && ses.tag === "live" ? "waiting" : ses.tag;
+  return {
+    title: s?.title || row.title || "Untitled session",
+    tag,
+    word: SESSION_WORD[tag],
+    day: dayLabel(ses.from),
+    facts: s
+      ? [
+          many(s.requests, "request"),
+          ...(s.helpers ? [many(s.helpers, "helper")] : []),
+        ].join(" · ")
+      : "",
+  };
 }
 
 export interface RequestNow {

@@ -9,11 +9,20 @@ export interface Me {
 export interface SessionRow {
   sessionId: string;
   cwd: string;
+  /** Its first prompt; `summary.title` is the session's own title. */
   title: string | null;
   machineName: string;
   startedAt: string;
   lastEventAt: string;
   ended: boolean;
+  /** The server's reading of core's view of it (server summary.ts); null before one. */
+  summary?: {
+    title: string;
+    requests: number;
+    helpers: number;
+    from: string;
+    waitingSince: string | null;
+  } | null;
 }
 export interface Machine {
   machineId: string;

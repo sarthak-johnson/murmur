@@ -1,4 +1,6 @@
 // Text and click targets over the canvas, in plain DOM so text stays crisp at any scale.
+
+import { WORD as STATE_WORD } from "../state";
 import {
   BOARD,
   CLAUDE_DESK,
@@ -12,7 +14,6 @@ import {
   T,
 } from "./map";
 import { boardLayout, type ClaudePos, deskTile } from "./render";
-import { WORD as STATE_WORD } from "../state";
 import { cutWords, type Scene } from "./scene";
 import { hash, helperLook, LINEAGE, phaseColor } from "./sprites";
 import { clockOf, context2d, dur, esc, phaseShort } from "./util";

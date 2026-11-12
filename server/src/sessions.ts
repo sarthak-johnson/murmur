@@ -5,6 +5,7 @@ import type { Deps } from "./app.js";
 import { type AppEnv, readBody } from "./auth.js";
 import type { Db } from "./db/client.js";
 import { assumptionDecisions, events, sessions } from "./db/schema.js";
+import { refreshSummaries } from "./summary.js";
 
 export const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const PAGE = 5000;
@@ -32,6 +33,8 @@ export function sessionRoutes(app: Hono<AppEnv>, { db, now }: Deps) {
         and t.machine_id = sessions.machine_id
         and t.revoked_at is null
       order by t.created_at desc limit 1)`;
+    // Each session named and counted as its own page reads it (summary.ts).
+    await refreshSummaries(db, c.get("user").id);
     const rows = await db
       .select({
         sessionId: sessions.sessionId,
@@ -41,6 +44,7 @@ export function sessionRoutes(app: Hono<AppEnv>, { db, now }: Deps) {
         startedAt: sessions.startedAt,
         lastEventAt: sessions.lastEventAt,
         ended: sessions.ended,
+        summary: sessions.summary,
       })
       .from(sessions)
       .where(eq(sessions.userId, c.get("user").id))

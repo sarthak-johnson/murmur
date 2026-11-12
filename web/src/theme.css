@@ -721,6 +721,12 @@ label {
 .lobby-state.live::before {
   animation: pulse 1.6s steps(1, end) infinite;
 }
+.lobby-state.waiting {
+  --tone: var(--need);
+}
+.lobby-card.waiting {
+  --pf: var(--need-line);
+}
 .lobby-state.ended {
   --tone: var(--t4);
 }

@@ -51,6 +51,7 @@ function sessionRow(
   machineId: string,
   sessionId: string,
   list: MurmurEvent[],
+  changedAt: Date,
 ) {
   const sorted = list.toSorted((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
   const first = sorted[0] as MurmurEvent;
@@ -71,6 +72,7 @@ function sessionRow(
     startedAt: new Date(first.ts),
     lastEventAt: new Date(last.ts),
     ended: list.some((e) => e.hook === "SessionEnd"),
+    changedAt,
   };
 }
 
@@ -141,6 +143,7 @@ export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
       if (!bySession.size) return c.json({ accepted: 0 });
 
       const batch = [...bySession.values()].flat();
+      const changedAt = deps.now();
       const { stored, cwds } = await db.transaction(async (tx) => {
         const stored = await tx
           .insert(events)
@@ -160,7 +163,7 @@ export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
           .insert(sessions)
           .values(
             [...bySession].map(([sid, list]) =>
-              sessionRow(userId, machineId, sid, list),
+              sessionRow(userId, machineId, sid, list, changedAt),
             ),
           )
           .onConflictDoUpdate({
@@ -171,6 +174,7 @@ export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
               lastEventAt: sql`greatest(${sessions.lastEventAt}, excluded.last_event_at)`,
               title: sql`coalesce(${sessions.title}, excluded.title)`,
               ended: sql`${sessions.ended} or excluded.ended`,
+              changedAt: sql`excluded.changed_at`,
             },
           })
           .returning({ sessionId: sessions.sessionId, cwd: sessions.cwd });

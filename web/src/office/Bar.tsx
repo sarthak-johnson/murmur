@@ -10,6 +10,7 @@ import { floorPath, follow, navigate } from "../router";
 import { nowLine, requestShort, type Waiting } from "../session";
 import {
   isOver,
+  listedNow,
   type RequestNow,
   requestNow,
   type SessionNow,
@@ -82,16 +83,6 @@ function Pop(props: {
   );
 }
 
-const LIVE_MS = 2 * 60_000;
-/** A session's state as the lobby reads it from its row. */
-export function rowState(
-  s: SessionRow,
-  now: number,
-): "live" | "quiet" | "ended" {
-  if (s.ended) return "ended";
-  return now - Date.parse(s.lastEventAt) < LIVE_MS ? "live" : "quiet";
-}
-const ROW_WORD = { live: "Live", quiet: "Quiet", ended: "Ended" };
 const folder = (cwd: string) => cwd.split("/").filter(Boolean).pop() ?? cwd;
 
 /** The session's title as a menu of the recent sessions: another one is two clicks away. */
@@ -127,7 +118,7 @@ export function SessionSwitcher(props: { sessionId: string; title: string }) {
             <ul className="of-sess-list">
               {rows.slice(0, 12).map((s) => {
                 const path = floorPath(s.sessionId, undefined);
-                const st = rowState(s, now);
+                const l = listedNow(s, now);
                 return (
                   <li key={s.sessionId}>
                     <a
@@ -141,15 +132,17 @@ export function SessionSwitcher(props: { sessionId: string; title: string }) {
                         follow(path)(e);
                       }}
                     >
-                      <span className="of-sess-t">
-                        {s.title || "Untitled session"}
-                      </span>
+                      <span className="of-sess-t">{l.title}</span>
                       <span className="of-sess-m">
-                        <span className={`of-sess-st ${st}`}>
-                          {ROW_WORD[st]}
-                        </span>
-                        {folder(s.cwd)} · {s.machineName} ·{" "}
-                        {ago(s.lastEventAt, now)}
+                        <span className={`of-sess-st ${l.tag}`}>{l.word}</span>
+                        {[
+                          folder(s.cwd),
+                          s.machineName,
+                          l.facts,
+                          ago(s.lastEventAt, now),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </span>
                     </a>
                   </li>
