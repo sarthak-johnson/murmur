@@ -4493,6 +4493,14 @@ code.nw {
   line-height: 24px;
   overflow-wrap: break-word;
 }
+.jr-card-goal {
+  grid-column: 1;
+  min-width: 0;
+  color: var(--t2);
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: break-word;
+}
 .jr-out {
   grid-column: 1;
   color: var(--t3);

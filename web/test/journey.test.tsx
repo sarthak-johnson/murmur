@@ -380,7 +380,11 @@ describe("the line", () => {
     const card = s.querySelector("a.jr-card") as HTMLAnchorElement;
     expect(card.getAttribute("href")).toBe("/s/s1/r/r3?open=story");
     expect(card.querySelector(".label-chip")?.textContent).toBe("Feature");
+    // Its one title, as the rail names it, and what it asked under it.
     expect(card.querySelector(".jr-card-ttl")?.textContent).toBe(
+      "Restyle the logged-in app to the…",
+    );
+    expect(card.querySelector(".jr-card-goal")?.textContent).toBe(
       "Restyle the logged-in app to the Lit plate design, then speed up My Agents",
     );
     expect(card.querySelector(".jr-out")?.textContent).toBe(
