@@ -95,7 +95,10 @@ export function bands(req: RequestView, running = !req.finished): Band[] {
       ? [{ id: phase.id, title: phaseName(phase, running), phase, parts }]
       : [];
   });
-  const other = req.parts.filter((p) => !of.get(p.id));
+  // An inferred request's helperless parts are folders its files fell in, not work.
+  const other = req.parts.filter(
+    (p) => !of.get(p.id) && !(req.planInferred && !p.agents.length),
+  );
   if (other.length)
     out.push({ id: "(other)", title: "Other work", parts: other });
   return out;

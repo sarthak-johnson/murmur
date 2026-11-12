@@ -163,8 +163,9 @@ export function taskGroups(
   at = new Date().toISOString(),
 ): Group[] {
   const state = reqState ?? (done || req.finished ? "done" : coreState(req));
+  // An inferred request's parts are folders (its helpers' work is a phase): no plan.
   if (!req.phases.length)
-    return req.parts.length
+    return req.parts.length && !req.planInferred
       ? [
           {
             key: "parts",
@@ -226,7 +227,13 @@ export function TasksTab(props: {
   const { sessionId, request: req, done } = props;
   const groups = taskGroups(req, done, props.state, props.at);
   if (!groups.length)
-    return <p className="tab-empty">This request has no tasks.</p>;
+    return (
+      <p className="tab-empty">
+        {req.parts.length || req.looseFiles.length
+          ? "No plan on this request: Claude worked without one. What it changed is in Files."
+          : "This request has no tasks."}
+      </p>
+    );
   // The live phase's running row first, else the first running row, pulses.
   const live = livePhase(req, done)?.id;
   const rows = groups.flatMap((g) => g.rows.map((r) => ({ g: g.key, r })));

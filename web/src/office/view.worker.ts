@@ -1,5 +1,6 @@
 // Reduces the session up to a moment of the replay, off the main thread.
-import { type MurmurEvent, reduce } from "@murmur/core";
+import type { MurmurEvent } from "@murmur/core";
+import { viewOf } from "../plan";
 import type { FromWorker, ToWorker } from "./feed";
 
 let events: MurmurEvent[] = [];
@@ -12,7 +13,7 @@ self.onmessage = (m: MessageEvent<ToWorker>) => {
   }
   let reply: FromWorker;
   try {
-    reply = { gen: d.gen, n: d.n, view: reduce(events.slice(0, d.n)) };
+    reply = { gen: d.gen, n: d.n, view: viewOf(events.slice(0, d.n)) };
   } catch (e) {
     reply = { gen: d.gen, n: d.n, error: String(e) };
   }

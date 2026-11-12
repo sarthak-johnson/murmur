@@ -196,8 +196,9 @@ export function FlowBoard(props: {
     els.current.get(to)?.focus();
   };
 
-  // No parts: a short line of steps, never an empty board.
-  if (!req.parts.length) return <RequestSteps request={req} />;
+  // No parts (or only the folders an inferred request's files fell in): a short line of
+  // steps, never an empty board.
+  if (!layout.cards.length) return <RequestSteps request={req} />;
 
   const now = props.at ?? new Date().toISOString();
   const touching = sel
