@@ -484,6 +484,42 @@ describe("the line", () => {
     expect(document.querySelector(".mk.pulse")).toBeNull();
   });
 
+  it("a chapter named by a bare reply takes a later request's name; an image is never quoted", () => {
+    const view = session({
+      requests: [
+        request({
+          id: "r1",
+          prompt: "[Image #2]",
+          goal: "Note for build 17",
+          short: "Note for build 17",
+        }),
+        request({
+          id: "r2",
+          prompt: "Sure, please start",
+          goal: "Sure, please start",
+        }),
+        request({
+          id: "r3",
+          prompt: "Run the take flow tests",
+          goal: "Run the take flow tests",
+          short: "Run the take flow tests",
+        }),
+      ],
+      journey: journey({
+        chapters: [
+          { title: "Note for build 17", requestIds: ["r1"], state: "done" },
+          { title: "Sure", requestIds: ["r2", "r3"], state: "done" },
+        ],
+      }),
+    });
+    show(view);
+    const strip = screen.getByRole("navigation", { name: "Chapters" });
+    expect(strip.textContent).toContain("Run the take flow tests");
+    expect(strip.textContent).not.toMatch(/\bSure\b/);
+    expect(ends().textContent).not.toContain("(image)");
+    expect(ends().textContent).toContain("Note for build 17");
+  });
+
   it("works for a view built before core had a journey", () => {
     const view = session();
     delete view.journey;

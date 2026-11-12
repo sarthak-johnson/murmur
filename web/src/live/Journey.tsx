@@ -7,6 +7,8 @@
 import {
   type Chapter,
   cutWords,
+  firstSentence,
+  isReply,
   type MurmurEvent,
   type Pause,
   type RequestView,
@@ -198,19 +200,34 @@ export function Journey(props: {
   const last = reqs.at(-1) as RequestView;
   const lastMark = marks.get(last.id);
   const byIdOf = new Map(reqs.map((r) => [r.id, r]));
-  // A chapter named by its first request's words reads as that request's title does.
+  // A chapter named by its first request's words reads as that request's title does; one
+  // named by a bare reply ("Sure", "I like B though") takes a later request's name, else
+  // what came out of it.
   const chapters: Chapter[] = j?.chapters.length
-    ? j.chapters.map((c) => {
+    ? j.chapters.map((c, ci) => {
         const first = byIdOf.get(c.requestIds[0] ?? "");
-        return first && c.title
-          ? {
-              ...c,
-              title: excerpt(
-                c.title,
-                [first.goal ?? "", first.prompt ?? ""].map(cleanPrompt),
-              ),
-            }
-          : c;
+        if (!first || !c.title) return c;
+        if (rawTitle(c.title, first)) {
+          const named = c.requestIds
+            .slice(1)
+            .map((id) => byIdOf.get(id))
+            .find((r) => r && !rawTitle(requestShort(r), r));
+          const out =
+            first.outcome && cutWords(firstSentence(first.outcome), 48);
+          return {
+            ...c,
+            title: named
+              ? requestShort(named)
+              : out || `Chapter ${ci + 1}: more on the work`,
+          };
+        }
+        return {
+          ...c,
+          title: excerpt(
+            c.title,
+            [first.goal ?? "", first.prompt ?? ""].map(cleanPrompt),
+          ),
+        };
       })
     : [
         {
@@ -256,7 +273,12 @@ export function Journey(props: {
           <span className="jr-k">
             Where it started · {firstDay}, {clock(start.startedAt)}
           </span>
-          <q className="jr-q">{cutWords(cleanPrompt(start.prompt), 220)}</q>
+          {ownWords(start.prompt) ? (
+            <q className="jr-q">{cutWords(ownWords(start.prompt), 220)}</q>
+          ) : (
+            // Only an image or a paste: there are no words of yours to quote.
+            <span className="jr-q">{requestShort(start)}</span>
+          )}
           {(start.outcome || !start.kindInferred) && (
             <span className="jr-end-meta">
               {[
@@ -661,4 +683,27 @@ function useStrip(items: number) {
     el?.scrollBy?.({ left: dir * el.clientWidth * 0.8, behavior: "smooth" });
   };
   return { ref, read, step, ...edges };
+}
+
+/** A prompt's own words: no "(image)" or "(pasted text)" markers. */
+const ownWords = (prompt: string) =>
+  cleanPrompt(prompt)
+    .replace(/\((?:image|pasted text)\)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/**
+ * A chapter title that is only its first request's typed reply ("Sure" from "Sure, please
+ * start"), or a fragment of a pasted label ("What it moved -- Clicking"): no name for it.
+ */
+function rawTitle(title: string, first: RequestView): boolean {
+  const said = ownWords(first.prompt).toLowerCase();
+  const t = title.replace(/[….\s]+$/, "").toLowerCase();
+  return (
+    / -- /.test(title) ||
+    (!!t &&
+      said.startsWith(t) &&
+      isReply(first.prompt) &&
+      ownWords(first.goal ?? "") === ownWords(first.prompt))
+  );
 }
