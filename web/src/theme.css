@@ -2334,8 +2334,11 @@ a.helper:focus-visible {
   -webkit-line-clamp: 2;
 }
 .fc-tag {
+  /* "Tasks 1-2" is one label: it never breaks, and the title may wrap after it. */
+  display: inline-block;
   margin-right: 8px;
   color: var(--t4);
+  white-space: nowrap;
   font: 400 13px / 20px var(--font-code);
 }
 .fc-st {
