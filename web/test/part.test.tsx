@@ -559,10 +559,11 @@ describe("PartDetail", () => {
     show(p);
     const cls = (path: string) =>
       [
-        ...(screen.getByRole("button", { name: new RegExp(path) }).children ??
-          []),
+        ...(screen
+          .getByRole("button", { name: new RegExp(path) })
+          .querySelector(".pd-facts")?.children ?? []),
       ]
-        .slice(1, 3)
+        .slice(0, 2)
         .map((c) => c.className);
     expect(cls("a\\.ts")).toEqual(["pd-add zero", "pd-del zero"]);
     expect(cls("b\\.ts")).toEqual(["pd-add", "pd-del"]);

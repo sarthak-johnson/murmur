@@ -32,6 +32,8 @@ import {
 } from "../story";
 
 const MINUS = "−";
+/** A file's role that is more than a word or two ("tests", "docs"). */
+const wordy = (role: string) => role.length > 16;
 
 /** One changed file: its readable path, lines added and removed, and its role. */
 export function fileRow(cwd: string) {
@@ -118,8 +120,16 @@ export function FilesTab(props: {
                   file={f}
                   cwd={cwd}
                   byId={byId}
-                  note={f.role && <span className="muted">{f.role}</span>}
-                />
+                  note={
+                    f.role &&
+                    !wordy(f.role) && <span className="muted">{f.role}</span>
+                  }
+                >
+                  {/* A sentence about the file reads under it, not squeezed beside it. */}
+                  {f.role && wordy(f.role) && (
+                    <p className="pd-role muted">{f.role}</p>
+                  )}
+                </DiffRow>
               )}
             />
           </section>

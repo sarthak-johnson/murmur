@@ -991,8 +991,12 @@ label {
   border-collapse: collapse;
   font: 13px / 1.45 var(--font-ui);
 }
+/* A cell breaks between words only, never inside one ("DESI GN"): a table too wide for
+   its column scrolls sideways in its wrapper instead. */
 .md th,
 .md td {
+  overflow-wrap: normal;
+  word-break: normal;
   padding: 6px 12px;
   border-bottom: 2px solid var(--s6);
   text-align: left;
@@ -1435,26 +1439,50 @@ time {
   max-width: 860px;
   margin: 10px 0 0;
 }
-/* The session's files: find one, and see every request and task that changed it. */
-.sfiles-find {
-  width: min(360px, 100%);
-  margin: 8px 0 4px;
-}
-.sfiles-by {
-  list-style: none;
-  margin: -2px 0 6px;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 14px;
+.pd-role {
+  margin: -4px 0 8px;
   font-size: 13px;
   line-height: 18px;
 }
+.pd-facts {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+/* The session's files: find one, and see every request and task that changed it. */
+.sfiles-find {
+  appearance: none;
+  width: min(360px, 100%);
+  margin: 8px 0 8px;
+  padding: 6px 10px;
+}
+.sfiles-by {
+  list-style: none;
+  margin: 0 0 8px 2px;
+  padding: 2px 0 2px 12px;
+  display: grid;
+  gap: 2px;
+  box-shadow: inset 2px 0 0 var(--s6);
+  font-size: 13px;
+  line-height: 20px;
+}
+.sfiles-by li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  min-width: 0;
+}
 .sfiles-by a {
   color: var(--t2);
+  text-decoration: none;
+  min-width: 0;
 }
-.sfiles-by a:hover {
+.sfiles-by a:hover,
+.sfiles-by a:focus-visible {
   color: var(--t1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 /* The request's files in all, each counted once. */
 .files-total {
@@ -2098,6 +2126,14 @@ a.helper:focus-visible {
 }
 .pd-file > * {
   flex: none;
+}
+/* A changed file's row: the path wraps at its slashes, its counts and tags keep one line
+   at the right. */
+.diff-files .pd-file {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
 }
 .pd-add,
 .pd-del {

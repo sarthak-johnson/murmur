@@ -206,15 +206,18 @@ export function DiffRow(props: {
         onClick={() => setOpen(!open)}
       >
         <PathText path={file.path} cwd={cwd} {...(strip ? { strip } : {})} />
-        <span className={file.added ? "pd-add" : "pd-add zero"}>
-          +{file.added}
+        {/* Its counts and tags stay on one line together, beside the path. */}
+        <span className="pd-facts">
+          <span className={file.added ? "pd-add" : "pd-add zero"}>
+            +{file.added}
+          </span>
+          <span className={file.removed ? "pd-del" : "pd-del zero"}>
+            {MINUS}
+            {file.removed}
+          </span>
+          {file.isNew && <span className="pd-tag">new</span>}
+          {props.note}
         </span>
-        <span className={file.removed ? "pd-del" : "pd-del zero"}>
-          {MINUS}
-          {file.removed}
-        </span>
-        {file.isNew && <span className="pd-tag">new</span>}
-        {props.note}
       </button>
       {props.children}
       {open && <DiffView hunks={hunksOf(file, byId)} />}
