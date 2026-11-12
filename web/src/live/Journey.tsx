@@ -36,6 +36,7 @@ import {
   type State,
   sessionNow,
   sessionSpan,
+  sessionTitle,
   took,
 } from "../state";
 import { clock, duration, thousands } from "../story";
@@ -122,7 +123,7 @@ export function SessionHead(props: {
         className="jr-title"
         title={start ? cleanPrompt(start.prompt) : undefined}
       >
-        {view.title ? cleanPrompt(view.title) : "Untitled session"}
+        {cleanPrompt(sessionTitle(view.title)) || "Untitled session"}
       </h1>
       {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would draw a box around the facts */}
       <div className="asked" role="group" aria-label="Summary">

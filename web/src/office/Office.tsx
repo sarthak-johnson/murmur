@@ -15,7 +15,7 @@ import {
   requestMark,
   requestShort,
 } from "../session";
-import { requestNow, sessionFacts, sessionNow } from "../state";
+import { requestNow, sessionFacts, sessionNow, sessionTitle } from "../state";
 import { clock } from "../story";
 import { type SessionStatus, useSession } from "../useSession";
 import {
@@ -849,7 +849,7 @@ export function Office(props: {
   useEffect(() => {
     document.title = scene.waiting
       ? "(!) Waiting on you · Murmur"
-      : `${view.title || "Session"} · Murmur`;
+      : `${sessionTitle(view.title) || "Session"} · Murmur`;
   }, [scene.waiting, view.title]);
 
   // A tick's label, while the pointer is on the strip or a tick has the keyboard.
@@ -929,7 +929,7 @@ export function Office(props: {
           <Brand />
           <SessionSwitcher
             sessionId={sessionId}
-            title={view.title || "Untitled session"}
+            title={sessionTitle(view.title) || "Untitled session"}
           />
           <RequestPicker
             {...list}

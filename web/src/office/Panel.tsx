@@ -45,6 +45,7 @@ import { SessionFlow } from "../sflow/SessionFlow";
 import {
   coreState,
   helperNow,
+  sessionTitle as named,
   type RequestNow,
   type SessionNow,
   type State,
@@ -200,7 +201,7 @@ function PanelBody(props: PanelProps) {
     };
   }, [phaseTitle, open, props.phase?.n]);
   const openPart = (p: string) => navigate(at(`task:${p}`));
-  const sessionTitle = view.title ? cleanPrompt(view.title) : "Session";
+  const sessionTitle = cleanPrompt(named(view.title)) || "Session";
 
   const tab = (t: string, label: string) => (
     <a

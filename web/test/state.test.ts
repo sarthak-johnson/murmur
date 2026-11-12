@@ -28,6 +28,7 @@ import {
   sessionFacts,
   sessionNow,
   sessionSpan,
+  sessionTitle,
   workState,
 } from "../src/state";
 import { helperGist, helperLine, verdictOf } from "../src/story";
@@ -575,5 +576,16 @@ describe("a session row's state", () => {
     expect(l.title).toBe("Named title");
     expect(l.facts).toBe("3 requests · 1 helper");
     expect(listedNow(row(5), NOW).title).toBe("first prompt");
+  });
+});
+
+describe("a session's title", () => {
+  it("is untitled when it is only the one word first typed", () => {
+    expect(sessionTitle("done")).toBe("");
+    expect(sessionTitle(" yo ")).toBe("");
+    expect(sessionTitle("Let's get back to alphatake")).toBe(
+      "Let's get back to alphatake",
+    );
+    expect(sessionTitle(undefined)).toBe("");
   });
 });

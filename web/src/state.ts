@@ -222,6 +222,15 @@ export interface Listed {
  * page reads it, live and quiet by `sessionNow`. Waiting on you comes first there: it is
  * the one thing in the list the reader can do.
  */
+/**
+ * A session's title as shown: a lone word ("done", "yo", "continue") is the first thing typed,
+ * not a name for the session, so it reads untitled ("") rather than as a title.
+ */
+export const sessionTitle = (raw: string | null | undefined): string => {
+  const t = (raw ?? "").trim();
+  return /^\S{1,12}$/.test(t) ? "" : t;
+};
+
 export function listedNow(row: SessionRow, at: number = Date.now()): Listed {
   const s = row.summary;
   const ses = sessionNow(
@@ -239,7 +248,8 @@ export function listedNow(row: SessionRow, at: number = Date.now()): Listed {
   const tag: SessionTag =
     s?.waitingSince && ses.tag === "live" ? "waiting" : ses.tag;
   return {
-    title: s?.title || row.title || "Untitled session",
+    title:
+      sessionTitle(s?.title) || sessionTitle(row.title) || "Untitled session",
     tag,
     word: SESSION_WORD[tag],
     day: dayLabel(ses.from),
