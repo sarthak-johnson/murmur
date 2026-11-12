@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import type { RequestView, SessionView } from "@murmur/core";
-import { act, cleanup, render } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Live } from "../src/pages/Session";
-import { navigate, useRoute } from "../src/router";
+import { Live, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
 
 const css = readFileSync("src/theme.css", "utf8");
 
@@ -83,7 +84,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
-  delete (document as { startViewTransition?: unknown }).startViewTransition;
   document.documentElement.className = "";
 });
 
@@ -107,13 +107,18 @@ describe("one loop on screen", () => {
     expect(pulses[0]?.closest(".rail")).toBeNull();
   });
 
-  it("on a request's page only the rail's newest running mark pulses", () => {
+  it("the requests rail never pulses: the room is the live thing", () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1600,
+    });
     show("r1");
-    const pulses = document.querySelectorAll(".pulse");
-    expect(pulses).toHaveLength(1);
-    expect(pulses[0]?.closest(".stop")?.getAttribute("href")).toBe(
-      "/s/s1/r/r3",
-    );
+    expect(document.querySelector(".of-rail")).toBeTruthy();
+    expect(document.querySelectorAll(".of-rail .pulse")).toHaveLength(0);
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1024,
+    });
   });
 
   it("only the pulse class loops", () => {
@@ -140,9 +145,9 @@ describe("entrances run once", () => {
     const { unmount } = render(show(view()));
     expect(rising()).toEqual([
       "jr-ends jr-in",
-      "/s/s-enter/r/r1",
-      "/s/s-enter/r/r2",
-      "/s/s-enter/r/r3",
+      "/s/s-enter/r/r1?open=story",
+      "/s/s-enter/r/r2?open=story",
+      "/s/s-enter/r/r3?open=story",
     ]);
     unmount();
     // Back on the journey: nothing replays.
@@ -152,7 +157,7 @@ describe("entrances run once", () => {
     const more = view();
     more.requests.push(request({ id: "r4", startedAt: day(3, 30) }));
     again.rerender(show(more));
-    expect(rising()).toEqual(["/s/s-enter/r/r4"]);
+    expect(rising()).toEqual(["/s/s-enter/r/r4?open=story"]);
   });
 });
 
@@ -162,18 +167,6 @@ describe("reduced motion", () => {
   it("the pulse becomes a static ring", () => {
     expect(reduced).toMatch(/\.mk\.pulse\s*\{[^}]*animation:\s*none/);
     expect(reduced).toMatch(/\.mk\.pulse\s*\{[^}]*box-shadow/);
-  });
-
-  it("shared elements become a 150 ms crossfade", () => {
-    expect(reduced).toMatch(
-      /::view-transition-group\(page-title\)[^{]*\{[^}]*animation:\s*none/,
-    );
-    expect(reduced).toMatch(
-      /::view-transition-old\(page-title\)[^{]*\{[^}]*150ms[^}]*vt-out/,
-    );
-    expect(reduced).toMatch(
-      /::view-transition-new\(page-title\)[^{]*\{[^}]*150ms[^}]*vt-in/,
-    );
   });
 
   it("the journey's rises become fades and its lines are drawn at once", () => {
@@ -208,216 +201,5 @@ describe("reduced motion", () => {
     );
     expect(jump).toHaveBeenCalledWith({ block: "start", behavior: "auto" });
     expect(location.hash).toBe("#chapter-2");
-  });
-});
-
-/** Two cards opening the same request: the "where it is now" card and the last station. */
-function Twice() {
-  const route = useRoute();
-  return route.name === "session" ? (
-    <main>
-      <a className="end" href="/s/s1/r/r2" data-morph="">
-        now
-      </a>
-      <a className="station" href="/s/s1/r/r2" data-morph="">
-        2
-      </a>
-    </main>
-  ) : (
-    <h1 className="live-title">Request</h1>
-  );
-}
-
-/** A journey with two station cards, and a request page with its title. */
-function Page() {
-  const route = useRoute();
-  return route.name === "session" ? (
-    <main>
-      <a href="/s/s1/r/r1" data-morph="">
-        1
-      </a>
-      <a href="/s/s1/r/r2" data-morph="">
-        2
-      </a>
-    </main>
-  ) : (
-    <h1 className="live-title">Request</h1>
-  );
-}
-
-describe("the clicked card becomes the next page's title", () => {
-  function setup() {
-    const seen: (string | null)[] = [];
-    const start = vi.fn((update: () => void) => {
-      // What the browser snapshots as the old page.
-      seen.push(
-        document.querySelector(".vt-src")?.getAttribute("href") ?? null,
-        document.documentElement.classList.contains("vt-morph") ? "morph" : "",
-      );
-      update();
-      seen.push(
-        document.querySelector(".vt-src")?.getAttribute("href") ?? null,
-        document.documentElement.classList.contains("vt-morph") ? "morph" : "",
-      );
-      return { finished: Promise.resolve() };
-    });
-    Object.assign(document, { startViewTransition: start });
-    return { seen, start };
-  }
-
-  it("names the clicked card in the old page, the title in the new one", () => {
-    history.pushState(null, "", "/s/s1");
-    const card = document.createElement("a");
-    card.setAttribute("href", "/s/s1/r/r2");
-    card.setAttribute("data-morph", "");
-    document.body.append(card);
-    const { seen } = setup();
-    navigate("/s/s1/r/r2", card);
-    expect(seen).toEqual(["/s/s1/r/r2", "morph", null, ""]);
-    card.remove();
-  });
-
-  it("a track station, a box of no size on a wide screen, morphs from its dot", () => {
-    // Its mark and caption sit absolutely on the track; named itself, the station drew a
-    // 0 × 0 box and the title flew in from the track's corner with the dot gone.
-    const wide = css.slice(css.lastIndexOf("@media (min-width: 900px)"));
-    expect(wide).toMatch(
-      /\.vt-morph \.trk-st \.vt-src\s*\{[^}]*view-transition-name:\s*none/,
-    );
-    expect(wide).toMatch(
-      /\.vt-morph \.trk-st \.vt-src \.mk\s*\{[^}]*view-transition-name:\s*page-title/,
-    );
-    // Not stretched to the title's size: both pictures keep their own.
-    expect(wide).toMatch(
-      /\.vt-dot::view-transition-new\(page-title\)\s*\{[^}]*inline-size:\s*auto/,
-    );
-  });
-
-  it("marks a track station's move as a dot's until it has run", async () => {
-    history.pushState(null, "", "/s/s1/r/r1");
-    const track = document.createElement("ol");
-    track.className = "trk-st";
-    track.innerHTML = '<li><a href="/s/s1/r/r1/p/t1" data-morph=""></a></li>';
-    document.body.append(track);
-    let done: () => void = () => {};
-    const seen: boolean[] = [];
-    Object.assign(document, {
-      startViewTransition: (update: () => void) => {
-        update();
-        seen.push(document.documentElement.classList.contains("vt-dot"));
-        return { finished: new Promise<void>((r) => (done = r)) };
-      },
-    });
-    navigate("/s/s1/r/r1/p/t1", track.querySelector("a"));
-    expect(seen).toEqual([true]);
-    done();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(document.documentElement.classList.contains("vt-dot")).toBe(false);
-    track.remove();
-  });
-
-  it("a click on anything else is a plain page change", () => {
-    history.pushState(null, "", "/s/s1");
-    const link = document.createElement("a");
-    link.setAttribute("href", "/settings");
-    document.body.append(link);
-    const { seen } = setup();
-    navigate("/settings", link);
-    expect(seen).toEqual([null, "", null, ""]);
-    link.remove();
-  });
-
-  it("a second click before the first page is drawn keeps the second card named", () => {
-    history.pushState(null, "", "/s/s1");
-    const card = (href: string) => {
-      const a = document.createElement("a");
-      a.setAttribute("href", href);
-      a.setAttribute("data-morph", "");
-      document.body.append(a);
-      return a;
-    };
-    const one = card("/s/s1/r/r1");
-    const two = card("/s/s1/r/r2");
-    const seen: (string | null)[] = [];
-    let pending: (() => void) | undefined;
-    Object.assign(document, {
-      startViewTransition: (update: () => void) => {
-        // A new transition skips the one still waiting, whose update then runs, before
-        // the browser snapshots the old page.
-        const skipped = pending;
-        pending = update;
-        skipped?.();
-        seen.push(
-          document.querySelector(".vt-src")?.getAttribute("href") ?? null,
-        );
-        return { finished: Promise.resolve() };
-      },
-    });
-    navigate("/s/s1/r/r1", one);
-    navigate("/s/s1/r/r2", two);
-    expect(seen).toEqual(["/s/s1/r/r1", "/s/s1/r/r2"]);
-    pending?.();
-    expect(document.querySelector(".vt-src")).toBeNull();
-    one.remove();
-    two.remove();
-  });
-
-  it("back or forward to a page with no saved place starts at its top", async () => {
-    history.pushState(null, "", "/s/s1");
-    render(<Page />);
-    const to = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
-    setup();
-    // The browser's forward to a page it left by back: nothing was saved for it.
-    history.pushState(null, "", "/s/s1/r/r1");
-    await act(async () => {
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    });
-    expect(to).toHaveBeenLastCalledWith(0, 0);
-    to.mockRestore();
-  });
-
-  it("back shrinks into the card on screen when two link to the page", async () => {
-    // The journey's "where it is now" card and the last station both open the newest
-    // request; back to the top of the journey must not fly the title down off screen.
-    history.pushState(null, "", "/s/s1");
-    render(<Twice />);
-    act(() => navigate("/s/s1/r/r2"));
-    const rect = Element.prototype.getBoundingClientRect;
-    Element.prototype.getBoundingClientRect = function (this: Element) {
-      const top = this.classList.contains("station") ? 2000 : 100;
-      return { top, bottom: top + 80, left: 0, right: 100 } as DOMRect;
-    };
-    const seen: string[] = [];
-    Object.assign(document, {
-      startViewTransition: (update: () => void) => {
-        update();
-        seen.push(document.querySelector(".vt-src")?.className ?? "");
-        return { finished: Promise.resolve() };
-      },
-    });
-    history.replaceState(null, "", "/s/s1");
-    await act(async () => {
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    });
-    Element.prototype.getBoundingClientRect = rect;
-    expect(seen).toEqual(["end vt-src"]);
-  });
-
-  it("back runs the same path reversed, into the card it came from", async () => {
-    history.pushState(null, "", "/s/s1");
-    render(<Page />);
-    act(() => navigate("/s/s1/r/r2"));
-    const { seen, start } = setup();
-    // The browser's back: the URL is already the journey's when popstate fires.
-    history.replaceState(null, "", "/s/s1");
-    await act(async () => {
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    });
-    expect(start).toHaveBeenCalledTimes(1);
-    expect(seen).toEqual([null, "", "/s/s1/r/r2", "morph"]);
-    // Named only for the transition.
-    expect(document.querySelector(".vt-src")).toBeNull();
-    expect(document.documentElement.classList.contains("vt-morph")).toBe(false);
   });
 });

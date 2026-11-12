@@ -1,3 +1,51 @@
+import type { RequestView, SessionView } from "@murmur/core";
+import { duration } from "./story";
+
+const DAY = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+});
+/** "Mon 2 Nov". */
+export const dayLabel = (iso: string) =>
+  DAY.format(new Date(iso)).replace(",", "");
+const dayKey = (iso: string) => new Date(iso).toDateString();
+
+/** The requests by the day they were asked, oldest first, numbered from 1. */
+export function byDay(requests: RequestView[]) {
+  const days: { label: string; rows: { req: RequestView; n: number }[] }[] = [];
+  requests.forEach((req, i) => {
+    const last = days.at(-1);
+    const row = { req, n: i + 1 };
+    const prev = requests[i - 1];
+    if (last && prev && dayKey(prev.startedAt) === dayKey(req.startedAt))
+      last.rows.push(row);
+    else days.push({ label: dayLabel(req.startedAt), rows: [row] });
+  });
+  return days;
+}
+
+const many = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
+
+/** How long the session has run: "7 days", "3 h 07 m", "under a minute". */
+export function sessionSpan(view: SessionView): string {
+  const ms = Date.parse(view.lastEventAt) - Date.parse(view.startedAt);
+  return ms < 86_400_000
+    ? duration(view.startedAt, view.lastEventAt)
+    : many(Math.round(ms / 86_400_000), "day");
+}
+
+/** "13 requests · 136 helpers · 7 days". */
+export function sessionFacts(view: SessionView): string {
+  const helpers = view.requests.reduce((n, r) => n + r.tally.helpers, 0);
+  const span = sessionSpan(view);
+  return [
+    many(view.requests.length, "request"),
+    ...(helpers ? [many(helpers, "helper")] : []),
+    span === "under a minute" ? "just started" : span,
+  ].join(" · ");
+}
+
 export function ago(iso: string | null, now = Date.now()): string {
   if (!iso) return "never";
   const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));

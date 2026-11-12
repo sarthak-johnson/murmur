@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { StateMark } from "../live/Rail";
+import { StateMark } from "../marks";
 import { follow, partPath } from "../router";
 import { clock } from "../story";
 import {
@@ -455,7 +455,7 @@ function Detail(props: {
     .replace(/\.$/, "")
     .replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase());
   return (
-    <section className="fd" aria-label="Selected part" data-morph={path}>
+    <section className="fd" aria-label="Selected part">
       <div className="fd-main">
         <h3 className="fd-ttl">
           {tag ? `${p.title} · ${name}` : p.title}

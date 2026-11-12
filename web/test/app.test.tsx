@@ -73,7 +73,7 @@ describe("App", () => {
     ).toBeTruthy();
   });
 
-  it("paints the header and the live skeleton before /api/me answers", () => {
+  it("paints the office's shell before /api/me answers", () => {
     history.pushState(null, "", "/s/s1");
     vi.stubGlobal(
       "fetch",
@@ -81,12 +81,12 @@ describe("App", () => {
     );
     const { container } = render(<App />);
     expect(screen.getByText("Murmur")).toBeTruthy();
-    // Mirrors the loaded frame: the rail, then the column with the bar and the page.
-    const frame = container.querySelector(".frame");
+    // Mirrors the loaded office: its bar, the stage, its replay bar.
+    const office = container.querySelector(".office");
     expect(
-      [...(frame?.children ?? [])].map((c) => c.className.split(" ")[0]),
-    ).toEqual(["rail", "col"]);
-    expect(frame?.querySelector(".main .skeleton")).toBeTruthy();
+      [...(office?.children ?? [])].map((c) => c.className.split(" ")[0]),
+    ).toEqual(["of-top", "of-body", "of-replay"]);
+    expect(screen.getByRole("status").textContent).toBe("Opening the office…");
   });
 
   it("a failed /api/me retries instead of showing the login page", async () => {
@@ -112,7 +112,7 @@ describe("App", () => {
     expect(screen.queryByText("Could not reach Murmur. Retrying…")).toBeNull();
   });
 
-  it("the part route uses the live frame, with the account links in its menu", async () => {
+  it("an old task address opens in the office, with the account links in its menu", async () => {
     history.pushState(null, "", "/s/s1/r/r1/p/x");
     mockFetch({
       "GET /api/me": { body: ME },
@@ -131,10 +131,17 @@ describe("App", () => {
       },
     );
     const { container } = render(<App />);
-    await waitFor(() => expect(screen.getByText("ada")).toBeTruthy());
-    expect(container.querySelector(".frame > .col > .top")).toBeTruthy();
+    expect(location.pathname + location.search).toBe("/s/s1/r/r1?open=task:x");
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toBe(
+        "Waiting for the first prompt in this session.",
+      ),
+    );
+    expect(container.querySelector(".office .of-top")).toBeTruthy();
     expect(container.querySelector(".header")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "Session menu" }));
+    await userEvent.click(screen.getByRole("button", { name: "Menu" }));
+    expect(screen.getByText("ada")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete session" })).toBeTruthy();
     expect(
       within(screen.getByRole("navigation", { name: "Account" })).getByRole(
         "button",

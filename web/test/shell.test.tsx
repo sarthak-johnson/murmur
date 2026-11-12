@@ -9,8 +9,11 @@ import type {
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { byDay } from "../src/live/Rail";
-import { Live } from "../src/pages/Session";
+import { byDay } from "../src/format";
+import { Live, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import type { Tab } from "../src/router";
 import { nowLine, requestMark, requestShort, shortOf } from "../src/session";
 
@@ -220,17 +223,19 @@ function show(
   };
 }
 
-const rail = () => screen.getByRole("complementary", { name: "This session" });
+const rail = () => screen.getByRole("complementary", { name: "Requests rail" });
 const requests = () =>
   within(rail()).getByRole("navigation", { name: "Requests" });
-const bar = () => document.querySelector("header.top") as HTMLElement;
+const bar = () => document.querySelector("header.of-top") as HTMLElement;
 const crumbs = () =>
-  within(bar())
-    .getByRole("navigation", { name: "Breadcrumb" })
+  screen
+    .getByRole("navigation", { name: "Where you are" })
     .querySelectorAll("li");
 
 beforeEach(() => {
   history.pushState(null, "", "/s/s1");
+  // A desktop window: the requests rail sits beside the room from 1200 px.
+  vi.stubGlobal("innerWidth", 1600);
   vi.stubGlobal(
     "fetch",
     vi.fn(
@@ -278,7 +283,7 @@ describe("short titles", () => {
   });
 });
 
-describe("the rail", () => {
+describe("the requests rail", () => {
   it("groups the requests by the day they were asked, numbered in order", () => {
     expect(byDay(session().requests).map((d) => d.label)).toEqual([
       "Mon 2 Nov",
@@ -296,39 +301,43 @@ describe("the rail", () => {
     expect(within(first).getAllByRole("link")).toHaveLength(2);
   });
 
-  it("names the session with its facts", () => {
+  it("names the session with its facts, the title a switcher of sessions", () => {
     show(session());
     expect(
       within(rail()).getByText("4 requests · 5 helpers · 7 days"),
     ).toBeTruthy();
-    const home = within(rail()).getByRole("link", { name: /Bro we recently/ });
-    expect(home.getAttribute("href")).toBe("/s/s1");
+    expect(
+      within(bar()).getByRole("button", { name: /^Session: Bro we recently/ }),
+    ).toBeTruthy();
   });
 
   it("shows each request as a link with its number and short title, the full one on hover", () => {
     show(session(), { requestId: "r3" });
     const row = within(requests()).getByRole("link", { name: /^3/ });
-    expect(row.getAttribute("href")).toBe("/s/s1/r/r3");
+    // A pinned floor's link; the panel keeps the request's tab.
+    expect(row.getAttribute("href")).toBe("/s/s1/r/r3?open=story");
     expect(row.getAttribute("title")).toBe(
       "Restyle the logged-in app to the Lit plate design, then speed up My Agents",
     );
-    expect(row.querySelector(".stop-ttl")?.textContent).toBe(
+    expect(row.querySelector(".of-rl-t")?.textContent).toBe(
       "3Restyle the logged-in app to the…",
     );
+    // The floor Claude is on is the session's own address.
+    const last = within(requests()).getByRole("link", { name: /^4/ });
+    expect(last.getAttribute("href")).toBe("/s/s1?open=story");
   });
 
   it("marks each state by shape, colour and word", () => {
     const view = session();
     const marks = view.requests.map((r) => requestMark(view, r, []).mark);
     expect(marks).toEqual(["done", "open", "failed", "running"]);
-    // On a request's page; on the journey its running station pulses instead.
     show(view, { requestId: "r1" });
     const rows = within(requests()).getAllByRole("link");
     expect(rows.map((r) => r.querySelector(".mk")?.className)).toEqual([
       "mk done",
       "mk open",
       "mk failed",
-      "mk running pulse",
+      "mk running",
     ]);
     // Done gets a check, failed a cross; the word is always there for a screen reader.
     expect(rows[0]?.querySelector(".mk svg path")?.getAttribute("d")).toContain(
@@ -340,7 +349,7 @@ describe("the rail", () => {
     expect(rows[1]?.textContent).toContain(", Left open");
     expect(rows[2]?.textContent).toContain(", Failed");
     // The running one says so in its line, with how long and its helpers.
-    expect(rows[3]?.querySelector(".stop-sub")?.textContent).toMatch(
+    expect(rows[3]?.querySelector(".of-rl-sub")?.textContent).toMatch(
       /^Running · .* · 3 helpers$/,
     );
   });
@@ -357,7 +366,7 @@ describe("the rail", () => {
     const row = within(requests()).getAllByRole("link")[3] as HTMLElement;
     expect(row.querySelector(".mk")?.className).toBe("mk waiting");
     expect(row.querySelector(".mk")?.textContent).toBe("?");
-    expect(row.querySelector(".stop-sub")?.textContent).toMatch(
+    expect(row.querySelector(".of-rl-sub")?.textContent).toMatch(
       /^Waiting on you/,
     );
   });
@@ -377,25 +386,27 @@ describe("the rail", () => {
     expect(requestMark(view, r, []).mark).toBe("open");
   });
 
-  it("highlights the request on screen, and only that one is the current page", () => {
+  it("highlights the request on the floor, and only that one", () => {
     show(session(), { requestId: "r3" });
     const rows = within(requests()).getAllByRole("link");
     expect(rows.map((r) => r.getAttribute("aria-current"))).toEqual([
       null,
       null,
-      "page",
+      "true",
       null,
     ]);
     expect(rows[2]?.className).toContain("cur");
   });
 
-  it("on the session page the session is the page, no request", () => {
+  it("on the session's journey the floor is still Claude's request", () => {
     show(session());
     const rows = within(requests()).getAllByRole("link");
-    expect(rows.some((r) => r.className.includes("cur"))).toBe(false);
-    expect(rows.some((r) => r.hasAttribute("aria-current"))).toBe(false);
-    const home = within(rail()).getByRole("link", { name: /Bro we recently/ });
-    expect(home.getAttribute("aria-current")).toBe("page");
+    expect(rows.map((r) => r.getAttribute("aria-current"))).toEqual([
+      null,
+      null,
+      null,
+      "true",
+    ]);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
       "Bro we recently made Alphatake, and now…",
     );
@@ -406,29 +417,30 @@ describe("the rail", () => {
     const { again } = show(session(), { requestId: "r4" });
     const before = rail();
     await userEvent.click(within(requests()).getByRole("link", { name: /^1/ }));
-    expect(location.pathname).toBe("/s/s1/r/r1");
+    expect(location.pathname + location.search).toBe("/s/s1/r/r1?open=story");
     again({ requestId: "r1" });
     expect(rail()).toBe(before);
   });
 
-  it("does not scroll back to the shown request when a new request arrives", () => {
-    // jsdom has no layout: the shown row sits below the list's visible 200 px.
-    const box = (el: HTMLElement) => ({
-      offsetTop: el.classList.contains("cur") ? 600 : 0,
-      offsetHeight: 40,
-      clientHeight: 200,
+  it("folds away, and remembers it", async () => {
+    show(session());
+    const fold = within(rail()).getByRole("button", {
+      name: "Fold the requests rail",
     });
-    const keys = ["offsetTop", "offsetHeight", "clientHeight"] as const;
-    const saved = keys.map((k) =>
-      Object.getOwnPropertyDescriptor(HTMLElement.prototype, k),
+    await userEvent.click(fold);
+    expect(within(rail()).queryByRole("navigation")).toBeNull();
+    expect(localStorage.getItem("murmur:rail")).toBe("shut");
+    await userEvent.click(
+      within(rail()).getByRole("button", { name: "Show the requests rail" }),
     );
-    for (const k of keys)
-      Object.defineProperty(HTMLElement.prototype, k, {
-        configurable: true,
-        get(this: HTMLElement) {
-          return box(this)[k];
-        },
-      });
+    expect(requests()).toBeTruthy();
+    localStorage.removeItem("murmur:rail");
+  });
+
+  it("does not scroll back to the shown request when a new request arrives", () => {
+    const into = vi.fn();
+    const saved = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = into;
     try {
       const view = session();
       const props = {
@@ -438,10 +450,11 @@ describe("the rail", () => {
         requestId: "r1",
       };
       const { rerender } = render(<Live {...props} view={view} />);
-      const list = requests();
-      expect(list.scrollTop).toBeGreaterThan(0);
+      const placed = into.mock.contexts.filter((el) =>
+        requests().contains(el as Node),
+      ).length;
+      expect(placed).toBeGreaterThan(0);
       // The reader scrolls the rail to look at other requests, then a new one arrives.
-      list.scrollTop = 0;
       const more = {
         ...view,
         requests: [
@@ -450,37 +463,73 @@ describe("the rail", () => {
         ],
       };
       rerender(<Live {...props} view={more} />);
-      expect(list.scrollTop).toBe(0);
+      expect(
+        into.mock.contexts.filter((el) => requests().contains(el as Node)),
+      ).toHaveLength(placed);
     } finally {
-      keys.forEach((k, i) => {
-        const d = saved[i];
-        if (d) Object.defineProperty(HTMLElement.prototype, k, d);
-        else Reflect.deleteProperty(HTMLElement.prototype, k);
-      });
+      Element.prototype.scrollIntoView = saved;
     }
   });
 });
 
-describe("the breadcrumb", () => {
+describe("under 1200 px the rail folds into the request picker", () => {
+  beforeEach(() => {
+    vi.stubGlobal("innerWidth", 1024);
+  });
+  const picker = () =>
+    within(bar()).getByRole("button", { name: /^Request 3 of 4: Restyle/ });
+
+  it("has no rail; the picker lists every request and moves to one", async () => {
+    show(session(), { requestId: "r3" });
+    expect(
+      screen.queryByRole("complementary", { name: "Requests rail" }),
+    ).toBeNull();
+    expect(picker().getAttribute("aria-expanded")).toBe("false");
+    await userEvent.click(picker());
+    expect(picker().getAttribute("aria-expanded")).toBe("true");
+    const list = within(bar()).getByRole("navigation", { name: "Requests" });
+    expect(within(list).getAllByRole("link")).toHaveLength(4);
+    await userEvent.click(within(list).getByRole("link", { name: /^1/ }));
+    expect(location.pathname + location.search).toBe("/s/s1/r/r1?open=story");
+    expect(within(bar()).queryByRole("navigation", { name: "Requests" })).toBe(
+      null,
+    );
+  });
+
+  it("Escape closes the picker, not the panel", async () => {
+    show(session(), { requestId: "r3" });
+    await userEvent.click(picker());
+    await userEvent.keyboard("{Escape}");
+    expect(within(bar()).queryByRole("navigation", { name: "Requests" })).toBe(
+      null,
+    );
+    expect(document.activeElement).toBe(picker());
+    expect(location.search).toBe("");
+  });
+});
+
+describe("the panel's breadcrumb", () => {
   const levels = () =>
     [...crumbs()].map((li) => ({
       text: li.textContent,
       href: li.querySelector("a")?.getAttribute("href") ?? null,
     }));
 
-  it("on the session page: Sessions, then the session", () => {
+  it("on the session's views: the session", () => {
     show(session());
     expect(levels()).toEqual([
-      { text: "Sessions", href: "/" },
-      { text: "Bro we recently made Alphatake, and now…", href: null },
+      {
+        text: "Session · Bro we recently made Alphatake, and now…",
+        href: null,
+      },
     ]);
   });
 
   it("on a request: the session, then the request's number and short title", () => {
     show(session(), { requestId: "r3" });
     expect(levels()).toEqual([
-      { text: "Bro we recently made Alphatake, and now…", href: "/s/s1" },
-      { text: "3 · Restyle the logged-in app to the…", href: null },
+      { text: "Session", href: "/s/s1/r/r3?open=journey" },
+      { text: "Request 3 · Restyle the logged-in app to the…", href: null },
     ]);
     const here = crumbs()[1]?.querySelector("[aria-current]");
     expect(here?.getAttribute("title")).toBe(
@@ -488,33 +537,34 @@ describe("the breadcrumb", () => {
     );
   });
 
-  it("on a task: the session, the request, the phase and the task", () => {
+  it("on a task: the session, the request and the task", () => {
     show(session(), { requestId: "r3", partId: "tokens" });
     expect(levels()).toEqual([
-      { text: "Bro we recently made Alphatake, and now…", href: "/s/s1" },
-      { text: "3 · Restyle the logged-in app to the…", href: "/s/s1/r/r3" },
-      { text: "Phase 0: foundation", href: "/s/s1/r/r3#phase-p0" },
+      { text: "Session", href: "/s/s1/r/r3?open=journey" },
+      { text: "Request 3", href: "/s/s1/r/r3?open=story" },
       { text: "Task 1 · Lit plate tokens", href: null },
     ]);
     expect(
-      crumbs()[3]
+      crumbs()[2]
         ?.querySelector("[aria-current]")
         ?.getAttribute("aria-current"),
     ).toBe("page");
   });
 
-  it("each level but the last is a link that moves there", async () => {
+  it("each level but the last is a link that moves there, inside the office", async () => {
     show(session(), { requestId: "r3", partId: "tokens" });
     await userEvent.click(
-      within(bar()).getByRole("link", { name: /^3 · Restyle/ }),
+      within(
+        screen.getByRole("navigation", { name: "Where you are" }),
+      ).getByRole("link", { name: "Request 3" }),
     );
-    expect(location.pathname).toBe("/s/s1/r/r3");
+    expect(location.pathname + location.search).toBe("/s/s1/r/r3?open=story");
   });
 });
 
 describe("the top bar", () => {
   it("running: the now line and Running with how long", () => {
-    vi.useFakeTimers({ now: new Date(day(9, 17)), toFake: ["Date"] });
+    vi.useFakeTimers({ now: new Date(day(9, 45)), toFake: ["Date"] });
     show(session());
     const b = within(bar());
     expect(
@@ -522,13 +572,13 @@ describe("the top bar", () => {
         "Second fix round on Task 39",
       ),
     ).toBeTruthy();
-    const pill = bar().querySelector(".state-pill");
-    expect(pill?.className).toBe("state-pill running");
-    expect(pill?.textContent).toBe("Running · 17 m");
-    expect(b.queryByText(/waiting on you/)).toBeNull();
+    const pill = bar().querySelector(".of-pill");
+    expect(pill?.className).toBe("of-pill s-now");
+    expect(pill?.textContent).toBe("Running · 45 m");
+    expect(b.queryByText(/waiting on you/i)).toBeNull();
   });
 
-  it("done: Done with how long it took, from its ask to its last word", () => {
+  it("done: Done, and how long it took from its ask to its last word", () => {
     const view = session();
     // Core's state: its failed task alone would make the pill say Failed.
     const r3 = view.requests[2] as RequestView;
@@ -549,18 +599,24 @@ describe("the top bar", () => {
         },
       ],
     });
-    const pill = bar().querySelector(".state-pill");
-    expect(pill?.className).toBe("state-pill done");
+    const pill = bar().querySelector(".of-pill");
+    expect(pill?.className).toBe("of-pill s-done");
     expect(pill?.textContent).toBe("Done · 3 h 06 m");
+    // The panel's clock for it stops at its own end, not the session's last event.
+    expect(
+      screen.getByRole("complementary", { name: "Details" }).textContent,
+    ).toMatch(/3 h 06 m/);
   });
 
-  it("waiting: the amber chip counts what waits on you, and the pill says Waiting", () => {
+  it("waiting: the pill says Waiting on you and for how long", () => {
     vi.useFakeTimers({ now: new Date(day(9, 39)), toFake: ["Date"] });
     const view = session({
       needsYou: { reason: "question", text: "Which?", since: day(9, 35) },
     });
     view.requests[3] = {
       ...(view.requests[3] as RequestView),
+      // Core says it waits; the room walks Claude to your door.
+      state: "waiting",
       agents: [],
       messages: [
         {
@@ -571,26 +627,26 @@ describe("the top bar", () => {
       ],
     };
     show(view);
-    const chip = within(bar()).getByRole("link", { name: /waiting on you/ });
-    expect(chip.textContent).toBe("2 waiting on you4 m");
-    expect(chip.className).toBe("need-chip");
-    // One amber chip says it; a second pill would repeat it.
-    expect(bar().querySelector(".state-pill")).toBeNull();
+    const pill = bar().querySelector(".of-pill");
+    expect(pill?.className).toBe("of-pill s-blocked");
+    expect(pill?.textContent).toBe("Waiting on you · 5 m · 2 questions");
   });
 
-  it("waiting with helpers at work: the one chip says they are still working", () => {
+  it("waiting with helpers at work: the bar says they are still working", () => {
     vi.useFakeTimers({ now: new Date(day(9, 39)), toFake: ["Date"] });
     const view = session({
       needsYou: { reason: "input", text: "Sign in", since: day(9, 35) },
     });
     view.requests[3] = {
       ...(view.requests[3] as RequestView),
+      state: "waiting",
       agents: [helper("h1", { status: "running", startedAt: day(9, 20) })],
     };
     show(view);
-    const chip = within(bar()).getByRole("link", { name: /waiting on you/i });
-    expect(chip.textContent).toBe("Waiting on you4 m · 1 helper still working");
-    expect(bar().querySelector(".state-pill")).toBeNull();
+    expect(bar().querySelector(".of-pill")?.textContent).toMatch(
+      /^Waiting on you/,
+    );
+    expect(bar().textContent).toContain("1 helper at work");
   });
 
   it("the now line never shows a raw command or a raw tool name", () => {
@@ -623,13 +679,11 @@ describe("the top bar", () => {
     expect(now.textContent).not.toContain("pnpm");
   });
 
-  it("the session menu holds the account links and delete", async () => {
+  it("the menu holds the account links and delete", async () => {
     show(session());
     expect(screen.queryByRole("button", { name: "Delete session" })).toBeNull();
-    const menu = within(bar()).getByRole("button", { name: "Session menu" });
+    const menu = within(bar()).getByRole("button", { name: "Menu" });
     expect(menu.getAttribute("aria-expanded")).toBe("false");
-    // A plain disclosure: it holds links and buttons, not an ARIA menu.
-    expect(menu.hasAttribute("aria-haspopup")).toBe(false);
     await userEvent.click(menu);
     expect(menu.getAttribute("aria-expanded")).toBe("true");
     expect(
@@ -638,23 +692,27 @@ describe("the top bar", () => {
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("button", { name: "Delete session" })).toBeNull();
   });
+
+  it("the brand goes to the lobby", () => {
+    show(session());
+    expect(
+      within(bar()).getByRole("link", { name: "Murmur" }).getAttribute("href"),
+    ).toBe("/");
+  });
 });
 
-describe("the request's tabs", () => {
-  const tabs = () =>
-    screen.getByRole("navigation", { name: "Views of this request" });
+describe("the panel's tabs", () => {
+  const tabs = () => screen.getByRole("navigation", { name: "This request" });
 
-  it("are links with their own URLs, the shown one current", () => {
+  it("are links with their own URLs inside the office, the shown one current", () => {
     show(session(), { requestId: "r3", tab: "files" });
     const links = within(tabs()).getAllByRole("link");
     expect(links.map((l) => [l.textContent, l.getAttribute("href")])).toEqual([
-      ["Story", "/s/s1/r/r3"],
-      ["Tasks", "/s/s1/r/r3/tasks"],
-      ["Flow", "/s/s1/r/r3/flow"],
-      ["Files", "/s/s1/r/r3/files"],
-      ["Helpers", "/s/s1/r/r3/helpers"],
-      // The office is a page of its own, never the current tab here.
-      ["Office", "/s/s1/r/r3/office"],
+      ["Story", "/s/s1/r/r3?open=story"],
+      ["Tasks", "/s/s1/r/r3?open=tasks"],
+      ["Flow", "/s/s1/r/r3?open=flow"],
+      ["Files", "/s/s1/r/r3?open=files"],
+      ["Helpers", "/s/s1/r/r3?open=helpers"],
     ]);
     expect(links.map((l) => l.getAttribute("aria-current"))).toEqual([
       null,
@@ -662,20 +720,28 @@ describe("the request's tabs", () => {
       null,
       "page",
       null,
-      null,
+    ]);
+    const session_ = within(
+      screen.getByRole("navigation", { name: "This session" }),
+    ).getAllByRole("link");
+    expect(
+      session_.map((l) => [l.textContent, l.getAttribute("href")]),
+    ).toEqual([
+      ["Journey", "/s/s1/r/r3?open=journey"],
+      ["Timeline", "/s/s1/r/r3?open=timeline"],
+      ["Requests", "/s/s1/r/r3?open=requests"],
     ]);
   });
 
-  it("no dropdown and no Story or Map toggle remain", () => {
+  it("no Story or Map toggle remains", () => {
     show(session(), { requestId: "r3" });
-    expect(screen.queryByRole("button", { name: /Request \d of/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Map" })).toBeNull();
   });
 
   it("a tab click moves to its URL", async () => {
     show(session(), { requestId: "r3" });
     await userEvent.click(within(tabs()).getByRole("link", { name: "Flow" }));
-    expect(location.pathname).toBe("/s/s1/r/r3/flow");
+    expect(location.pathname + location.search).toBe("/s/s1/r/r3?open=flow");
   });
 
   it("Flow shows the flow board", () => {
@@ -696,7 +762,7 @@ describe("the request's tabs", () => {
     ).toBeTruthy();
   });
 
-  it("Helpers lists every helper with its model, state, time and verdict, linking to its task", () => {
+  it("Helpers lists every helper with its model, state, time and verdict, each opening its close-up", () => {
     show(session(), {
       requestId: "r3",
       tab: "helpers",
@@ -725,69 +791,13 @@ describe("the request's tabs", () => {
     expect(first.textContent).toContain("6 m");
     expect(first.textContent).toContain("Done, with concerns");
     expect(within(first).getByRole("link").getAttribute("href")).toBe(
-      "/s/s1/r/r3/p/tokens",
+      "/s/s1/r/r3?open=helper:b1",
     );
-    // A helper on no task is listed, not linked.
-    expect(within(items[1] as HTMLElement).queryByRole("link")).toBeNull();
-  });
-});
-
-describe("the drawer under 900 px", () => {
-  const toggle = () => within(bar()).getByRole("button", { name: "Requests" });
-
-  it("opens over the page with focus inside it, and Escape closes it", async () => {
-    show(session(), { requestId: "r3" });
-    expect(toggle().getAttribute("aria-expanded")).toBe("false");
-    await userEvent.click(toggle());
-    expect(toggle().getAttribute("aria-expanded")).toBe("true");
-    const drawer = screen.getByRole("dialog", { name: "This session" });
-    expect(drawer.getAttribute("aria-modal")).toBe("true");
-    expect(drawer.contains(document.activeElement)).toBe(true);
-    expect(document.activeElement?.getAttribute("aria-current")).toBe("page");
-    expect(document.querySelector(".col")?.hasAttribute("inert")).toBe(true);
-    await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.activeElement).toBe(toggle());
-  });
-
-  it("keeps Tab inside while open", async () => {
-    show(session(), { requestId: "r3" });
-    await userEvent.click(toggle());
-    const drawer = screen.getByRole("dialog");
-    for (let i = 0; i < 12; i++) {
-      await userEvent.tab();
-      expect(drawer.contains(document.activeElement)).toBe(true);
-    }
-  });
-
-  it("closes on a scrim click", async () => {
-    show(session(), { requestId: "r3" });
-    await userEvent.click(toggle());
-    await userEvent.click(document.querySelector(".scrim") as HTMLElement);
-    expect(screen.queryByRole("dialog")).toBeNull();
-  });
-
-  it("closes on navigation", async () => {
-    const { again } = show(session(), { requestId: "r3" });
-    await userEvent.click(toggle());
-    await userEvent.click(
-      within(screen.getByRole("dialog")).getByRole("link", { name: /^1/ }),
-    );
-    again({ requestId: "r1" });
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(toggle().getAttribute("aria-expanded")).toBe("false");
-  });
-
-  it("closes when the request already shown is tapped, focus back on the button", async () => {
-    show(session(), { requestId: "r3" });
-    history.pushState(null, "", "/s/s1/r/r3");
-    await userEvent.click(toggle());
-    const cur = within(screen.getByRole("dialog")).getByRole("link", {
-      current: "page",
-    });
-    await userEvent.click(cur);
-    expect(location.pathname).toBe("/s/s1/r/r3");
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.activeElement).toBe(toggle());
+    // A helper on no task still has its close-up.
+    expect(
+      within(items[1] as HTMLElement)
+        .getByRole("link")
+        .getAttribute("href"),
+    ).toBe("/s/s1/r/r3?open=helper:b2");
   });
 });

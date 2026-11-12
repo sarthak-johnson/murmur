@@ -1,174 +1,147 @@
 import { useEffect, useState } from "react";
-import { flushSync } from "react-dom";
 
-/** The views of a request page, each its own URL: Story is the bare request path. */
+/** A request's views in the office's panel. */
 export const TABS = ["story", "tasks", "flow", "files", "helpers"] as const;
 export type Tab = (typeof TABS)[number];
-/** The views of a session's page: Journey is the bare session path. */
-export type SessionTab = "journey" | "flow";
+/** The session's views in the office's panel. */
+export const SESSION_TABS = ["journey", "timeline", "requests"] as const;
+export type SessionTab = (typeof SESSION_TABS)[number];
 
+/**
+ * Every session URL is the office. The path is the floor: `/s/:sid` follows Claude's
+ * current request, `/s/:sid/r/:rid` pins one. `?open=` is what the panel shows: a tab
+ * (`story`, `journey`...) or a close-up (`task:<partId>`, `helper:<agentId>`, `door`,
+ * `terminal`, `claude`). No `open` is a closed panel, or on a fresh load the default.
+ */
 export type Route =
   | { name: "home" }
   | { name: "device"; code: string }
   | { name: "settings" }
-  | { name: "session"; sessionId: string; tab: SessionTab }
-  | { name: "request"; sessionId: string; requestId: string; tab: Tab }
-  | { name: "part"; sessionId: string; requestId: string; partId: string }
-  /** The office: the session drawn as a pixel room, following its newest request or one pinned. */
-  | { name: "office"; sessionId: string; requestId?: string }
+  | {
+      name: "session";
+      sessionId: string;
+      requestId?: string;
+      open?: string;
+    }
   | { name: "notFound" };
 
-const isTab = (s: string | undefined): s is Tab =>
-  !!s && s !== "story" && (TABS as readonly string[]).includes(s);
+function segments(path: string): { url: URL; seg: string[] } | null {
+  const url = new URL(path, "http://x");
+  try {
+    return {
+      url,
+      seg: url.pathname.split("/").filter(Boolean).map(decodeURIComponent),
+    };
+  } catch {
+    return null;
+  }
+}
 
 export function matchRoute(path: string): Route {
-  const url = new URL(path, "http://x");
-  let seg: string[];
-  try {
-    seg = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
-  } catch {
-    return { name: "notFound" };
-  }
-  const [a, b, c, d, e] = seg;
+  const at = segments(path);
+  if (!at) return { name: "notFound" };
+  const { url, seg } = at;
+  const [a, b, c, d] = seg;
   if (seg.length === 0) return { name: "home" };
   if (a === "device" && seg.length === 1)
     return { name: "device", code: url.searchParams.get("code") ?? "" };
   if (a === "settings" && seg.length === 1) return { name: "settings" };
   if (a === "s" && b) {
-    if (seg.length === 2)
-      return { name: "session", sessionId: b, tab: "journey" };
-    if (c === "flow" && seg.length === 3)
-      return { name: "session", sessionId: b, tab: "flow" };
-    if (c === "office" && seg.length === 3)
-      return { name: "office", sessionId: b };
-    if (c === "r" && d && e === "office" && seg.length === 5)
-      return { name: "office", sessionId: b, requestId: d };
+    const open = url.searchParams.get("open") || undefined;
+    const rest = open ? { open } : {};
+    if (seg.length === 2) return { name: "session", sessionId: b, ...rest };
     if (c === "r" && d && seg.length === 4)
-      return { name: "request", sessionId: b, requestId: d, tab: "story" };
-    if (c === "r" && d && seg.length === 5 && isTab(e))
-      return { name: "request", sessionId: b, requestId: d, tab: e };
-    if (c === "r" && d && e === "p" && seg.length === 6 && seg[5]) {
-      return { name: "part", sessionId: b, requestId: d, partId: seg[5] };
-    }
+      return { name: "session", sessionId: b, requestId: d, ...rest };
   }
   return { name: "notFound" };
 }
 
 const enc = encodeURIComponent;
+/** `open`'s value as it reads in a URL: a close-up's colon kept plain. */
+const openQuery = (open: string | undefined | null) =>
+  open ? `?open=${open.split(":").map(enc).join(":")}` : "";
 
-/** A session's path, with its tab: `/s/:sid` (the journey) or `/s/:sid/flow`. */
+/** A floor of the office (following, or pinned to a request) with what its panel shows. */
+export const floorPath = (
+  sessionId: string,
+  requestId: string | undefined,
+  open?: string | null,
+) =>
+  `/s/${enc(sessionId)}${requestId ? `/r/${enc(requestId)}` : ""}${openQuery(open)}`;
+
+/** The office following the session, its panel on one of the session's views. */
 export const sessionPath = (sessionId: string, tab?: SessionTab) =>
-  `/s/${enc(sessionId)}${tab === "flow" ? "/flow" : ""}`;
+  floorPath(sessionId, undefined, tab);
 
-/** A request's path, with its tab: `/s/:sid/r/:rid`, `/s/:sid/r/:rid/flow` and so on. */
-export function requestPath(sessionId: string, requestId: string, tab?: Tab) {
-  const base = `/s/${enc(sessionId)}/r/${enc(requestId)}`;
-  return tab && tab !== "story" ? `${base}/${tab}` : base;
-}
+/** A request's floor, its panel on one of its tabs (the story when none is named). */
+export const requestPath = (sessionId: string, requestId: string, tab?: Tab) =>
+  floorPath(sessionId, requestId, tab ?? "story");
 
-/** The office, following the newest request (`/s/:sid/office`) or pinned to one. */
-export const officePath = (sessionId: string, requestId?: string) =>
-  requestId
-    ? `/s/${enc(sessionId)}/r/${enc(requestId)}/office`
-    : `/s/${enc(sessionId)}/office`;
-
-/** A task's page. */
+/** A task's close-up on its request's floor. */
 export const partPath = (
   sessionId: string,
   requestId: string,
   partId: string,
-) => `${requestPath(sessionId, requestId)}/p/${enc(partId)}`;
+) => floorPath(sessionId, requestId, `task:${partId}`);
 
-type Transitioning = Document & {
-  startViewTransition?(update: () => void): { finished: Promise<unknown> };
-};
-
-/** While set on <html>, only `.vt-src` carries the title's transition name (theme.css). */
-const MORPH = "vt-morph";
-const SRC = "vt-src";
-
-let named: Element | null = null;
-
-/** Names `el` the morphing card for one snapshot; `null` takes the name back. */
-function mark(el: Element | null) {
-  for (const old of document.querySelectorAll(`.${SRC}`))
-    old.classList.remove(SRC);
-  document.documentElement.classList.toggle(MORPH, !!el);
-  el?.classList.add(SRC);
-  named = el;
-}
+/** A helper's close-up on its request's floor. */
+export const helperPath = (
+  sessionId: string,
+  requestId: string,
+  agentId: string,
+) => floorPath(sessionId, requestId, `helper:${agentId}`);
 
 /**
- * Takes the name back from `el` only: a transition skipped by a quicker click still runs
- * its update, and must not unname the card that click named.
+ * The address an old link meant, for the pages the office replaced: the session's flow,
+ * the office's own paths, a request's tab and a task's page. Null for a current address.
  */
-const unmark = (el: Element | null) => named === el && mark(null);
-
-/**
- * While set on <html>, the morph keeps both pictures at their own size (theme.css): the
- * source was a wide track's station, whose dot would otherwise blow up to the title's size.
- */
-const DOT = "vt-dot";
-let latest: object | null = null;
-
-/** Marks the morph as a dot's (or not) until the newest transition has run. */
-function dot(el: Element | null) {
-  document.documentElement.classList.toggle(
-    DOT,
-    !!el?.closest(".trk-st") && !el.closest(".trk.stack"),
-  );
-}
-
-/** Runs `update` as a transition, the dot mark kept until the newest one has run. */
-function transition(doc: Transitioning, update: () => void) {
-  const t = doc.startViewTransition?.(update);
-  if (!t) return;
-  latest = t;
-  return t.finished.finally(
-    () => latest === t && document.documentElement.classList.remove(DOT),
-  );
-}
-
-/** Set while navigate's own popstate runs, so useRoute starts no second transition. */
-let moving = false;
-
-/**
- * Moves to a path. Where the browser has View Transitions the change runs inside one: a
- * clicked card marked `data-morph` (a station, a rail row, a track station, or the title in
- * a clicked link, as a task row's) grows into the next page's title, and the page rises
- * (theme.css); elsewhere it is instant.
- */
-export function navigate(path: string, from?: Element | null): void {
-  // Another page starts at its top, as a real link would; a hash within the page scrolls itself.
-  const another = new URL(path, location.href).pathname !== location.pathname;
-  const go = () => {
-    // Back lands where the reader was: the scroll stays with the entry it leaves.
-    history.replaceState({ y: window.scrollY }, "");
-    if (another) window.scrollTo(0, 0);
-    history.pushState(null, "", path);
-    moving = true;
-    try {
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    } finally {
-      moving = false;
-    }
+export function redirectOf(path: string): string | null {
+  const at = segments(path);
+  if (!at) return null;
+  const { url, seg } = at;
+  const [a, b, c, d, e, f] = seg;
+  if (a !== "s" || !b) return null;
+  // The rest of the query (a flow board's `?part=`) and the hash come along.
+  const keep = (to: string, open?: string) => {
+    const q = new URLSearchParams(url.search);
+    const o = open ?? q.get("open");
+    q.delete("open");
+    const rest = q.toString();
+    return `${to}${openQuery(o)}${rest ? `${o ? "&" : "?"}${rest}` : ""}${url.hash}`;
   };
-  const doc = document as Transitioning;
-  if (typeof doc.startViewTransition !== "function") {
-    go();
-    return;
-  }
-  const src =
-    from?.closest("[data-morph]") ??
-    from?.querySelector("[data-morph]") ??
-    null;
-  mark(src);
-  dot(src);
-  // The DOM must be the new page when the callback returns, so React renders at once.
-  transition(doc, () => {
-    unmark(src);
-    flushSync(go);
-  });
+  if (seg.length === 3 && c === "flow")
+    return keep(floorPath(b, undefined), "timeline");
+  if (seg.length === 3 && c === "office") return keep(floorPath(b, undefined));
+  if (c !== "r" || !d) return null;
+  if (seg.length === 5 && e === "office") return keep(floorPath(b, d));
+  if (seg.length === 5 && (TABS as readonly string[]).includes(e ?? ""))
+    return keep(floorPath(b, d), e);
+  if (seg.length === 6 && e === "p" && f)
+    return keep(floorPath(b, d), `task:${f}`);
+  return null;
+}
+
+/** What `navigate` keeps with an entry: the scroll it was left at, and a closed panel. */
+interface EntryState {
+  y?: number;
+  closed?: boolean;
+}
+const entry = (): EntryState => (history.state as EntryState | null) ?? {};
+
+/** The panel was closed on this entry (it survives a reload), so its default does not reopen it. */
+export const closedHere = () => !!entry().closed;
+
+/**
+ * Moves to a path: a new history entry, so Back and Forward walk it. `closed` marks an
+ * entry whose panel was closed by hand. A move to another page starts at its top.
+ */
+export function navigate(path: string, opts: { closed?: boolean } = {}): void {
+  const another = new URL(path, location.href).pathname !== location.pathname;
+  // Back lands where the reader was: the scroll stays with the entry it leaves.
+  history.replaceState({ ...entry(), y: window.scrollY }, "");
+  if (another) window.scrollTo(0, 0);
+  history.pushState(opts.closed ? { closed: true } : null, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
 /** A link's click as an in-app move; a modified click still opens a new tab. */
@@ -177,63 +150,32 @@ export function follow(path: string) {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)
       return;
     e.preventDefault();
-    navigate(path, e.currentTarget as Element);
+    navigate(path);
   };
 }
 
-/**
- * The card linking to `path` (its `href`, or the path in `data-morph` for a card that is
- * not itself the link): the main column's first one on screen, else its last, else the
- * rail's. Called once the page has its scroll back.
- */
-function cardFor(path: string): Element | null {
-  const all = [...document.querySelectorAll("[data-morph]")].filter(
-    (el) => (el.getAttribute("data-morph") || el.getAttribute("href")) === path,
-  );
-  const main = all.filter((el) => el.closest("main"));
-  const shown = (el: Element) => {
-    const r = el.getBoundingClientRect();
-    return r.bottom > 0 && r.top < window.innerHeight;
-  };
-  return main.find(shown) ?? main.at(-1) ?? all[0] ?? null;
-}
+const here = () => location.pathname + location.search + location.hash;
 
-/**
- * The scroll an entry was left at, once its page is drawn; another page with none kept
- * (one the browser's back left) starts at its top, a hash within the page scrolls itself.
- */
-function restore(another: boolean) {
-  const y = (history.state as { y?: unknown } | null)?.y;
-  if (typeof y === "number") window.scrollTo(0, y);
-  else if (another) window.scrollTo(0, 0);
+/** The route of the address shown, an old address first replaced by the one it meant. */
+function current(): Route {
+  const to = redirectOf(here());
+  if (to) history.replaceState(history.state, "", to);
+  return matchRoute(here());
 }
-
-const here = () => location.pathname + location.search;
 
 export function useRoute(): Route {
-  const [route, setRoute] = useState(() => matchRoute(here()));
+  const [route, setRoute] = useState(current);
   useEffect(() => {
     if ("scrollRestoration" in history) history.scrollRestoration = "manual";
     let shown = location.pathname;
     const on = () => {
-      const left = shown;
+      const another = shown !== location.pathname;
       shown = location.pathname;
-      const show = () => setRoute(matchRoute(here()));
-      const doc = document as Transitioning;
-      if (moving) return show();
-      if (typeof doc.startViewTransition !== "function") {
-        flushSync(show);
-        return restore(left !== shown);
-      }
-      // Back or forward: the same path reversed, the title shrinking into its card.
-      let card: Element | null = null;
-      transition(doc, () => {
-        flushSync(show);
-        restore(left !== shown);
-        card = left === shown ? null : cardFor(left);
-        mark(card);
-        dot(card);
-      })?.finally(() => unmark(card));
+      setRoute(current());
+      // Back lands where the reader was; another page with none kept starts at its top.
+      const y = entry().y;
+      if (typeof y === "number") window.scrollTo(0, y);
+      else if (another) window.scrollTo(0, 0);
     };
     window.addEventListener("popstate", on);
     return () => window.removeEventListener("popstate", on);

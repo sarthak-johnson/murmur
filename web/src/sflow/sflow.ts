@@ -5,8 +5,8 @@
  * board draws what this returns.
  */
 import type { RequestView, SessionView, Thread } from "@murmur/core";
+import { dayLabel } from "../format";
 import { gap } from "../live/Journey";
-import { dayLabel } from "../live/Rail";
 import { requestShort } from "../session";
 import { clock } from "../story";
 

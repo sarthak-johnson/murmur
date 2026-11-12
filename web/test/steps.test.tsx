@@ -2,7 +2,10 @@ import type { RequestView, SessionView } from "@murmur/core";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FlowBoard } from "../src/flow/FlowBoard";
-import { Live } from "../src/pages/Session";
+import { Live, roomInJsdom } from "./officeShell";
+
+roomInJsdom();
+
 import { cleanPrompt } from "../src/session";
 
 const day = (d: number, min = 0) =>

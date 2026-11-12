@@ -4,10 +4,10 @@ import {
   type MapInput,
   type MurmurEvent,
   NARRATE_TOOL,
+  type RequestView,
   reduce,
 } from "@murmur/core";
 import { describe, expect, it } from "vitest";
-import { drawerFor, toolWords } from "../src/office/drawerState";
 import { firstAfter, nextEventAfter } from "../src/office/feed";
 import {
   BOARD_INNER,
@@ -17,6 +17,12 @@ import {
   JOB_BOARD,
   jobCards,
 } from "../src/office/map";
+import {
+  openFor,
+  readOpen,
+  roomKey,
+  toolWords,
+} from "../src/office/panelState";
 import {
   activeRequest,
   actOf,
@@ -474,12 +480,28 @@ describe("replay times", () => {
 
 describe("what a click in the room opens", () => {
   it("is the tab that tells its story, or a close-up", () => {
-    expect(drawerFor("phase:2")).toEqual({ tab: "tasks", phase: "2" });
-    expect(drawerFor("archive")).toEqual({ tab: "files" });
-    expect(drawerFor("jobs")).toEqual({ tab: "requests" });
-    expect(drawerFor("claude")).toEqual({ tab: "story", item: "claude" });
-    expect(drawerFor("agent:a1")).toEqual({ tab: "story", item: "agent:a1" });
-    expect(drawerFor("task:1.1")).toEqual({ tab: "story", item: "task:1.1" });
+    const req = {
+      phases: [{ tasks: [{ id: "1.1", part: "db" }, { id: "1.2" }] }],
+    } as unknown as RequestView;
+    expect(openFor("phase:2", req)).toBe("tasks");
+    expect(openFor("archive", req)).toBe("files");
+    expect(openFor("jobs", req)).toBe("requests");
+    expect(openFor("claude", req)).toBe("claude");
+    expect(openFor("agent:a1", req)).toBe("helper:a1");
+    // A sticky opens its part's page, else the task itself.
+    expect(openFor("task:1.1", req)).toBe("task:db");
+    expect(openFor("task:1.2", req)).toBe("task:1.2");
+    // And the panel's close-up lights the same thing in the room.
+    expect(roomKey("task:db", req)).toBe("task:1.1");
+    expect(roomKey("helper:a1", req)).toBe("agent:a1");
+    expect(roomKey("story", req)).toBeNull();
+  });
+  it("reads only what the panel can show from the address", () => {
+    expect(readOpen("journey")).toBe("journey");
+    expect(readOpen("task:p:1")).toBe("task:p:1");
+    expect(readOpen("task:")).toBeNull();
+    expect(readOpen("nope")).toBeNull();
+    expect(readOpen(undefined)).toBeNull();
   });
   it("names a helper with nothing but a model note", () => {
     expect(helperName({ description: "(Opus)" })).toBe("A helper");

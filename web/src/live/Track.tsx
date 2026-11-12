@@ -6,10 +6,10 @@
  */
 import type { AgentView, PhaseView, RequestView, TaskView } from "@murmur/core";
 import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
+import { PIECES, StateMark, Words } from "../marks";
 import { follow, partPath } from "../router";
 import { livePhase, type Mark, phaseSpan, shortTitle } from "../session";
 import { clock, duration, nOf, verdictOf } from "../story";
-import { PIECES, StateMark, Words } from "./Rail";
 
 export type Shown = "done" | "now" | "todo" | "failed" | "blocked" | "open";
 
@@ -76,7 +76,6 @@ function Stations(props: {
                 href={href(s.part)}
                 title={s.title}
                 onClick={follow(href(s.part))}
-                data-morph=""
               >
                 {inner}
               </a>
