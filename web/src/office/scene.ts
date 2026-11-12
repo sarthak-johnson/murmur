@@ -110,13 +110,6 @@ const STALE_MS = 60 * 60_000;
 const NUMBERED =
   /^(Batch|Round|Step|Stage|Wave|Part|Milestone|Sprint)\s+(\d+[a-z]?)\b/i;
 
-/** "bg needs your input" (a session's own label in a notification) reads as Claude's. */
-function waitWords(text: string): string {
-  // Only a lowercase label ("bg"), never a name like "Murmur" that means itself.
-  return /^[a-z][\w-]* needs your (input|attention|permission)/.test(text)
-    ? text.replace(/^\S+/, "Claude")
-    : text;
-}
 /** Claude's own last call older than this is no longer what it is doing. */
 export const QUIET_MS = 15 * 60_000;
 
@@ -658,7 +651,7 @@ export function deriveScene(
   const waiting: Waiting | null =
     current && view.needsYou && req.state === "waiting"
       ? {
-          text: waitWords(view.needsYou.text),
+          text: view.needsYou.text,
           since: view.needsYou.since,
           asks: req.waiting ?? [view.needsYou.text],
         }

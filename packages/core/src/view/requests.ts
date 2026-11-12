@@ -41,12 +41,15 @@ export const waitsOnYou = (now: string) => !WAITS_ON_A_THING.test(now);
 
 /**
  * Prompts that are not a person asking for work: /murmur:on and the like switch
- * Murmur itself, and Claude Code submits a `<task-notification>` when a background
- * helper finishes.
+ * Murmur itself, Claude Code submits a `<task-notification>` when a background
+ * helper finishes, and a `<cross-session-message>` or a `[Cross-session delivery
+ * notice]` when another Claude session writes to this one or a message to one fails.
  */
 export const isNotRequest = (prompt: unknown): boolean =>
   typeof prompt === "string" &&
-  /^\s*(\/murmur:\w+(\s|$)|<task-notification>)/.test(prompt);
+  /^\s*(\/murmur:\w+(\s|$)|<task-notification>|<cross-session-message\b|\[Cross-session delivery notice\])/.test(
+    prompt,
+  );
 
 /** A phase's status from its tasks: see `PhaseView.status`. */
 export function phaseStatus(tasks: TaskView[]): PhaseView["status"] {

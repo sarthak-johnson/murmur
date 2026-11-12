@@ -87,6 +87,25 @@ test("Murmur's own commands are not requests", () => {
   ]);
 });
 
+test("another session's messages are not requests", () => {
+  const view = reduce([
+    prompt(1, "build the page"),
+    prompt(
+      2,
+      '<cross-session-message from="uds:/tmp/s.sock" from-name="observer">\nStatus check?\n</cross-session-message>',
+    ),
+    prompt(
+      3,
+      "[Cross-session delivery notice] Your message to another session was not approved before expiry.",
+    ),
+    prompt(4, "now the footer"),
+  ]);
+  expect(view.requests.map((r) => r.prompt)).toEqual([
+    "build the page",
+    "now the footer",
+  ]);
+});
+
 test("map builds phases and parts", () => {
   const [req] = reduce([prompt(1, "add alerts"), mapCall(2, MAP)]).requests;
   expect(req).toMatchObject({
@@ -520,3 +539,14 @@ test.each(["feature.jsonl", "write-update.jsonl", "interactive.jsonl"])(
     expect(view.sessionId).toBe(events[0]?.sessionId);
   },
 );
+
+test("a notification's session label reads as Claude", () => {
+  const view = reduce([
+    prompt(1, "build the page"),
+    at(2, "Notification", {
+      notification_type: "idle_prompt",
+      message: "bg needs your input",
+    }),
+  ]);
+  expect(view.needsYou?.text).toBe("Claude needs your input");
+});

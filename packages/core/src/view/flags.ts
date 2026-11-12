@@ -99,12 +99,22 @@ export function needsYou(events: MurmurEvent[]): NeedsYou | null {
       const text =
         e.hook === "PermissionRequest"
           ? `Claude needs your permission${tool ? ` to use ${tool}` : ""}`
-          : (str(p.message) ?? "");
+          : claudeWords(str(p.message) ?? "");
       out = { reason, text, since: e.ts };
     }
   }
   return out ?? ask;
 }
+
+/**
+ * A notification can open with the session's own label ("bg needs your input"); it is
+ * Claude that needs you. A capitalised name ("Murmur needs...") is left as it is.
+ */
+export const claudeWords = (message: string): string =>
+  message.replace(
+    /^[a-z][\w-]*(?= needs your (input|attention|permission)\b)/,
+    "Claude",
+  );
 
 /** 32-bit FNV-1a over UTF-16 code units, as 8 hex digits. */
 function fnv1a(s: string): string {
