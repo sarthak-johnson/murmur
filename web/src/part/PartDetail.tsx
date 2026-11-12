@@ -11,6 +11,7 @@ import {
 } from "@murmur/core";
 import { type ReactNode, useState } from "react";
 import { FileList, sharedFolder } from "../files";
+import { MINUS } from "../format";
 import { Fold, inline, Markdown } from "../markdown";
 import { Glyph, NeedIcon, PlanSource } from "../marks";
 import { Pill } from "../Pill";
@@ -45,11 +46,9 @@ import {
   type Tone,
   verdictOf,
 } from "../story";
-import { DiffRow } from "./Diff";
+import { DiffRow, useById } from "./Diff";
 import { EventData, EventView } from "./EventView";
 import { claudeSaid, helperLanes, MANY, Timeline } from "./Timeline";
-
-const MINUS = "−";
 
 /** A state's tone on the verdict beside the title. */
 const STATUS: Record<State, Tone> = {
@@ -302,7 +301,7 @@ function PartBody(props: {
   const { running = false } = props;
   const reqState = props.state ?? (running ? "running" : coreState(request));
   const now = props.at ?? new Date().toISOString();
-  const byId = new Map(events.map((e) => [e.id, e]));
+  const byId = useById(events);
   const problem = request.phases
     .flatMap((p) => p.tasks)
     .find((t) => t.part === part.id && t.problem)?.problem;

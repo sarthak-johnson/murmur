@@ -3,10 +3,10 @@ import type { RequestView, TaskView } from "@murmur/core";
 import type { Mark } from "./session";
 
 /**
- * A request's mark: a check for done, a blue dot for running (it pulses only where
- * `pulse` is set, the one loop on screen), an amber question mark for waiting on you,
- * a grey dash for left open, grey bars for paused, plain grey for not started, a red
- * cross for failed.
+ * A request's mark, a pixel sticker the stylesheet draws (theme.css `--mark-*`): a green
+ * tick for done, blue for running (it pulses only where `pulse` is set, the one loop on
+ * screen), an amber "!" for waiting on you, a grey dash for left open, grey bars for
+ * paused, plain grey for not started, a red "x" for failed.
  */
 export function StateMark(props: { mark: Mark; pulse?: boolean }) {
   const { mark, pulse } = props;
@@ -14,19 +14,7 @@ export function StateMark(props: { mark: Mark; pulse?: boolean }) {
     <span
       className={`mk ${mark}${pulse && mark === "running" ? " pulse" : ""}`}
       aria-hidden="true"
-    >
-      {mark === "done" ? (
-        <svg viewBox="0 0 10 10" aria-hidden="true">
-          <path d="M2 5.4 4.1 7.5 8 3" />
-        </svg>
-      ) : mark === "failed" ? (
-        <svg viewBox="0 0 10 10" aria-hidden="true">
-          <path d="m3 3 4 4M7 3 3 7" />
-        </svg>
-      ) : mark === "waiting" ? (
-        "?"
-      ) : null}
-    </span>
+    />
   );
 }
 

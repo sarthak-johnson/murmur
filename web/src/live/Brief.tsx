@@ -10,7 +10,7 @@ import {
   type RequestView,
   type TaskView,
 } from "@murmur/core";
-import { few } from "../format";
+import { few, MINUS } from "../format";
 import { Fold } from "../markdown";
 import { NeedIcon, StateMark } from "../marks";
 import {
@@ -21,8 +21,6 @@ import {
   youAsked,
 } from "../session";
 import { clock, duration, fixRoundCount, nOf, thousands } from "../story";
-
-const MINUS = "−";
 
 /**
  * A key moment's mark, its word for screen readers. A moment is past, not a state: only

@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { MINUS } from "../format";
 import { StateMark } from "../marks";
 import { follow, partPath } from "../router";
 import type { State } from "../state";
@@ -29,7 +30,6 @@ import {
 } from "./flow";
 import { RequestSteps } from "./Steps";
 
-const MINUS = "−";
 const NARROW = "(max-width: 899px)";
 
 /** Under 900 px bands stack and only the selection's links are drawn. */

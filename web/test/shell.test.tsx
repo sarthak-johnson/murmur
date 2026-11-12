@@ -343,13 +343,6 @@ describe("the requests rail", () => {
       "mk failed",
       "mk running",
     ]);
-    // Done gets a check, failed a cross; the word is always there for a screen reader.
-    expect(rows[0]?.querySelector(".mk svg path")?.getAttribute("d")).toContain(
-      "M2 5.4",
-    );
-    expect(rows[2]?.querySelector(".mk svg path")?.getAttribute("d")).toContain(
-      "m3 3",
-    );
     expect(rows[1]?.textContent).toContain(", Left open");
     expect(rows[2]?.textContent).toContain(", Failed");
     // The running one says so in its line, with how long and its helpers.
@@ -369,7 +362,8 @@ describe("the requests rail", () => {
     show(view);
     const row = within(requests()).getAllByRole("link")[3] as HTMLElement;
     expect(row.querySelector(".mk")?.className).toBe("mk waiting");
-    expect(row.querySelector(".mk")?.textContent).toBe("?");
+    // The amber "!" sticker is drawn by the stylesheet, so the mark holds no text.
+    expect(row.querySelector(".mk")?.textContent).toBe("");
     expect(row.querySelector(".of-rl-sub")?.textContent).toMatch(
       /^Waiting on you/,
     );

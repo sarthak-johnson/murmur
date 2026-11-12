@@ -807,6 +807,7 @@ export function Office(props: {
       : ([
           mark.tone,
           `${mark.label}${asks > 1 ? ` · ${asks} questions` : ""}`,
+          mark.mark,
         ] as const);
   const helperMeta = !working.length
     ? "No helpers at work"
@@ -935,7 +936,7 @@ export function Office(props: {
             </span>
           )}
           {pill && (
-            <span className={`of-pill s-${pill[0]} m-${mark?.mark}`}>
+            <span className={`of-pill s-${pill[0]} m-${pill[2]}`}>
               {pill[1]}
             </span>
           )}
