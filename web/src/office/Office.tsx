@@ -1071,6 +1071,12 @@ export function Office(props: {
             step={1}
             value={Math.round((tNow - START) / 1000)}
             aria-label="Replay time"
+            // How far the replay has played, for the track's fill.
+            style={
+              {
+                "--p": `${(((tNow - START) / 1000 / total) * 100).toFixed(2)}%`,
+              } as React.CSSProperties
+            }
             onChange={(e) => {
               setPlaying(false);
               const t = START + Number(e.target.value) * 1000;
