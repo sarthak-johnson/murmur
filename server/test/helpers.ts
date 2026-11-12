@@ -5,6 +5,7 @@ import { afterAll, beforeAll } from "vitest";
 import { createApp, type Deps } from "../src/app.js";
 import { openDb } from "../src/db/client.js";
 import { ingestTokens, users } from "../src/db/schema.js";
+import { settleSummaries } from "../src/summary.js";
 
 export const BASE = "http://localhost";
 
@@ -24,6 +25,8 @@ beforeAll(async () => {
   await shared;
 });
 afterAll(async () => {
+  // Summaries an ingest left waiting read the db: done before it closes.
+  await settleSummaries();
   if (shared) await (await shared).close();
   shared = undefined;
 });

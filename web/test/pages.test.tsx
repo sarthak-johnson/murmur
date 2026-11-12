@@ -65,7 +65,40 @@ describe("pages", () => {
     render(<Sessions />);
     expect(await screen.findByText("Untitled session")).toBeTruthy();
     expect(screen.getByText("proj").getAttribute("title")).toBe("/a/b/proj");
-    expect(screen.getByText("live")).toBeTruthy();
+    expect(screen.getByText("Live")).toBeTruthy();
+  });
+
+  it("a session row reads as its page does: its title, counts, first request's day, and its wait", async () => {
+    const quiet = new Date(Date.now() - 3 * 3_600_000).toISOString();
+    routes["GET /api/sessions"] = () => ({
+      body: {
+        sessions: [
+          {
+            sessionId: "s1",
+            cwd: "/a/b/proj",
+            title: "[Image #2]",
+            machineName: "laptop",
+            startedAt: "2026-11-05T09:00:00.000Z",
+            lastEventAt: quiet,
+            ended: false,
+            summary: {
+              title: "Let's get back to alphatake",
+              requests: 36,
+              helpers: 15,
+              from: "2026-11-06T09:00:00.000Z",
+              waitingSince: quiet,
+            },
+          },
+        ],
+      },
+    });
+    render(<Sessions />);
+    // Claude's title, not the first prompt; waiting on you, not quiet.
+    expect(await screen.findByText("Let's get back to alphatake")).toBeTruthy();
+    expect(screen.getByText("Waiting on you").className).toContain("waiting");
+    expect(screen.getByText("36 requests · 15 helpers")).toBeTruthy();
+    // The day its first request began, as its Journey says it.
+    expect(screen.getByText("Fri 6 Nov")).toBeTruthy();
   });
 
   it("device page names the machine and approves the code from the URL", async () => {

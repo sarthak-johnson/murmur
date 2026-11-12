@@ -1,4 +1,6 @@
 // Live canvas: board, cards, lights, desks and the people walking between spots.
+
+import { type State, TONE } from "../state";
 import { drawBackground, drawPlant, filler, SHELF_SLOTS } from "./background";
 import { deskTile, drawDesks, seatOf } from "./desks";
 import { createLife } from "./life";
@@ -39,6 +41,7 @@ import {
   helperLook,
   LINEAGE,
   MARKS,
+  type Mark,
   type Pal,
   phaseColor,
   REQ_STATE,
@@ -498,11 +501,16 @@ export function createRenderer(
     }
   }
 
-  const NOTE_MARK = {
+  // Each state's mark on its sticky, at its offset; running and not started carry none.
+  const NOTE_MARK: Partial<
+    Record<State, { mark: Mark; off: readonly [number, number] }>
+  > = {
     done: { mark: MARKS.tick, off: [2, 3] },
-    blocked: { mark: MARKS.bang, off: [4, 3] },
+    waiting: { mark: MARKS.bang, off: [4, 3] },
     failed: { mark: MARKS.cross, off: [3, 3] },
-  } as const;
+    open: { mark: MARKS.dash, off: [3, 5] },
+    paused: { mark: MARKS.bars, off: [3, 3] },
+  };
 
   function drawBoard(sc: Scene, s: number) {
     const cols = boardLayout(sc, s);
@@ -523,7 +531,7 @@ export function createRenderer(
       if (col.x > BOARD_INNER.x)
         r(col.x - 1, BOARD.px.y + 3, 1, BOARD.px.h - 6, "#a3abb4");
       for (const n of col.notes) {
-        const ns = STATUS[n.status];
+        const ns = STATUS[TONE[n.status]];
         const board = "#c4cad1";
         if (one) {
           const tc = phaseColor(
@@ -539,15 +547,10 @@ export function createRenderer(
         r(n.x + 10, n.y + 11, 2, 1, board);
         r(n.x + 11, n.y + 10, 1, 1, board);
         r(n.x + 10, n.y + 10, 1, 1, ns.dark);
-        if (
-          n.status === "done" ||
-          n.status === "blocked" ||
-          n.status === "failed"
-        ) {
-          const { mark, off } = NOTE_MARK[n.status];
-          for (const [mx, my] of mark)
-            r(n.x + off[0] + mx, n.y + off[1] + my, 1, 1, ns.dark);
-        }
+        const nm = NOTE_MARK[n.status];
+        if (nm)
+          for (const [mx, my] of nm.mark)
+            r(n.x + nm.off[0] + mx, n.y + nm.off[1] + my, 1, 1, ns.dark);
         // Head chips of the helpers on a running note.
         n.heads.slice(0, 2).forEach((id, k) => {
           const a = actors.get(id);

@@ -260,7 +260,7 @@ describe("the Tasks tab", () => {
     expect(line(now)).toBe("How often each bed needs water");
     expect(facts(now)).toBe(`1 helper · started ${clock(at(6))}`);
     // Not started and never described: no line, no facts.
-    expect(todo?.querySelector(".mk")?.className).toContain("open");
+    expect(todo?.querySelector(".mk")?.className).toContain("todo");
     expect(todo?.querySelector(".tk-line")).toBeNull();
     expect(todo?.querySelector(".tk-facts")).toBeNull();
     expect(failed?.querySelector(".mk")?.className).toContain("failed");

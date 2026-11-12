@@ -388,45 +388,55 @@ export const REQ_STATE: Record<string, StatusKey> = {
   failed: "failed",
   "left-open": "todo",
 };
-type Mark = readonly (readonly [number, number])[];
-export const MARKS: Record<"tick" | "bang" | "cross", Mark> = {
-  tick: [
-    [0, 3],
-    [1, 4],
-    [2, 5],
-    [3, 4],
-    [4, 3],
-    [5, 2],
-    [6, 1],
-    [7, 0],
-    [1, 3],
-    [2, 4],
-    [3, 3],
-    [4, 2],
-    [5, 1],
-    [6, 0],
-  ],
-  bang: [
-    [1, 0],
-    [1, 1],
-    [1, 2],
-    [1, 3],
-    [1, 5],
-    [2, 0],
-    [2, 1],
-    [2, 2],
-    [2, 3],
-    [2, 5],
-  ],
-  cross: [
-    [0, 0],
-    [1, 1],
-    [2, 2],
-    [3, 3],
-    [4, 4],
-    [4, 0],
-    [3, 1],
-    [1, 3],
-    [0, 4],
-  ],
-};
+export type Mark = readonly (readonly [number, number])[];
+/** A w by h block of pixels at x, y. */
+const block = (x: number, y: number, w: number, h: number): Mark =>
+  Array.from(
+    { length: w * h },
+    (_, i) => [x + (i % w), y + Math.floor(i / w)] as const,
+  );
+// Left open is a dash (a box part-way, like a checkbox's), paused two bars.
+export const MARKS: Record<"tick" | "bang" | "cross" | "dash" | "bars", Mark> =
+  {
+    dash: block(0, 0, 6, 2),
+    bars: [...block(0, 0, 2, 6), ...block(4, 0, 2, 6)],
+    tick: [
+      [0, 3],
+      [1, 4],
+      [2, 5],
+      [3, 4],
+      [4, 3],
+      [5, 2],
+      [6, 1],
+      [7, 0],
+      [1, 3],
+      [2, 4],
+      [3, 3],
+      [4, 2],
+      [5, 1],
+      [6, 0],
+    ],
+    bang: [
+      [1, 0],
+      [1, 1],
+      [1, 2],
+      [1, 3],
+      [1, 5],
+      [2, 0],
+      [2, 1],
+      [2, 2],
+      [2, 3],
+      [2, 5],
+    ],
+    cross: [
+      [0, 0],
+      [1, 1],
+      [2, 2],
+      [3, 3],
+      [4, 4],
+      [4, 0],
+      [3, 1],
+      [1, 3],
+      [0, 4],
+    ],
+  };

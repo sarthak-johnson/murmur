@@ -4,7 +4,15 @@
  * the board lays out the same in tests as in a browser.
  */
 import type { PartView, PhaseView, RequestView, TaskView } from "@murmur/core";
-import { type Mark, partPhase, phaseName, rounds } from "../session";
+import {
+  type Mark,
+  type Place,
+  partPhase,
+  phaseName,
+  placeOf,
+  rounds,
+  taskTitle,
+} from "../session";
 import { coreState, isOver, MARK, type State, WORD, workState } from "../state";
 import { clock, duration } from "../story";
 
@@ -124,40 +132,41 @@ export function cardLine(req: RequestView, p: PartView): string | undefined {
   return undefined;
 }
 
-const TASK = /\btasks?\s+(\d+[a-z]?)(?:\s*[-–]\s*(\d+[a-z]?))?/i;
-const BUG = /\b(B\d+)\b/;
-
-/**
- * The part's own tag, else its plan tasks' numbers: "T6", "T4-5" for two tasks, "B1" for a
- * bug. Unset when no task names a number.
- */
-export function tagOf(req: RequestView, p: PartView): string | undefined {
-  if (p.tag) return p.tag;
-  const titles = req.phases
+/** The part's plan tasks as places (session.ts `placeOf`): each one's number and title. */
+export function partPlaces(req: RequestView, p: PartView): Place[] {
+  return req.phases
     .flatMap((ph) => ph.tasks)
     .filter((t) => t.part === p.id)
-    .map((t) => t.title);
-  const nums = titles.flatMap((t) => {
-    const m = TASK.exec(t);
-    return m ? [m[1], m[2]].filter((x): x is string => !!x) : [];
-  });
-  if (nums.length)
-    return `T${nums[0]}${nums.length > 1 ? `-${nums.at(-1)}` : ""}`;
-  for (const t of [...titles, p.title]) {
-    const bug = BUG.exec(t)?.[1];
-    if (bug) return bug;
-  }
-  const own = TASK.exec(p.title);
-  return own ? `T${own[1]}${own[2] ? `-${own[2]}` : ""}` : undefined;
+    .flatMap((t) => placeOf(req, { task: t.id }) ?? []);
 }
 
-/** "Task 6", "Tasks 4-5", "B1" for a tag; "task" with none. */
-export function taskName(tag: string | undefined): string {
-  if (!tag) return "task";
-  const t = /^T(.+)$/.exec(tag)?.[1];
-  if (!t) return tag;
-  return `${t.includes("-") ? "Tasks" : "Task"} ${t}`;
+/**
+ * A card's title: its one plan task's, as the board and the Tasks list name it; a part
+ * that carries several tasks (or none) keeps its own name.
+ */
+export function cardTitle(req: RequestView, p: PartView): string {
+  const [one, ...more] = partPlaces(req, p);
+  return one && !more.length ? one.title : taskTitle(p);
 }
+
+/**
+ * Which tasks the part is, numbered as the board and the Tasks list number them: "Task 4",
+ * "Tasks 2-3", "Tasks 1, 4". With no plan, the part's place in the map; else its own tag.
+ */
+export function tagOf(req: RequestView, p: PartView): string | undefined {
+  const ns = partPlaces(req, p).map((x) => x.n);
+  if (!ns.length) {
+    const own = req.phases.length ? undefined : placeOf(req, { part: p.id });
+    return own ? `Task ${own.n}` : p.tag;
+  }
+  const [first] = ns;
+  if (ns.length === 1) return `Task ${first}`;
+  const run = ns.every((x, i) => x === (first ?? 0) + i);
+  return `Tasks ${run ? `${first}-${ns.at(-1)}` : ns.join(", ")}`;
+}
+
+/** The tag, or "task" with none: what the part's Open link names. */
+export const taskName = (tag: string | undefined): string => tag ?? "task";
 
 /**
  * A part's mark: failed when a plan task of it failed, waiting while one waits on you
@@ -215,16 +224,22 @@ export const bandMark = (req: RequestView, b: Band, state?: State): Mark =>
 export const bandWord = (req: RequestView, b: Band, state?: State): string =>
   WORD[bandState(req, b, state)];
 
-/** ["6 of 6 done", "10:08 to 12:47"], ["0 of 2 done", "12:50 to now"]; no span before a start. */
+/**
+ * ["6 of 6 done", "10:08 to 12:47"], ["0 of 2 done", "12:50 to now"]; no span before a
+ * start. A phase counts its plan tasks, as the Tasks list does; other work its parts.
+ */
 export function bandLine(b: Band, running: boolean): [string, string?] {
-  const done = b.parts.filter((p) => p.status === "done").length;
+  const items: { status: string }[] = b.phase?.tasks.length
+    ? b.phase.tasks
+    : b.parts;
+  const done = items.filter((p) => p.status === "done").length;
   const from = b.parts.flatMap((p) => p.span?.start ?? []).sort()[0];
   const last = b.parts
     .flatMap((p) => p.span?.end ?? [])
     .sort()
     .at(-1);
   const to = running || !last ? "now" : clock(last);
-  const count = `${done} of ${b.parts.length} done`;
+  const count = `${done} of ${items.length} done`;
   return from ? [count, `${clock(from)} to ${to}`] : [count];
 }
 

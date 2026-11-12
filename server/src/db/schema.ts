@@ -12,6 +12,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { SessionSummary } from "../summary.js";
 
 const tstz = (name: string) => timestamp(name, { withTimezone: true });
 const userId = () =>
@@ -66,6 +67,12 @@ export const sessions = pgTable(
     startedAt: tstz("started_at").notNull(),
     lastEventAt: tstz("last_event_at").notNull(),
     ended: boolean("ended").notNull().default(false),
+    /** When an ingest last touched it (server time): a summary of an older one is stale. */
+    changedAt: tstz("changed_at").notNull().defaultNow(),
+    /** What the lobby reads of the session, from core's view of it (summary.ts). */
+    summary: jsonb("summary").$type<SessionSummary>(),
+    /** The `changedAt` the summary was read at. */
+    summaryOf: tstz("summary_of"),
   },
   (t) => [primaryKey({ columns: [t.userId, t.sessionId] })],
 );

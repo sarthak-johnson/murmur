@@ -194,8 +194,18 @@ export function requestState(
   return { state: done ? "done" : "running", end };
 }
 
-/** How a request stands, as the rail marks it: each with its own shape and colour. */
-export type Mark = "done" | "running" | "waiting" | "open" | "failed";
+/**
+ * How a request (or a task, a helper) stands, as the rail marks it: each with its own
+ * shape and colour. Core never reads a request as paused or not started; state.ts can.
+ */
+export type Mark =
+  | "done"
+  | "running"
+  | "waiting"
+  | "open"
+  | "failed"
+  | "paused"
+  | "todo";
 const MARKS: readonly string[] = [
   "done",
   "running",
@@ -227,6 +237,31 @@ export function requestMark(
   if (req.finished && tasks.some((t) => t.status !== "done"))
     return { mark: "open", ...at };
   return { mark: "done", ...at };
+}
+
+/**
+ * The session at a moment of its replay with its requests named as they are now: a
+ * request keeps one title (short and goal) through the replay, though Claude may have
+ * named it after that moment.
+ */
+export function namedAsNow(at: SessionView, now: SessionView): SessionView {
+  if (at === now) return at;
+  const named = new Map(now.requests.map((r) => [r.id, r]));
+  return {
+    ...at,
+    title: now.title,
+    requests: at.requests.map((r) => {
+      const n = named.get(r.id);
+      if (!n) return r;
+      const { short: _s, titledBy: _t, ...rest } = r;
+      return {
+        ...rest,
+        goal: n.goal,
+        ...(n.short !== undefined ? { short: n.short } : {}),
+        ...(n.titledBy ? { titledBy: n.titledBy } : {}),
+      };
+    }),
+  };
 }
 
 /** A request's kind, as its chip says it. */
@@ -404,6 +439,24 @@ export function shortTitle(title: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : title;
 }
 
+// Pieces of a name that say how it is stored, not what it is.
+const CODE_WORD =
+  /^(?:[cm]?[jt]sx?|py|rb|go|rs|json|ya?ml|md|css|html?|test|spec)$/i;
+
+/**
+ * A folder named like a file ("guided.cassette.test.js.cassettes") as words: its pieces
+ * without the code ones, a piece its plural repeats dropped ("guided cassettes").
+ */
+// ponytail: a word heuristic for folder names with dots; a plain folder name stays as it is.
+function folderWords(name: string): string {
+  if (!name.includes(".")) return name;
+  const words = name.split(/[._-]+/).filter((w) => w && !CODE_WORD.test(w));
+  const kept = words.filter(
+    (w, i) => !words.some((o, j) => j !== i && o === `${w}s`),
+  );
+  return kept.join(" ") || name;
+}
+
 /**
  * A task's or a part's one title, for the board, the lists and its page: its name without
  * its plan number. A folder Murmur grouped the work by ("server/alphatake", id "dir:...")
@@ -414,7 +467,7 @@ export function taskTitle(t: { id: string; title: string }): string {
   const folder = t.id.startsWith("dir:")
     ? title.split("/").filter(Boolean).at(-1)
     : undefined;
-  if (folder) return `Changes in ${folder}`;
+  if (folder) return `Changes in ${folderWords(folder)}`;
   if (/^[\w.@~-]*\/[\w./@~-]+$/.test(title))
     return title.split("/").filter(Boolean).at(-1) ?? title;
   return shortTitle(title);
@@ -570,15 +623,36 @@ export function modelOf(a: AgentView, events: MurmurEvent[]): string {
   return m ? m.charAt(0).toUpperCase() + m.slice(1) : "";
 }
 
-/** A helper by what it works on: "Build demo scenes 3, 5" reads "Demo scenes 3, 5". */
-export function helperName(a: AgentView): string {
-  const d = a.description.trim();
-  const rest = d.replace(
-    /^(?:implement|build|write|add|draft|create|make|fix|review|re-?review|re-?check)\s+/i,
-    "",
-  );
-  const name = rest || d || "A helper";
-  return name.charAt(0).toUpperCase() + name.slice(1);
+/**
+ * A helper's one name, by what it works on, for its desk, the Helpers list and its
+ * close-up: "Build Task 67 Portfolio reads/styles" reads "Portfolio reads/styles".
+ */
+export function helperName(a: { description?: string | undefined }): string {
+  // A model note ("(Opus)") is on the plate already; it never names the work.
+  const desc = (a.description ?? "")
+    .replace(/\s*\((opus|sonnet|haiku)[^)]*\)\s*$/i, "")
+    .trim();
+  const verbless = desc
+    .replace(
+      /^(Build|Review|Re-?review|Recheck|Plan|Fix|Write|Implement|Research|Draft|Add|Create)\s+/i,
+      "",
+    )
+    // "Fix round Task 142 News page": the round goes, its subject comes first.
+    .replace(/^(fix\s+)?rounds?(\s+\d+)?:?\s+(?=(Tasks?|Phases?|B)\s*\d)/i, "");
+  const subject = /^(Tasks?\s+[\w-]+|Phases?\s+\d+|B\d+)/i.exec(verbless)?.[0];
+  // What is left after the subject; "Task 38: capture chat reads" leaves a colon behind.
+  const rest = verbless
+    .replace(/^(Tasks?\s+[\w-]+|Phases?\s+\d+|B\d+)\s*/i, "")
+    .replace(/^[\s:;,.\-–]+/, "");
+  let d = rest.replace(/^(fix rounds?(\s+\d+)?:?)\s*/i, "");
+  // A bare leftover ("round 2", "fix round 4") says nothing alone, so it keeps its subject.
+  if (
+    subject &&
+    /^((fix(es)?|rounds?(\s+\d+)?|review|recheck)[\s:]*)*$/i.test(d)
+  )
+    d = `${subject} ${rest}`.trim();
+  d = d || desc || "A helper";
+  return d.charAt(0).toUpperCase() + d.slice(1);
 }
 
 export type HelperKind = "build" | "review" | "recheck";

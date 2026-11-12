@@ -494,7 +494,10 @@ describe("titles run after a Stop", () => {
   const live = (now: Date) =>
     runTitlesLive(SID, { env: env(), now, log: () => {} });
 
-  it("reads the transcript at most once every 5 minutes, so a burst of Stops asks once", async () => {
+  // Six runs of a real child process: over 5 s on a busy runner, so it has its own budget.
+  it("reads the transcript at most once every 5 minutes, so a burst of Stops asks once", {
+    timeout: 20_000,
+  }, async () => {
     transcript(1);
     fake("exit 3");
     const burst = await Promise.all([live(NOW), live(NOW), live(NOW)]);

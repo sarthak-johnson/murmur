@@ -25,7 +25,7 @@ import {
 } from "../live/Tabs";
 import { TasksTab } from "../live/Tasks";
 import { PhaseTrack } from "../live/Track";
-import { Markdown } from "../markdown";
+import { Fold, Markdown } from "../markdown";
 import { StateMark } from "../marks";
 import { DiffRow } from "../part/Diff";
 import { PartDetail } from "../part/PartDetail";
@@ -33,6 +33,7 @@ import { floorPath, follow, navigate } from "../router";
 import {
   askOf,
   cleanPrompt,
+  helperName,
   KIND,
   type Mark,
   type RequestState,
@@ -55,7 +56,6 @@ import {
   duration,
   fixRoundCount,
   helperLine,
-  nOf,
   sentBack,
   thousands,
   verdictOf,
@@ -126,7 +126,7 @@ function closeUpLabel(view: SessionView, req: RequestView, open: string) {
   if (kind === "task") return taskLabel(req, id);
   if (kind === "helper") {
     const a = view.requests.flatMap((r) => r.agents).find((x) => x.id === id);
-    return `Helper · ${a?.description || "a helper"}`;
+    return a ? `Helper · ${helperName(a)}` : "Helper";
   }
   return (
     (
@@ -338,6 +338,7 @@ function PanelBody(props: PanelProps) {
             sessionId={sessionId}
             request={req}
             state={props.stands.state}
+            at={props.t}
           />
         ) : open === "files" ? (
           <FilesTab request={req} events={events} cwd={view.cwd} />
@@ -449,7 +450,7 @@ const CHECK: Record<"pass" | "fail" | "untried", { mark: Mark; word: string }> =
   {
     pass: { mark: "done", word: "passed" },
     fail: { mark: "failed", word: "failed" },
-    untried: { mark: "open", word: "not yet checked" },
+    untried: { mark: "todo", word: "not yet checked" },
   };
 
 /** What the request's tasks checked, and how each check came out. */
@@ -458,17 +459,19 @@ function Checked({ request: req }: { request: RequestView }) {
     p.checks.map((c) => ({ ...c, key: `${p.id}:${c.check}` })),
   );
   if (!checks.length) return null;
+  // Every outcome counted, so the count never says all passed over a list with failures.
+  const count = (s: keyof typeof CHECK) =>
+    checks.filter((c) => c.status === s).length;
+  const tally = [
+    `${count("pass")} passed`,
+    ...(count("fail") ? [`${count("fail")} failed`] : []),
+    ...(count("untried") ? [`${count("untried")} not yet checked`] : []),
+  ].join(" · ");
   return (
     <section className="side-card of-checked" aria-label="Checked">
       <h2 className="k">
         Checked
-        <span className="cnt num">
-          {nOf(
-            checks.filter((c) => c.status === "pass").length,
-            "pass",
-            "pass",
-          )}
-        </span>
+        <span className="cnt num">{tally}</span>
       </h2>
       <ul className="ck">
         {checks.map((c) => (
@@ -537,6 +540,17 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
   }
   if (kind === "door") {
     const w = props.waiting;
+    // Claude Code's notice often only says it waits ("Claude needs your input"): the
+    // heading says that already, so it is not said twice.
+    const notice =
+      w?.text &&
+      !/^claude (?:is waiting for|needs) your (?:input|attention)\.?$/i.test(
+        w.text.trim(),
+      )
+        ? w.text
+        : "";
+    // What it stopped on, whole: its last message, folded when long.
+    const last = w?.said ? req.messages?.at(-1)?.text : undefined;
     return (
       <>
         <section className="of-card">
@@ -545,7 +559,7 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
             <>
               <h2>
                 {w.permission
-                  ? "Claude needs your permission"
+                  ? notice || "Claude needs your permission"
                   : "Claude is waiting on you"}
               </h2>
               {w.questions.length ? (
@@ -558,13 +572,13 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
                   ))}
                 </ol>
               ) : (
-                w.text && <p>{w.text}</p>
+                !w.permission && notice && <p>{notice}</p>
               )}
-              {w.said && (
-                <p>
-                  <span className="muted">Claude's last words: </span>
-                  {w.said}
-                </p>
+              {last && (
+                <>
+                  <h3>What Claude said last</h3>
+                  <Fold text={last} lines={8} className="of-md" />
+                </>
               )}
               <p className="muted">
                 Since {clock(w.since)}. Reply in Claude Code.
@@ -636,7 +650,10 @@ function HelperCloseUp(props: {
         {a.role && a.role !== "other" ? `Helper · ${ROLE[a.role]}` : "Helper"}
         {model && ` · ${model}`}
       </p>
-      <h2>{a.description || "A helper"}</h2>
+      <h2>{helperName(a)}</h2>
+      {a.description.trim() !== helperName(a) && (
+        <p className="muted">{a.description}</p>
+      )}
       <p className="of-chips">
         <span className={runningNow ? "of-chip now" : "of-chip done"}>
           {runningNow ? `${at.word} · ${took}` : `${at.word} · took ${took}`}

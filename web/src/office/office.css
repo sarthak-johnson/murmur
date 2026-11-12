@@ -195,9 +195,12 @@
 .of-pill.s-todo {
   --tone: var(--o-todo);
 }
-/* A request is never "not started": grey on the bar means it was left open. */
+/* A request is never "not started": grey on the bar means it was left open, or paused. */
 .of-pill.s-todo::before {
   background-image: var(--mark-open);
+}
+.of-pill.m-paused::before {
+  background-image: var(--mark-paused);
 }
 .of-meta {
   color: var(--o-t2);
@@ -808,10 +811,30 @@
 .of-clock.days {
   width: 36ch;
 }
+/* The speed: a kit well with a pixel chevron, never the system's own arrow. */
+.of-speed {
+  position: relative;
+  display: inline-flex;
+}
 .of-speed select {
+  appearance: none;
   min-height: 32px;
-  padding: 4px 8px;
+  padding: 4px 26px 4px 10px;
   font: 13px var(--font-code);
+  cursor: pointer;
+}
+.of-speed::after {
+  content: "";
+  position: absolute;
+  top: calc(50% - 2px);
+  right: 10px;
+  width: 8px;
+  height: 4px;
+  pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 4' shape-rendering='crispEdges'%3E%3Cpath fill='%23d5c8b8' d='M0 0h8v1H0zM2 1h4v1H2zM3 2h2v2H3zM1 1h1v1H1zM6 1h1v1H6z'/%3E%3C/svg%3E")
+    center / 8px 4px no-repeat;
+  image-rendering: pixelated;
 }
 .of-live {
   color: var(--o-t2);
@@ -865,6 +888,12 @@
 }
 .of-legend .k.failed {
   background-image: var(--mark-failed);
+}
+.of-legend .k.paused {
+  background-image: var(--mark-paused);
+}
+.of-legend .k.open {
+  background-image: var(--mark-open);
 }
 @media (max-width: 1500px) {
   .of-legend {
@@ -1546,11 +1575,77 @@
   padding-top: 18px;
   margin-bottom: 6px;
 }
-.of-track input {
-  width: 100%;
-  accent-color: var(--o-now);
-  margin: 0;
+/*
+ * The replay's range in the pixel kit: a sunk 2 px framed well filled blue as far as it
+ * has played (--p), and a square raised thumb on a hard drop, no rounding anywhere.
+ */
+.of-track input[type="range"] {
+  appearance: none;
   display: block;
+  width: 100%;
+  height: 20px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.of-track input[type="range"]::-webkit-slider-runnable-track {
+  box-sizing: border-box;
+  height: 10px;
+  border: 2px solid var(--s6);
+  background:
+    linear-gradient(var(--o-now) 0 0) 0 0 / var(--p, 0%) 100% no-repeat,
+    var(--sunk);
+  box-shadow:
+    inset 1px 1px 0 var(--px-lo),
+    inset -1px -1px 0 var(--px-hi);
+}
+.of-track input[type="range"]::-moz-range-track {
+  box-sizing: border-box;
+  height: 10px;
+  border: 2px solid var(--s6);
+  background: var(--sunk);
+}
+.of-track input[type="range"]::-moz-range-progress {
+  height: 6px;
+  background: var(--o-now);
+}
+.of-track input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  box-sizing: border-box;
+  width: 12px;
+  height: 20px;
+  margin-top: -7px;
+  border: 2px solid var(--s8);
+  border-radius: 0;
+  background: var(--s5);
+  box-shadow:
+    inset 1px 1px 0 var(--px-hi),
+    inset -1px -1px 0 var(--px-lo),
+    2px 2px 0 var(--px-drop);
+}
+.of-track input[type="range"]::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 12px;
+  height: 20px;
+  border: 2px solid var(--s8);
+  border-radius: 0;
+  background: var(--s5);
+  box-shadow: 2px 2px 0 var(--px-drop);
+}
+.of-track input[type="range"]:hover::-webkit-slider-thumb {
+  border-color: var(--o-t2);
+}
+.of-track input[type="range"]:focus-visible {
+  outline: none;
+}
+.of-track input[type="range"]:focus-visible::-webkit-slider-thumb {
+  border-color: var(--o-now);
+}
+.of-track input[type="range"]:focus-visible::-moz-range-thumb {
+  border-color: var(--o-now);
 }
 .of-ticks {
   cursor: pointer;

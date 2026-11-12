@@ -307,7 +307,7 @@ function PartBody(props: {
     .flatMap((p) => p.tasks)
     .find((t) => t.part === part.id && t.problem)?.problem;
   const helpers = partAgents(request, part);
-  const lanes = helperLanes(part, helpers, events);
+  const lanes = helperLanes(part, helpers, events, now);
   const judged = new Map(
     lanes.flatMap((l) => {
       const run = l.runs.at(-1);
@@ -703,6 +703,7 @@ function PartBody(props: {
             helpers={helpers}
             events={events}
             named={named}
+            at={now}
           />
         </div>
       )}

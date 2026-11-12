@@ -1,4 +1,6 @@
 // Text and click targets over the canvas, in plain DOM so text stays crisp at any scale.
+
+import { WORD as STATE_WORD } from "../state";
 import {
   BOARD,
   CLAUDE_DESK,
@@ -343,8 +345,8 @@ export function createOverlay(
           w: n.slotW - 4,
           h: n.rowH + 2,
           ring: `task:${n.id}`,
-          html: `<span class="t">${esc(n.title)}</span>${n.stage ? `<span class="stage${n.status === "todo" ? " left" : ""}">${esc(n.stage)}</span>` : ""}`,
-          label: `Task: ${n.title}, ${n.stage ?? WORD[n.status] ?? n.status}`,
+          html: `<span class="t">${esc(n.title)}</span>${n.stage ? `<span class="stage${n.status === "open" || n.status === "paused" ? " left" : ""}">${esc(n.stage)}</span>` : ""}`,
+          label: `Task: ${n.title}, ${n.stage ?? STATE_WORD[n.status].toLowerCase()}`,
           open: `task:${n.id}`,
         });
       }

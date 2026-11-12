@@ -1074,7 +1074,7 @@ describe("review fixes: words", () => {
     const moments = screen.getByRole("region", { name: "Key moments" });
     const row = [...moments.querySelectorAll(".km-row")].at(-1) as HTMLElement;
     expect(row.textContent).toContain("Fixing");
-    expect(row.querySelector(".mk.fix")).toBeTruthy();
+    expect(row.querySelector(".mk.moment")).toBeTruthy();
   });
 
   it("a finished request never says helpers are still running", () => {
@@ -1228,7 +1228,7 @@ describe("review fixes: stillness and order", () => {
       ...screen.getByRole("list", { name: "Helpers" }).querySelectorAll("li"),
     ];
     const a5 = rows.find(
-      (r) => r.querySelector(".h-name")?.textContent === "a5",
+      (r) => r.querySelector(".h-name")?.textContent === "A5",
     ) as HTMLElement;
     expect(a5.querySelector(".h-meta")?.textContent).toContain("Running");
     expect(a5.querySelector(".h-meta")?.textContent).toMatch(/\d\d:\d\d, /);

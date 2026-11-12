@@ -576,7 +576,7 @@ describe("the top bar", () => {
       ),
     ).toBeTruthy();
     const pill = bar().querySelector(".of-pill");
-    expect(pill?.className).toBe("of-pill s-now");
+    expect(pill?.className).toBe("of-pill s-now m-running");
     expect(pill?.textContent).toBe("Running · 45 m");
     expect(b.queryByText(/waiting on you/i)).toBeNull();
   });
@@ -603,7 +603,7 @@ describe("the top bar", () => {
       ],
     });
     const pill = bar().querySelector(".of-pill");
-    expect(pill?.className).toBe("of-pill s-done");
+    expect(pill?.className).toBe("of-pill s-done m-done");
     expect(pill?.textContent).toBe("Done · 3 h 06 m");
     // The panel's clock for it stops at its own end, not the session's last event.
     expect(
@@ -631,8 +631,45 @@ describe("the top bar", () => {
     };
     show(view);
     const pill = bar().querySelector(".of-pill");
-    expect(pill?.className).toBe("of-pill s-blocked");
+    expect(pill?.className).toBe("of-pill s-blocked m-waiting");
     expect(pill?.textContent).toBe("Waiting on you · 4 m · 2 questions");
+  });
+
+  it("the door says Claude waits once, and shows its last message whole", () => {
+    vi.useFakeTimers({ now: new Date(day(9, 39)), toFake: ["Date"] });
+    const view = session({
+      needsYou: {
+        reason: "input",
+        text: "Claude needs your input",
+        since: day(9, 35),
+      },
+    });
+    const long = `${"Staging is live with the new look. ".repeat(12)}\n\nAfter that move, it needs your eyes on the Live tab before main.`;
+    view.requests[3] = {
+      ...(view.requests[3] as RequestView),
+      state: "waiting",
+      agents: [],
+      messages: [{ id: "m1", ts: day(9, 34), text: long }],
+    };
+    render(
+      <Live
+        sessionId="s1"
+        view={view}
+        status="live"
+        lastLooked={null}
+        events={[]}
+        open="door"
+      />,
+    );
+    const door = screen.getByRole("heading", {
+      name: "Claude is waiting on you",
+    }).parentElement as HTMLElement;
+    // Claude Code's notice only restates the heading: it is not said twice.
+    expect(door.textContent).not.toContain("Claude needs your input");
+    // Its last paragraph whole, not cut at a word.
+    expect(door.textContent).toContain(
+      "After that move, it needs your eyes on the Live tab before main.",
+    );
   });
 
   it("waiting with helpers at work: the bar says they are still working", () => {

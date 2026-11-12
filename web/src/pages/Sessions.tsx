@@ -1,18 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, type SessionRow } from "../api";
-import { ago } from "../format";
-import { rowState } from "../office/Bar";
+import { ago, folderOf } from "../format";
 import { follow, sessionPath } from "../router";
-
-function folder(cwd: string): string {
-  return cwd.split("/").filter(Boolean).pop() ?? cwd;
-}
-
-const DAY = new Intl.DateTimeFormat("en-GB", {
-  weekday: "short",
-  day: "numeric",
-  month: "short",
-});
+import { listedNow } from "../state";
 
 export function Sessions() {
   const [rows, setRows] = useState<SessionRow[] | null>(null);
@@ -63,29 +53,25 @@ export function Sessions() {
       <h1>Sessions</h1>
       <ul className="lobby">
         {rows.map((s) => {
-          const state = rowState(s, now);
+          const l = listedNow(s, now);
           const path = sessionPath(s.sessionId);
           return (
             <li key={s.sessionId}>
               <a
-                className={`lobby-card ${state}`}
+                className={`lobby-card ${l.tag}`}
                 href={path}
                 onClick={follow(path)}
               >
-                <span className="lobby-title">
-                  {s.title || "Untitled session"}
-                </span>
-                <span className={`lobby-state ${state}`}>{state}</span>
+                <span className="lobby-title">{l.title}</span>
+                <span className={`lobby-state ${l.tag}`}>{l.word}</span>
                 <span className="lobby-meta">
                   <span className="lobby-dir" title={s.cwd}>
-                    {folder(s.cwd)}
+                    {folderOf(s.cwd)}
                   </span>
                   <span>{s.machineName}</span>
+                  {l.facts && <span>{l.facts}</span>}
                   <span>
-                    started{" "}
-                    <time dateTime={s.startedAt}>
-                      {DAY.format(new Date(s.startedAt)).replace(",", "")}
-                    </time>
+                    started <time dateTime={s.startedAt}>{l.day}</time>
                   </span>
                   <span>
                     last activity{" "}

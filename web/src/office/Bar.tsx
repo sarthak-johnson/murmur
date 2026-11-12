@@ -10,10 +10,9 @@ import { floorPath, follow, navigate } from "../router";
 import { nowLine, requestShort, type Waiting } from "../session";
 import {
   isOver,
+  listedNow,
   type RequestNow,
   requestNow,
-  rowState,
-  SESSION_WORD,
   type SessionNow,
   sessionNow,
 } from "../state";
@@ -83,9 +82,6 @@ function Pop(props: {
   );
 }
 
-// The lobby reads a row's state from here too, by the office's own rule (state.ts).
-export { rowState };
-
 /** The session's title as a menu of the recent sessions: another one is two clicks away. */
 export function SessionSwitcher(props: { sessionId: string; title: string }) {
   const [rows, setRows] = useState<SessionRow[] | null | "failed">(null);
@@ -119,7 +115,7 @@ export function SessionSwitcher(props: { sessionId: string; title: string }) {
             <ul className="of-sess-list">
               {rows.slice(0, 12).map((s) => {
                 const path = floorPath(s.sessionId, undefined);
-                const st = rowState(s, now);
+                const l = listedNow(s, now);
                 return (
                   <li key={s.sessionId}>
                     <a
@@ -133,15 +129,17 @@ export function SessionSwitcher(props: { sessionId: string; title: string }) {
                         follow(path)(e);
                       }}
                     >
-                      <span className="of-sess-t">
-                        {s.title || "Untitled session"}
-                      </span>
+                      <span className="of-sess-t">{l.title}</span>
                       <span className="of-sess-m">
-                        <span className={`of-sess-st ${st}`}>
-                          {SESSION_WORD[st]}
-                        </span>
-                        {folderOf(s.cwd)} · {s.machineName} ·{" "}
-                        {ago(s.lastEventAt, now)}
+                        <span className={`of-sess-st ${l.tag}`}>{l.word}</span>
+                        {[
+                          folderOf(s.cwd),
+                          s.machineName,
+                          l.facts,
+                          ago(s.lastEventAt, now),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </span>
                     </a>
                   </li>

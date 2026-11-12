@@ -29,7 +29,6 @@ import {
   asDoing,
   cutWords,
   deriveScene,
-  helperName,
   latestAt,
   type MainEntry,
   type OfficeLogs,
@@ -37,6 +36,7 @@ import {
   shortOf,
   spotForTool,
 } from "../src/office/scene";
+import { helperName } from "../src/session";
 
 // Synthetic events, as core's own tests make them (packages/core/test/helpers.ts).
 const BASE = Date.parse("2026-11-06T00:00:00.000Z");
@@ -353,9 +353,10 @@ describe("deriveScene", () => {
     const titles = (events: MurmurEvent[]) =>
       sceneOf(events).columns.map((c) => c.title);
     expect(titles(working)).toEqual(["What Claude is doing"]);
-    expect(titles([...working, stop(5, "b1", "done")])).toEqual([
-      "What Claude did",
-    ]);
+    // Its helper done, Claude still at work: the folder it changed is still under way.
+    const helped = [...working, stop(5, "b1", "done")];
+    expect(titles(helped)).toEqual(["What Claude is doing"]);
+    expect(titles([...helped, at(6, "Stop")])).toEqual(["What Claude did"]);
   });
 
   it("puts Claude where its last own call was", () => {

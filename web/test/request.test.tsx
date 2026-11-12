@@ -324,9 +324,11 @@ describe("the brief", () => {
     expect(
       within(first).getByText("Done", { selector: ".sr-only" }),
     ).toBeTruthy();
-    expect(within(first).getByText("Fresh builder for Task 38")).toBeTruthy();
+    expect(
+      within(first).getByText("Task 1", { selector: ".chip" }),
+    ).toBeTruthy();
     expect(first.className).not.toContain("new");
-    expect(rows[1]?.querySelector(".mk.beyond")).toBeTruthy();
+    expect(rows[1]?.querySelector(".mk.moment")).toBeTruthy();
     const last = rows[2] as HTMLElement;
     expect(last.querySelector(".mk.failed")).toBeTruthy();
     expect(last.className).toContain("new");
@@ -638,6 +640,21 @@ describe("the story", () => {
     );
   });
 
+  it("while Claude waits on you, the live section says so, never Running", () => {
+    show(
+      session(running({ state: "waiting", agents: [] }), {
+        needsYou: { reason: "input", text: "Merge it?", since: at(16) },
+      }),
+    );
+    const beyond = [...story().querySelectorAll(".st-phase")].at(-1);
+    expect(beyond?.querySelector("h2, h3")?.textContent).toContain(
+      "Beyond the plan",
+    );
+    expect(beyond?.querySelector(".st-word")?.textContent).toMatch(
+      /Waiting on you$/,
+    );
+  });
+
   it("a live phase reads oldest first, as a finished one does, its newest row marked", () => {
     const req = running({
       beyond: undefined,
@@ -711,7 +728,7 @@ describe("the story", () => {
     expect(run.className).toContain("st-run");
     const button = within(run).getByRole("button");
     expect(button.textContent).toBe(
-      "Task 2 · HeroMoneybuilt, passed6 m · 2 helpers · 4 messages",
+      "Task 1 · HeroMoneybuilt, passed6 m · 2 helpers · 4 messages",
     );
     expect(button.getAttribute("aria-expanded")).toBe("false");
     expect(run.querySelectorAll(".story-text")).toHaveLength(0);
@@ -1003,11 +1020,15 @@ describe("helpers, files and checks", () => {
   it("the Helpers tab lists every helper, the running one marked, each opening its close-up", () => {
     tab("helpers");
     const rows = [...panel().getByRole("list", { name: "Helpers" }).children];
+    // Each by its one name, as its desk says it; its brief's words under it.
     expect(rows.map((r) => r.querySelector(".h-name")?.textContent)).toEqual([
-      "Build Task 38: capture chat reads",
-      "Review Task 39 chat parts",
-      "Re-review Task 39 fix round",
+      "Capture chat reads",
+      "Chat parts",
+      "Task 39 fix round",
     ]);
+    expect(rows[1]?.querySelector(".h-meta")?.textContent).toContain(
+      "Review Task 39 chat parts",
+    );
     expect(rows[0]?.querySelector(".mk.running")).toBeTruthy();
     expect(rows[1]?.textContent).toContain("Changes requested");
     expect(rows[0]?.querySelector("a")?.getAttribute("href")).toBe(
@@ -1092,7 +1113,7 @@ describe("helpers, files and checks", () => {
     ).toEqual([
       "mk done|3,612 frontend tests pass, passed",
       "mk failed|Light theme contrast, failed",
-      "mk open|Task 38 recording, not yet checked",
+      "mk todo|Task 38 recording, not yet checked",
     ]);
   });
 

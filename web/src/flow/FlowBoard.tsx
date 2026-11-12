@@ -10,7 +10,6 @@ import {
 } from "react";
 import { StateMark } from "../marks";
 import { follow, partPath } from "../router";
-import { taskTitle } from "../session";
 import type { State } from "../state";
 import { clock } from "../story";
 import {
@@ -20,6 +19,7 @@ import {
   bandWord,
   cardFacts,
   cardLine,
+  cardTitle,
   layoutFlow,
   neighbour,
   partMark,
@@ -128,6 +128,8 @@ export function FlowBoard(props: {
   request: RequestView;
   /** The request's state at the moment shown (state.ts). */
   state?: State | undefined;
+  /** The moment shown (a replay's): the cards' running clocks stop there. */
+  at?: string | undefined;
 }) {
   const { sessionId, request: req } = props;
   const stacked = useStacked();
@@ -197,7 +199,7 @@ export function FlowBoard(props: {
   // No parts: a short line of steps, never an empty board.
   if (!req.parts.length) return <RequestSteps request={req} />;
 
-  const now = new Date().toISOString();
+  const now = props.at ?? new Date().toISOString();
   const touching = sel
     ? layout.links.filter((l) => l.from === sel.id || l.to === sel.id)
     : [];
@@ -385,14 +387,14 @@ export function FlowBoard(props: {
                   }${p.id === pulse ? " fc-pulse" : ""}`}
                   style={{ left: c.x, top: c.y, width: c.w, height: c.h }}
                   aria-pressed={picked}
-                  aria-label={`${taskTitle(p)}, ${word}`}
+                  aria-label={`${cardTitle(req, p)}, ${word}`}
                   tabIndex={p.id === tabStop ? 0 : -1}
                   onClick={() => choose(picked ? undefined : p.id)}
                 >
                   {label && <span className="fc-rel">{label}</span>}
-                  <span className="fc-ttl" title={taskTitle(p)}>
+                  <span className="fc-ttl" title={cardTitle(req, p)}>
                     {tag && <span className="fc-tag num">{tag}</span>}
-                    {taskTitle(p)}
+                    {cardTitle(req, p)}
                   </span>
                   <span className="fc-st">
                     <StateMark mark={mark} />
@@ -455,7 +457,7 @@ function Detail(props: {
   const mark = partMark(req, p, props.state);
   const titleOf = (id: string) => {
     const o = req.parts.find((x) => x.id === id);
-    return o && taskTitle(o);
+    return o && cardTitle(req, o);
   };
   const uses = [
     ...new Set(
@@ -464,7 +466,7 @@ function Detail(props: {
   ];
   const usedBy = req.parts
     .filter((o) => o.id !== p.id && o.links.some((l) => l.to === p.id))
-    .map((o) => taskTitle(o));
+    .map((o) => cardTitle(req, o));
   const added = p.files.reduce((s, f) => s + f.added, 0);
   const removed = p.files.reduce((s, f) => s + f.removed, 0);
   // "Frame matches…" reads "Done when frame matches…"; an acronym keeps its capitals.
@@ -476,7 +478,7 @@ function Detail(props: {
     <section className="fd" aria-label="Selected part">
       <div className="fd-main">
         <h3 className="fd-ttl">
-          {tag ? `${taskTitle(p)} · ${name}` : taskTitle(p)}
+          {tag ? `${cardTitle(req, p)} · ${name}` : cardTitle(req, p)}
           <span className={`fd-word ${mark}`}>
             <StateMark mark={mark} />
             {stateWord(req, p, true, props.state)}

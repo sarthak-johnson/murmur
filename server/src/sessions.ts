@@ -41,6 +41,8 @@ export function sessionRoutes(app: Hono<AppEnv>, { db, now }: Deps) {
         startedAt: sessions.startedAt,
         lastEventAt: sessions.lastEventAt,
         ended: sessions.ended,
+        // Each session named and counted as its own page reads it, as last stored (summary.ts).
+        summary: sessions.summary,
       })
       .from(sessions)
       .where(eq(sessions.userId, c.get("user").id))

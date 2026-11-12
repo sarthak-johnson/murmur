@@ -9,7 +9,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Me } from "../api";
 import { useLastLooked } from "../lastLooked";
 import { closedHere, floorPath, follow, navigate } from "../router";
-import { type RequestState, requestMark, requestShort } from "../session";
+import {
+  namedAsNow,
+  type RequestState,
+  requestMark,
+  requestShort,
+} from "../session";
 import { requestNow, sessionFacts, sessionNow } from "../state";
 import { clock } from "../story";
 import { type SessionStatus, useSession } from "../useSession";
@@ -326,7 +331,9 @@ export function Office(props: {
   const quietNow = at === null && open && !live;
   const iso = new Date(tNow).toISOString();
   const n = at === null ? events.length : countAt(events, iso);
-  const viewT = useViewAt(events, view, n) ?? view;
+  // A request keeps its one title through a replay: Claude often names it later.
+  const viewAt = useViewAt(events, view, n) ?? view;
+  const viewT = useMemo(() => namedAsNow(viewAt, view), [viewAt, view]);
   const eventsT = useMemo(
     () => (n >= events.length ? events : events.slice(0, n)),
     [events, n],
@@ -350,25 +357,6 @@ export function Office(props: {
   const reqId = req?.id ?? "";
   const activeId = active?.id;
   const activeN = active ? reqs.indexOf(active) + 1 : reqs.length;
-  const derived = useMemo(
-    () =>
-      deriveScene(viewT, reqId, iso, logs, {
-        onFloor: reqId === activeId,
-        activeN,
-        quiet: quietNow,
-      }),
-    [viewT, reqId, iso, logs, activeId, activeN, quietNow],
-  );
-  // Before the first prompt of a replay there is no floor yet: the last one stays up.
-  const lastScene = useRef<Scene | null>(null);
-  if (derived) lastScene.current = derived;
-  const scene = derived ?? lastScene.current ?? newestScene();
-  /** The live session's newest floor: it has one, since the page draws no office without. */
-  function newestScene(): Scene {
-    const s = deriveScene(view, view.requests.at(-1)?.id ?? "", iso, logs);
-    if (!s) throw new Error("The office needs a session with a request.");
-    return s;
-  }
   // The panel reads one view: the moment's, or the live one when a stale moment lacks the request.
   const drawerView = req && viewT.requests.includes(req) ? viewT : view;
   const drawerEvents = drawerView === viewT ? eventsT : events;
@@ -390,6 +378,28 @@ export function Office(props: {
     () => (req ? requestNow(drawerView, req, drawerEvents, sesT) : null),
     [drawerView, req, drawerEvents, sesT],
   );
+  const floorState = drawerView === viewT ? mark?.state : undefined;
+  const derived = useMemo(
+    () =>
+      deriveScene(viewT, reqId, iso, logs, {
+        onFloor: reqId === activeId,
+        activeN,
+        quiet: quietNow,
+        // The room's stickies and desks read the request as the bar does.
+        state: floorState,
+      }),
+    [viewT, reqId, iso, logs, activeId, activeN, quietNow, floorState],
+  );
+  // Before the first prompt of a replay there is no floor yet: the last one stays up.
+  const lastScene = useRef<Scene | null>(null);
+  if (derived) lastScene.current = derived;
+  const scene = derived ?? lastScene.current ?? newestScene();
+  /** The live session's newest floor: it has one, since the page draws no office without. */
+  function newestScene(): Scene {
+    const s = deriveScene(view, view.requests.at(-1)?.id ?? "", iso, logs);
+    if (!s) throw new Error("The office needs a session with a request.");
+    return s;
+  }
 
   // Every change of the panel is a step in the history: Back undoes it.
   const floor$ = useRef(pinnedId);
@@ -841,13 +851,15 @@ export function Office(props: {
   };
   const tipReq = tip === null ? undefined : view.requests[tip];
 
+  // The rail and the requests list rewind with the replay: the requests asked by then,
+  // each as it stood at that moment.
   const list = {
     sessionId,
-    view,
-    events,
+    view: at === null ? view : viewT,
+    events: at === null ? events : eventsT,
     currentId: reqId,
     activeId: liveActiveId,
-    ses: listSes,
+    ses: at === null ? listSes : sesT,
     keep: keepFor(panel),
     onPick: pick,
   };
@@ -922,7 +934,11 @@ export function Office(props: {
               Replay
             </span>
           )}
-          {pill && <span className={`of-pill s-${pill[0]}`}>{pill[1]}</span>}
+          {pill && (
+            <span className={`of-pill s-${pill[0]} m-${mark?.mark}`}>
+              {pill[1]}
+            </span>
+          )}
           <span className="of-spacer" />
           <button
             ref={detailsBtn}
@@ -1000,8 +1016,11 @@ export function Office(props: {
           >
             <div className="of-rail-head">
               {railShown && (
-                <span className="of-rail-k" title={sessionFacts(view, ses)}>
-                  {sessionFacts(view, ses)}
+                <span
+                  className="of-rail-k"
+                  title={sessionFacts(list.view, list.ses)}
+                >
+                  {sessionFacts(list.view, list.ses)}
                 </span>
               )}
               <button
@@ -1178,6 +1197,12 @@ export function Office(props: {
                   ? ", the latest moment"
                   : `, ${dur(END - tNow)} before the latest`
             }`}
+            // How far the replay has played, for the track's fill.
+            style={
+              {
+                "--p": `${(((tNow - START) / 1000 / total) * 100).toFixed(2)}%`,
+              } as React.CSSProperties
+            }
             onChange={(e) => {
               setPlaying(false);
               const t = START + Number(e.target.value) * 1000;
@@ -1279,6 +1304,14 @@ export function Office(props: {
             <span className="of-lg">
               <i className="k failed" />
               Failed
+            </span>
+            <span className="of-lg">
+              <i className="k paused" />
+              Paused
+            </span>
+            <span className="of-lg">
+              <i className="k open" />
+              Left open
             </span>
             <span className="of-lg">
               <i className="k todo" />

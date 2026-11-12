@@ -13,10 +13,10 @@ import {
   type SessionView,
 } from "@murmur/core";
 import { type CSSProperties, useEffect, useRef } from "react";
-import { dayLabel } from "../format";
+import { dayLabel, folderOf } from "../format";
 import { StateMark } from "../marks";
 import { follow, requestPath } from "../router";
-import { askOf, cleanPrompt, KIND, type Mark } from "../session";
+import { askOf, cleanPrompt, KIND, type Mark, requestShort } from "../session";
 import {
   requestNow,
   type SessionNow,
@@ -85,7 +85,7 @@ export function SessionHead(props: {
   const { view, events } = props;
   const reqs = view.requests;
   const start = reqs[0];
-  const folder = view.cwd.split("/").filter(Boolean).pop();
+  const folder = folderOf(view.cwd);
   const firstDay = start ? dayLabel(start.startedAt) : "";
   const lastDay = dayLabel(view.lastEventAt);
   const { ses, stands } = useStands(view, events, props.ses);
@@ -501,6 +501,9 @@ function Station(props: {
   const tasks = r.phases.flatMap((p) => p.tasks);
   const done = tasks.filter((t) => t.status === "done").length;
   const going = live(mark);
+  // Its one title, as the rail and the Timeline name it; what it asked under it.
+  const short = requestShort(r);
+  const ask = askOf(r);
   const figs: [string, string][] = [
     [took(r.startedAt, end), going ? "so far" : "took"],
     [thousands(r.tally.helpers), "helpers"],
@@ -527,8 +530,9 @@ function Station(props: {
           {!r.kindInferred && (
             <span className="label-chip">{KIND[r.kind]}</span>
           )}
-          <span className="jr-card-ttl">{askOf(r)}</span>
+          <span className="jr-card-ttl">{short}</span>
         </span>
+        {ask && ask !== short && <span className="jr-card-goal">{ask}</span>}
         {(r.outcome || going) && (
           <span className="jr-out">
             {going && (

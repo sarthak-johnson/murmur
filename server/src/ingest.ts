@@ -11,6 +11,7 @@ import { type AppEnv, requireIngest } from "./auth.js";
 import { events, sessions } from "./db/schema.js";
 import { UUID } from "./sessions.js";
 import { bus } from "./stream.js";
+import { summarizeSoon } from "./summary.js";
 
 const MAX_BYTES = 5_000_000;
 const MAX_EVENTS = 500;
@@ -51,6 +52,7 @@ function sessionRow(
   machineId: string,
   sessionId: string,
   list: MurmurEvent[],
+  changedAt: Date,
 ) {
   const sorted = list.toSorted((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
   const first = sorted[0] as MurmurEvent;
@@ -71,6 +73,7 @@ function sessionRow(
     startedAt: new Date(first.ts),
     lastEventAt: new Date(last.ts),
     ended: list.some((e) => e.hook === "SessionEnd"),
+    changedAt,
   };
 }
 
@@ -141,6 +144,7 @@ export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
       if (!bySession.size) return c.json({ accepted: 0 });
 
       const batch = [...bySession.values()].flat();
+      const changedAt = deps.now();
       const { stored, cwds } = await db.transaction(async (tx) => {
         const stored = await tx
           .insert(events)
@@ -160,7 +164,7 @@ export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
           .insert(sessions)
           .values(
             [...bySession].map(([sid, list]) =>
-              sessionRow(userId, machineId, sid, list),
+              sessionRow(userId, machineId, sid, list, changedAt),
             ),
           )
           .onConflictDoUpdate({
@@ -171,6 +175,7 @@ export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
               lastEventAt: sql`greatest(${sessions.lastEventAt}, excluded.last_event_at)`,
               title: sql`coalesce(${sessions.title}, excluded.title)`,
               ended: sql`${sessions.ended} or excluded.ended`,
+              changedAt: sql`excluded.changed_at`,
             },
           })
           .returning({ sessionId: sessions.sessionId, cwd: sessions.cwd });
@@ -186,6 +191,7 @@ export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
           .filter((e) => fresh.delete(e.id))
           .map((e) => ({ ...e, cwd }));
         if (out.length) bus.publish(userId, sid, out);
+        summarizeSoon(db, userId, sid);
       }
       return c.json({ accepted: stored.length });
     },

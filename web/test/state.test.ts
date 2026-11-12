@@ -8,6 +8,7 @@ import type {
   TaskView,
 } from "@murmur/core";
 import { describe, expect, it } from "vitest";
+import type { SessionRow } from "../src/api";
 import { fileIndex, requestFiles } from "../src/fileIndex";
 import { bands } from "../src/flow/flow";
 import { deriveScene, type OfficeLogs, shortOf } from "../src/office/scene";
@@ -22,8 +23,8 @@ import {
 } from "../src/session";
 import {
   helperNow,
+  listedNow,
   requestNow,
-  rowState,
   sessionFacts,
   sessionNow,
   sessionSpan,
@@ -157,7 +158,7 @@ describe("a request's state", () => {
     expect([now.state, now.word, now.mark, now.tone]).toEqual([
       "paused",
       "Paused",
-      "open",
+      "paused",
       "todo",
     ]);
     expect(now.label).toBe("Paused · ran 2 h 00 m");
@@ -285,6 +286,13 @@ describe("one task, one title, one number, one phase name", () => {
     expect(
       taskTitle({ id: "dir:server/alphatake", title: "server/alphatake" }),
     ).toBe("Changes in alphatake");
+    // A folder named like a file reads as words too.
+    expect(
+      taskTitle({
+        id: "dir:tests/alphatake/guided.cassette.test.js.cassettes",
+        title: "tests/alphatake/guided.cassette.test.js.cassettes",
+      }),
+    ).toBe("Changes in guided cassettes");
     expect(taskTitle({ id: "x", title: "web/src/state.ts" })).toBe("state.ts");
     expect(taskTitle({ id: "x", title: "Task 3: Reminder list" })).toBe(
       "Reminder list",
@@ -502,33 +510,70 @@ describe("what was asked and said", () => {
     });
     expect(helperGist(final)).toBe("Added a spinner while waiting for data.");
   });
+
+  it("a report of commit lines and lists reads as what its commits say, never the raw lines", () => {
+    const text = [
+      "Status: DONE_WITH_CONCERNS",
+      "Commits:\n- `cdabad5ab` test(contracts): point wire.js at the Screener capture [T101]\n- `b4dfefbcd` test(contracts): capture the screener reads [T101]",
+      "Tests: `tests/contracts` passes (486 passed).",
+      "What is captured:\n- Every set and member in the brief.",
+      "I did not run the playwright shell command.",
+    ].join("\n\n");
+    const a = agent({
+      id: "a",
+      report: {
+        status: "completed",
+        summary: 'Agent "X" finished',
+        text,
+        ts: t(H),
+        interim: false,
+      },
+    });
+    expect(helperGist(a)).toBe(
+      "Point wire.js at the Screener capture; capture the screener reads",
+    );
+  });
 });
 
 describe("a session row's state", () => {
-  const row = (
-    min: number,
-    r: Partial<Parameters<typeof rowState>[0]> = {},
-  ) => ({
+  const NOW = Date.parse("2026-11-01T12:00:00.000Z");
+  const row = (min: number, r: Partial<SessionRow> = {}): SessionRow => ({
+    sessionId: "s",
+    cwd: "/p/murmur",
+    title: "first prompt",
+    machineName: "mac",
     ended: false,
     startedAt: "2026-11-01T00:00:00.000Z",
-    lastEventAt: new Date(
-      Date.parse("2026-11-01T12:00:00.000Z") - min * 60_000,
-    ).toISOString(),
+    lastEventAt: new Date(NOW - min * 60_000).toISOString(),
     ...r,
   });
-  const NOW = Date.parse("2026-11-01T12:00:00.000Z");
-  it("reads live, quiet and ended by the office's own 15 minutes", () => {
-    expect(rowState(row(5), NOW)).toBe("live");
-    // The lobby once said quiet after 2 minutes while the office still said live.
-    expect(rowState(row(14), NOW)).toBe("live");
-    expect(rowState(row(16), NOW)).toBe("quiet");
-    expect(rowState(row(1, { ended: true }), NOW)).toBe("ended");
+  const summary = (waitingSince: string | null) => ({
+    title: "Named title",
+    requests: 3,
+    helpers: 1,
+    from: "2026-11-01T00:00:00.000Z",
+    waitingSince,
   });
-  it("reads waiting on you when the row knows Claude is waiting", () => {
-    const needsYou = {
-      reason: "input",
-      since: "2026-11-01T10:00:00.000Z",
-    } as never;
-    expect(rowState(row(120, { needsYou }), NOW)).toBe("waiting");
+  it("reads live, quiet and ended by the office's own 15 minutes", () => {
+    expect(listedNow(row(5), NOW).tag).toBe("live");
+    // The lobby once said quiet after 2 minutes while the office still said live.
+    expect(listedNow(row(14), NOW).tag).toBe("live");
+    expect(listedNow(row(16), NOW).tag).toBe("quiet");
+    expect(listedNow(row(1, { ended: true }), NOW).tag).toBe("ended");
+  });
+  it("reads waiting on you when the server's summary says Claude is waiting", () => {
+    const w = { summary: summary("2026-11-01T10:00:00.000Z") };
+    expect(listedNow(row(120, w), NOW).word).toBe("Waiting on you");
+    expect(listedNow(row(5, w), NOW).tag).toBe("waiting");
+    expect(listedNow(row(120, { summary: summary(null) }), NOW).tag).toBe(
+      "quiet",
+    );
+    expect(listedNow(row(1, { ...w, ended: true }), NOW).tag).toBe("ended");
+  });
+  it("names and counts a session by its summary, else its first prompt", () => {
+    const l = listedNow(row(5, { summary: summary(null) }), NOW);
+    expect(l.title).toBe("Named title");
+    expect(l.facts).toBe("3 requests · 1 helper");
+    expect(listedNow(row(5), NOW).title).toBe("first prompt");
   });
 });

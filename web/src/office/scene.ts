@@ -8,10 +8,21 @@ import type {
   PhaseView,
   RequestState,
   SessionView,
-  TaskView,
 } from "@murmur/core";
-import { phaseName, requestShort, taskTitle, youAsked } from "../session";
-import { coreState, helperNow, QUIET_MS } from "../state";
+import {
+  helperName,
+  phaseName,
+  requestShort,
+  taskTitle,
+  youAsked,
+} from "../session";
+import {
+  coreState,
+  helperNow,
+  QUIET_MS,
+  type State,
+  workState,
+} from "../state";
 
 export { QUIET_MS };
 
@@ -144,35 +155,6 @@ export function cutWords(s: string | undefined, n: number): string | undefined {
   return `${(c.length > n * 0.5 ? c : s.slice(0, n - 1)).replace(/[\s,;:·-]+$/, "")}…`;
 }
 
-/** "Build Task 67 Portfolio reads/styles" -> "Portfolio reads/styles". */
-export function helperName(a: { description?: string | undefined }): string {
-  // A model note ("(Opus)") is on the plate already; it never names the work.
-  const desc = (a.description ?? "")
-    .replace(/\s*\((opus|sonnet|haiku)[^)]*\)\s*$/i, "")
-    .trim();
-  const verbless = desc
-    .replace(
-      /^(Build|Review|Re-?review|Recheck|Plan|Fix|Write|Implement|Research|Draft|Add|Create)\s+/i,
-      "",
-    )
-    // "Fix round Task 142 News page": the round goes, its subject comes first.
-    .replace(/^(fix\s+)?rounds?(\s+\d+)?:?\s+(?=(Tasks?|Phases?|B)\s*\d)/i, "");
-  const subject = /^(Tasks?\s+[\w-]+|Phases?\s+\d+|B\d+)/i.exec(verbless)?.[0];
-  // What is left after the subject; "Task 38: capture chat reads" leaves a colon behind.
-  const rest = verbless
-    .replace(/^(Tasks?\s+[\w-]+|Phases?\s+\d+|B\d+)\s*/i, "")
-    .replace(/^[\s:;,.\-–]+/, "");
-  let d = rest.replace(/^(fix rounds?(\s+\d+)?:?)\s*/i, "");
-  // A bare leftover ("round 2", "fix round 4") says nothing alone, so it keeps its subject.
-  if (
-    subject &&
-    /^((fix(es)?|rounds?(\s+\d+)?|review|recheck)[\s:]*)*$/i.test(d)
-  )
-    d = `${subject} ${rest}`.trim();
-  d = d || desc || "A helper";
-  return cutWords(d.charAt(0).toUpperCase() + d.slice(1), 24);
-}
-
 // Imperative first words of Bash descriptions, said as what the helper is doing ("Read X" -> "Reading X").
 const IMPERATIVE =
   /^(read|list|check|find|inspect|compare|extract|skim|see|locate|split|remove|pin|scan|survey|count|map|run|fix|make|move|open|look|view|show|grep|search|write|edit|add|update|verify|confirm|trace|measure|copy|create|build|test|diff|print|dump|fetch|query|sort|wait|kill|start|stop|restart|install|commit|stage|push|pull|rebase|merge|lint|format|type|capture|record|render|take)\b/i;
@@ -300,7 +282,8 @@ export interface Desk {
 export interface Note {
   id: string;
   phase: string;
-  status: TaskView["status"];
+  /** Its state under its request's (state.ts `workState`), as the Tasks list reads it. */
+  status: State;
   title: string;
   agents: string[];
   /** The running helpers on it, for the head chips. */
@@ -448,7 +431,13 @@ export function deriveScene(
    * The floor Claude is on, when not the newest request (one still at work under a done
    * notice): whether this is it, and its number.
    */
-  opts: { onFloor?: boolean; activeN?: number; quiet?: boolean } = {},
+  opts: {
+    onFloor?: boolean;
+    activeN?: number;
+    quiet?: boolean;
+    /** The request's state at `t` as the bar reads it (state.ts `requestNow`); else core's. */
+    state?: State | undefined;
+  } = {},
 ): Scene | null {
   const reqs = view.requests;
   const idx = Math.max(
@@ -458,6 +447,7 @@ export function deriveScene(
   const req = reqs[idx];
   if (!req) return null;
   const current = opts.onFloor ?? idx === reqs.length - 1;
+  const reqState = opts.state ?? coreState(req);
 
   // Helpers: this request's, plus (on the current floor) any earlier request's still at work.
   // One with no sign of life for an hour is not at work, whatever its last word: a helper
@@ -479,7 +469,7 @@ export function deriveScene(
   // This request's own helper not at work as state.ts reads it (quiet for an hour, or
   // its request over) reads as stopped at its last sign, as the panel says it.
   const own: Helper[] = req.agents.map((a) => {
-    const h = helperNow(a, t, coreState(req));
+    const h = helperNow(a, t, reqState);
     return a.status === "running" && h.state !== "running"
       ? { ...a, status: "done", endedAt: h.sign }
       : a;
@@ -533,7 +523,8 @@ export function deriveScene(
         description: a.description,
         subject: a.subject,
         role: a.role,
-        name: helperName(a),
+        // The helper's one name (session.ts), cut to fit its plate.
+        name: cutWords(helperName(a), 24),
         roleWord: (a.role && ROLE_WORD[a.role]) ?? "Helper",
         startedAt: a.startedAt,
         endedAt: a.endedAt,
@@ -572,14 +563,13 @@ export function deriveScene(
     }
   }
 
-  const reqOver = req.state !== "running" && req.state !== "waiting";
   // Board: one column per phase, one sticky note per task, with who is on it and at what stage.
   const running = new Map(
     desks.filter((d) => d.status === "running").map((d) => [d.agent, d]),
   );
   const columns: Column[] = req.phases.map((p) => ({
     id: p.id,
-    title: phaseName(p, !reqOver),
+    title: phaseName(p, reqState === "running"),
     status: p.status,
     notes: p.tasks.map((task) => {
       const agents = task.agents ?? [];
@@ -591,24 +581,23 @@ export function deriveScene(
           on.map((d) => (d.role ? STAGE[d.role] : undefined)).filter(Boolean),
         ),
       ];
+      // The Tasks list's reading: once the request is over, a task not done was left open.
+      const status = workState(task.status, reqState);
       return {
         id: task.id,
         phase: p.id,
-        // A request that is over (left open) has nothing under way: its unfinished tasks
-        // read as not started, not as running in blue.
-        status:
-          task.status === "now" && on.length === 0 && reqOver
-            ? "todo"
-            : task.status,
+        status,
         title: taskTitle(task),
         agents,
         heads: on.map((d) => d.agent),
         stage:
-          task.status === "now" && stages.length
+          status === "running" && stages.length
             ? stages.join(" + ")
-            : task.status === "now" && reqOver
+            : status === "open" && task.status === "now"
               ? "left open"
-              : undefined,
+              : status === "paused"
+                ? "paused"
+                : undefined,
       };
     }),
   }));

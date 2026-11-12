@@ -283,7 +283,7 @@ describe("live screen", () => {
     showTab(session(), "helpers");
     const helpers = panel().getByRole("list", { name: "Helpers" });
     expect(
-      within(helpers).getByText("writing tests for this endpoint"),
+      within(helpers).getByText("Writing tests for this endpoint"),
     ).toBeTruthy();
   });
 
@@ -358,7 +358,7 @@ describe("live screen", () => {
     expect(kids(".of-top-row")).toEqual(
       bar.map((c) =>
         c.startsWith("of-pill")
-          ? "of-pill s-blocked"
+          ? "of-pill s-blocked m-waiting"
           : c.startsWith("of-tag")
             ? "of-tag live"
             : c,
@@ -582,7 +582,7 @@ describe("live screen", () => {
     const row = panel().getByRole("list", { name: "Helpers" })
       .firstElementChild as HTMLElement;
     expect(row.querySelector(".h-name")?.textContent).toBe(
-      "writing tests for this endpoint",
+      "Writing tests for this endpoint",
     );
     expect(row.querySelector(".mk.running")).toBeTruthy();
     cleanup();
@@ -699,7 +699,7 @@ describe("live screen", () => {
     cleanup();
     showTab(view, "helpers");
     const helpers = panel().getByRole("list", { name: "Helpers" });
-    expect(helpers.querySelector(".h-name")?.textContent).toBe("tests");
+    expect(helpers.querySelector(".h-name")?.textContent).toBe("Tests");
     expect(req.agents).toHaveLength(1);
   });
 
@@ -749,13 +749,13 @@ describe("live screen", () => {
     show(view);
     const bar = within(screen.getByRole("banner"));
     expect(bar.queryByText("Done")).toBeNull();
-    expect(bar.getByText(/^Left open/).className).toBe("of-pill s-todo");
+    expect(bar.getByText(/^Left open/).className).toBe("of-pill s-todo m-open");
     cleanup();
     view.requests[1] = request({ finished: true, state: "failed" });
     show(view);
     expect(
       within(screen.getByRole("banner")).getByText(/^Failed/).className,
-    ).toBe("of-pill s-failed");
+    ).toBe("of-pill s-failed m-failed");
   });
 
   it("the done line counts in plain words and skips zeros", () => {
