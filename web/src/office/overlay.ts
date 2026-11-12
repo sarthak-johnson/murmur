@@ -190,6 +190,12 @@ export function createOverlay(
         // Above its speaker it never rises past the room's top.
         if (!below) y = Math.max(y, h + 8);
       }
+      // The "!" over a waiting Claude stays under the room's top too.
+      if (it.cls === "bang") {
+        if (p.box?.s !== s)
+          p.box = { w: el.offsetWidth, h: el.offsetHeight, s, html: p.html };
+        y = Math.max(y, p.box.h + 2);
+      }
       st.left = `${x}px`;
       st.top = `${y}px`;
       if (it.tail !== undefined || it.cls.startsWith("bubble"))

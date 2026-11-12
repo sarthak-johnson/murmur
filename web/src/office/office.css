@@ -354,7 +354,9 @@
   font: 600 15px / 1 var(--o-ui);
   color: var(--o-ink);
   white-space: nowrap;
-  overflow: hidden;
+  /* Cut along its column with an ellipsis, never through its letters' feet on a small room. */
+  overflow-x: clip;
+  overflow-y: visible;
   text-overflow: ellipsis;
   text-align: left;
   background: none;
@@ -592,12 +594,13 @@
   color: var(--o-need);
 }
 .of-overlay .bang {
-  width: 32px;
-  height: 32px;
+  --bang: clamp(16px, calc(14px * var(--s)), 32px);
+  width: var(--bang);
+  height: var(--bang);
   transform: translate(-50%, -100%);
   background: var(--o-need);
   color: #2e2310;
-  font: 700 24px / 32px var(--o-ui);
+  font: 700 calc(var(--bang) * 0.75) / var(--bang) var(--o-ui);
   text-align: center;
   pointer-events: none;
   animation: of-pulse 2s ease-in-out infinite;
