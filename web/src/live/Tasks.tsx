@@ -10,6 +10,7 @@ import { follow, partPath } from "../router";
 import {
   livePhase,
   phaseName,
+  phaseSpan,
   taskAgents,
   taskTimes,
   taskTitle,
@@ -174,12 +175,12 @@ export function taskGroups(
         ]
       : [];
   const groups: Group[] = req.phases.map((ph) => {
-    const times = ph.tasks.flatMap((t) => taskTimes(req, t)).sort();
+    const { from, to } = phaseSpan(req, ph);
     const n = ph.tasks.filter((t) => t.status === "done").length;
     return {
       key: ph.id,
       title: phaseName(ph, state === "running"),
-      meta: [`${n} of ${ph.tasks.length} done`, span(times[0], times.at(-1))]
+      meta: [`${n} of ${ph.tasks.length} done`, span(from, to)]
         .filter(Boolean)
         .join(" · "),
       rows: ph.tasks.map((t) => taskRow(req, t, state)),
