@@ -353,9 +353,9 @@ describe("deriveScene", () => {
     const titles = (events: MurmurEvent[]) =>
       sceneOf(events).columns.map((c) => c.title);
     expect(titles(working)).toEqual(["What Claude is doing"]);
-    // Its helper done, Claude still at work: the folder it changed is still under way.
+    // Its helper done, the phase is done though Claude edits on: a folder is no task.
     const helped = [...working, stop(5, "b1", "done")];
-    expect(titles(helped)).toEqual(["What Claude is doing"]);
+    expect(titles(helped)).toEqual(["What Claude did"]);
     expect(titles([...helped, at(6, "Stop")])).toEqual(["What Claude did"]);
   });
 

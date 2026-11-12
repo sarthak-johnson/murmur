@@ -17,12 +17,13 @@
  *   joins its nearest folder with a part; the 6 biggest folders become parts. Root files,
  *   the rest, and touches of subagents with no run stay in `looseFiles`.
  * - Parts are in start order; a part changing a file an earlier one changed links to it
- *   with "same files". With no TaskCreated plan, one "What Claude did" phase lists them,
- *   each task holding its part's helpers; every helper's `part` is the part that owns it.
+ *   with "same files". With no TaskCreated plan, one "What Claude did" phase lists the
+ *   helper parts, each task holding its part's helpers; a folder part is no task, and a
+ *   request with only folders has no plan. Every helper's `part` is the part that owns it.
  */
 import type { MurmurEvent } from "../events.js";
 import { addTouch, displayPath, touchesOf } from "./files.js";
-import { addOnce } from "./requests.js";
+import { addOnce, phaseStatus } from "./requests.js";
 import { itemOf } from "./rounds.js";
 import type {
   AgentView,
@@ -207,23 +208,22 @@ export function inferHistory(
         if (a.files.some((f) => paths.has(f.path)))
           b.links.push({ to: a.id, label: "same files" });
     });
-    if (req.phases.length || !parts.length) return;
-    const tasks: TaskView[] = parts.map(({ part, lastFailed }) => ({
-      id: part.id,
-      title: part.title,
-      part: part.id,
-      status: lastFailed ? "failed" : part.status,
-      agents: [...part.agents], // its helpers, as `TaskView.agents` says
-    }));
+    // A folder is where files changed, not work to do: it stays a part, never a task.
+    if (req.phases.length || !helpers.length) return;
+    const tasks: TaskView[] = helpers
+      .sort(byStart)
+      .map(({ part, lastFailed }) => ({
+        id: part.id,
+        title: part.title,
+        part: part.id,
+        status: lastFailed ? "failed" : part.status,
+        agents: [...part.agents], // its helpers, as `TaskView.agents` says
+      }));
     req.phases = [
       {
         id: "did",
         title: "What Claude did",
-        status: tasks.some((t) => t.status === "now" || t.status === "failed")
-          ? "now"
-          : tasks.every((t) => t.status === "done")
-            ? "done"
-            : "todo",
+        status: phaseStatus(tasks),
         tasks,
       },
     ];

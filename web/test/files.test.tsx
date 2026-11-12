@@ -107,9 +107,9 @@ describe("the session's files", () => {
         .getAllByRole("link")
         .map((a) => [a.textContent, a.getAttribute("href")]),
     ).toEqual([
-      // Core reads request 1's loose change as a task of its own.
+      // Core groups request 1's own change by its folder: a part, not a numbered task.
       [
-        "Request 1 · Task 1 · Changes in src",
+        "Request 1 · Changes in src",
         `/s/s1/r/${view.requests[0]?.id}?open=task:dir:src`,
       ],
       [

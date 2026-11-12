@@ -107,21 +107,15 @@ export function applyShape(
 }
 
 /**
- * A folder of changes Murmur grouped (an inferred plan's "dir:" part) is no task Claude
- * finished: it is under way while its request runs or waits on you, and done once the
- * request is. Set with the state, before a part's span or a phase's count reads it.
+ * A folder of changes Murmur grouped (an inferred plan's "dir:" part, never a task) is
+ * no work Claude finished: it is under way while its request runs or waits on you, and
+ * done once the request is. Set with the state, before a part's span reads it.
  */
 function underWay(req: RequestView): void {
   if (!req.planInferred || (req.state !== "running" && req.state !== "waiting"))
     return;
-  const folder = (id: string | undefined) => !!id?.startsWith("dir:");
   for (const p of req.parts)
-    if (folder(p.id) && p.status === "done") p.status = "now";
-  for (const ph of req.phases) {
-    for (const t of ph.tasks)
-      if (folder(t.part) && t.status === "done") t.status = "now";
-    if (ph.tasks.some((t) => t.status === "now")) ph.status = "now";
-  }
+    if (p.id.startsWith("dir:") && p.status === "done") p.status = "now";
 }
 
 /**

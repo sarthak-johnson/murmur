@@ -1,7 +1,6 @@
-import type { MurmurEvent, SessionView } from "@murmur/core";
+import { type MurmurEvent, reduce, type SessionView } from "@murmur/core";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "./api";
-import { viewOf } from "./plan";
 
 export type SessionStatus = "loading" | "live" | "reconnecting" | "error";
 
@@ -120,7 +119,7 @@ export function useSession(sessionId: string): {
   }, [sessionId]);
 
   // ponytail: full recompute per batch; make reduce incremental if sessions pass ~20k events
-  const view = useMemo(() => (events ? viewOf(events) : null), [events]);
+  const view = useMemo(() => (events ? reduce(events) : null), [events]);
 
   return { view, status, events: events ?? [] };
 }
