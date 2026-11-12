@@ -52,7 +52,6 @@ function sessionRow(
   machineId: string,
   sessionId: string,
   list: MurmurEvent[],
-  changedAt: Date,
 ) {
   const sorted = list.toSorted((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
   const first = sorted[0] as MurmurEvent;
@@ -73,7 +72,6 @@ function sessionRow(
     startedAt: new Date(first.ts),
     lastEventAt: new Date(last.ts),
     ended: list.some((e) => e.hook === "SessionEnd"),
-    changedAt,
   };
 }
 
@@ -144,8 +142,7 @@ export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
       if (!bySession.size) return c.json({ accepted: 0 });
 
       const batch = [...bySession.values()].flat();
-      const changedAt = deps.now();
-      const { stored, cwds } = await db.transaction(async (tx) => {
+      const { fresh, cwds } = await db.transaction(async (tx) => {
         const stored = await tx
           .insert(events)
           .values(
@@ -160,11 +157,20 @@ export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
           )
           .onConflictDoNothing()
           .returning({ id: events.id });
+        // Only what is new changes a session: a replay leaves it, and its summary, as is.
+        // Each id once, should a batch hold it twice.
+        const ids = new Set(stored.map((r) => r.id));
+        const fresh = new Map<string, MurmurEvent[]>();
+        for (const [sid, list] of bySession) {
+          const added = list.filter((e) => ids.delete(e.id));
+          if (added.length) fresh.set(sid, added);
+        }
+        if (!fresh.size) return { fresh, cwds: [] };
         const cwds = await tx
           .insert(sessions)
           .values(
-            [...bySession].map(([sid, list]) =>
-              sessionRow(userId, machineId, sid, list, changedAt),
+            [...fresh].map(([sid, list]) =>
+              sessionRow(userId, machineId, sid, list),
             ),
           )
           .onConflictDoUpdate({
@@ -175,25 +181,28 @@ export function ingestRoutes(app: Hono<AppEnv>, deps: Deps) {
               lastEventAt: sql`greatest(${sessions.lastEventAt}, excluded.last_event_at)`,
               title: sql`coalesce(${sessions.title}, excluded.title)`,
               ended: sql`${sessions.ended} or excluded.ended`,
-              changedAt: sql`excluded.changed_at`,
+              // Counted in the database, so ingests at once never step back.
+              version: sql`${sessions.version} + 1`,
             },
           })
           .returning({ sessionId: sessions.sessionId, cwd: sessions.cwd });
-        return { stored, cwds };
+        return { fresh, cwds };
       });
 
       // Published with the session's cwd, the same shape GET /events returns.
-      const fresh = new Set(stored.map((r) => r.id));
       const cwdOf = new Map(cwds.map((r) => [r.sessionId, r.cwd]));
-      for (const [sid, list] of bySession) {
+      let accepted = 0;
+      for (const [sid, list] of fresh) {
         const cwd = cwdOf.get(sid) as string;
-        const out = list
-          .filter((e) => fresh.delete(e.id))
-          .map((e) => ({ ...e, cwd }));
-        if (out.length) bus.publish(userId, sid, out);
+        accepted += list.length;
+        bus.publish(
+          userId,
+          sid,
+          list.map((e) => ({ ...e, cwd })),
+        );
         summarizeSoon(db, userId, sid);
       }
-      return c.json({ accepted: stored.length });
+      return c.json({ accepted });
     },
   );
 }

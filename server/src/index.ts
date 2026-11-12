@@ -7,7 +7,7 @@ import { purgeUnlisted } from "./auth.js";
 import { loadConfig } from "./config.js";
 import { openDb } from "./db/client.js";
 import { runRetention } from "./retention.js";
-import { backfillSummaries } from "./summary.js";
+import { backfillSummaries, stopSummaries } from "./summary.js";
 import { webRoutes } from "./web.js";
 
 let loaded: ReturnType<typeof loadConfig>;
@@ -52,8 +52,14 @@ const stop = () => {
   if (stopping) return;
   stopping = true;
   clearInterval(timer);
-  // A summary read cut short here is read again at the next start (backfillSummaries).
-  server.close(() => close().finally(() => process.exit(0)));
+  // Summary reads under way finish before the pool closes; ones still waiting are read
+  // again at the next start (backfillSummaries).
+  server.close(() =>
+    stopSummaries()
+      .catch((e) => console.error("summaries:", e))
+      .then(close)
+      .finally(() => process.exit(0)),
+  );
   // Open SSE streams would hold close() forever.
   (server as HttpServer).closeAllConnections();
 };
