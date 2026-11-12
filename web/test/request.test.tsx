@@ -11,7 +11,7 @@ import type {
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Live as Page, roomInJsdom } from "./officeShell";
+import { Live as Page, panel, roomInJsdom } from "./officeShell";
 
 roomInJsdom();
 
@@ -448,9 +448,9 @@ describe("the phase track", () => {
     const link = within(first).getByRole("link", {
       name: "Fresh builder for Task 38, done",
     });
-    expect(link.getAttribute("href")).toBe("/s/s1/r/r13/p/capture");
+    expect(link.getAttribute("href")).toBe("/s/s1/r/r13?open=task:capture");
     await userEvent.click(link);
-    expect(location.pathname).toBe("/s/s1/r/r13/p/capture");
+    expect(location.search).toBe("?open=task:capture");
   });
 
   it("marks done, live, todo and failed by shape and word", () => {
@@ -984,75 +984,44 @@ describe("the story", () => {
   });
 });
 
-describe("the side column", () => {
-  it("lists helpers on a shared clock, the running one marked", () => {
-    show(session(running()));
-    const card = region("Helpers");
-    expect(card.querySelector(".cnt")?.textContent).toBe("3 · 1 running");
-    const rows = [...card.querySelectorAll(".hl-row")];
-    expect(rows.map((r) => r.querySelector(".hl-n")?.textContent)).toEqual([
+describe("helpers, files and checks", () => {
+  const tab = (tab: "helpers" | "files", r: RequestView = running()) =>
+    render(
+      <Live
+        sessionId="s1"
+        view={session(r)}
+        tab={tab}
+        status="live"
+        lastLooked={null}
+      />,
+    );
+
+  it("the Helpers tab lists every helper, the running one marked, each opening its close-up", () => {
+    tab("helpers");
+    const rows = [...panel().getByRole("list", { name: "Helpers" }).children];
+    expect(rows.map((r) => r.querySelector(".h-name")?.textContent)).toEqual([
       "Build Task 38: capture chat reads",
       "Review Task 39 chat parts",
       "Re-review Task 39 fix round",
     ]);
     expect(rows[0]?.querySelector(".mk.running")).toBeTruthy();
-    expect(rows[1]?.querySelector(".mk.failed")).toBeTruthy();
-    expect(rows[1]?.querySelector(".hl-s")?.textContent).toBe(
-      `${clock(at(1))} to ${clock(at(7))} · Changes requested`,
-    );
-    const bar = rows[2]?.querySelector(".hl-b i") as HTMLElement;
-    expect(bar.style.left).toMatch(/%$/);
-    expect(Number.parseFloat(bar.style.width)).toBeGreaterThan(0);
-  });
-
-  it("says all done only when no helper was left running", () => {
-    show(session(running({ finished: true, state: "left-open" })));
-    expect(region("Helpers").querySelector(".cnt")?.textContent).toBe("3");
-    cleanup();
-    show(
-      session(
-        running({
-          finished: true,
-          state: "done",
-          agents: running().agents.map((a) => ({ ...a, status: "done" })),
-        }),
-      ),
-    );
-    expect(region("Helpers").querySelector(".cnt")?.textContent).toBe(
-      "3 · all done",
+    expect(rows[1]?.textContent).toContain("Changes requested");
+    expect(rows[0]?.querySelector("a")?.getAttribute("href")).toBe(
+      "/s/s1/r/r13?open=helper:a1",
     );
   });
 
-  it("groups many helpers by role", () => {
-    const many = Array.from({ length: 10 }, (_, i) =>
-      agent(`b${i}`, {
-        description: `Build Task ${i}`,
-        role: i % 2 ? "review" : "build",
-      }),
-    );
-    show(session(running({ agents: many, beyond: undefined })));
-    const card = region("Helpers");
+  it("the Files tab groups the files by the task that changed them", () => {
+    tab("files");
+    const groups = [...document.querySelectorAll(".file-group")];
+    expect(groups.map((g) => g.querySelector("h2")?.textContent)).toEqual([
+      "Recorded chat answers",
+      "Chat parts",
+      "Tracker",
+    ]);
     expect(
-      [...card.querySelectorAll(".hl-n")].map((n) => n.textContent),
-    ).toEqual(["5 built", "5 reviewed"]);
-    expect(
-      within(card)
-        .getByRole("link", { name: "All 10 helpers" })
-        .getAttribute("href"),
-    ).toBe("/s/s1/r/r13/helpers");
-  });
-
-  it("lists the top five files by task, the rest one click away", () => {
-    show(session(running()));
-    const card = region("Files");
-    expect(card.querySelector(".cnt")?.textContent).toBe("7 · +1,133 −140");
-    expect(
-      [...card.querySelectorAll(".fl-g")].map((g) => g.textContent),
-    ).toEqual(["Recorded chat answers · 1", "Chat parts · 5", "Tracker · 1"]);
-    expect(card.querySelectorAll(".fl-f")).toHaveLength(5);
-    expect(
-      within(card).getByRole("link", { name: "2 more" }).getAttribute("href"),
-    ).toBe("/s/s1/r/r13/files");
+      groups.map((g) => g.querySelector(".sect .num")?.textContent),
+    ).toEqual(["1 file", "5 files", "1 file"]);
   });
 
   it("lists what was checked: pass, fail and untried", () => {

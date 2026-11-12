@@ -314,7 +314,7 @@ function PanelBody(props: PanelProps) {
               request={req}
               done={done}
               stopped={state !== "running" || !props.following}
-              end={props.following ? end : props.t}
+              end={props.following ? end : earlier(end, props.t)}
               waiting={waiting}
               lastLooked={props.lastLooked}
             />
@@ -323,7 +323,7 @@ function PanelBody(props: PanelProps) {
               request={req}
               done={done}
               stopped={state !== "running" || !props.following}
-              end={props.following ? end : props.t}
+              end={props.following ? end : earlier(end, props.t)}
             />
             <Assumptions sessionId={sessionId} assumptions={req.assumptions} />
             <Story request={req} done={done} onOpenPart={openPart} />
@@ -334,6 +334,10 @@ function PanelBody(props: PanelProps) {
     </aside>
   );
 }
+
+/** A replay's or a quiet session's clock stops at the moment shown, or the request's end before it. */
+const earlier = (a: string, b: string) =>
+  Date.parse(a) <= Date.parse(b) ? a : b;
 
 const n_ = (n: number, one: string, many = `${one}s`) =>
   n ? [`${n} ${n === 1 ? one : many}`] : [];
@@ -532,7 +536,7 @@ function CloseUp(props: PanelProps & { onOpenPart(partId: string): void }) {
           request={req}
           done={props.state === "done"}
           stopped={props.state !== "running" || !props.following}
-          end={props.following ? props.end : props.t}
+          end={props.following ? props.end : earlier(props.end, props.t)}
           waiting={props.waiting}
           lastLooked={props.lastLooked}
         />

@@ -5,6 +5,7 @@ import type { MurmurEvent, SessionView } from "@murmur/core";
 import { act, screen, within } from "@testing-library/react";
 import { beforeAll, vi } from "vitest";
 import { Office, OfficeShell } from "../src/office/Office";
+import { useRoute } from "../src/router";
 import type { SessionStatus } from "../src/useSession";
 
 function fakeContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
@@ -72,7 +73,8 @@ export interface LiveProps {
  */
 export function Live(p: LiveProps) {
   // As the app: nothing is drawn from the first pages, which would show an old floor.
-  if (!p.view || p.status === "loading") return <OfficeShell status={p.status} />;
+  if (!p.view || p.status === "loading")
+    return <OfficeShell status={p.status} />;
   if (!p.view.requests.length)
     return (
       <OfficeShell
@@ -98,6 +100,29 @@ export function Live(p: LiveProps) {
       events={p.events ?? []}
       status={p.status}
       lastLooked={p.lastLooked}
+    />
+  );
+}
+
+/**
+ * The office driven by the address, as the app drives it: a click that moves (a tab, a
+ * desk, Escape) changes what it shows. Call `history.replaceState` first to start at a URL.
+ */
+export function Routed(p: {
+  view: SessionView;
+  events?: MurmurEvent[];
+  status: SessionStatus;
+}) {
+  const route = useRoute();
+  if (route.name !== "session") return null;
+  return (
+    <Office
+      sessionId={route.sessionId}
+      pinnedId={route.requestId}
+      open={route.open}
+      view={p.view}
+      events={p.events ?? []}
+      status={p.status}
     />
   );
 }

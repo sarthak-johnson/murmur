@@ -16,7 +16,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Live as Page, roomInJsdom } from "./officeShell";
+import { Live as Page, panel, roomInJsdom } from "./officeShell";
 
 roomInJsdom();
 
@@ -197,6 +197,19 @@ function show(
   );
 }
 
+/** The newest request's floor with its panel on one of the request's tabs. */
+function showTab(view: SessionView, tab: "helpers" | "files" | "tasks") {
+  return render(
+    <Live
+      sessionId="s1"
+      view={view}
+      tab={tab}
+      status="live"
+      lastLooked={null}
+    />,
+  );
+}
+
 let calls: ReturnType<typeof mockFetch>;
 beforeEach(() => {
   calls = mockFetch();
@@ -255,7 +268,7 @@ describe("live screen", () => {
     ).toBeTruthy();
   });
 
-  it("the live task is the live station, its problem on hover; its helper is in the side", () => {
+  it("the live task is the live station, its problem on hover; its helper is on the Helpers tab", () => {
     show(session());
     const track = screen.getByRole("region", { name: "Phase track" });
     const live = within(track).getByRole("link", {
@@ -263,13 +276,15 @@ describe("live screen", () => {
     });
     expect(live.closest(".st")?.className).toBe("st now");
     expect(live.title).toBe("Endpoint to save an alert: tried a fix 3 times");
-    const helpers = screen.getByRole("region", { name: "Helpers" });
+    cleanup();
+    showTab(session(), "helpers");
+    const helpers = panel().getByRole("list", { name: "Helpers" });
     expect(
       within(helpers).getByText("writing tests for this endpoint"),
     ).toBeTruthy();
   });
 
-  it("a permission prompt raises the amber chip and says what Claude needs", () => {
+  it("a permission prompt turns the bar amber and says what Claude needs", () => {
     show(
       session({
         needsYou: {
@@ -279,10 +294,9 @@ describe("live screen", () => {
         },
       }),
     );
-    const chip = within(screen.getByRole("banner")).getByRole("link", {
-      name: /Permission needed/,
-    });
-    expect(chip.getAttribute("href")).toBe("#needs");
+    const pill = screen.getByRole("banner").querySelector(".of-pill");
+    expect(pill?.className).toContain("s-blocked");
+    expect(pill?.textContent).toMatch(/^Waiting on you/);
     const call = screen.getByRole("region", { name: "Waiting on you" });
     expect(call.id).toBe("needs");
     expect(call.textContent).toContain(
@@ -322,17 +336,9 @@ describe("live screen", () => {
         ],
       });
     const { rerender } = show(view());
-    const bar = kids(".top-right");
-    const main = kids(".main");
-    expect(main).toEqual([
-      "over",
-      "ask live-title",
-      "asked",
-      "rb",
-      "trk",
-      "tabs",
-      "tab-body",
-    ]);
+    const bar = kids(".of-top-row");
+    const main = kids(".of-db");
+    expect(main.slice(0, 3)).toEqual(["of-rh", "rb", "trk"]);
     const brief = kids(".rb");
     rerender(
       <Live
@@ -344,12 +350,18 @@ describe("live screen", () => {
         lastLooked={null}
       />,
     );
-    // Waiting on you stands even with a helper still at work.
-    expect(kids(".top-right")).toEqual([
-      "need-chip",
-      ...bar.filter((c) => !c.startsWith("state-pill")),
-    ]);
-    expect(kids(".main")).toEqual(main);
+    // Waiting on you stands even with a helper still at work: the session is live, the pill
+    // turns amber, nothing moves.
+    expect(kids(".of-top-row")).toEqual(
+      bar.map((c) =>
+        c.startsWith("of-pill")
+          ? "of-pill s-blocked"
+          : c.startsWith("of-tag")
+            ? "of-tag live"
+            : c,
+      ),
+    );
+    expect(kids(".of-db")).toEqual(main);
     // The wait joins the brief at its foot; the cells above it stay put.
     expect(kids(".rb")).toEqual([...brief, "rb-need"]);
   });
@@ -359,9 +371,7 @@ describe("live screen", () => {
     try {
       show(session());
       // Delete sits in the session's menu in the top bar.
-      await userEvent.click(
-        screen.getByRole("button", { name: "Session menu" }),
-      );
+      await userEvent.click(screen.getByRole("button", { name: "Menu" }));
       const del = screen.getByRole("button", { name: "Delete session" });
       await userEvent.click(del);
       expect(
@@ -502,7 +512,7 @@ describe("live screen", () => {
     await userEvent.click(
       within(track).getByRole("link", { name: /Reuse push code to notify/ }),
     );
-    expect(location.pathname).toBe("/s/s1/r/r2/p/push");
+    expect(location.search).toBe("?open=task:push");
   });
 
   it("the now line waits for Claude when there is no now", () => {
@@ -514,7 +524,7 @@ describe("live screen", () => {
     ).toBeTruthy();
   });
 
-  it("an inferred now has no why, and loose files are listed beside the story", () => {
+  it("an inferred now has no why, and loose files are listed on the Files tab", () => {
     const view = session();
     view.requests[1] = request({
       now: { text: "Editing math.js", why: "", ts: T0, inferred: true },
@@ -539,72 +549,79 @@ describe("live screen", () => {
     show(view);
     const now = screen.getByRole("region", { name: "Now" });
     expect(within(now).getByText("Editing math.js")).toBeTruthy();
-    expect(within(now).queryByRole("button", { name: "Details" })).toBeNull();
-    const files = screen.getByRole("region", { name: "Files" });
-    expect(files.querySelector(".fl-g")?.textContent).toBe(
-      "Outside any task · 2",
-    );
-    expect(
-      [...files.querySelectorAll(".fl-f")].map((li) => li.textContent),
-    ).toEqual(["math.js+3 −1", "math.test.js+5"]);
+    expect(within(now).queryByRole("button")).toBeNull();
+    cleanup();
+    showTab(view, "files");
+    const files = panel().getByRole("region", { name: "Outside any task" });
+    expect(files.querySelector(".sect .num")?.textContent).toBe("2 files");
+    expect(files.textContent).toContain("math.js");
+    expect(files.textContent).toContain("math.test.js");
   });
 
   it("a narrated now keeps its why one click away", async () => {
     show(session());
     const now = screen.getByRole("region", { name: "Now" });
-    expect(within(now).queryByText(/Why now/)).toBeNull();
-    await userEvent.click(within(now).getByRole("button", { name: "Details" }));
-    expect(within(now).getByText(/Why now/)).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "Files" })).toBeNull();
+    expect(within(now).queryByText(/Why now:/)).toBeNull();
+    await userEvent.click(within(now).getByRole("button", { name: /Why now/ }));
+    expect(within(now).getByText(/Why now:/)).toBeTruthy();
   });
 
-  it("an ended session says ended, not live", () => {
+  it("an ended session says so: its replay bar jumps to the end, not live", () => {
     show(session({ ended: true }));
-    const status = screen.getByRole("status");
-    expect(status.textContent).toBe("ended");
-    expect(status.className).not.toContain("live-dot");
-    cleanup();
-    show(session());
-    expect(screen.getByRole("status").textContent).toBe("live");
+    expect(
+      screen.getByRole("button", { name: "Jump to the end" }),
+    ).toBeTruthy();
+    expect(within(screen.getByRole("banner")).queryByText("Live")).toBeNull();
   });
 
-  it("a running helper shows in the side column, marked running", () => {
-    show(session());
-    const helpers = screen.getByRole("region", { name: "Helpers" });
-    const row = helpers.querySelector(".hl-row") as HTMLElement;
-    expect(row.querySelector(".hl-n")?.textContent).toBe(
+  it("a running helper shows on the Helpers tab, marked running", () => {
+    showTab(session(), "helpers");
+    const row = panel().getByRole("list", { name: "Helpers" })
+      .firstElementChild as HTMLElement;
+    expect(row.querySelector(".h-name")?.textContent).toBe(
       "writing tests for this endpoint",
     );
     expect(row.querySelector(".mk.running")).toBeTruthy();
+    cleanup();
+    show(session());
     expect(screen.getByRole("heading", { level: 1 }).title).toBe(
       "add price alerts to the app",
     );
   });
 
   it("a running helper with no name reads as a helper", () => {
-    show(
+    showTab(
       session({
         requests: [request({ agents: [agent("a9", "", undefined)] })],
       }),
+      "helpers",
     );
-    const helpers = screen.getByRole("region", { name: "Helpers" });
-    expect(helpers.querySelector(".hl-n")?.textContent).toBe("A helper");
+    const list = panel().getByRole("list", { name: "Helpers" });
+    expect(list.querySelector(".h-name")?.textContent).toBeTruthy();
     expect(screen.queryByText(/Agent 1 ·|Agent 1:/)).toBeNull();
   });
 
-  it("the rail marks the request on screen as the page", async () => {
-    show(session());
-    const list = screen.getByRole("navigation", { name: "Requests" });
-    const items = within(list).getAllByRole("link");
-    expect(items[0]?.textContent).toContain("Fix the login bug");
-    expect(items[0]?.getAttribute("aria-current")).toBeNull();
-    expect(items[1]?.textContent).toContain("Price alerts");
-    expect(items[1]?.getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
-      "Price alerts",
-    );
-    await userEvent.click(items[0] as HTMLElement);
-    expect(location.pathname).toBe("/s/s1/r/r1");
+  it("the rail marks the request on the floor, and moves the floor on a click", async () => {
+    const wide = window.innerWidth;
+    window.innerWidth = 1600;
+    try {
+      show(session());
+      const rail = screen.getByRole("complementary", { name: "Requests rail" });
+      const items = within(rail).getAllByRole("link");
+      expect(items[0]?.textContent).toContain("Fix the login bug");
+      expect(items[0]?.getAttribute("aria-current")).toBeNull();
+      expect(items[1]?.textContent).toContain("Price alerts");
+      expect(items[1]?.getAttribute("aria-current")).toBe("true");
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+        "Price alerts",
+      );
+      // Another request pins its floor; the panel keeps its tab.
+      expect(items[0]?.getAttribute("href")).toBe("/s/s1/r/r1?open=story");
+      await userEvent.click(items[0] as HTMLElement);
+      expect(location.pathname + location.search).toBe("/s/s1/r/r1?open=story");
+    } finally {
+      window.innerWidth = wide;
+    }
   });
 
   it("a helper spawned during a task shows on its task row", () => {
@@ -676,8 +693,10 @@ describe("live screen", () => {
         name: "Endpoint to save an alert, in progress",
       }),
     ).toBeTruthy();
-    const helpers = screen.getByRole("region", { name: "Helpers" });
-    expect(helpers.querySelector(".hl-n")?.textContent).toBe("tests");
+    cleanup();
+    showTab(view, "helpers");
+    const helpers = panel().getByRole("list", { name: "Helpers" });
+    expect(helpers.querySelector(".h-name")?.textContent).toBe("tests");
     expect(req.agents).toHaveLength(1);
   });
 
@@ -692,8 +711,8 @@ describe("live screen", () => {
       agents: [],
     });
     show(view);
-    expect(within(screen.getByRole("banner")).getByText("Done")).toBeTruthy();
-    const now = screen.getByRole("region", { name: "Now" });
+    expect(within(screen.getByRole("banner")).getByText(/^Done · /)).toBeTruthy();
+    const now = screen.getByRole("region", { name: "In all" });
     expect(
       within(now).getByText("3 helpers, 19 files changed, 51 commands run"),
     ).toBeTruthy();
@@ -711,8 +730,8 @@ describe("live screen", () => {
       agents: [running("a1"), { ...running("a2"), status: "done" }],
     });
     show(view);
-    expect(within(screen.getByRole("banner")).getByText("Done")).toBeTruthy();
-    const now = screen.getByRole("region", { name: "Now" });
+    expect(within(screen.getByRole("banner")).getByText(/^Done · /)).toBeTruthy();
+    const now = screen.getByRole("region", { name: "In all" });
     expect(within(now).getByText("Nothing changed")).toBeTruthy();
     expect(now.textContent).not.toContain("still running");
   });
@@ -723,17 +742,13 @@ describe("live screen", () => {
     show(view);
     const bar = within(screen.getByRole("banner"));
     expect(bar.queryByText("Done")).toBeNull();
-    expect(bar.getByText("Left open").closest(".state-pill")?.className).toBe(
-      "state-pill open",
-    );
+    expect(bar.getByText("Left open").className).toBe("of-pill s-todo");
     cleanup();
     view.requests[1] = request({ finished: true, state: "failed" });
     show(view);
     expect(
-      within(screen.getByRole("banner"))
-        .getByText("Failed")
-        .closest(".state-pill")?.className,
-    ).toBe("state-pill failed");
+      within(screen.getByRole("banner")).getByText("Failed").className,
+    ).toBe("of-pill s-failed");
   });
 
   it("the done line counts in plain words and skips zeros", () => {
@@ -745,7 +760,7 @@ describe("live screen", () => {
       tally: { helpers: 0, files: 1, commands: 1 },
     });
     show(view);
-    const now = screen.getByRole("region", { name: "Now" });
+    const now = screen.getByRole("region", { name: "In all" });
     expect(within(now).getByText("1 file changed, 1 command run")).toBeTruthy();
     cleanup();
     view.requests[1] = request({
@@ -852,24 +867,21 @@ describe("live screen", () => {
     expect(screen.queryByRole("button", { name: /Show all/ })).toBeNull();
   });
 
-  it("the loading skeleton draws the same frame as the loaded screen", () => {
+  it("the loading shell draws the same frame as the loaded office", () => {
     const { container } = render(
       <Live sessionId="s1" view={null} status="loading" lastLooked={null} />,
     );
     const kids = (el: Element | null) =>
       [...(el?.children ?? [])]
         .map((c) => c.className.split(" ")[0])
-        .filter((c) => c !== "skip");
-    const frame = container.querySelector(".frame");
-    expect(kids(frame)).toEqual(["rail", "col"]);
-    expect(kids(frame?.querySelector(".col") ?? null)).toEqual(["top", "main"]);
-    expect(frame?.querySelector(".main .skeleton")).toBeTruthy();
+        .filter((c) => c !== "of-skip" && c !== "sr-only");
+    const shell = container.querySelector(".office");
+    expect(kids(shell)).toEqual(["of-top", "of-body", "of-replay"]);
+    expect(shell?.querySelector(".of-body")?.getAttribute("aria-busy")).toBe(
+      "true",
+    );
     cleanup();
-    const loaded = show(session()).container.querySelector(".frame");
-    expect(kids(loaded)).toEqual(["rail", "col"]);
-    expect(kids(loaded?.querySelector(".col") ?? null)).toEqual([
-      "top",
-      "main",
-    ]);
+    const loaded = show(session()).container.querySelector(".office");
+    expect(kids(loaded)).toEqual(["of-top", "of-body", "of-replay"]);
   });
 });

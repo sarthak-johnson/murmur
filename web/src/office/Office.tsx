@@ -61,13 +61,19 @@ interface PageProps {
 export function OfficePage(props: PageProps) {
   const { view, status, events } = useSession(props.sessionId);
   const lastLooked = useLastLooked(props.sessionId);
+  const { sessionId, me, onSignOut } = props;
+  const menu = { sessionId, me, onSignOut };
   // Not drawn from the first pages: they would show an old floor as the live one for a moment.
-  if (!view || status === "loading") return <OfficeShell status={status} />;
+  if (!view || status === "loading")
+    return (
+      <OfficeShell status={status} {...(status === "error" ? menu : {})} />
+    );
   if (!view.requests.length)
     return (
       <OfficeShell
         status={status}
         note="Waiting for the first prompt in this session."
+        {...menu}
       />
     );
   return (
@@ -85,14 +91,33 @@ export function OfficePage(props: PageProps) {
   );
 }
 
-/** The office before its session has loaded (or while the app learns who is signed in). */
-export function OfficeShell(props: { status?: SessionStatus; note?: string }) {
-  const { status, note } = props;
+/**
+ * The office before its session has loaded (or while the app learns who is signed in), or
+ * a session with nothing to draw: its menu is there once it is known whose it is.
+ */
+export function OfficeShell(props: {
+  status?: SessionStatus;
+  note?: string;
+  sessionId?: string;
+  me?: Me | undefined;
+  onSignOut?: (() => void) | undefined;
+}) {
+  const { status, note, sessionId } = props;
   return (
     <div className="office">
       <header className="of-top">
         <div className="of-top-row">
           <Brand />
+          {sessionId && (
+            <>
+              <span className="of-spacer" />
+              <Menu
+                sessionId={sessionId}
+                me={props.me}
+                onSignOut={props.onSignOut}
+              />
+            </>
+          )}
         </div>
       </header>
       <main className="of-body of-empty" aria-busy={status === "loading"}>
@@ -659,13 +684,16 @@ export function Office(props: {
     : mark.mark === "running" || mark.mark === "waiting"
       ? mark.mark
       : "done";
+  // Waiting on you: since when, and how many questions when there are more than one.
+  const since = scene.waiting?.since ?? mark?.waiting?.since;
+  const asks = mark?.waiting?.questions.length ?? 0;
   const pill =
     !req || !mark
       ? null
-      : scene.waiting
+      : since && (scene.waiting || state === "waiting")
         ? ([
             "blocked",
-            `Waiting on you · ${dur(tNow - Date.parse(scene.waiting.since))}`,
+            `Waiting on you · ${dur(tNow - Date.parse(since))}${asks > 1 ? ` · ${asks} questions` : ""}`,
           ] as const)
         : state === "running" && following && open && !live
           ? // Left mid-work: it ran this long, then nothing more came.
@@ -682,7 +710,11 @@ export function Office(props: {
               ? (["failed", "Failed"] as const)
               : mark.mark === "open"
                 ? (["todo", "Left open"] as const)
-                : (["done", "Done"] as const);
+                : ([
+                    "done",
+                    // How long it took, from its ask to its last word.
+                    `Done · ${dur(Math.min(tNow, Date.parse(mark.end)) - Date.parse(req.startedAt))}`,
+                  ] as const);
   const helperMeta = !working.length
     ? "No helpers at work"
     : !carried.length

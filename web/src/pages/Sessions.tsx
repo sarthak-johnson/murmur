@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type SessionRow } from "../api";
 import { ago } from "../format";
-import { navigate } from "../router";
+import { follow, sessionPath } from "../router";
 
 const LIVE_MS = 2 * 60 * 1000;
 
@@ -53,15 +53,11 @@ export function Sessions() {
         {rows.map((s) => {
           const live =
             !s.ended && now - new Date(s.lastEventAt).getTime() < LIVE_MS;
+          // A real link: a modified click opens the session in a new tab.
+          const path = sessionPath(s.sessionId);
           return (
             <li key={s.sessionId}>
-              <button
-                type="button"
-                className="row"
-                onClick={() =>
-                  navigate(`/s/${encodeURIComponent(s.sessionId)}`)
-                }
-              >
+              <a className="row" href={path} onClick={follow(path)}>
                 <div className="title">{s.title || "Untitled session"}</div>
                 <div className="meta">
                   <span title={s.cwd}>{folder(s.cwd)}</span>
@@ -69,7 +65,7 @@ export function Sessions() {
                   <span>{ago(s.lastEventAt, now)}</span>
                   {live && <span className="live">live</span>}
                 </div>
-              </button>
+              </a>
             </li>
           );
         })}
