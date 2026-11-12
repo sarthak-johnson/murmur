@@ -1,5 +1,5 @@
 import type { FileTouch, MurmurEvent } from "@murmur/core";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { PathText } from "../files";
 import { eventsById, MINUS } from "../format";
 import { clock } from "../story";
