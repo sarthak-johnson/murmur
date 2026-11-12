@@ -585,19 +585,42 @@ export function taskAgents(req: RequestView, task: TaskView): AgentView[] {
 const valid = (ts: string | undefined): ts is string =>
   !!ts && !Number.isNaN(Date.parse(ts));
 
+/** A helper fits a task, but a builder a review task: the build is another task's. */
+const fits = (a: AgentView, t: TaskView) =>
+  a.role !== "build" || !/^(re-?)?(review|check)/i.test(t.title.trim());
+
+/** The other tasks of the plan sharing this task's part. */
+const siblings = (req: RequestView, task: TaskView) =>
+  task.part
+    ? req.phases.flatMap((ph) =>
+        ph.tasks.filter((t) => t !== task && t.part === task.part),
+      )
+    : [];
+
+/**
+ * A task's own helpers. A part several tasks share would give each all of the part's:
+ * only those core gave the task count, but a builder core gave a review task: a task
+ * given none takes it ("Build Task 56" is the build task's, not its review's).
+ */
+export function ownAgents(req: RequestView, task: TaskView): AgentView[] {
+  const sibs = siblings(req, task);
+  if (!sibs.length) return taskAgents(req, task);
+  const mine = req.agents.filter(
+    (a) => task.agents.includes(a.id) && fits(a, task),
+  );
+  if (mine.length) return mine;
+  return req.agents.filter((a) =>
+    sibs.some((t) => t.agents.includes(a.id) && !fits(a, t) && fits(a, task)),
+  );
+}
+
 /** When a task's work was seen, earliest and latest: its helpers, steps and messages. */
 export function taskTimes(req: RequestView, task: TaskView): string[] {
   const part = req.parts.find((p) => p.id === task.part);
   // A part several tasks share times all of them: only its helpers and steps that are this
   // task's own count, else every task would read the part's whole span.
-  const shared =
-    !!task.part &&
-    req.phases.some((ph) =>
-      ph.tasks.some((t) => t !== task && t.part === task.part),
-    );
-  const agents = taskAgents(req, task).filter(
-    (a) => !shared || task.agents.includes(a.id),
-  );
+  const shared = siblings(req, task).length > 0;
+  const agents = ownAgents(req, task);
   const mine = new Set(agents.map((a) => a.id));
   const steps = (part?.steps ?? []).filter(
     (st) => !shared || (st.agentId !== undefined && mine.has(st.agentId)),

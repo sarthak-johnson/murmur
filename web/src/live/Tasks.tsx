@@ -9,9 +9,9 @@ import { StateMark, Words } from "../marks";
 import { follow, partPath } from "../router";
 import {
   livePhase,
+  ownAgents,
   phaseName,
   phaseSpan,
-  taskAgents,
   taskTimes,
   taskTitle,
 } from "../session";
@@ -117,7 +117,7 @@ function taskRow(req: RequestView, t: TaskView, state: State): Row {
     line: quiet(line, title),
     facts: factsOf(
       shown,
-      taskAgents(req, t).length,
+      ownAgents(req, t).length,
       own ? part.files.length : 0,
       from,
       to,

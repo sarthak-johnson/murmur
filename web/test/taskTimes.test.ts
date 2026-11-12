@@ -1,7 +1,7 @@
 import type { RequestView } from "@murmur/core";
 import { describe, expect, it } from "vitest";
 import { phaseLine, phaseShown } from "../src/live/Track";
-import { phaseSpan, taskTimes } from "../src/session";
+import { ownAgents, phaseSpan, taskTimes } from "../src/session";
 
 const step = (ts: string, agentId?: string) => ({
   ts,
@@ -50,6 +50,48 @@ describe("a task's own span", () => {
       from: "2026-11-12T12:52:00Z",
       to: "2026-11-12T16:29:00Z",
     });
+  });
+});
+
+describe("a shared part's build and review tasks", () => {
+  // Core gave the review task the builder too: the build task, given none, takes it.
+  const tasks = [
+    {
+      id: "b",
+      title: "Build the sheet",
+      part: "p",
+      status: "done",
+      agents: [],
+    },
+    {
+      id: "r",
+      title: "Review the sheet",
+      part: "p",
+      status: "done",
+      agents: ["a1", "a2"],
+    },
+  ];
+  const req = {
+    phases: [{ id: "ph", title: "Sheet", tasks }],
+    parts: [{ id: "p", agents: ["a1", "a2"], steps: [] }],
+    agents: [
+      {
+        ...agent("a1", "2026-11-12T10:00:00Z", "2026-11-12T10:07:00Z"),
+        role: "build",
+      },
+      {
+        ...agent("a2", "2026-11-12T10:20:00Z", "2026-11-12T10:30:00Z"),
+        role: "review",
+      },
+    ],
+    messages: [],
+  } as unknown as RequestView;
+
+  it("times each task by its own helpers, never the phase's span", () => {
+    expect(ownAgents(req, tasks[0] as never).map((a) => a.id)).toEqual(["a1"]);
+    expect(ownAgents(req, tasks[1] as never).map((a) => a.id)).toEqual(["a2"]);
+    expect(taskTimes(req, tasks[0] as never)[0]).toBe("2026-11-12T10:00:00Z");
+    expect(taskTimes(req, tasks[1] as never)[0]).toBe("2026-11-12T10:20:00Z");
   });
 });
 
