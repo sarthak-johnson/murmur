@@ -310,8 +310,8 @@ export function createOverlay(
             ? "No plan yet. Claude is working without one."
             : "No plan on this request: Claude did it in one go.",
       });
-    // One style for every column head: the longest form that fits them all, else none (the
-    // head still opens its phase, and says its name to a pointer and a screen reader).
+    // One style for every column head: the longest form that fits them all, else each
+    // head's first word, cut with an ellipsis inside its own column (never into the next).
     const size = s >= 3 ? 15 : s >= 1 ? 13 : 10;
     const pad = s >= 3 ? 12 : s >= 1 ? 8 : 4;
     const firstWord = (title: string) => phaseShort(title).split(" ")[0] ?? "";
@@ -319,7 +319,7 @@ export function createOverlay(
     const form =
       forms.find((f) =>
         cols.every((c) => fits(f(c.title), (c.w - 1) * s - pad, size)),
-      ) ?? (() => "");
+      ) ?? firstWord;
     for (const col of cols) {
       out.push({
         key: `ph-${col.id}`,
