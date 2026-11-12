@@ -19,7 +19,6 @@ import {
 import {
   coreState,
   helperNow,
-  isOver,
   QUIET_MS,
   type State,
   workState,
@@ -564,7 +563,6 @@ export function deriveScene(
     }
   }
 
-  const reqOver = isOver(reqState);
   // Board: one column per phase, one sticky note per task, with who is on it and at what stage.
   const running = new Map(
     desks.filter((d) => d.status === "running").map((d) => [d.agent, d]),
