@@ -63,3 +63,6 @@ export function cutWords(s: string, n: number): string {
 /** A working folder by its last name: "/Users/me/tradara" reads "tradara". */
 export const folderOf = (cwd: string) =>
   cwd.split("/").filter(Boolean).pop() ?? cwd;
+
+/** A true minus sign, for a diff's removed lines and a "fewer" count. */
+export const MINUS = "−";

@@ -125,10 +125,10 @@ test("the list names and counts a session as its page does, and says when it wai
   const [stored] = await t.db.select().from(sessions);
   await get(cookie, "/api/sessions");
   const [again] = await t.db.select().from(sessions);
-  expect(again?.summaryOf).toEqual(stored?.summaryOf);
-  expect(again?.summaryOf).toEqual(again?.changedAt);
+  expect(again?.summaryOfVersion).toEqual(stored?.summaryOfVersion);
+  expect(again?.summaryOfVersion).toBe(again?.version);
   // One lost (a restart mid-read, or a server from before summaries) is read at start.
-  await t.db.update(sessions).set({ summary: null, summaryOf: null });
+  await t.db.update(sessions).set({ summary: null, summaryOfVersion: null });
   await backfillSummaries(t.db);
   expect((await row()).summary).toMatchObject({ waitingSince: ask.ts });
 });

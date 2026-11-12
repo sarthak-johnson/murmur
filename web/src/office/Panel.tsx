@@ -27,7 +27,7 @@ import { TasksTab } from "../live/Tasks";
 import { PhaseTrack } from "../live/Track";
 import { Fold, Markdown } from "../markdown";
 import { StateMark } from "../marks";
-import { DiffRow } from "../part/Diff";
+import { DiffRow, useById } from "../part/Diff";
 import { PartDetail } from "../part/PartDetail";
 import { floorPath, follow, navigate } from "../router";
 import {
@@ -706,7 +706,7 @@ function HelperFiles(props: {
 }) {
   const { agent: a, events, cwd } = props;
   const files = useMemo(() => helperFiles(a, events), [a, events]);
-  const byId = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
+  const byId = useById(events);
   if (!files.length) return null;
   return (
     <>

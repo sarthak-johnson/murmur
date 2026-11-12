@@ -10,9 +10,10 @@ import { displayPath } from "@murmur/core";
 import { useMemo, useState } from "react";
 import { asTouch, fileIndex, requestFiles } from "../fileIndex";
 import { FileList, PathText } from "../files";
+import { MINUS } from "../format";
 import { StateMark } from "../marks";
 import { Pill } from "../Pill";
-import { DiffRow } from "../part/Diff";
+import { DiffRow, useById } from "../part/Diff";
 import { floorPath, follow, helperPath } from "../router";
 import { helperName, modelOf, placeOf, taskTitle } from "../session";
 import {
@@ -31,7 +32,6 @@ import {
   verdictOf,
 } from "../story";
 
-const MINUS = "−";
 /** A file's role that is more than a word or two ("tests", "docs"). */
 const wordy = (role: string) => role.length > 16;
 
@@ -58,9 +58,6 @@ const partName = (req: RequestView, partId: string, fallback: string) => {
 };
 
 /** Events by id, for diffs. */
-const useById = (events: MurmurEvent[]) =>
-  useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
-
 /** The request's files, grouped by the part that changed them, then the rest. */
 export function FilesTab(props: {
   request: RequestView;

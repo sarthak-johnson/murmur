@@ -12,6 +12,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cutWords, list } from "../src/format";
+import { asCoreSays } from "./coreSays";
 import { Live as Page, roomInJsdom, unfoldRail } from "./officeShell";
 
 roomInJsdom();
@@ -281,7 +282,7 @@ function show(
       {...(p.requestId ? { requestId: p.requestId } : {})}
       {...(p.partId ? { partId: p.partId } : {})}
       {...(p.tab ? { tab: p.tab } : {})}
-      view={view}
+      view={asCoreSays(view, p.events ?? [])}
       events={p.events ?? []}
       status="live"
       lastLooked={p.lastLooked ?? null}
@@ -691,7 +692,11 @@ describe("waiting on you", () => {
         ),
       ],
     });
-    show(session(req), { events: [ev("s", 45, "Stop")] });
+    // Core reads the ask from the Stop's last message, as Claude Code sends it.
+    const said = req.messages?.at(-1)?.text;
+    show(session(req), {
+      events: [ev("s", 45, "Stop", { last_assistant_message: said })],
+    });
     const call = screen.getByRole("region", { name: "Waiting on you" });
     expect([...call.querySelectorAll("li")].map((q) => q.textContent)).toEqual([
       "Should I default snooze to ten minutes?",
@@ -1166,7 +1171,7 @@ describe("review fixes: stillness and order", () => {
   ) => (
     <Live
       sessionId="s1"
-      view={session(r)}
+      view={asCoreSays(session(r), events)}
       events={events}
       status={status}
       lastLooked={at(10)}

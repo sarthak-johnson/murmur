@@ -1,74 +1,145 @@
 /*
  * What the lobby and the session switcher say of a session, read from core's view of it,
- * so they name and count it as its own page does: its title (Claude's, else its first
- * prompt that is not a reply), its requests and helpers, when its first request began, and
- * whether it waits on you. Kept on the session row; read again a little after an ingest
- * changed it, and at server start for any left stale.
+ * so they name and count it as its own page does (summarize.ts). Kept on the session row
+ * with the `version` it was read at; read again a little after an ingest stored events of
+ * it, and at server start for any left stale. The read pages the session's events and the
+ * reduce runs in a worker thread, so neither holds up the server.
  */
-import { type MurmurEvent, reduce, type SessionView } from "@murmur/core";
-import { and, asc, desc, eq, isNull, lt, ne, or } from "drizzle-orm";
+import { Worker } from "node:worker_threads";
+import type { MurmurEvent } from "@murmur/core";
+import { and, asc, desc, eq, gt, isNull, lt, ne, or } from "drizzle-orm";
 import type { Db } from "./db/client.js";
 import { events, sessions } from "./db/schema.js";
+import type { SessionSummary } from "./summarize.js";
 
-export interface SessionSummary {
-  /** The session's title, as its top bar says it (core `SessionView.title`). */
-  title: string;
-  requests: number;
-  helpers: number;
-  /** Its first request's start, else its first event's: where its Journey starts. */
-  from: string;
-  /** Since when Claude waits on you (a request of it is "waiting"); null when it does not. */
-  waitingSince: string | null;
-}
+export type { SessionSummary } from "./summarize.js";
 
-export function summarize(view: SessionView): SessionSummary {
-  const waits = view.requests.some((r) => r.state === "waiting");
-  return {
-    title: view.title,
-    requests: view.requests.length,
-    helpers: view.requests.reduce((n, r) => n + r.tally.helpers, 0),
-    from: view.requests[0]?.startedAt ?? view.startedAt,
-    waitingSince: waits ? (view.needsYou?.since ?? view.lastEventAt) : null,
-  };
-}
+/** Events read per query. */
+const PAGE = 2000;
 
-/** Every event of a session, as GET /events returns them. */
-async function eventsOf(
+/** Reduces a session's events, page by page, to its summary. */
+export type Summarizer = (
+  pages: AsyncIterable<MurmurEvent[]>,
+) => Promise<SessionSummary | null>;
+
+/** Every event of a session in GET /events order, a page at a time by (ts, id). */
+async function* pagesOf(
   db: Db,
   userId: string,
   sessionId: string,
   s: { cwd: string; machineId: string },
-): Promise<MurmurEvent[]> {
-  const rows = await db
-    .select({
-      id: events.id,
-      ts: events.ts,
-      hook: events.hook,
-      payload: events.payload,
-    })
-    .from(events)
-    .where(and(eq(events.userId, userId), eq(events.sessionId, sessionId)))
-    .orderBy(asc(events.ts), asc(events.id));
-  return rows.map((r) => ({
-    id: r.id,
-    sessionId,
-    machineId: s.machineId,
-    cwd: s.cwd,
-    ts: r.ts.toISOString(),
-    hook: r.hook as MurmurEvent["hook"],
-    payload: r.payload as MurmurEvent["payload"],
-  }));
+): AsyncGenerator<MurmurEvent[]> {
+  let after: { ts: Date; id: string } | undefined;
+  for (;;) {
+    const rows = await db
+      .select({
+        id: events.id,
+        ts: events.ts,
+        hook: events.hook,
+        payload: events.payload,
+      })
+      .from(events)
+      .where(
+        and(
+          eq(events.userId, userId),
+          eq(events.sessionId, sessionId),
+          after &&
+            or(
+              gt(events.ts, after.ts),
+              and(eq(events.ts, after.ts), gt(events.id, after.id)),
+            ),
+        ),
+      )
+      .orderBy(asc(events.ts), asc(events.id))
+      .limit(PAGE);
+    if (rows.length) {
+      yield rows.map((r) => ({
+        id: r.id,
+        sessionId,
+        machineId: s.machineId,
+        cwd: s.cwd,
+        ts: r.ts.toISOString(),
+        hook: r.hook as MurmurEvent["hook"],
+        payload: r.payload as MurmurEvent["payload"],
+      }));
+    }
+    const last = rows.at(-1);
+    if (!last || rows.length < PAGE) return;
+    after = { ts: last.ts, id: last.id };
+  }
+}
+
+/** The one worker, started on first use; it does not keep the process alive. */
+let worker: Worker | undefined;
+const waiting = new Map<
+  number,
+  { ok: (s: SessionSummary | null) => void; fail: (e: Error) => void }
+>();
+let nextId = 0;
+
+function theWorker(): Worker {
+  if (worker) return worker;
+  // tsx, as the server runs: the worker and core are TypeScript.
+  const w = new Worker(new URL("./summary-worker.ts", import.meta.url), {
+    execArgv: ["--import", import.meta.resolve("tsx")],
+  });
+  w.unref();
+  const lost = (e: Error) => {
+    if (worker === w) worker = undefined;
+    for (const p of waiting.values()) p.fail(e);
+    waiting.clear();
+  };
+  w.on(
+    "message",
+    (m: { id: number; summary?: SessionSummary | null; error?: string }) => {
+      const p = waiting.get(m.id);
+      waiting.delete(m.id);
+      if (m.error === undefined) p?.ok(m.summary ?? null);
+      else p?.fail(new Error(m.error));
+    },
+  );
+  w.on("error", lost);
+  w.on("exit", (code) => lost(new Error(`summary worker exited ${code}`)));
+  worker = w;
+  return w;
+}
+
+const inWorker: Summarizer = async (pages) => {
+  const id = nextId++;
+  const w = theWorker();
+  const done = new Promise<SessionSummary | null>((ok, fail) =>
+    waiting.set(id, { ok, fail }),
+  );
+  try {
+    for await (const events of pages) w.postMessage({ id, events });
+    w.postMessage({ id, end: true });
+  } catch (e) {
+    waiting.delete(id);
+    w.postMessage({ id, end: true, drop: true });
+    throw e;
+  }
+  return done;
+};
+
+let summarizer: Summarizer = inWorker;
+/** Swaps what reduces a session (for tests); returns the way back. */
+export function useSummarizer(s: Summarizer): () => void {
+  summarizer = s;
+  return () => {
+    summarizer = inWorker;
+  };
 }
 
 /**
- * Reads one session's summary again when an ingest changed it since the last read, and
- * stores it with the `changedAt` it read. An ingest during the read leaves it stale for
- * the next one; a slower, older read never overwrites a newer one.
+ * Reads one session's summary again when an ingest stored events of it since the last
+ * read, and stores it with the `version` it read at. An ingest during the read leaves it
+ * stale for the next one; a slower, older read never overwrites a newer one.
  */
-async function refreshSummary(
+export async function refreshSummary(
   db: Db,
   userId: string,
   sessionId: string,
+  read: Summarizer = summarizer,
 ): Promise<void> {
   const own = and(
     eq(sessions.userId, userId),
@@ -78,21 +149,24 @@ async function refreshSummary(
     .select({
       cwd: sessions.cwd,
       machineId: sessions.machineId,
-      changedAt: sessions.changedAt,
-      summaryOf: sessions.summaryOf,
+      version: sessions.version,
+      summaryOfVersion: sessions.summaryOfVersion,
     })
     .from(sessions)
     .where(own);
-  if (!s || s.summaryOf?.getTime() === s.changedAt.getTime()) return;
-  const list = await eventsOf(db, userId, sessionId, s);
-  if (!list.length) return;
+  if (!s || s.summaryOfVersion === s.version) return;
+  const summary = await read(pagesOf(db, userId, sessionId, s));
+  if (!summary) return;
   await db
     .update(sessions)
-    .set({ summary: summarize(reduce(list)), summaryOf: s.changedAt })
+    .set({ summary, summaryOfVersion: s.version })
     .where(
       and(
         own,
-        or(isNull(sessions.summaryOf), lt(sessions.summaryOf, s.changedAt)),
+        or(
+          isNull(sessions.summaryOfVersion),
+          lt(sessions.summaryOfVersion, s.version),
+        ),
       ),
     );
 }
@@ -118,11 +192,11 @@ function run(db: Db, userId: string, sessionId: string): Promise<void> {
 }
 
 /**
- * Reads a session's summary again a little after an ingest, off the request path: GET
- * /api/sessions only reads what is stored, a few seconds stale at most.
+ * Reads a session's summary again a little after an ingest stored events of it, off the
+ * request path: GET /api/sessions only reads what is stored, a few seconds stale at most.
  */
-// ponytail: each read reduces the whole session (~0.5 s at 30k events), at most one per
-// SOON_MS while it is live; fold new events into a stored view if that ever shows.
+// ponytail: each read reduces the whole session, at most one per SOON_MS while it is
+// live; fold new events into a stored view if that ever shows.
 export function summarizeSoon(db: Db, userId: string, sessionId: string): void {
   const k = key(userId, sessionId);
   if (soon.has(k)) return;
@@ -145,6 +219,17 @@ export async function settleSummaries(): Promise<void> {
 }
 
 /**
+ * At shutdown, before the database closes: drops the reads still waiting, lets the ones
+ * under way finish and stops the worker. A dropped read is read at the next start.
+ */
+export async function stopSummaries(): Promise<void> {
+  for (const { timer } of soon.values()) clearTimeout(timer);
+  soon.clear();
+  while (running.size) await Promise.all([...running.values()]);
+  await worker?.terminate();
+}
+
+/**
  * Every session whose summary is missing or older than its last ingest, read again one at
  * a time: at server start, in the background, so the first lobby after it reads them.
  */
@@ -154,8 +239,8 @@ export async function backfillSummaries(db: Db): Promise<void> {
     .from(sessions)
     .where(
       or(
-        isNull(sessions.summaryOf),
-        ne(sessions.summaryOf, sessions.changedAt),
+        isNull(sessions.summaryOfVersion),
+        ne(sessions.summaryOfVersion, sessions.version),
       ),
     )
     .orderBy(desc(sessions.lastEventAt));

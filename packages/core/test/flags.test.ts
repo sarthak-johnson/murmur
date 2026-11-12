@@ -68,6 +68,30 @@ test.each([
   expect(reduce([...events, prompt(3, "more")]).needsYou).toBeNull();
 });
 
+test("an AskUserQuestion still open waits on you until its answer, whatever a helper does", () => {
+  const ask = tool(
+    2,
+    "AskUserQuestion",
+    { questions: [{ question: "Morning or evening?" }] },
+    "PreToolUse",
+  );
+  const helper = at(3, "PreToolUse", { tool_name: "Read", agent_id: "h1" });
+  const idle = at(4, "Notification", {
+    message: "Claude is waiting for your input",
+    notification_type: "idle_prompt",
+  });
+  const events = [prompt(1, "go"), ask, helper, idle];
+  const view = reduce(events);
+  expect(view.needsYou).toEqual({
+    reason: "question",
+    text: "Morning or evening?",
+    since: "2026-11-06T00:00:02.000Z",
+  });
+  expect(view.requests[0]?.state).toBe("waiting");
+  const answer = tool(5, "AskUserQuestion", {}, "PostToolUse");
+  expect(reduce([...events, answer]).needsYou).toBeNull();
+});
+
 test("interactive.jsonl ends with nothing needing you", () => {
   const events = fixture("interactive.jsonl");
   expect(reduce(events.slice(0, 7)).needsYou?.reason).toBe("permission");

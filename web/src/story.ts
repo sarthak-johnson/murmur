@@ -11,11 +11,14 @@ import {
   type PartView,
   type RequestView,
   type TaskView,
+  verdictOf,
 } from "@murmur/core";
 import { plainText } from "./markdown";
 
 // The badge rules live in core, so the request brief and the story read messages alike.
 export { firstSentence, type Moment, moment } from "@murmur/core";
+// One verdict reader, in core, so a review's step and its chip never disagree.
+export { verdictOf };
 export type Tone = "done" | "warn" | "bad" | "now" | "plain";
 
 export const MOMENT: Record<Moment, { label: string; tone: Tone }> = {
@@ -118,57 +121,6 @@ const LABEL = /^[*_]*[^\n.]{1,60}:[*_]*\s*(?:\n|$)/;
 export function reportLead(text: string): string {
   const [first] = paragraphs(text);
   return first && isProse(first) ? first : "";
-}
-
-const VERDICT: Record<string, { label: string; tone: Tone }> = {
-  DONE: { label: "Done", tone: "done" },
-  DONE_WITH_CONCERNS: { label: "Done, with concerns", tone: "warn" },
-  BLOCKED: { label: "Blocked", tone: "bad" },
-  NEEDS_CONTEXT: { label: "Needs context", tone: "warn" },
-};
-
-/**
- * "verdict is **fix first**", "Verdict: Compliant.": the first verdict a report names. Not
- * where it was put ("the verdict is written to `review.md`"), nor a path or code.
- */
-const SAID_VERDICT =
-  /\bverdict\b[*_]*\s*(?:is\b|:)(?![\s*_]*(?:written|saved|stored|recorded|in|at|below|above)\b)\s*[*_]*\s*([^*_.\n:;(`]{2,40})/i;
-
-/** A report's verdict line as a label and a tone; failed and stopped reports say so. */
-export function verdictOf(
-  report: AgentReport | undefined,
-): { label: string; tone: Tone } | undefined {
-  if (!report) return undefined;
-  // A `Status:` line, else the verdict a review names in its words ("My verdict is fix first").
-  const v =
-    report.verdict?.trim() ||
-    SAID_VERDICT.exec(report.text.slice(0, 600))?.[1]
-      ?.replace(/^[^\p{L}\p{N}]+/u, "")
-      .trim();
-  if (v) {
-    const known = VERDICT[v.toUpperCase()];
-    if (known) return known;
-    const words = v.replace(/[_-]+/g, " ").toLowerCase();
-    const label = words.charAt(0).toUpperCase() + words.slice(1);
-    // Negatives first: "Not approved" holds "approv", "Doesn't pass" holds "pass".
-    const tone: Tone =
-      /fix(?:es)? first|needs? fix|\bnot (?:approved|passed?|ok|ready)\b|n['’]t pass|reject|fail/.test(
-        words,
-      )
-        ? "bad"
-        : /\bno (?:blocking )?(?:issues?|problems?)\b/.test(words) ||
-            /approv|pass|\bok\b|done|complete|ready|compliant/.test(words)
-          ? "done"
-          : /block|issue|change|problem|broke/.test(words)
-            ? "bad"
-            : /concern|need|partial|warn/.test(words)
-              ? "warn"
-              : "plain";
-    return { label, tone };
-  }
-  if (report.status === "failed") return { label: "Failed", tone: "bad" };
-  if (report.status === "killed") return { label: "Stopped", tone: "bad" };
-  return undefined;
 }
 
 /**

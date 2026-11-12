@@ -29,7 +29,7 @@ import {
   STALE_MS,
   type Waiting,
 } from "./session";
-import { duration } from "./story";
+import { duration, nOf } from "./story";
 import type { SessionStatus } from "./useSession";
 
 export { QUIET_MS, STALE_MS };
@@ -193,15 +193,13 @@ export function sessionSpan(ses: SessionNow): string {
     : `${days} ${days === 1 ? "day" : "days"}`;
 }
 
-const many = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
-
 /** "13 requests · 136 helpers · 7 days". */
 export function sessionFacts(view: SessionView, ses: SessionNow): string {
   const helpers = view.requests.reduce((n, r) => n + r.tally.helpers, 0);
   const span = sessionSpan(ses);
   return [
-    many(view.requests.length, "request"),
-    ...(helpers ? [many(helpers, "helper")] : []),
+    nOf(view.requests.length, "request"),
+    ...(helpers ? [nOf(helpers, "helper")] : []),
     span === "under a minute" ? "just started" : span,
   ].join(" · ");
 }
@@ -255,8 +253,8 @@ export function listedNow(row: SessionRow, at: number = Date.now()): Listed {
     day: dayLabel(ses.from),
     facts: s
       ? [
-          many(s.requests, "request"),
-          ...(s.helpers ? [many(s.helpers, "helper")] : []),
+          nOf(s.requests, "request"),
+          ...(s.helpers ? [nOf(s.helpers, "helper")] : []),
         ].join(" · ")
       : "",
   };

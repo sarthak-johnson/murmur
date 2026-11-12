@@ -39,9 +39,65 @@ const tag = (name: string, s: string) => {
 const VERDICT = /^Status:\s*([A-Z][A-Z_]+)(?![A-Za-z])/;
 const INTERIM = /waiting on its own background work|may be interim/i;
 
-function verdictOf(text: string): string | undefined {
+function statusOf(text: string): string | undefined {
   const first = text.trim().split("\n")[0]?.replace(/\*/g, "") ?? "";
   return VERDICT.exec(first.trim())?.[1];
+}
+
+export type VerdictTone = "done" | "warn" | "bad" | "plain";
+
+const KNOWN: Record<string, { label: string; tone: VerdictTone }> = {
+  DONE: { label: "Done", tone: "done" },
+  DONE_WITH_CONCERNS: { label: "Done, with concerns", tone: "warn" },
+  BLOCKED: { label: "Blocked", tone: "bad" },
+  NEEDS_CONTEXT: { label: "Needs context", tone: "warn" },
+};
+
+/**
+ * "verdict is **fix first**", "Verdict: Compliant.": the first verdict a report names. Not
+ * where it was put ("the verdict is written to `review.md`"), nor a path or code.
+ */
+const SAID_VERDICT =
+  /\bverdict\b[*_]*\s*(?:is\b|:)(?![\s*_]*(?:written|saved|stored|recorded|in|at|below|above)\b)\s*[*_]*\s*([^*_.\n:;(`]{2,40})/i;
+
+/**
+ * A report's verdict as a label and a tone: its `Status:` line, else the verdict it names
+ * in its words ("My verdict is fix first"); failed and stopped reports say so. The one
+ * reader of a verdict, so a review's step and its chip never disagree.
+ */
+export function verdictOf(
+  report: AgentReport | undefined,
+): { label: string; tone: VerdictTone } | undefined {
+  if (!report) return undefined;
+  const v =
+    report.verdict?.trim() ||
+    SAID_VERDICT.exec(report.text.slice(0, 600))?.[1]
+      ?.replace(/^[^\p{L}\p{N}]+/u, "")
+      .trim();
+  if (v) {
+    const known = KNOWN[v.toUpperCase()];
+    if (known) return known;
+    const words = v.replace(/[_-]+/g, " ").toLowerCase();
+    const label = words.charAt(0).toUpperCase() + words.slice(1);
+    // Negatives first: "Not approved" holds "approv", "Doesn't pass" holds "pass".
+    const tone: VerdictTone =
+      /fix(?:es)? first|needs? fix|\bnot (?:approved|pass(?:ed)?|ok|ready)\b|n['’]t pass|reject|fail|changes? (?:needed|requested|required)/.test(
+        words,
+      )
+        ? "bad"
+        : /\bno (?:blocking )?(?:issues?|problems?)\b/.test(words) ||
+            /approv|pass|\bok\b|done|complete|ready|compliant/.test(words)
+          ? "done"
+          : /block|issue|change|problem|broke/.test(words)
+            ? "bad"
+            : /concern|need|partial|warn/.test(words)
+              ? "warn"
+              : "plain";
+    return { label, tone };
+  }
+  if (report.status === "failed") return { label: "Failed", tone: "bad" };
+  if (report.status === "killed") return { label: "Stopped", tone: "bad" };
+  return undefined;
 }
 
 /** A task notification prompt as the Agent call it reports on and its report. */
@@ -60,7 +116,7 @@ export function parseNotification(
       ? unentity(prompt.slice(open + "<result>".length, close).trim())
       : "";
   const summary = tag("summary", prompt) ?? "";
-  const verdict = verdictOf(text);
+  const verdict = statusOf(text);
   return {
     use,
     report: {
@@ -125,7 +181,7 @@ function reportOf(
     str(res.agentId) || started.get(str(e.payload.tool_use_id)) || "";
   const text = foregroundText(res);
   if (!agentId || !text) return;
-  const verdict = verdictOf(text);
+  const verdict = statusOf(text);
   return {
     agentId,
     report: {

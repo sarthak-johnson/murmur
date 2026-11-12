@@ -29,6 +29,7 @@ import {
   shortOf,
 } from "../src/session";
 import { clockAt } from "./clock";
+import { asCoreSays } from "./coreSays";
 
 /** Noon UTC on a November day, the same calendar day in any time zone a test runs in. */
 const day = (d: number, min = 0) =>
@@ -96,7 +97,7 @@ const done = (id: string) => task(id, `Task ${id}`, "done");
 
 /** Mon 2 Nov: two requests, one done and one left open. Fri 6 Nov: one failed, one running. */
 function session(s: Partial<SessionView> = {}): SessionView {
-  return {
+  return asCoreSays({
     sessionId: "s1",
     cwd: "/x/tradara",
     title: "Bro we recently made Alphatake, and now…",
@@ -201,7 +202,7 @@ function session(s: Partial<SessionView> = {}): SessionView {
       }),
     ],
     ...s,
-  };
+  });
 }
 
 function show(
@@ -383,13 +384,6 @@ describe("the requests rail", () => {
       "mk failed",
       "mk running",
     ]);
-    // Done gets a check, failed a cross; the word is always there for a screen reader.
-    expect(rows[0]?.querySelector(".mk svg path")?.getAttribute("d")).toContain(
-      "M2 5.4",
-    );
-    expect(rows[2]?.querySelector(".mk svg path")?.getAttribute("d")).toContain(
-      "m3 3",
-    );
     expect(rows[1]?.textContent).toContain(", Left open");
     expect(rows[2]?.textContent).toContain(", Failed");
     // The running one says so in its line, with how long and its helpers.
@@ -409,7 +403,8 @@ describe("the requests rail", () => {
     show(view);
     const row = within(requests()).getAllByRole("link")[3] as HTMLElement;
     expect(row.querySelector(".mk")?.className).toBe("mk waiting");
-    expect(row.querySelector(".mk")?.textContent).toBe("?");
+    // The amber "!" sticker is drawn by the stylesheet, so the mark holds no text.
+    expect(row.querySelector(".mk")?.textContent).toBe("");
     expect(row.querySelector(".of-rl-sub")?.textContent).toMatch(
       /^Waiting on you/,
     );

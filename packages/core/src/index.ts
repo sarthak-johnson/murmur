@@ -17,4 +17,9 @@ export * from "./view/reduce.js";
 export { relPath } from "./view/requests.js";
 export { isReply, markPasted, requestKeys } from "./view/titles.js";
 export * from "./view/types.js";
-export { briefOf, parseNotification } from "./view/words.js";
+export {
+  briefOf,
+  parseNotification,
+  type VerdictTone,
+  verdictOf,
+} from "./view/words.js";

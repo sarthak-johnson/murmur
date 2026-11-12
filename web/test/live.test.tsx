@@ -16,6 +16,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { asCoreSays } from "./coreSays";
 import { Live as Page, panel, roomInJsdom, unfoldRail } from "./officeShell";
 
 roomInJsdom();
@@ -135,7 +136,7 @@ function request(r: Partial<RequestView> = {}): RequestView {
 }
 
 function session(s: Partial<SessionView> = {}): SessionView {
-  return {
+  return asCoreSays({
     sessionId: "s1",
     cwd: "/x/app",
     title: "app",
@@ -157,7 +158,7 @@ function session(s: Partial<SessionView> = {}): SessionView {
     ],
     needsYou: null,
     ...s,
-  };
+  });
 }
 
 function mockFetch() {
@@ -316,7 +317,7 @@ describe("live screen", () => {
     const view = session({
       needsYou: { reason: "permission", text: "Allow Bash?", since: T0 },
     });
-    view.requests[1] = request({ flags });
+    view.requests[1] = { ...request({ flags }), state: "waiting" };
     show(view);
     const call = screen.getByRole("region", { name: "Waiting on you" });
     expect(call.textContent).toContain("rm -rf build");

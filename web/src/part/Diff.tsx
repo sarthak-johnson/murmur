@@ -1,6 +1,7 @@
 import type { FileTouch, MurmurEvent } from "@murmur/core";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { PathText } from "../files";
+import { MINUS } from "../format";
 import { clock } from "../story";
 
 export interface Hunk {
@@ -66,6 +67,10 @@ export function hunksOfEvent(
 }
 
 /** A file's hunks across its events; each later edit starts with a divider. */
+/** A request's events by id, as a diff and a step read them; kept while the events are. */
+export const useById = (events: MurmurEvent[]) =>
+  useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
+
 export function hunksOf(file: FileTouch, byId: Map<string, MurmurEvent>) {
   const out: Hunk[] = [];
   let edits = 0;
@@ -180,8 +185,6 @@ export function DiffView({ hunks }: { hunks: Hunk[] }) {
     </div>
   );
 }
-
-const MINUS = "−";
 
 /**
  * A changed file as a row: its path, lines added and removed, new or not, its diff one
