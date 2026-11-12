@@ -298,15 +298,6 @@ export function createOverlay(
       x: SHELVES.px.x + 2,
       y: 0,
     });
-    out.push({
-      key: "you",
-      cls: "you-plate",
-      html: "YOU",
-      x: DOOR.px.x + DOOR.px.w + 6,
-      y: DOOR.px.y + 10,
-      w: 12,
-      h: 8,
-    });
 
     // Ring a note's helpers when the note is hovered or chosen, and the other way round.
     const focusKey = hovered ?? selected ?? "";

@@ -156,9 +156,17 @@ export function drawBackground(): HTMLCanvasElement {
   const d = DOOR.px;
   r(d.x - 3, d.y - 1, d.w + 6, d.h + 2, "#5c4a3f");
   r(d.x - 3, d.y - 1, d.w + 6, 2, "#6b5749");
-  // the YOU plate
-  r(d.x + d.w + 6, d.y + 10, 12, 8, "#d9d4c6");
-  r(d.x + d.w + 7, d.y + 11, 10, 6, "#c4bdae");
+  // The YOU plate, its word in pixels: whole and crisp at every scale.
+  const px = d.x + d.w + 3;
+  const py = d.y + 10;
+  r(px, py, 15, 9, "#d9d4c6");
+  r(px + 1, py + 1, 13, 7, "#c4bdae");
+  const YOU = ["101111101", "101101101", "010101101", "010101101", "010111111"];
+  YOU.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++)
+      if (row[x] === "1")
+        r(px + 2 + x + Math.floor(x / 3), py + 2 + y, 1, 1, "#2a211c");
+  });
 
   // Rug under Claude's desk: a soft border and a few woven dots.
   {

@@ -327,7 +327,7 @@
 }
 /* While Claude waits on you the room dims, but the plan stays readable. */
 .of-overlay.waitdim
-  > :not(.bang):not(.wait):not(.tag):not(.you-plate):not(.note):not(.phase-h) {
+  > :not(.bang):not(.wait):not(.tag):not(.note):not(.phase-h) {
   opacity: 0.55;
 }
 .of-ask {
@@ -348,12 +348,6 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
-  pointer-events: none;
-}
-.of-overlay .you-plate {
-  font: 700 max(9px, calc(4px * var(--s))) / calc(8px * var(--s)) var(--o-pix);
-  color: #2a211c;
-  text-align: center;
   pointer-events: none;
 }
 .of-overlay .phase-h {
@@ -738,8 +732,7 @@
 .s1 .of-overlay .bubble.wait small {
   font-size: 12px;
 }
-/* Under 2x: the door's plate is too small for its word, and a plate keeps only its name. */
-.s15 .of-overlay .you-plate,
+/* Under 2x a plate keeps only its name. */
 .s15 .of-overlay .plate span {
   display: none;
 }
